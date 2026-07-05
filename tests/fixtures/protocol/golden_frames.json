@@ -1,0 +1,37 @@
+{
+  "description": "Shared Go/TypeScript Yimsg protobuf frame golden samples.",
+  "protobuf": {
+    "message": "LoginRequest",
+    "username": "alice",
+    "password": "pass",
+    "body_hex": "5205616c6963655a0470617373"
+  },
+  "frames": [
+    {
+      "name": "login_request_big_endian",
+      "little_endian": false,
+      "magic": 77,
+      "codec": 2,
+      "reserved": 0,
+      "checksum": 227,
+      "size": 13,
+      "request_id": "72623859790382856",
+      "type": 2,
+      "body_hex": "5205616c6963655a0470617373",
+      "frame_hex": "4d0200e3000d010203040506070800025205616c6963655a0470617373"
+    },
+    {
+      "name": "login_request_little_endian",
+      "little_endian": true,
+      "magic": 77,
+      "codec": 3,
+      "reserved": 0,
+      "checksum": 48,
+      "size": 13,
+      "request_id": "72623859790382856",
+      "type": 2,
+      "body_hex": "5205616c6963655a0470617373",
+      "frame_hex": "4d0300300d00080706050403020102005205616c6963655a0470617373"
+    }
+  ]
+}

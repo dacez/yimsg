@@ -1,0 +1,55 @@
+# Binaries
+/server
+/seed-data
+/debug-messages
+/test-seed
+
+# Runtime data
+data/
+server.log
+
+# TLS certificates
+certs/
+
+# Frontend build output
+web/
+
+# Frontend dependencies & test artifacts
+node_modules/
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/
+
+# Playwright test artifacts (root level)
+test-results/
+playwright-report/
+
+# Quality gate artifacts
+coverage/
+.jscpd-report/
+
+# Playwright temp files
+.tmp/
+
+# Python venv
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local server config overrides (may contain secrets)
+config.local.toml
+test.crt
+test.key
+seed_data

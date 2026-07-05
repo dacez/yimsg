@@ -1,0 +1,57 @@
+# Yimsg 服务端配置模板
+#
+# 所有配置项都有内置默认值；保持注释状态即可直接使用默认值。
+# 如需覆盖某项配置，取消对应行的注释并修改取值。
+
+[server]
+# host = "127.0.0.1"
+# port = 38081
+# machine_id = 1
+# tls_cert = ""
+# tls_key = ""
+
+[database]
+# data_dir = "./data"
+# shard_count = 4
+
+[session]
+# ttl_seconds = 2592000
+# token_bytes = 32
+
+[message]
+# recall_window_seconds = 120
+
+[gc]
+# message_max_count = 100000
+# conversation_max_count = 10000
+# session_cleanup_interval_secs = 3600
+# contact_gc_interval_secs = 3600
+# blocklist_gc_interval_secs = 3600
+# mutelist_gc_interval_secs = 3600
+# org_gc_interval_secs = 3600
+# message_gc_interval_secs = 3600
+# conversation_gc_interval_secs = 3600
+# user_gc_interval_secs = 3600
+
+[frontend]
+# 聊天 App。static_dir 留空则不挂载；mount_path 默认挂载在 /chat/ 子路径，
+# 根路径留给官网首页。
+# static_dir = "web"
+# mount_path = "/chat/"
+
+[website]
+# 官网（纯静态营销站）。static_dir 留空则不挂载；mount_path 默认挂载在根路径
+# 作为首页。
+# static_dir = "website"
+# mount_path = "/"
+
+[media]
+# upload_dir = "./data/media"
+# max_avatar_bytes = 5242880
+# max_image_bytes = 10485760
+# max_file_bytes = 104857600
+
+[client]
+# cache_ttl_seconds = 604800
+# cache_max_entries = 10000
+# batch_max_limit = 500

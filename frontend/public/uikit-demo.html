@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg uikit 嵌入示例</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 16px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .tip { font-size: 13px; color: #666; margin-bottom: 16px; }
+    .embed { width: min(860px, 100%); height: min(640px, 80vh); margin: 0 auto; box-shadow: 0 4px 16px rgba(0,0,0,.08); border-radius: 8px; overflow: hidden; background: #fff; }
+    .demo-toolbar { text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .demo-toolbar button { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>yimsg · uikit 嵌入示例</h1>
+  <p class="tip">通过 ESM 引入 <code>yimsg-uikit.js</code> 后，调用 <code>mount(el, options)</code> 即可嵌入 IM 面板。widget 使用 Shadow DOM 隔离样式，与宿主互不干扰；宿主低于 320 x 360 px 时会直接显示“容器太小”的提示，而不是裁切界面。</p>
+  <div id="chat-host" class="embed"></div>
+  <div class="demo-toolbar">
+    <button id="btn-unmount">卸载 widget</button>
+    <button id="btn-remount">重新挂载</button>
+    <button id="btn-theme-light">浅色主题</button>
+    <button id="btn-theme-dark">深色主题</button>
+    <button id="btn-theme-auto">自动主题</button>
+    <button id="btn-locale-zh">中文</button>
+    <button id="btn-locale-en">English</button>
+  </div>
+  <script type="module">
+    import * as YimsgUIKit from '/chat/uikit/yimsg-uikit.js';
+    window.YimsgUIKit = YimsgUIKit;
+
+    let handle = null;
+    const host = document.getElementById('chat-host');
+
+    function mountIt() {
+      handle = window.YimsgUIKit.mount(host, {
+        wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
+        uploadUrl: '/api/upload',
+        theme: 'auto',
+        locale: 'auto',
+        onLogout: () => console.log('[uikit-demo] user logged out'),
+        onReady: (client) => console.log('[uikit-demo] ready', client),
+        onAuthenticated: ({ token, uid }) => console.log('[uikit-demo] authenticated', { token, uid }),
+        onMessages: (msgs) => console.log('[uikit-demo] messages', msgs),
+        onError: (err, ctx) => console.warn('[uikit-demo] error', ctx, err),
+      });
+      window.__demoHandle = handle; // 便于测试从外部读取
+    }
+
+    mountIt();
+    document.getElementById('btn-unmount').addEventListener('click', () => {
+      if (handle) { handle.unmount(); handle = null; window.__demoHandle = null; }
+    });
+    document.getElementById('btn-remount').addEventListener('click', () => {
+      if (!handle) mountIt();
+    });
+    document.getElementById('btn-theme-light').addEventListener('click', () => handle && handle.setTheme('light'));
+    document.getElementById('btn-theme-dark').addEventListener('click', () => handle && handle.setTheme('dark'));
+    document.getElementById('btn-theme-auto').addEventListener('click', () => handle && handle.setTheme('auto'));
+    document.getElementById('btn-locale-zh').addEventListener('click', () => handle && handle.setLocale('zh-CN'));
+    document.getElementById('btn-locale-en').addEventListener('click', () => handle && handle.setLocale('en'));
+  </script>
+</body>
+</html>

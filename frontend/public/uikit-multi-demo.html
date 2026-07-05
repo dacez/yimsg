@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg uikit 多实例示例</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .tip { font-size: 13px; color: #666; margin: 0 0 16px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .toolbar button { padding: 6px 12px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: start; }
+    .cell { min-width: 0; display: flex; flex-direction: column; background: #fff; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.08); overflow: hidden; }
+    .cell-header { padding: 10px 12px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #eef2f7; background: #fafbfc; }
+    .cell-host { flex: 0 0 auto; height: clamp(380px, 42vh, 440px); min-height: 380px; }
+    @media (max-width: 1280px) {
+      .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+      .cell-host { height: clamp(360px, 38vh, 420px); min-height: 360px; }
+    }
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .cell-host { height: min(62vh, 420px); min-height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>yimsg · UIKit 多实例 8 宫格</h1>
+  <p class="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 持久存储清数据 / Lite）共存，不共享会话、语言、布局与本地数据库。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
+  <div class="toolbar">
+    <button id="btn-remount-all">重新挂载全部</button>
+    <button id="btn-unmount-all">卸载全部</button>
+  </div>
+  <div class="grid" id="multi-grid">
+    <section class="cell"><div class="cell-header">格 1 · user1 · 持久存储</div><div id="host-u1-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 2 · user1 · 持久存储清数据</div><div id="host-u1-reset" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 3 · user1 · Lite</div><div id="host-u1-lite" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 4 · user2 · 持久存储</div><div id="host-u2-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 5 · user3 · 持久存储</div><div id="host-u3-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 6 · user4 · Lite</div><div id="host-u4-lite" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 7 · user5 · 持久存储</div><div id="host-u5-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 8 · user5 · Lite</div><div id="host-u5-lite" class="cell-host"></div></section>
+  </div>
+  <script type="module">
+    import * as YimsgUIKit from '/chat/uikit/yimsg-uikit.js';
+    window.YimsgUIKit = YimsgUIKit;
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    const uploadUrl = '/api/upload';
+    const configs = [
+      { hostId: 'host-u1-persistent', mode: 'persistent', instanceId: 'grid-u1-persistent' },
+      { hostId: 'host-u1-reset', mode: 'persistent-cleardata', instanceId: 'grid-u1-reset' },
+      { hostId: 'host-u1-lite', mode: 'lite', instanceId: 'grid-u1-lite' },
+      { hostId: 'host-u2-persistent', mode: 'persistent', instanceId: 'grid-u2-persistent' },
+      { hostId: 'host-u3-persistent', mode: 'persistent', instanceId: 'grid-u3-persistent' },
+      { hostId: 'host-u4-lite', mode: 'lite', instanceId: 'grid-u4-lite' },
+      { hostId: 'host-u5-persistent', mode: 'persistent', instanceId: 'grid-u5-persistent' },
+      { hostId: 'host-u5-lite', mode: 'lite', instanceId: 'grid-u5-lite' },
+    ];
+
+    window.__gridHandles = {};
+
+    function mountOne(config) {
+      const host = document.getElementById(config.hostId);
+      const handle = window.YimsgUIKit.mount(host, {
+        wsUrl,
+        uploadUrl,
+        theme: 'auto',
+        locale: 'zh-CN',
+        layout: 'auto',
+        mode: config.mode,
+        instanceId: config.instanceId,
+      });
+      window.__gridHandles[config.hostId] = handle;
+      return handle;
+    }
+
+    function mountAll() {
+      for (const config of configs) mountOne(config);
+    }
+
+    function unmountAll() {
+      for (const handle of Object.values(window.__gridHandles)) {
+        handle?.unmount?.();
+      }
+      window.__gridHandles = {};
+    }
+
+    window.__gridDemo = {
+      configs,
+      mountAll,
+      unmountAll,
+      getHandle(hostId) {
+        return window.__gridHandles[hostId] || null;
+      },
+      shadowChildCount(hostId) {
+        const host = document.getElementById(hostId);
+        return host?.shadowRoot ? host.shadowRoot.childNodes.length : 0;
+      },
+    };
+
+    mountAll();
+    document.getElementById('btn-remount-all').addEventListener('click', () => {
+      unmountAll();
+      mountAll();
+    });
+    document.getElementById('btn-unmount-all').addEventListener('click', () => {
+      unmountAll();
+    });
+  </script>
+</body>
+</html>

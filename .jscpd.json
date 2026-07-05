@@ -1,0 +1,22 @@
+{
+  "threshold": 3,
+  "reporters": ["console", "json"],
+  "output": "./.jscpd-report",
+  "mode": "strict",
+  "minTokens": 60,
+  "minLines": 10,
+  "gitignore": true,
+  "pattern": "{internal,cmd,frontend/src}/**/*.{go,ts}",
+  "format": ["go", "typescript"],
+  "ignore": [
+    "**/*_test.go",
+    "**/*.test.ts",
+    "**/*.d.ts",
+    "**/node_modules/**",
+    "**/dist/**",
+    "web/**",
+    "coverage/**",
+    ".jscpd-report/**",
+    "data/**"
+  ]
+}

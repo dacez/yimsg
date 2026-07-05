@@ -1,0 +1,779 @@
+syntax = "proto3";
+
+package yimsg.protocol;
+
+option go_package = "yimsg/internal/protocol/pb;pb";
+
+// @review 2026-05-20
+
+enum Type {
+  TYPE_INVALID = 0; // reserved=invalid meaning=无效 type，解码时按协议错误处理
+  TYPE_ACTION_REGISTER = 1; // action=register auth=false domain=登录态 desc=注册用户
+  TYPE_ACTION_LOGIN = 2; // action=login auth=false domain=登录态 desc=用户名密码登录
+  TYPE_ACTION_AUTHENTICATE = 3; // action=authenticate auth=false domain=登录态 desc=token 鉴权恢复会话
+  TYPE_ACTION_LOGOUT = 4; // action=logout auth=true domain=登录态 desc=登出当前连接
+  TYPE_ACTION_PING = 5; // action=ping auth=true domain=登录态 desc=已认证连接心跳探测
+  TYPE_ACTION_UPDATE_USER_INFO = 6; // action=update_user_info auth=true domain=用户 desc=更新当前用户资料
+  TYPE_ACTION_UPDATE_PASSWORD = 7; // action=update_password auth=true domain=用户 desc=更新当前用户密码
+  TYPE_ACTION_GET_USER_INFOS = 8; // action=get_user_infos auth=true domain=用户 desc=批量读取用户展示资料
+  TYPE_ACTION_SEARCH_USER = 9; // action=search_user auth=true domain=用户 desc=按用户名搜索用户
+  TYPE_ACTION_ADD_FRIEND = 10; // action=add_friend auth=true domain=通讯录 desc=发起好友申请
+  TYPE_ACTION_ACCEPT_FRIEND = 11; // action=accept_friend auth=true domain=通讯录 desc=接受好友申请
+  TYPE_ACTION_REJECT_FRIEND = 12; // action=reject_friend auth=true domain=通讯录 desc=拒绝好友申请
+  TYPE_ACTION_DELETE_FRIEND = 13; // action=delete_friend auth=true domain=通讯录 desc=删除好友关系
+  TYPE_ACTION_UPDATE_REMARK = 14; // action=update_remark auth=true domain=通讯录 desc=更新好友或收藏群备注
+  TYPE_ACTION_GET_CONTACTS = 15; // action=get_contacts auth=true domain=通讯录 desc=分页读取通讯录
+  TYPE_ACTION_GET_CONTACT_COUNT = 16; // action=get_contact_count auth=true domain=通讯录 desc=按联系人状态统计数量
+  TYPE_ACTION_SYNC_CONTACTS = 17; // action=sync_contacts auth=true domain=通讯录 desc=增量同步通讯录
+  TYPE_ACTION_FAVORITE_GROUP = 18; // action=favorite_group auth=true domain=通讯录 desc=收藏群到通讯录
+  TYPE_ACTION_UNFAVORITE_GROUP = 19; // action=unfavorite_group auth=true domain=通讯录 desc=取消收藏群
+  TYPE_ACTION_BLOCK_USER = 20; // action=block_user auth=true domain=屏蔽列表 desc=屏蔽用户
+  TYPE_ACTION_UNBLOCK_USER = 21; // action=unblock_user auth=true domain=屏蔽列表 desc=解除屏蔽用户
+  TYPE_ACTION_GET_BLOCKLIST = 22; // action=get_blocklist auth=true domain=屏蔽列表 desc=分页读取屏蔽列表
+  TYPE_ACTION_SYNC_BLOCKLIST = 23; // action=sync_blocklist auth=true domain=屏蔽列表 desc=增量同步屏蔽列表
+  TYPE_ACTION_SEND_MESSAGE = 24; // action=send_message auth=true domain=消息 desc=发送单聊或群聊消息
+  TYPE_ACTION_SYNC_MESSAGES = 25; // action=sync_messages auth=true domain=消息 desc=增量同步消息
+  TYPE_ACTION_GET_MESSAGES = 26; // action=get_messages auth=true domain=消息 desc=分页读取会话消息
+  TYPE_ACTION_DELETE_MESSAGE = 27; // action=delete_message auth=true domain=消息 desc=删除本地消息记录
+  // 28 预留：原 recall_message 独立 action 已删除，撤回统一走 send_message + MESSAGE_TYPE_RECALL。
+  TYPE_ACTION_GET_CONVERSATIONS = 29; // action=get_conversations auth=true domain=会话 desc=分页读取会话列表
+  TYPE_ACTION_SYNC_CONVERSATIONS = 30; // action=sync_conversations auth=true domain=会话 desc=增量同步会话
+  TYPE_ACTION_GET_UNREAD_COUNT = 31; // action=get_unread_count auth=true domain=会话 desc=读取未读总数
+  TYPE_ACTION_CLEAR_UNREAD = 32; // action=clear_unread auth=true domain=会话 desc=清除会话未读
+  TYPE_ACTION_DELETE_CONVERSATION = 33; // action=delete_conversation auth=true domain=会话 desc=删除会话
+  TYPE_ACTION_MUTE_CONVERSATION = 34; // action=mute_conversation auth=true domain=会话偏好 desc=设置会话免打扰
+  TYPE_ACTION_UNMUTE_CONVERSATION = 35; // action=unmute_conversation auth=true domain=会话偏好 desc=取消会话免打扰
+  TYPE_ACTION_GET_MUTELIST = 36; // action=get_mutelist auth=true domain=会话偏好 desc=分页读取会话免打扰列表
+  TYPE_ACTION_SYNC_MUTELIST = 37; // action=sync_mutelist auth=true domain=会话偏好 desc=增量同步会话免打扰
+  TYPE_ACTION_CREATE_GROUP = 38; // action=create_group auth=true domain=群组 desc=创建群聊
+  TYPE_ACTION_GET_GROUP_INFOS = 39; // action=get_group_infos auth=true domain=群组 desc=批量读取群展示资料
+  TYPE_ACTION_GET_GROUP_MEMBERS = 40; // action=get_group_members auth=true domain=群组 desc=分页读取群成员
+  TYPE_ACTION_UPDATE_GROUP_INFO = 41; // action=update_group_info auth=true domain=群组 desc=更新群资料
+  TYPE_ACTION_ADD_GROUP_MEMBER = 42; // action=add_group_member auth=true domain=群组 desc=添加群成员
+  TYPE_ACTION_REMOVE_GROUP_MEMBER = 43; // action=remove_group_member auth=true domain=群组 desc=移除群成员
+  TYPE_ACTION_GET_ORG_INFOS = 44; // action=get_org_infos auth=true domain=组织 desc=批量读取组织展示资料（根 tag 投影）
+  TYPE_ACTION_GET_ORG_TAG_ITEMS = 45; // action=get_org_tag_items auth=true domain=组织 desc=在线展开 tag 的直接子项（子 tag 与人混合有序）
+  TYPE_ACTION_SYNC_ORG_TAGS = 46; // action=sync_org_tags auth=true domain=组织 desc=按 org 增量同步 tag 图（节点与边共用游标）
+  TYPE_NOTIFY_MESSAGES_RECEIVED = 10001; // notification=messages:received desc=消息域发生变化
+  TYPE_NOTIFY_CONTACTS_UPDATED = 10002; // notification=contacts:updated desc=通讯录发生变化
+  TYPE_NOTIFY_SESSION_KICKED = 10003; // notification=session:kicked desc=当前登录态被踢下线
+  TYPE_NOTIFY_BLOCKLIST_UPDATED = 10005; // notification=blocklist:updated desc=屏蔽列表发生变化
+  TYPE_NOTIFY_MUTELIST_UPDATED = 10006; // notification=mutelist:updated desc=会话免打扰发生变化
+  TYPE_NOTIFY_CONVERSATIONS_CLEARUNREAD = 10007; // notification=conversations:clearunread desc=会话未读被清除，仅清红点不拉取
+  TYPE_NOTIFY_CONVERSATIONS_DELETE = 10008; // notification=conversations:delete desc=会话被删除，命中数据窗口则就地删除不拉取
+  TYPE_NOTIFY_MESSAGES_DELETE = 10009; // notification=messages:delete desc=消息被删除，命中数据窗口则就地删除不拉取
+  TYPE_NOTIFY_ORG_UPDATED = 10010; // notification=org:updated desc=组织架构发生变化，客户端按 org_id 增量同步追平
+}
+
+enum ErrorCode {
+  ERROR_OK = 0; // code=OK meaning=成功
+  ERROR_INVALID_FRAME = 1002; // code=INVALID_FRAME meaning=WebSocket 二进制帧格式不合法
+  ERROR_FRAME_TOO_LARGE = 1003; // code=FRAME_TOO_LARGE meaning=协议包总长度超过 64K 限制
+  ERROR_INVALID_PROTOBUF = 1004; // code=INVALID_PROTOBUF meaning=protobuf body 无法解码
+  ERROR_AUTH_REQUIRED = 1101; // code=AUTH_REQUIRED meaning=当前接口需要已认证连接
+  ERROR_AUTH_FAILED = 1102; // code=AUTH_FAILED meaning=登录、鉴权或密码校验失败
+  ERROR_UNKNOWN_ACTION = 1201; // code=UNKNOWN_ACTION meaning=未注册的 type 或 action
+  ERROR_INVALID_ARGUMENT = 1301; // code=INVALID_ARGUMENT meaning=请求参数缺失、互斥或格式不合法
+  ERROR_NOT_FOUND = 1401; // code=NOT_FOUND meaning=目标用户、群、联系人、消息、会话或成员不存在
+  ERROR_ALREADY_EXISTS = 1402; // code=ALREADY_EXISTS meaning=用户名、成员、状态等目标已存在
+  ERROR_CONFLICT = 1403; // code=CONFLICT meaning=当前资源状态与操作冲突
+  ERROR_FORBIDDEN = 1404; // code=FORBIDDEN meaning=当前用户无权限或业务规则不允许
+  ERROR_SEQ_TOO_OLD = 1501; // code=SEQ_TOO_OLD meaning=增量同步游标早于服务端 GC 安全水线
+  ERROR_BATCH_LIMIT_EXCEEDED = 1502; // code=BATCH_LIMIT_EXCEEDED meaning=批量请求去重后超过服务端上限
+  ERROR_INTERNAL_ERROR = 9001; // code=INTERNAL_ERROR meaning=未分类的服务端内部错误
+}
+
+
+// MessageType 是消息正文类型；0 保留为非法值，真实业务值从 1 开始。
+// msg_type 必须与 MessageBody.kind 一致，不一致返回 ERROR_INVALID_ARGUMENT。
+enum MessageType {
+  MESSAGE_TYPE_INVALID = 0; // reserved=invalid meaning=无效消息类型
+  MESSAGE_TYPE_TEXT = 1; // meaning=文本消息 body=text
+  MESSAGE_TYPE_IMAGE = 2; // meaning=图片消息 body=image
+  MESSAGE_TYPE_SYSTEM = 3; // meaning=系统消息 body=system
+  MESSAGE_TYPE_FILE = 4; // meaning=文件消息 body=file
+  MESSAGE_TYPE_RECALL = 5; // meaning=撤回事件消息 body=recall
+  MESSAGE_TYPE_QUOTE = 6; // meaning=引用消息 body=quote
+  MESSAGE_TYPE_FORWARD = 7; // meaning=转发消息 body=forward
+  MESSAGE_TYPE_MARKDOWN = 8; // meaning=Markdown 消息 body=markdown
+}
+
+// ContactStatus 是联系人条目状态；0 保留为非法值，真实业务值从 1 开始。
+enum ContactStatus {
+  CONTACT_STATUS_INVALID = 0; // reserved=invalid meaning=无效联系人状态
+  CONTACT_STATUS_FRIEND = 1; // meaning=好友或已收藏群
+  CONTACT_STATUS_PENDING = 2; // meaning=待处理好友申请
+  CONTACT_STATUS_DELETED = 255; // meaning=已删除 tombstone
+}
+
+// BlocklistStatus 是屏蔽列表状态；0 保留为非法值，真实业务值从 1 开始。
+enum BlocklistStatus {
+  BLOCKLIST_STATUS_INVALID = 0; // reserved=invalid meaning=无效屏蔽状态
+  BLOCKLIST_STATUS_ACTIVE = 1; // meaning=屏蔽列表生效
+  BLOCKLIST_STATUS_DELETED = 255; // meaning=已解除 tombstone
+}
+
+// MessageStatus 是消息状态；0 保留为非法值，真实业务值从 1 开始。
+enum MessageStatus {
+  MESSAGE_STATUS_INVALID = 0; // reserved=invalid meaning=无效消息状态
+  MESSAGE_STATUS_ACTIVE = 1; // meaning=正常消息
+  MESSAGE_STATUS_DELETED = 255; // meaning=已删除 tombstone
+}
+
+// ConversationStatus 是会话状态；0 保留为非法值，真实业务值从 1 开始。
+enum ConversationStatus {
+  CONVERSATION_STATUS_INVALID = 0; // reserved=invalid meaning=无效会话状态
+  CONVERSATION_STATUS_ACTIVE = 1; // meaning=正常会话
+  CONVERSATION_STATUS_DELETED = 255; // meaning=已删除 tombstone
+}
+
+// MutelistStatus 是会话免打扰状态；0 保留为非法值，真实业务值从 1 开始。
+enum MutelistStatus {
+  MUTELIST_STATUS_INVALID = 0; // reserved=invalid meaning=无效免打扰状态
+  MUTELIST_STATUS_ACTIVE = 1; // meaning=会话免打扰开启
+  MUTELIST_STATUS_DELETED = 255; // meaning=会话免打扰关闭 tombstone
+}
+
+// OrgTagStatus 是组织 tag 图条目（节点与边）状态；0 保留为非法值，真实业务值从 1 开始。
+enum OrgTagStatus {
+  ORG_TAG_STATUS_INVALID = 0; // reserved=invalid meaning=无效状态
+  ORG_TAG_STATUS_ACTIVE = 1; // meaning=有效
+  ORG_TAG_STATUS_DELETED = 255; // meaning=已删除 tombstone
+}
+
+// PageDirection 是展示通道翻页方向；0 保留为非法值，真实业务值从 1 开始。
+// 展示通道与同步通道（sync_* 的 seq 游标）相互独立：展示分页统一用不透明 keyset 游标，
+// 抗实时重排/增删漂移，禁止使用 offset。FORWARD 沿列表展示序向尾/向下翻（追加），
+// BACKWARD 逆展示序向头/向上翻（前插）。
+enum PageDirection {
+  PAGE_DIRECTION_INVALID = 0; // reserved=invalid meaning=无效翻页方向
+  PAGE_DIRECTION_FORWARD = 1; // meaning=沿展示序向尾/向下翻，有界消息流窗口追加
+  PAGE_DIRECTION_BACKWARD = 2; // meaning=逆展示序向头/向上翻，有界消息流窗口前插
+}
+
+message MessagesReceivedNotification {
+  ConversationTarget target = 1; // optional 发生变化的会话目标
+  string msg_id = 2; // optional 触发本次通知的消息 id；通知合并时取最新一条
+}
+
+message ContactsUpdatedNotification {}
+
+message SessionKickedNotification {}
+
+message ConversationsClearunreadNotification {
+  ConversationTarget target = 1; // optional 被清除未读的会话目标
+}
+
+message ConversationsDeleteNotification {
+  ConversationTarget target = 1; // optional 被删除的会话目标
+}
+
+message MessagesDeleteNotification {
+  ConversationTarget target = 1; // optional 被删除消息所在会话目标
+  string msg_id = 2; // optional 被删除的消息 id
+}
+
+message BlocklistUpdatedNotification {}
+
+message MutelistUpdatedNotification {}
+
+// OrgUpdatedNotification 是组织架构轻通知：只带 org_id，禁止携带增量数据，
+// 客户端收到后按 sync_org_tags 增量追平。
+message OrgUpdatedNotification {
+  int64 org_id = 1; // required 发生变化的组织 ID
+}
+
+message BaseResponse {
+  ErrorCode code = 1; // required 业务错误码，OK 表示成功
+  string msg = 2; // optional 错误或提示信息
+}
+
+// PageQuery 是展示通道统一分页请求片段，嵌入各 get_* Request。
+// cursor 为服务端编码的不透明 keyset 游标，客户端原样透传、不得解析或构造。
+message PageQuery {
+  string cursor = 1; // optional 不透明游标；空表示从该方向的起点开始
+  PageDirection direction = 2; // optional 翻页方向；缺省按 PAGE_DIRECTION_FORWARD 处理
+  int64 limit = 3; // optional 分页条数
+  string around = 4; // optional 锚点；以其为中心返回一页（messages 传 msg_id，contacts 传排序首字母），与 cursor 互斥
+}
+
+// PageInfo 是展示通道统一分页响应片段，嵌入各 get_* Response。
+// 续翻：向 FORWARD 用 end_cursor，向 BACKWARD 用 start_cursor。游标对客户端不透明。
+message PageInfo {
+  string start_cursor = 1; // required 本页首条游标；继续 BACKWARD 翻页时作为 cursor，空页为空串
+  string end_cursor = 2; // required 本页末条游标；继续 FORWARD 翻页时作为 cursor，空页为空串
+  bool has_more_backward = 3; // required 展示序更靠前（向头/向上）是否还有更多
+  bool has_more_forward = 4; // required 展示序更靠后（向尾/向下）是否还有更多
+  int64 total = 5; // optional 集合总数；小于 0 表示未知/未统计
+}
+
+message ClientConfig {
+  int64 cache_ttl_seconds = 1; // required 缓存 TTL 秒数
+  int64 cache_max_entries = 2; // required 缓存最大条目数
+  int64 recall_window_seconds = 3; // required 消息撤回窗口秒数
+  int64 batch_max_limit = 4; // required 服务端批量上限
+}
+
+message UserInfo {
+  int64 uid = 1; // required 用户 ID
+  string username = 2; // optional 用户名
+  string nickname = 3; // optional 昵称
+  string avatar = 4; // optional 头像 URL
+  int64 created_at = 5; // optional 创建时间
+  int64 updated_at = 6; // optional 更新时间
+}
+
+message ConversationTarget {
+  oneof kind {
+    int64 uid = 1; // 单聊目标用户 ID
+    int64 group_id = 2; // 群 ID
+  }
+}
+
+message ContactTarget {
+  oneof kind {
+    int64 uid = 1; // 联系人用户 ID
+    int64 group_id = 2; // 通讯录收藏群 ID
+    int64 org_id = 3; // 组织 ID（即根 tag 的 tag_id）；组织条目记录成员资格
+  }
+}
+
+message Contact {
+  ContactTarget target = 1; // required 联系人目标
+  ContactStatus status = 2; // required 联系人状态
+  int64 seq = 3; // required 同步序号
+  string remark_name = 4; // optional 备注名
+  string sort_key = 5; // optional 通讯录排序键投影；服务端按 remark_name 或昵称/群名归一化生成，客户端按此分页排序
+  string search_text = 6; // optional 通讯录搜索投影；服务端拼接 remark_name 与昵称/群名生成，明确不含 username
+}
+
+message BlocklistUser {
+  int64 uid = 1; // required 用户 ID
+  BlocklistStatus status = 2; // required 屏蔽状态
+  int64 seq = 3; // required 同步序号
+  int64 created_at = 4; // required 创建时间
+  int64 updated_at = 5; // required 更新时间
+}
+
+message MutelistEntry {
+  ConversationTarget target = 1; // required 会话目标
+  MutelistStatus status = 2; // required 免打扰状态
+  int64 seq = 3; // required 同步序号
+  int64 updated_at = 4; // optional 更新时间
+}
+
+message Message {
+  int64 uid = 1; // optional 所属用户 ID
+  int64 seq = 2; // required 消息序号
+  string msg_id = 3; // required 消息 ID，UUIDv7 的 base64url 编码，固定 22 字符，由 SDK 生成
+  int64 from_uid = 4; // required 发送者 UID
+  ConversationTarget target = 5; // required 会话目标
+  MessageType msg_type = 6; // required 消息类型，必须与 body.kind 一致
+  MessageBody body = 7; // required 结构化消息正文
+  int64 send_time = 8; // required 发送时间
+  MessageStatus status = 9; // required 消息状态
+}
+
+// MessageBody 是强类型结构化消息正文，oneof kind 与 MessageType 一一对应。
+// 不再使用 JSON / Markdown / EXT 信封字符串承载结构化语义。
+message MessageBody {
+  oneof kind {
+    TextBody text = 1; // MESSAGE_TYPE_TEXT
+    ImageBody image = 2; // MESSAGE_TYPE_IMAGE
+    SystemBody system = 3; // MESSAGE_TYPE_SYSTEM
+    FileBody file = 4; // MESSAGE_TYPE_FILE
+    RecallBody recall = 5; // MESSAGE_TYPE_RECALL
+    QuoteBody quote = 6; // MESSAGE_TYPE_QUOTE
+    ForwardBody forward = 7; // MESSAGE_TYPE_FORWARD
+    MarkdownBody markdown = 8; // MESSAGE_TYPE_MARKDOWN
+  }
+}
+
+message TextBody {
+  string text = 1; // required 文本内容
+}
+
+message MarkdownBody {
+  string markdown = 1; // required Markdown 文本内容
+}
+
+message ImageBody {
+  int64 media_id = 1; // required 媒体 ID；媒体仅用 id 引用，展示地址由客户端按 /media/image/{media_id} 约定还原
+  int64 size = 2; // optional 字节大小
+  int32 width = 3; // optional 宽度
+  int32 height = 4; // optional 高度
+  string mime = 5; // optional MIME 类型
+  string caption = 6; // optional 图片说明，参与搜索投影
+}
+
+message FileBody {
+  int64 media_id = 1; // required 媒体 ID；媒体仅用 id 引用，展示地址由客户端按 /media/file/{media_id} 约定还原
+  string name = 2; // required 文件名，参与搜索投影
+  int64 size = 3; // optional 字节大小
+  string mime = 4; // optional MIME 类型
+}
+
+message SystemBody {
+  string text = 1; // required 系统消息文本
+}
+
+// RecallBody 表达撤回事件；operator_uid、recall_time、text 均由服务端设置，
+// 客户端传入的对应字段会被服务端忽略并覆盖。
+message RecallBody {
+  string msg_id = 1; // required 被撤回的原消息 ID
+  int64 operator_uid = 2; // required 撤回操作者 UID，服务端覆盖为当前登录用户
+  int64 recall_time = 3; // required 撤回时间，服务端覆盖为当前服务端时间
+  string text = 4; // required 服务端生成的撤回展示文案，同步表只存数据不含逻辑
+}
+
+message QuoteBody {
+  string quote_msg_id = 1; // required 被引用消息 ID
+  string quote_preview = 2; // optional 被引用消息预览，参与搜索投影
+  TextBody text = 3; // required 引用回复正文，参与搜索投影
+}
+
+message ForwardBody {
+  repeated string msg_ids = 1; // required 被转发消息 ID 列表
+  string title = 2; // optional 转发标题，参与搜索投影
+}
+
+message ConversationEntry {
+  ConversationTarget target = 1; // required 会话目标
+  int64 last_seq = 2; // required 最后序号
+  Message last_msg = 3; // optional 最后一条消息
+  int64 unread_count = 4; // optional 未读数
+  ConversationStatus status = 5; // required 会话状态
+}
+
+message GroupInfo {
+  int64 group_id = 1; // required 群 ID
+  string name = 2; // optional 群名称
+  string avatar = 3; // optional 群头像 URL
+  int64 owner_uid = 4; // optional 群主 UID
+  int64 created_at = 5; // optional 创建时间
+  int64 updated_at = 6; // optional 更新时间
+}
+
+message GroupMember {
+  int64 uid = 1; // required 用户 ID
+  int64 role = 2; // required 角色
+  int64 joined_at = 3; // optional 加入时间
+}
+
+message RegisterRequest {
+  string username = 10; // required 用户名
+  string password = 11; // required 密码
+  string nickname = 12; // optional 昵称
+}
+message RegisterResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 uid = 10; // required 注册后的用户 ID
+}
+
+message LoginRequest {
+  string username = 10; // required 用户名
+  string password = 11; // required 密码
+}
+message LoginResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 uid = 10; // required 登录用户 ID
+  string token = 11; // required 新会话 token
+  ClientConfig client_config = 12; // required 客户端运行配置
+}
+
+message AuthenticateRequest {
+  string token = 10; // required 会话 token
+}
+message AuthenticateResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 uid = 10; // required 鉴权用户 ID
+  ClientConfig client_config = 11; // required 客户端运行配置
+}
+
+message LogoutRequest {
+  string token = 10; // optional 会话 token
+}
+message LogoutResponse { BaseResponse base = 1; }
+
+message PingRequest {}
+
+message PingResponse { BaseResponse base = 1; }
+
+message UpdateUserInfoRequest {
+  string nickname = 10; // optional 昵称
+  string avatar = 11; // optional 头像 URL
+}
+message UpdateUserInfoResponse { BaseResponse base = 1; }
+
+message UpdatePasswordRequest {
+  string old_password = 10; // required 旧密码
+  string new_password = 11; // required 新密码
+}
+message UpdatePasswordResponse { BaseResponse base = 1; }
+
+message GetUserInfosRequest {
+  repeated int64 uids = 10; // required 目标用户 ID 列表
+}
+message GetUserInfosResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated UserInfo profiles = 10; // optional 用户资料列表
+}
+
+message SearchUserRequest {
+  string username = 10; // required 用户名
+}
+message SearchUserResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  UserInfo profile = 10; // optional 用户资料
+}
+
+message AddFriendRequest {
+  int64 friend_uid = 10; // required 好友用户 ID
+  string remark_name = 11; // optional 备注名
+}
+message AddFriendResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 通讯录同步序号
+}
+
+message AcceptFriendRequest {
+  int64 friend_uid = 10; // required 好友用户 ID
+}
+message AcceptFriendResponse { BaseResponse base = 1; }
+
+message RejectFriendRequest {
+  int64 friend_uid = 10; // required 好友用户 ID
+}
+message RejectFriendResponse { BaseResponse base = 1; }
+
+message DeleteFriendRequest {
+  int64 friend_uid = 10; // required 好友用户 ID
+}
+message DeleteFriendResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 通讯录同步序号
+}
+
+message UpdateRemarkRequest {
+  ContactTarget target = 10; // required 联系人目标；通讯录语义使用 ContactTarget，避免与会话目标混用
+  string remark_name = 11; // required 备注名
+}
+message UpdateRemarkResponse { BaseResponse base = 1; }
+
+message GetContactsRequest {
+  optional ContactStatus status = 10; // optional 联系人状态过滤；不填表示不过滤，显式传 0 返回 ERROR_INVALID_ARGUMENT
+  repeated ContactTarget targets = 11; // optional 联系人目标过滤；单个查询传 1 个元素，命中时忽略 page 分页
+  PageQuery page = 12; // optional 展示分页游标；friend 状态按 sort_key/拼音排序，pending 状态按 seq 倒序，游标对客户端不透明
+}
+message GetContactsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Contact contacts = 10; // optional 通讯录条目
+  PageInfo page = 11; // required 展示分页信息
+}
+
+message GetContactCountRequest {
+  ContactStatus status = 10; // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING 表示待处理好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
+}
+message GetContactCountResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 total = 10; // required 指定状态的通讯录条目总数
+}
+
+message SyncContactsRequest {
+  int64 last_seq = 10; // optional 客户端最后同步序号；增量同步使用 seq 游标，与通讯录展示分页 offset/limit 分离
+  int64 limit = 11; // optional 同步条数
+  bool rebuild = 12; // optional 是否强制重建本地视图
+}
+message SyncContactsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Contact contacts = 10; // optional 增量通讯录条目
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
+
+message FavoriteGroupRequest {
+  int64 group_id = 10; // required 群 ID
+  string remark_name = 11; // optional 群备注名
+}
+message FavoriteGroupResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 通讯录同步序号
+}
+
+message UnfavoriteGroupRequest {
+  int64 group_id = 10; // required 群 ID
+}
+message UnfavoriteGroupResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 通讯录同步序号
+}
+
+message BlockUserRequest {
+  int64 uid = 10; // required 被屏蔽用户 ID
+}
+message BlockUserResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 屏蔽列表同步序号
+}
+
+message UnblockUserRequest {
+  int64 uid = 10; // required 解除屏蔽用户 ID
+}
+message UnblockUserResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 屏蔽列表同步序号
+}
+
+message GetBlocklistRequest {
+  optional BlocklistStatus status = 10; // optional 屏蔽状态过滤；不填表示不过滤，显式传 0 返回 ERROR_INVALID_ARGUMENT
+  repeated int64 uids = 11; // optional 目标用户 ID 列表；单个查询传 1 个元素，命中时忽略 page 分页
+  PageQuery page = 12; // optional 展示分页游标；按 seq 倒序（新→旧），游标对客户端不透明
+}
+message GetBlocklistResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated BlocklistUser users = 10; // optional 屏蔽列表用户
+  PageInfo page = 11; // required 展示分页信息
+}
+
+message SyncBlocklistRequest {
+  int64 last_seq = 10; // optional 客户端最后同步序号
+  int64 limit = 11; // optional 同步条数
+  bool rebuild = 12; // optional 是否强制重建本地视图
+}
+message SyncBlocklistResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated BlocklistUser users = 10; // optional 增量屏蔽用户
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
+
+message SendMessageRequest {
+  ConversationTarget target = 10; // required 会话目标
+  MessageType msg_type = 11; // required 消息类型，必须与 body.kind 一致
+  MessageBody body = 12; // required 结构化消息正文；撤回时 msg_type=MESSAGE_TYPE_RECALL，body.recall 仅需填 msg_id
+  string msg_id = 13; // required 消息 ID，UUIDv7 的 base64url 编码，固定 22 字符，由 SDK 生成；缺失或非法直接拒绝；撤回时为撤回事件消息的 ID
+}
+message SendMessageResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 消息序号
+  string msg_id = 11; // required 消息 ID
+}
+
+message SyncMessagesRequest {
+  int64 last_seq = 10; // optional 客户端最后同步序号
+  int64 limit = 11; // optional 同步条数
+}
+message SyncMessagesResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Message messages = 10; // optional 增量消息
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
+
+message GetMessagesRequest {
+  ConversationTarget target = 10; // required 会话目标
+  PageQuery page = 11; // optional 展示分页游标；消息按 seq 升序（旧→新）展示，page.around 传 msg_id 可居中定位（jump-to-message）
+  repeated string msg_ids = 15; // optional 按消息 id 批量读取；与 page 互斥，不分页、page 信息为空
+}
+message GetMessagesResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Message messages = 10; // optional 消息列表
+  PageInfo page = 11; // required 展示分页信息；msg_ids 批量读取场景为空
+}
+
+message DeleteMessageRequest {
+  string msg_id = 10; // required 消息 ID
+}
+message DeleteMessageResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 删除后的同步序号
+}
+
+message GetConversationsRequest {
+  PageQuery page = 10; // optional 展示分页游标；会话按 seq 倒序（活跃→沉默）展示，游标对客户端不透明
+  repeated ConversationTarget targets = 11; // optional 按目标精确读取若干会话当前状态（轻通知后定向刷新用）；非空时忽略 page，只返回仍活跃的会话
+}
+message GetConversationsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated ConversationEntry conversations = 10; // optional 会话列表
+  PageInfo page = 11; // required 展示分页信息
+}
+
+message SyncConversationsRequest {
+  int64 last_seq = 10; // optional 客户端最后同步序号
+  int64 limit = 11; // optional 同步条数
+}
+message SyncConversationsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated ConversationEntry conversations = 10; // optional 增量会话列表
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
+
+message GetUnreadCountRequest {}
+
+message GetUnreadCountResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 unread_count = 10; // required 未读总数
+}
+
+message ClearUnreadRequest {
+  ConversationTarget target = 10; // required 会话目标
+}
+message ClearUnreadResponse { BaseResponse base = 1; }
+
+message DeleteConversationRequest {
+  ConversationTarget target = 10; // required 会话目标
+}
+message DeleteConversationResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 删除后的同步序号
+}
+
+message MuteConversationRequest {
+  ConversationTarget target = 10; // required 会话目标
+}
+message MuteConversationResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 会话偏好同步序号
+}
+
+message UnmuteConversationRequest {
+  ConversationTarget target = 10; // required 会话目标
+}
+message UnmuteConversationResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 seq = 10; // required 会话偏好同步序号
+}
+
+message GetMutelistRequest {
+  optional MutelistStatus status = 10; // optional 免打扰状态过滤；不填表示不过滤，显式传 0 返回 ERROR_INVALID_ARGUMENT
+  repeated ConversationTarget targets = 11; // optional 会话目标过滤；单个查询传 1 个元素，命中时忽略 page 分页
+  PageQuery page = 12; // optional 展示分页游标；按 seq 倒序（新→旧），游标对客户端不透明
+}
+message GetMutelistResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated MutelistEntry mutes = 10; // optional 免打扰条目
+  PageInfo page = 11; // required 展示分页信息
+}
+
+message SyncMutelistRequest {
+  int64 last_seq = 10; // optional 客户端最后同步序号
+  int64 limit = 11; // optional 同步条数
+  bool rebuild = 12; // optional 是否强制重建本地视图
+}
+message SyncMutelistResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated MutelistEntry mutes = 10; // optional 增量免打扰条目
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
+
+message CreateGroupRequest {
+  string name = 10; // required 群名称
+  repeated int64 member_uids = 11; // optional 初始成员用户 ID
+}
+message CreateGroupResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 group_id = 10; // required 新群 ID
+}
+
+message GetGroupInfosRequest {
+  repeated int64 group_ids = 10; // required 群 ID 列表
+}
+message GetGroupInfosResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated GroupInfo groups = 10; // optional 群资料列表
+}
+
+message GetGroupMembersRequest {
+  int64 group_id = 10; // required 群 ID
+  PageQuery page = 11; // optional 展示分页游标；成员按 role 倒序、uid 升序展示，游标对客户端不透明
+}
+message GetGroupMembersResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated GroupMember members = 10; // optional 群成员列表
+  PageInfo page = 11; // required 展示分页信息；total 字段承载成员总数
+}
+
+message UpdateGroupInfoRequest {
+  int64 group_id = 10; // required 群 ID
+  string name = 11; // optional 群名称
+  string avatar = 12; // optional 群头像 URL
+}
+message UpdateGroupInfoResponse { BaseResponse base = 1; }
+
+message AddGroupMemberRequest {
+  int64 group_id = 10; // required 群 ID
+  int64 uid = 11; // required 新成员用户 ID
+}
+message AddGroupMemberResponse { BaseResponse base = 1; }
+
+message RemoveGroupMemberRequest {
+  int64 group_id = 10; // required 群 ID
+  int64 uid = 11; // required 移除成员用户 ID
+}
+message RemoveGroupMemberResponse { BaseResponse base = 1; }
+
+// OrgInfo 是组织展示资料，即根 tag（tag_id == org_id）的投影。
+message OrgInfo {
+  int64 org_id = 1; // required 组织 ID，即根 tag 的 tag_id
+  string name = 2; // required 组织名称（根 tag 的 name）
+  string avatar = 3; // optional 组织头像 URL（根 tag 的 avatar）
+}
+
+// OrgTag 是 tag 图同步用的节点条目；与边共用 org 内单一 seq 空间。
+message OrgTag {
+  int64 tag_id = 1; // required tag ID；根 tag 的 tag_id == org_id
+  string name = 2; // required tag 名
+  string avatar = 3; // optional tag 图标；根 tag 即组织头像
+  OrgTagStatus status = 4; // required DELETED 为 tombstone，本地副本收到即删行
+  int64 seq = 5; // required 同步序号（与边共用 seq 空间）
+}
+
+// OrgTagItem 是在线展开与同步共用的边条目：child_tag_id 与 uid 互斥。
+message OrgTagItem {
+  int64 tag_id = 1; // required 父 tag；在线展开时恒等于请求的 tag_id，同步时用于定位行
+  int64 child_tag_id = 2; // 与 uid 互斥；>0 表示子 tag
+  int64 uid = 3; // 与 child_tag_id 互斥；>0 表示人，展示资料走 get_user_infos
+  string name = 4; // 在线展开时填子 tag 名；同步响应不填（本地副本从 org_tag 取）
+  string avatar = 5; // optional 在线展开时填子 tag 图标（人条目为空）
+  string title = 6; // optional 本 tag 下的职务展示文本（仅人条目）
+  int64 rank = 7; // required 本条边的排序值，越小越靠前；2147483647 表示未显式排序
+  string sort_key = 8; // required 名字归一化排序键（人取昵称、子 tag 取 tag 名）
+  OrgTagStatus status = 9; // required 在线展开恒为 ACTIVE；同步含 DELETED tombstone
+  int64 seq = 10; // required 同步序号（与节点共用 seq 空间）
+}
+
+message GetOrgInfosRequest {
+  repeated int64 org_ids = 10; // required 组织 ID 列表，来自通讯录组织行；去重后受服务端批量上限约束
+}
+message GetOrgInfosResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated OrgInfo orgs = 10; // optional 组织展示资料列表
+}
+
+message GetOrgTagItemsRequest {
+  int64 org_id = 10; // required 组织 ID（分片路由键）
+  int64 tag_id = 11; // required 要展开的 tag；展开组织根传 tag_id=org_id，0 非法
+  PageQuery page = 12; // optional 展示分页游标；按 (rank, sort_key, child_tag_id, uid) 升序，游标对客户端不透明
+}
+message GetOrgTagItemsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated OrgTagItem items = 10; // optional 直接子项，仅 ACTIVE，子 tag 与人按绝对排序混合
+  PageInfo page = 11; // required 展示分页信息
+}
+
+message SyncOrgTagsRequest {
+  int64 org_id = 10; // required 组织 ID
+  int64 last_seq = 11; // optional 客户端最后同步序号；节点与边共用一个游标
+  int64 limit = 12; // optional 同步条数（节点与边合并计数）
+  bool rebuild = 13; // optional 是否强制重建本地副本
+}
+message SyncOrgTagsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated OrgTag tags = 10; // optional 增量节点条目（含 tombstone）
+  repeated OrgTagItem items = 11; // optional 增量边条目（含 tombstone）
+  bool has_more = 12; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 13; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+}
