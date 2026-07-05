@@ -31,6 +31,14 @@ export type MountTarget = HTMLElement | string;
  */
 export type UIKitMode = 'memory' | 'persistent' | 'persistent-cleardata';
 
+/**
+ * UIKit 显示范围。
+ * - `full`：完整应用，底部导航含聊天 / 联系人 / 设置三个入口，默认值。
+ * - `chat-only`：只保留会话列表 + 聊天视图，隐藏底部导航栏；用户始终停留在聊天视图，
+ *   无法通过 UI 或 hash 路由切到联系人 / 设置页。适合仅需要嵌入会话能力的客服场景。
+ */
+export type UIKitViewMode = 'full' | 'chat-only';
+
 /** 宿主传入的装载参数。 */
 export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'heartbeatInterval' | 'recallWindowSeconds'> {
   /** 当前挂载实例的唯一标识；用于 memory/persistent 状态与 持久存储 dbName 隔离。 */
@@ -53,6 +61,8 @@ export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' 
    * 当宿主通过 `client` 传入已经 ready 的实例时，UIKit 不会再次初始化，此参数不生效。
    */
   readonly mode?: UIKitMode;
+  /** 显示范围，默认 `full`；`chat-only` 隐藏底部导航栏，只保留会话列表 + 聊天视图。 */
+  readonly viewMode?: UIKitViewMode;
   /** 主题。默认 `auto`（跟随系统 prefers-color-scheme）。 */
   readonly theme?: ThemeOption;
   /** 语言。默认 `auto`（跟随 `navigator.language`）。 */

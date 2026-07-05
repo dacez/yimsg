@@ -9,7 +9,9 @@ export function startDMFromContact(app: AppInstance, uid: string) {
   void app.views.chat?.openConversation(conv);
 }
 
-export function switchView(app: AppInstance, name: string, options: { updateRoute?: boolean } = {}) {
+export function switchView(app: AppInstance, requestedName: string, options: { updateRoute?: boolean } = {}) {
+  // chat-only 显示范围下没有底部导航，用户不能切到联系人 / 设置；同时挡掉宿主页面 hash 路由的误触发。
+  const name = app.runtime.viewMode === 'chat-only' ? 'chat' : requestedName;
   app.dom.querySelectorAll<HTMLElement>('#main-content > .view').forEach((view) => view.classList.add('hidden'));
   app.$('view-' + name).classList.remove('hidden');
   app.dom.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));

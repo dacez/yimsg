@@ -9,7 +9,7 @@ import {
   type MsgType,
 } from '../../sdk';
 import type { LocaleOption, Messages } from '../i18n';
-import type { UIKitMode, WidgetEvents } from '../options';
+import type { UIKitMode, UIKitViewMode, WidgetEvents } from '../options';
 import type { LayoutChoice } from './session-storage';
 import { detectLocale } from '../i18n';
 import { translations, type Lang } from './i18n';
@@ -42,6 +42,7 @@ interface AppRuntimeHooks {
 interface AppRuntimeContext {
   readonly embedded: boolean;
   readonly requestedMode?: UIKitMode;
+  readonly viewMode?: UIKitViewMode;
   readonly initialToken?: string;
   readonly getInitialToken?: () => string | null | undefined | Promise<string | null | undefined>;
   readonly initialLayout?: LayoutChoice;

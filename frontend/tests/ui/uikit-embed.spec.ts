@@ -74,6 +74,83 @@ test.describe('uikit embed', () => {
     expect(result.hasAuthCard).toBe(true);
   });
 
+  test('viewMode: chat-only hides bottom navbar and ignores host hash routing', async ({ page }) => {
+    // 页面上已有 #chat-host 默认 widget，用独立 hostId 隔离，避免全局选择器命中两个 shadow root。
+    const username = uniqueUser('chatonly');
+    await page.goto('/chat/uikit-demo.html');
+
+    await page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'chat-only-host';
+      host.style.width = '760px';
+      host.style.height = '480px';
+      document.body.appendChild(host);
+      const w = window as unknown as {
+        __chatOnlyHandle?: MountHandle;
+        YimsgUIKit: { mount: (el: HTMLElement, opts: Record<string, unknown>) => MountHandle };
+      };
+      w.__chatOnlyHandle = w.YimsgUIKit.mount(host, {
+        wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
+        viewMode: 'chat-only',
+      });
+    });
+
+    await page.waitForFunction(() => Boolean(document.getElementById('chat-only-host')?.shadowRoot?.querySelector('.auth-card')));
+
+    const submit = async (selector: string, value?: string) => {
+      await page.evaluate(({ selector, value }) => {
+        const root = document.getElementById('chat-only-host')?.shadowRoot;
+        const el = root?.querySelector<HTMLInputElement>(selector);
+        if (!el) throw new Error(`missing ${selector} in chat-only-host`);
+        if (value === undefined) el.click();
+        else {
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, { selector, value });
+    };
+
+    await submit('.tab[data-tab="register"]');
+    await submit('#reg-username', username);
+    await submit('#reg-password', '123456');
+    await submit('#reg-nickname', 'ChatOnlyUser');
+    await submit('#register-form button[type="submit"]');
+
+    await page.waitForFunction(() => Boolean(document.getElementById('chat-only-host')?.shadowRoot?.querySelector('#conversation-list')), undefined, { timeout: 15_000 });
+
+    const readyState = await page.evaluate(() => {
+      const root = document.getElementById('chat-only-host')?.shadowRoot;
+      const navbar = root?.querySelector<HTMLElement>('#navbar');
+      return {
+        navbarDisplay: navbar ? getComputedStyle(navbar).display : null,
+        viewMode: root?.querySelector<HTMLElement>('.mc-app-shell')?.getAttribute('data-view-mode'),
+      };
+    });
+    expect(readyState.navbarDisplay).toBe('none');
+    expect(readyState.viewMode).toBe('chat-only');
+
+    // 宿主页面 hash 改到 #/contacts：chat-only widget 没有底部导航可切换，也必须挡掉这次路由触发。
+    await page.evaluate(() => { location.hash = '#/contacts'; });
+    await page.waitForTimeout(200);
+    const routedState = await page.evaluate(() => {
+      const root = document.getElementById('chat-only-host')?.shadowRoot;
+      return {
+        chatHidden: root?.querySelector('#view-chat')?.classList.contains('hidden') ?? true,
+        contactsHidden: root?.querySelector('#view-contacts')?.classList.contains('hidden') ?? true,
+      };
+    });
+    expect(routedState.chatHidden).toBe(false);
+    expect(routedState.contactsHidden).toBe(true);
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __chatOnlyHandle?: MountHandle };
+      w.__chatOnlyHandle?.unmount();
+      delete w.__chatOnlyHandle;
+      document.getElementById('chat-only-host')?.remove();
+      location.hash = '';
+    });
+  });
+
   test('explicit mobile layout preserves host inline styles after unmount', async ({ page }) => {
     await page.goto('/chat/uikit-demo.html');
 
