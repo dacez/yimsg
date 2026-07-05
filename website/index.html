@@ -4,30 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>yimsg · 极简单机部署的私有化即时通讯</title>
-  <meta name="description" content="yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：一台机器即可上线，数据就在你的办公室，完全由你掌控——绝对安全、灵活部署、极致性能、AI 原生。" />
+  <meta name="description" content="yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：一台机器即可上线，数据就在你的办公室，完全由你掌控。一行代码即可把聊天能力嵌入官网做客服组件，也能作为独立网页应用直接使用，支持本地持久化。" />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
   <div class="bg-aurora" aria-hidden="true"></div>
-
-  <!-- 全局 SVG 资源：渐变流光 + 柔和阴影，供下方所有示意图复用 -->
-  <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
-    <defs>
-      <linearGradient id="flow" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="400" y2="0">
-        <stop offset="0" stop-color="#5b5bf0" />
-        <stop offset="0.55" stop-color="#8b5cf6" />
-        <stop offset="1" stop-color="#1fb6c9" />
-      </linearGradient>
-      <linearGradient id="flow-wide" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="760" y2="0">
-        <stop offset="0" stop-color="#5b5bf0" />
-        <stop offset="0.55" stop-color="#8b5cf6" />
-        <stop offset="1" stop-color="#1fb6c9" />
-      </linearGradient>
-      <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
-        <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#1d2a4a" flood-opacity="0.10" />
-      </filter>
-    </defs>
-  </svg>
 
   <header class="site-header">
     <div class="container nav">
@@ -36,9 +17,7 @@
       </a>
       <nav class="nav-links">
         <a href="#advantages">核心优势</a>
-        <a href="#deploy">部署方式</a>
-        <a href="#federation">联邦通讯</a>
-        <a href="#ai">AI 原生</a>
+        <a href="#scenarios">应用场景</a>
         <a class="nav-cta" href="/chat/">打开应用</a>
       </nav>
     </div>
@@ -70,8 +49,8 @@
     <section id="advantages" class="section">
       <div class="container">
         <span class="section-eyebrow">Why yimsg</span>
-        <h2 class="section-title">为企业而生的四大核心优势</h2>
-        <p class="section-lead">把数据主权、极简部署、极致性能与 AI 能力，全部装进一台属于你自己的机器。</p>
+        <h2 class="section-title">为企业而生的三大核心优势</h2>
+        <p class="section-lead">把数据主权、极简部署与极致性能，全部装进一台属于你自己的机器。</p>
         <div class="grid">
           <article class="card">
             <div class="card-icon">🔒</div>
@@ -97,220 +76,40 @@
               天然适用于资源受限的嵌入式场景。
             </p>
           </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="scenarios" class="section section-alt">
+      <div class="container">
+        <span class="section-eyebrow">Use Cases</span>
+        <h2 class="section-title">一套 UIKit，三种玩法</h2>
+        <p class="section-lead">同一套聊天能力，既能整套开箱即用，也能按需嵌入到你自己的产品里。</p>
+        <div class="grid">
           <article class="card">
-            <div class="card-icon">🤖</div>
-            <h3>AI 原生<span class="tag-soon">待实现</span></h3>
+            <div class="card-icon">🎧</div>
+            <h3>客服组件</h3>
             <p>
-              基于组织架构由 AI 辅助进行企业管理，
-              让协作、审批与信息流转在 IM 内自然发生。
+              把 yimsg UIKit 一行代码嵌入官网或后台系统，
+              几分钟内就能拥有一个完整的在线客服入口。
             </p>
           </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="deploy" class="section section-alt">
-      <div class="container">
-        <span class="section-eyebrow">Deployment</span>
-        <h2 class="section-title">四种部署方式，总有一款适合你</h2>
-        <p class="section-lead">无论网络环境如何，一台机器、几分钟即可把服务跑起来——数据始终留在你的办公室。</p>
-        <div class="deploy-grid">
-          <div class="deploy-card">
-            <svg class="topo" viewBox="0 0 400 200" role="img" aria-label="有域名直连拓扑">
-              <path class="wire" d="M132 100 H268" />
-              <path class="flow" d="M132 100 H268" />
-              <g filter="url(#soft)"><rect class="node" x="28" y="58" width="104" height="84" rx="20" /></g>
-              <text class="ico-lg" x="80" y="98" text-anchor="middle">📱</text>
-              <text class="cap" x="80" y="120" text-anchor="middle">多端客户端</text>
-              <text class="cap-sub" x="80" y="135" text-anchor="middle">手机 · 桌面</text>
-              <g filter="url(#soft)"><rect class="node" x="268" y="58" width="104" height="84" rx="20" /></g>
-              <text class="ico-lg" x="320" y="98" text-anchor="middle">🖥️</text>
-              <text class="cap" x="320" y="120" text-anchor="middle">你的服务器</text>
-              <text class="cap-sub" x="320" y="135" text-anchor="middle">数据自持</text>
-              <g filter="url(#soft)"><rect class="pill" x="144" y="56" width="112" height="32" rx="16" /></g>
-              <text class="pill-cap" x="200" y="77" text-anchor="middle">🌐 yourcorp.com</text>
-              <text class="wlabel" x="200" y="160" text-anchor="middle">用你的域名直连 · 链路最短</text>
-            </svg>
-            <div class="deploy-head">
-              <span class="deploy-step">A</span>
-              <h3>有域名 + 公网 IP</h3>
-            </div>
-            <p>直接部署，客户端通过你自己的域名直连服务，链路最短、最纯粹。</p>
-          </div>
-
-          <div class="deploy-card">
-            <svg class="topo" viewBox="0 0 400 200" role="img" aria-label="智能路由接入拓扑">
-              <path class="wire" d="M120 134 H280" />
-              <path class="flow" d="M120 134 H280" />
-              <path class="wire dashed" d="M96 92 C 116 52 152 58 174 74" />
-              <path class="flow flow-dash" d="M96 92 C 116 52 152 58 174 74" />
-              <path class="wire dashed" d="M226 74 C 248 58 284 52 304 92" />
-              <path class="flow flow-dash" d="M226 74 C 248 58 284 52 304 92" />
-              <g filter="url(#soft)"><rect class="node node-accent" x="148" y="12" width="104" height="64" rx="18" /></g>
-              <text class="ico" x="200" y="38" text-anchor="middle">🛰️</text>
-              <text class="cap" x="200" y="56" text-anchor="middle">yimsg.im</text>
-              <text class="cap-sub" x="200" y="70" text-anchor="middle">智能路由 · 只指路</text>
-              <g filter="url(#soft)"><rect class="node" x="20" y="92" width="100" height="84" rx="20" /></g>
-              <text class="ico-lg" x="70" y="132" text-anchor="middle">📱</text>
-              <text class="cap" x="70" y="154" text-anchor="middle">多端客户端</text>
-              <text class="cap-sub" x="70" y="169" text-anchor="middle">手机 · 桌面</text>
-              <g filter="url(#soft)"><rect class="node" x="280" y="92" width="100" height="84" rx="20" /></g>
-              <text class="ico-lg" x="330" y="132" text-anchor="middle">🖥️</text>
-              <text class="cap" x="330" y="154" text-anchor="middle">你的服务器</text>
-              <text class="cap-sub" x="330" y="169" text-anchor="middle">公网 IP</text>
-              <text class="wlabel" x="200" y="153" text-anchor="middle">数据直连你的服务器</text>
-            </svg>
-            <div class="deploy-head">
-              <span class="deploy-step">B</span>
-              <h3>无域名 · 有公网 IP</h3>
-            </div>
-            <p>由 <code>yimsg.im</code> 提供路由，将访问引导到你的公网 IP，无需自备域名。</p>
-          </div>
-
-          <div class="deploy-card">
-            <svg class="topo" viewBox="0 0 400 200" role="img" aria-label="安全中转接入拓扑">
-              <path class="wire" d="M110 100 H150" />
-              <path class="flow" d="M110 100 H150" />
-              <path class="wire" d="M250 100 H290" />
-              <path class="flow" d="M250 100 H290" />
-              <path class="wall" d="M270 52 V148" />
-              <text class="wlabel" x="270" y="44" text-anchor="middle">NAT · 防火墙</text>
-              <g filter="url(#soft)"><rect class="node" x="12" y="58" width="98" height="84" rx="20" /></g>
-              <text class="ico-lg" x="61" y="98" text-anchor="middle">📱</text>
-              <text class="cap" x="61" y="120" text-anchor="middle">多端客户端</text>
-              <text class="cap-sub" x="61" y="135" text-anchor="middle">手机 · 桌面</text>
-              <g filter="url(#soft)"><rect class="node node-accent" x="150" y="58" width="100" height="84" rx="20" /></g>
-              <text class="ico-lg" x="200" y="98" text-anchor="middle">🔁</text>
-              <text class="cap" x="200" y="120" text-anchor="middle">yimsg.im</text>
-              <text class="cap-sub" x="200" y="135" text-anchor="middle">安全中转</text>
-              <g filter="url(#soft)"><rect class="node" x="290" y="58" width="98" height="84" rx="20" /></g>
-              <text class="ico-lg" x="339" y="98" text-anchor="middle">🔒</text>
-              <text class="cap" x="339" y="120" text-anchor="middle">内网服务器</text>
-              <text class="cap-sub" x="339" y="135" text-anchor="middle">数据自持</text>
-              <text class="wlabel" x="200" y="168" text-anchor="middle">加密隧道穿透 · 消息不留存</text>
-            </svg>
-            <div class="deploy-head">
-              <span class="deploy-step">C</span>
-              <h3>无域名 · 无公网 IP</h3>
-            </div>
-            <p>由 <code>yimsg.im</code> 做中转，内网机器也能对外提供服务。</p>
-          </div>
-
-          <div class="deploy-card">
-            <svg class="topo" viewBox="0 0 400 210" role="img" aria-label="内网盒子拓扑">
-              <path class="wire" d="M156 112 C 206 112 206 58 262 58" />
-              <path class="flow" d="M156 112 C 206 112 206 58 262 58" />
-              <path class="wire" d="M156 112 C 206 112 206 115 262 115" />
-              <path class="flow" d="M156 112 C 206 112 206 115 262 115" />
-              <path class="wire" d="M156 112 C 206 112 206 170 262 170" />
-              <path class="flow" d="M156 112 C 206 112 206 170 262 170" />
-              <g filter="url(#soft)"><rect class="pill" x="40" y="18" width="96" height="30" rx="15" /></g>
-              <text class="pill-cap" x="88" y="38" text-anchor="middle">🚫 无需公网</text>
-              <g filter="url(#soft)"><rect class="node node-accent" x="22" y="74" width="132" height="76" rx="22" /></g>
-              <text class="ico-lg" x="88" y="110" text-anchor="middle">🛜</text>
-              <text class="cap" x="88" y="132" text-anchor="middle">内网盒子</text>
-              <text class="cap-sub" x="88" y="147" text-anchor="middle">迷你主机 · 即插即用</text>
-              <g filter="url(#soft)"><rect class="node" x="262" y="36" width="116" height="44" rx="14" /></g>
-              <text class="cap" x="320" y="63" text-anchor="middle">💻 电脑</text>
-              <g filter="url(#soft)"><rect class="node" x="262" y="93" width="116" height="44" rx="14" /></g>
-              <text class="cap" x="320" y="120" text-anchor="middle">📱 手机</text>
-              <g filter="url(#soft)"><rect class="node" x="262" y="150" width="116" height="44" rx="14" /></g>
-              <text class="cap" x="320" y="177" text-anchor="middle">📲 平板</text>
-            </svg>
-            <div class="deploy-head">
-              <span class="deploy-step">D</span>
-              <h3>内网盒子 · 即插即用</h3>
-            </div>
-            <p>在路由器旁接入一台迷你主机大小的小盒子，即可为整个内网提供即时通讯，无需公网、无需复杂配置，开箱即用。</p>
-          </div>
-        </div>
-        <p class="deploy-note">四种方式下，数据都只留在你办公室里的机器或盒子里；yimsg.im 仅在需要时负责连通，从不保存你的消息。</p>
-      </div>
-    </section>
-
-    <section id="federation" class="section">
-      <div class="container">
-        <span class="section-eyebrow">Federation</span>
-        <h2 class="section-title">联邦通讯<span class="tag-soon">待实现</span></h2>
-        <p class="section-lead">在数据完全自主的前提下，各组织依然能跨域互通——数据各留各家，消息自由流转。</p>
-        <svg class="topo fed-figure" viewBox="0 0 760 400" role="img" aria-label="联邦通讯拓扑">
-          <path class="wire" d="M210 110 L150 250" />
-          <path class="flow" d="M210 110 L150 250" />
-          <path class="wire" d="M252 110 L378 250" />
-          <path class="flow" d="M252 110 L378 250" />
-          <path class="wire" d="M506 110 L402 250" />
-          <path class="flow" d="M506 110 L402 250" />
-          <path class="wire" d="M552 110 L632 250" />
-          <path class="flow" d="M552 110 L632 250" />
-          <path class="fed" d="M210 300 C 250 372 285 372 325 300" />
-          <path class="fed" d="M455 300 C 495 372 530 372 570 300" />
-          <text class="wlabel" x="267" y="392" text-anchor="middle">经 yimsg 中转互通</text>
-          <text class="wlabel" x="512" y="392" text-anchor="middle">组织间直接互通</text>
-          <g filter="url(#soft)"><rect class="node node-accent" x="120" y="30" width="220" height="80" rx="24" /></g>
-          <text class="ico" x="230" y="68" text-anchor="middle">🌐</text>
-          <text class="cap" x="230" y="90" text-anchor="middle">yimsg.com</text>
-          <text class="cap-sub" x="230" y="104" text-anchor="middle">公共路由 · 零配置接入</text>
-          <g filter="url(#soft)"><rect class="node node-accent" x="420" y="30" width="220" height="80" rx="24" /></g>
-          <text class="ico" x="530" y="68" text-anchor="middle">🌐</text>
-          <text class="cap" x="530" y="90" text-anchor="middle">独立域名</text>
-          <text class="cap-sub" x="530" y="104" text-anchor="middle">用你自己的入口</text>
-          <g filter="url(#soft)"><rect class="node" x="80" y="250" width="130" height="96" rx="24" /></g>
-          <text class="ico-lg" x="145" y="294" text-anchor="middle">🖥️</text>
-          <text class="cap" x="145" y="318" text-anchor="middle">迷你主机</text>
-          <text class="cap-sub" x="145" y="334" text-anchor="middle">A 组织 · 数据自持</text>
-          <g filter="url(#soft)"><rect class="node" x="325" y="250" width="130" height="96" rx="24" /></g>
-          <text class="ico-lg" x="390" y="294" text-anchor="middle">🖥️</text>
-          <text class="cap" x="390" y="318" text-anchor="middle">迷你主机</text>
-          <text class="cap-sub" x="390" y="334" text-anchor="middle">B 组织 · 数据自持</text>
-          <g filter="url(#soft)"><rect class="node" x="570" y="250" width="130" height="96" rx="24" /></g>
-          <text class="ico-lg" x="635" y="294" text-anchor="middle">🗄️</text>
-          <text class="cap" x="635" y="318" text-anchor="middle">服务器集群</text>
-          <text class="cap-sub" x="635" y="334" text-anchor="middle">C 组织 · 数据自持</text>
-        </svg>
-        <p class="deploy-note">每个组织都独立部署、数据自持；既能经 <code>yimsg.com</code> 公共路由互通，也能用各自的独立域名直接互通。</p>
-      </div>
-    </section>
-
-    <section id="ai" class="section">
-      <div class="container">
-        <div class="ai-band">
-          <div class="ai-text">
-            <span class="section-eyebrow">Roadmap</span>
-            <h2 class="section-title ai-title">AI 原生的企业协作</h2>
+          <article class="card">
+            <div class="card-icon">🖥️</div>
+            <h3>独立网页应用</h3>
             <p>
-              yimsg 正在把 AI 作为一等公民引入 IM：让 AI 读懂组织架构，
-              协助企业完成信息分发、协作编排与日常管理。
-              消息不再只是聊天，而是企业运转的神经网络。
+              也可以作为一套独立完整的网页 IM 应用直接使用，
+              登录即可收发消息、管理联系人与群组，无需额外开发。
             </p>
-            <a class="btn btn-primary" href="/chat/">抢先体验当前版本</a>
-          </div>
-          <svg class="topo ai-figure" viewBox="0 0 420 230" role="img" aria-label="AI 原生协作流程">
-            <path class="wire" d="M132 48 H151" />
-            <path class="flow" d="M132 48 H151" />
-            <path class="wire" d="M269 48 H288" />
-            <path class="flow" d="M269 48 H288" />
-            <path class="wire" d="M73 76 C 73 122 210 112 210 150" />
-            <path class="flow" d="M73 76 C 73 122 210 112 210 150" />
-            <path class="wire" d="M210 76 V150" />
-            <path class="flow" d="M210 76 V150" />
-            <path class="wire" d="M347 76 C 347 122 210 112 210 150" />
-            <path class="flow" d="M347 76 C 347 122 210 112 210 150" />
-            <g filter="url(#soft)"><rect class="node" x="14" y="20" width="118" height="56" rx="16" /></g>
-            <text class="ico" x="73" y="44" text-anchor="middle">🏢</text>
-            <text class="cap" x="73" y="62" text-anchor="middle">组织架构</text>
-            <text class="cap-sub" x="73" y="100" text-anchor="middle">成员</text>
-            <g filter="url(#soft)"><rect class="node node-accent" x="151" y="20" width="118" height="56" rx="16" /></g>
-            <text class="ico" x="210" y="44" text-anchor="middle">🤖</text>
-            <text class="cap" x="210" y="62" text-anchor="middle">AI 助手</text>
-            <text class="cap-sub" x="210" y="100" text-anchor="middle">理解意图</text>
-            <g filter="url(#soft)"><rect class="node" x="288" y="20" width="118" height="56" rx="16" /></g>
-            <text class="ico" x="347" y="44" text-anchor="middle">⚙️</text>
-            <text class="cap" x="347" y="62" text-anchor="middle">自动编排</text>
-            <text class="cap-sub" x="347" y="100" text-anchor="middle">分发 · 审批</text>
-            <g filter="url(#soft)"><rect class="node node-accent" x="70" y="150" width="280" height="56" rx="18" /></g>
-            <text class="ico" x="210" y="176" text-anchor="middle">💬</text>
-            <text class="cap" x="210" y="194" text-anchor="middle">yimsg IM · 企业运转的神经网络</text>
-          </svg>
+          </article>
+          <article class="card">
+            <div class="card-icon">💾</div>
+            <h3>本地持久化</h3>
+            <p>
+              客户端支持本地持久化缓存，刷新页面或断网重连都不会丢失会话；
+              也可以选择纯内存模式，不在本地留任何数据。
+            </p>
+          </article>
         </div>
       </div>
     </section>

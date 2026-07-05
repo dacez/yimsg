@@ -300,140 +300,9 @@ code {
 .card h3 { margin: 0 0 10px; font-size: 1.2rem; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .card p { margin: 0; color: var(--muted); position: relative; }
 
-.tag-soon {
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 2px 9px;
-  border-radius: 999px;
-  color: var(--brand-2);
-  background: rgba(139, 92, 246, 0.1);
-}
-
-/* 部署方式 */
-.deploy-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
-}
-
-.deploy-card {
-  position: relative;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px 24px 26px;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.deploy-card:hover { transform: translateY(-6px); box-shadow: var(--shadow); }
-
-/* 部署示意图（内联 SVG） */
-.topo {
-  width: 100%;
-  height: auto;
-  display: block;
-  margin: 6px 0 18px;
-  font-family: inherit;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fbfcff, #f4f6fd);
-  padding: 6px 4px;
-}
-.topo .node { fill: #ffffff; stroke: var(--line); stroke-width: 1.4; }
-.topo .node-accent { fill: rgba(91, 91, 240, 0.07); stroke: rgba(91, 91, 240, 0.55); stroke-width: 1.6; }
-.topo .ico { font-size: 22px; }
-.topo .ico-lg { font-size: 30px; }
-.topo .cap { fill: var(--ink-soft); font-size: 13px; font-weight: 700; }
-.topo .cap-sub { fill: var(--muted); font-size: 10px; font-weight: 500; }
-.topo .wlabel { fill: var(--muted); font-size: 10.5px; font-weight: 600; }
-.topo .pill { fill: rgba(91, 91, 240, 0.12); stroke: rgba(91, 91, 240, 0.5); stroke-width: 1.4; }
-.topo .pill-cap { fill: var(--brand); font-size: 12px; font-weight: 800; }
-.topo .wall { stroke: rgba(91, 91, 240, 0.5); stroke-width: 2; stroke-dasharray: 4 5; fill: none; stroke-linecap: round; }
-.topo .wire { stroke: url(#flow); stroke-width: 4.5; fill: none; stroke-linecap: round; opacity: 0.85; }
-.topo .wire.dashed { stroke-width: 3; stroke-dasharray: 6 7; opacity: 0.35; }
-.topo .flow {
-  stroke: url(#flow);
-  stroke-width: 3.5;
-  fill: none;
-  stroke-linecap: round;
-  stroke-dasharray: 7 12;
-  animation: flowMove 1.6s linear infinite;
-}
-.topo .flow-dash { stroke-dasharray: 6 13; opacity: 0.6; animation: flowMove 2.4s linear infinite; }
-.topo .fed {
-  stroke: url(#flow);
-  stroke-width: 4;
-  fill: none;
-  stroke-linecap: round;
-  stroke-dasharray: 0.5 9;
-  opacity: 0.8;
-  animation: flowMove 2.6s linear infinite;
-}
-
-@keyframes flowMove {
-  to { stroke-dashoffset: -38; }
-}
-
-/* 联邦通讯示意图：更宽，使用宽幅渐变 */
-.fed-figure { max-width: 820px; margin: 8px auto 28px; padding: 20px 16px; }
-.fed-figure .wire,
-.fed-figure .flow,
-.fed-figure .fed { stroke: url(#flow-wide); }
-
 @media (prefers-reduced-motion: reduce) {
-  .topo .flow, .topo .flow-dash, .bg-aurora { animation: none; }
+  .bg-aurora { animation: none; }
 }
-
-.deploy-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-
-.deploy-step {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 11px;
-  font-weight: 800;
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  box-shadow: var(--shadow-brand);
-}
-
-.deploy-card h3 { margin: 0; font-size: 1.12rem; color: var(--ink); }
-.deploy-card p { margin: 0; color: var(--muted); }
-
-.deploy-note {
-  text-align: center;
-  color: var(--muted);
-  margin: 40px auto 0;
-  max-width: 720px;
-  padding: 16px 24px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  box-shadow: var(--shadow-sm);
-}
-
-/* AI 区块 */
-.ai-band {
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 48px;
-  align-items: center;
-  background: linear-gradient(135deg, #ffffff, #f7f6ff);
-  border: 1px solid var(--line);
-  border-radius: 28px;
-  padding: 48px;
-  box-shadow: var(--shadow);
-}
-
-.ai-text .section-eyebrow { text-align: left; }
-.ai-text .section-title { text-align: left; margin: 6px 0 18px; }
-.ai-text p { color: var(--muted); margin: 0 0 28px; }
-.ai-title { font-size: clamp(1.7rem, 3vw, 2.2rem); }
-
-.ai-figure { width: 100%; height: auto; display: block; }
 
 /* 页脚 */
 .site-footer {
@@ -452,9 +321,6 @@ code {
 }
 
 @media (max-width: 760px) {
-  .ai-band { grid-template-columns: 1fr; padding: 32px 24px; gap: 28px; }
-  .ai-text .section-eyebrow,
-  .ai-text .section-title { text-align: center; }
   .hero-stats div + div::before { display: none; }
   .nav-links { gap: 16px; }
 }

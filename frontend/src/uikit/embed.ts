@@ -14,7 +14,7 @@ import {
 } from './responsive-layout';
 import { applyThemeVarsToElement, clearThemeVarsFromElement, resolveTheme, watchSystemTheme, type ThemeOption, type ThemeTokens } from './theme';
 
-export { type MountOptions, type MountHandle, type MountTarget, type WidgetOn, type WidgetEvents, type UIKitMode } from './options';
+export { type MountOptions, type MountHandle, type MountTarget, type WidgetOn, type WidgetEvents, type UIKitMode, type UIKitViewMode } from './options';
 export type { ThemeOption, ThemePreset, ThemeTokens } from './theme';
 export type { LocaleOption, LocaleCode, Messages } from './i18n';
 
@@ -171,6 +171,7 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
   shadow.appendChild(shellTemplate.content.cloneNode(true));
   const appShell = shadow.querySelector<HTMLElement>('.mc-app-shell');
   if (!appShell) throw new Error('[yimsg/uikit] failed to create app shell');
+  appShell.dataset.viewMode = options.viewMode === 'chat-only' ? 'chat-only' : 'full';
   const sizeGuardTitle = shadow.querySelector<HTMLElement>('.mc-size-guard-title');
   const sizeGuardBody = shadow.querySelector<HTMLElement>('.mc-size-guard-body');
 
@@ -185,6 +186,7 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
     runtime: {
       embedded: true,
       requestedMode,
+      viewMode: options.viewMode ?? 'full',
       initialToken: options.token,
       getInitialToken: options.getToken,
       initialLayout: options.layout,

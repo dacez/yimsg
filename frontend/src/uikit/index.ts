@@ -10,7 +10,7 @@
  */
 
 export { mount } from './embed';
-export type { MountOptions, MountHandle, MountTarget, WidgetOn, WidgetEvents, UIKitMode } from './embed';
+export type { MountOptions, MountHandle, MountTarget, WidgetOn, WidgetEvents, UIKitMode, UIKitViewMode } from './embed';
 export type { ThemeOption, ThemePreset, ThemeTokens } from './theme';
 export type { LocaleOption, LocaleCode, Messages } from './i18n';
 export { YimsgClient } from '../sdk';
