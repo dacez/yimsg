@@ -317,12 +317,8 @@ export class ClientSessionRuntime {
     ).get_contact_count(status);
   }
 
-  async getOrgInfos(orgIds: string[]) {
-    return this.requireDataGateway("getOrgInfos").get_org_infos(orgIds);
-  }
-
-  async getOrgTagItems(params: Parameters<DataGateway["get_org_tag_items"]>[0]) {
-    return this.requireDataGateway("getOrgTagItems").get_org_tag_items(params);
+  async getTags(params: Parameters<DataGateway["get_tags"]>[0]) {
+    return this.requireDataGateway("getTags").get_tags(params);
   }
 
   notifyContactsChangedAfterMutation(): void {

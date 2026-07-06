@@ -16,8 +16,8 @@ import type {
   MutelistEntry,
   UserInfo,
   OrgInfo,
-  OrgTag,
-  OrgTagItem,
+  TagInfo,
+  Tag,
 } from '../../types';
 import {
   BLOCKLIST_ACTIVE,
@@ -36,10 +36,12 @@ import {
   GetBlocklistRequest,
   GetOrgInfosRequest,
   GetOrgInfosResponse,
-  GetOrgTagItemsRequest,
-  GetOrgTagItemsResponse,
-  SyncOrgTagsRequest,
-  SyncOrgTagsResponse,
+  GetTagInfosRequest,
+  GetTagInfosResponse,
+  GetTagsRequest,
+  GetTagsResponse,
+  SyncTagsRequest,
+  SyncTagsResponse,
   GetBlocklistResponse,
   GetContactCountRequest,
   GetContactsRequest,
@@ -339,7 +341,8 @@ export function mapSyncContactsResponse(resp: SyncContactsResponse): { contacts:
 
 // ---- 组织 ----
 //
-// 组织即根 tag（tag_id == org_id）；展开走展示通道不透明游标，同步走 last_seq/cursor_seq。
+// org_info / tag_info 是无 seq 的展示字典（按需查询，与 group_info 同构）；
+// org_relation 是唯一的同步域：展开走展示通道不透明游标，同步走 last_seq/cursor_seq。
 
 export function getOrgInfosRequest(orgIds: readonly string[]): GetOrgInfosRequest {
   return GetOrgInfosRequest.create({ org_ids: [...orgIds] });
@@ -353,61 +356,71 @@ export function mapGetOrgInfosResponse(resp: GetOrgInfosResponse): OrgInfo[] {
   }));
 }
 
-export function getOrgTagItemsRequest(params: {
+export function getTagInfosRequest(orgId: string, tagIds: readonly string[]): GetTagInfosRequest {
+  return GetTagInfosRequest.create({ org_id: orgId, tag_ids: [...tagIds] });
+}
+
+export function mapGetTagInfosResponse(resp: GetTagInfosResponse): TagInfo[] {
+  return (resp.tags || []).map((t) => ({
+    tag_id: String(t.tag_id || '0'),
+    name: String(t.name || ''),
+    avatar: String(t.avatar || ''),
+  }));
+}
+
+export function getTagsRequest(params: {
   org_id: string;
   tag_id: string;
   page?: PageParams;
-}): GetOrgTagItemsRequest {
-  return GetOrgTagItemsRequest.create({
+}): GetTagsRequest {
+  return GetTagsRequest.create({
     org_id: params.org_id,
     tag_id: params.tag_id,
     page: pageQueryOf(params.page),
   });
 }
 
-function normalizeOrgTagItem(item: {
+function normalizeTag(item: {
   tag_id?: string;
-  child_tag_id?: string;
-  uid?: string;
-  name?: string;
-  avatar?: string;
+  child_id?: string;
+  child_type?: number;
   title?: string;
   rank?: string | number;
   sort_key?: string;
+  role?: number;
   status?: number;
   seq?: string | number;
-}): OrgTagItem {
+}): Tag {
   return {
     tag_id: String(item.tag_id || '0'),
-    child_tag_id: String(item.child_tag_id || '0'),
-    uid: String(item.uid || '0'),
-    name: String(item.name || ''),
-    avatar: String(item.avatar || ''),
+    child_id: String(item.child_id || '0'),
+    child_type: Number(item.child_type || 0),
     title: String(item.title || ''),
     rank: Number(item.rank || 0),
     sort_key: String(item.sort_key || ''),
+    role: Number(item.role || 0),
     status: Number(item.status || 0),
     seq: Number(item.seq || 0),
   };
 }
 
-export function mapGetOrgTagItemsResponse(resp: GetOrgTagItemsResponse): {
-  items: OrgTagItem[];
+export function mapGetTagsResponse(resp: GetTagsResponse): {
+  tags: Tag[];
   page: PageInfoResult;
 } {
   return {
-    items: (resp.items || []).map(normalizeOrgTagItem),
+    tags: (resp.tags || []).map(normalizeTag),
     page: mapPageInfo(resp.page),
   };
 }
 
-export function syncOrgTagsRequest(params: {
+export function syncTagsRequest(params: {
   org_id: string;
   last_seq?: number;
   limit?: number;
   rebuild?: boolean;
-}): SyncOrgTagsRequest {
-  return SyncOrgTagsRequest.create({
+}): SyncTagsRequest {
+  return SyncTagsRequest.create({
     org_id: params.org_id,
     last_seq: String(params.last_seq ?? 0),
     limit: pageField(clampOptionalPageLimit(params.limit)),
@@ -415,21 +428,13 @@ export function syncOrgTagsRequest(params: {
   });
 }
 
-export function mapSyncOrgTagsResponse(resp: SyncOrgTagsResponse): {
-  tags: OrgTag[];
-  items: OrgTagItem[];
+export function mapSyncTagsResponse(resp: SyncTagsResponse): {
+  tags: Tag[];
   hasMore: boolean;
   cursorSeq: number;
 } {
   return {
-    tags: (resp.tags || []).map((t) => ({
-      tag_id: String(t.tag_id || '0'),
-      name: String(t.name || ''),
-      avatar: String(t.avatar || ''),
-      status: Number(t.status || 0),
-      seq: Number(t.seq || 0),
-    })),
-    items: (resp.items || []).map(normalizeOrgTagItem),
+    tags: (resp.tags || []).map(normalizeTag),
     hasMore: Boolean(resp.has_more),
     cursorSeq: Number(resp.cursor_seq || 0),
   };

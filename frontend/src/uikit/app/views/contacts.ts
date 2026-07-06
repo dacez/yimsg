@@ -1,4 +1,4 @@
-import { CONTACT_FRIEND, CONTACT_PENDING } from '../../../constants';
+import { CONTACT_FRIEND, CONTACT_PENDING, ORG_CHILD_PERSON, ORG_CHILD_TAG } from '../../../constants';
 import { APP_CONFIG } from '../../../app-config';
 import type { Contact, ContactPage, LocalConversation } from '../../../sdk';
 import { displayGroupName, displayUserName } from '../../../sdk';
@@ -56,11 +56,10 @@ export function createContactsView(app: AppInstance) {
   let requestListView: BoundedStreamWindow<Contact> | null = null;
   // 当前右侧详情面板展示的联系人 key。
   let selectedContactKey: string | null = null;
-  // 组织展示资料的视图级缓存（组织数量极小，无需淘汰；离开视图随视图销毁）。
-  const orgInfoCache = new Map<string, { name: string; avatarUrl: string }>();
-  // 组织架构浏览器状态：当前组织与面包屑展开栈（面包屑即导航栈，不反推 DAG 路径）。
+  // 组织架构浏览器状态：当前组织与面包屑展开栈（tagId 序列，根即 orgId；
+  // 面包屑即导航栈，不反推 DAG 路径）。展示名走 getOrgInfos/getTagInfos 缓存，实时查，不额外存储。
   let orgPanelOrgId: string | null = null;
-  let orgPanelStack: Array<{ tagId: string; name: string }> = [];
+  let orgPanelStack: string[] = [];
   // 防止快速切换联系人时旧请求覆盖新渲染。
   let detailRequestId = 0;
 
@@ -134,9 +133,10 @@ export function createContactsView(app: AppInstance) {
     const items = window.items;
     const friendUids = items.filter(f => contactFriendUid(f) !== '0').map(contactFriendUid);
     const groupIds = items.filter(f => contactGroupId(f) !== '0').map(contactGroupId);
+    const orgIds = items.filter(f => contactOrgId(f) !== '0').map(contactOrgId);
     const userDisplayMap = app.client.getUserInfos(friendUids);
     const groupDisplayMap = app.client.getGroupInfos(groupIds);
-    void ensureOrgInfos(items.filter(f => contactOrgId(f) !== '0').map(contactOrgId));
+    const orgDisplayMap = app.client.getOrgInfos(orgIds);
 
     view.render({
       items,
@@ -158,7 +158,7 @@ export function createContactsView(app: AppInstance) {
         const isGroup = gid !== '0';
         if (oid !== '0') {
           // 组织条目：名称来自组织资料缓存（惰性拉取），点开进入组织架构浏览器。
-          const orgName = f.remarkName || orgInfoCache.get(oid)?.name || app.t('contacts.orgLoading');
+          const orgName = f.remarkName || orgDisplayMap.get(oid)?.name || app.t('contacts.orgLoading');
           const key = contactKey(f);
           const div = app.dom.ownerDocument.createElement('div');
           div.className = 'contact-item' + (selectedContactKey === key ? ' contact-selected' : '');
@@ -536,26 +536,6 @@ export function createContactsView(app: AppInstance) {
     }
   }
 
-  /** 惰性补齐组织展示资料；有新数据时重绘列表与打开中的组织面板。 */
-  async function ensureOrgInfos(orgIds: string[]): Promise<void> {
-    const missing = [...new Set(orgIds)].filter(id => id !== '0' && !orgInfoCache.has(id));
-    if (missing.length === 0) return;
-    try {
-      const orgs = await app.client.getOrgInfos(missing);
-      let changed = false;
-      for (const org of orgs) {
-        orgInfoCache.set(org.orgId, { name: org.name, avatarUrl: org.avatarUrl });
-        changed = true;
-      }
-      if (changed) {
-        renderFriends();
-        if (orgPanelOrgId) void renderOrgPanel();
-      }
-    } catch (_) {
-      // 组织资料拉取失败不阻塞列表；下次渲染重试。
-    }
-  }
-
   /** 组织架构浏览器：面包屑 + 当前层子项（子 tag 与人按服务端绝对排序混合）。 */
   async function renderOrgPanel(): Promise<void> {
     const orgId = orgPanelOrgId;
@@ -563,34 +543,42 @@ export function createContactsView(app: AppInstance) {
     const reqId = ++detailRequestId;
     const panel = app.$('contacts-detail-panel');
     if (!panel) return;
-    const current = orgPanelStack[orgPanelStack.length - 1];
-    let items: Awaited<ReturnType<typeof app.client.getOrgTagItems>>['items'];
+    const currentTagId = orgPanelStack[orgPanelStack.length - 1];
+    let tags: Awaited<ReturnType<typeof app.client.getTags>>['tags'];
     try {
-      const page = await app.client.getOrgTagItems({ orgId, tagId: current.tagId, limit: 200 });
-      items = page.items;
+      const page = await app.client.getTags({ orgId, tagId: currentTagId, limit: 200 });
+      tags = page.tags;
     } catch (e) {
       app.showToast(app.t('contacts.orgLoadFailed') + (e as Error).message, 'error');
       return;
     }
     if (reqId !== detailRequestId || orgPanelOrgId !== orgId) return;
 
-    // 人员昵称/头像走既有 uidCache；组织域不重复缓存展示资料。
-    const memberUids = items.filter(i => i.uid !== '0').map(i => i.uid);
+    // 人员昵称/头像走既有 uidCache；子 tag 名走 tag 展示资料缓存，组织根名走组织展示资料缓存。
+    const memberUids = tags.filter(i => i.childType === ORG_CHILD_PERSON).map(i => i.childId);
+    const childTagIds = tags.filter(i => i.childType === ORG_CHILD_TAG).map(i => i.childId);
     const userDisplayMap = app.client.getUserInfos(memberUids);
+    const tagDisplayMap = app.client.getTagInfos(orgId, childTagIds);
+    const orgDisplayMap = app.client.getOrgInfos([orgId]);
+
+    const crumbNameOf = (tagId: string): string => tagId === orgId
+      ? (orgDisplayMap.get(tagId)?.name || app.t('contacts.orgLoading'))
+      : (tagDisplayMap.get(tagId)?.name || tagId);
 
     const crumbsHtml = orgPanelStack
-      .map((c, i) => `<button class="org-crumb${i === orgPanelStack.length - 1 ? ' org-crumb-current' : ''}" data-crumb="${i}">${app.escapeHtml(c.name)}</button>`)
+      .map((tagId, i) => `<button class="org-crumb${i === orgPanelStack.length - 1 ? ' org-crumb-current' : ''}" data-crumb="${i}">${app.escapeHtml(crumbNameOf(tagId))}</button>`)
       .join('<span class="org-crumb-sep">/</span>');
-    const rowsHtml = items.map((item, idx) => {
-      if (item.childTagId !== '0') {
+    const rowsHtml = tags.map((item, idx) => {
+      if (item.childType === ORG_CHILD_TAG) {
+        const name = tagDisplayMap.get(item.childId)?.name || '';
         return `
           <div class="contact-item org-tag-row" data-idx="${idx}">
-            <div class="avatar">${app.escapeHtml((item.name || '?')[0] || '?')}</div>
-            <div class="contact-info"><div class="contact-name">${app.escapeHtml(item.name || item.childTagId)}</div></div>
+            <div class="avatar">${app.escapeHtml((name || '?')[0] || '?')}</div>
+            <div class="contact-info"><div class="contact-name">${app.escapeHtml(name || item.childId)}</div></div>
             <span class="org-row-arrow">›</span>
           </div>`;
       }
-      const ud = userDisplayMap.get(item.uid);
+      const ud = userDisplayMap.get(item.childId);
       const displayName = ud?.remarkName || ud?.nickname || '';
       const memberName = displayName || app.t('common.loading');
       const titleHtml = item.title ? `<span class="org-member-title">${app.escapeHtml(item.title)}</span>` : '';
@@ -624,32 +612,30 @@ export function createContactsView(app: AppInstance) {
     });
     panel.querySelectorAll('.org-tag-row').forEach(el => {
       el.addEventListener('click', () => {
-        const item = items[Number((el as HTMLElement).dataset.idx)];
-        orgPanelStack = [...orgPanelStack, { tagId: item.childTagId, name: item.name || item.childTagId }];
+        const item = tags[Number((el as HTMLElement).dataset.idx)];
+        orgPanelStack = [...orgPanelStack, item.childId];
         void renderOrgPanel();
       });
     });
     panel.querySelectorAll('.org-member-row').forEach(el => {
       el.addEventListener('click', () => {
-        const item = items[Number((el as HTMLElement).dataset.idx)];
+        const item = tags[Number((el as HTMLElement).dataset.idx)];
         // 人条目点开进入既有单聊入口（与好友详情"聊天"按钮同路径）。
         app.views.chat?.switchView('chat');
-        const conv: LocalConversation = { groupId: '0', friendUid: item.uid, lastSeq: 0, lastMessage: null };
+        const conv: LocalConversation = { groupId: '0', friendUid: item.childId, lastSeq: 0, lastMessage: null };
         void app.views.chat?.openConversation(conv);
       });
     });
   }
 
-  /** 打开组织条目：初始化面包屑为根 tag（tag_id == org_id）并渲染架构浏览器。 */
+  /** 打开组织条目：初始化面包屑为组织根（tagId=orgId）并渲染架构浏览器。 */
   async function showOrgDetail(contact: Contact): Promise<void> {
     const orgId = contactOrgId(contact);
     selectedContactKey = contactKey(contact);
     app.$('view-contacts')?.classList.add('mobile-showing-detail');
     renderFriends();
-    await ensureOrgInfos([orgId]);
-    const rootName = contact.remarkName || orgInfoCache.get(orgId)?.name || orgId;
     orgPanelOrgId = orgId;
-    orgPanelStack = [{ tagId: orgId, name: rootName }];
+    orgPanelStack = [orgId];
     await renderOrgPanel();
   }
 

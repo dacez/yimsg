@@ -94,8 +94,11 @@ export type {
   SyncStatus,
   SessionSyncEvent,
   OrgInfo,
-  OrgTagItem,
-  OrgTagItemsPage,
+  OrgDisplayInfo,
+  TagInfo,
+  TagDisplayInfo,
+  Tag,
+  TagsPage,
   OrgContactTarget,
   OrgUpdatedEvent,
 } from './types';

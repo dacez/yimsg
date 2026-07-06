@@ -6,9 +6,9 @@ import type {
   GroupInfo,
   BlocklistUser,
   MutelistEntry,
-  OrgTag,
-  OrgTagItem,
+  Tag,
   OrgInfo,
+  TagInfo,
 } from "../../types";
 import type { WsTransport } from "../transport/connection";
 import type {
@@ -22,8 +22,8 @@ import type {
   MutelistPageParams,
   MutelistPageResult,
   SyncDomain,
-  OrgTagItemsPageParams,
-  OrgTagItemsPageResult,
+  TagsPageParams,
+  TagsPageResult,
 } from "./interface";
 import type { PageInfoResult, PageParams } from "../internal/action-mappers";
 import type { ConversationTarget } from "../types";
@@ -109,7 +109,7 @@ function emptyRebuilding(): Record<SyncCursorKey, boolean> {
     mutelist_seq: false,
   };
 }
-type DisplayCacheKind = "user" | "group";
+type DisplayCacheKind = "user" | "group" | "org" | "tag";
 type RebuildSyncParams = { last_seq?: number; rebuild?: boolean };
 
 /** 单个同步域结束后的变更摘要，供 emitDone 决定派发何种 UI 事件。 */
@@ -158,6 +158,8 @@ interface SyncDomainSpec<TItem, TEmit = TItem> {
 interface DisplayCacheInput {
   uid: string;
   groupId: string;
+  orgId: string;
+  tagId: string;
   username: string;
   name: string;
   avatar: string;
@@ -835,6 +837,80 @@ export class PersistentDataGateway extends BaseDataGateway {
     return groups;
   }
 
+  async get_org_infos(
+    orgIds: string[],
+    options: DisplayInfoFetchOptions<OrgInfo>,
+  ): Promise<OrgInfo[]> {
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await this.loadDisplayCache("org", orgIds);
+    } catch (error) {
+      this.reportError(error, "read org display cache failed");
+      void this.refreshOrgInfos(
+        orgIds.map((orgId) => String(orgId)).filter((orgId) => orgId && orgId !== "0"),
+        options,
+      );
+      return [];
+    }
+    const orgs = rows.map((r) => ({
+      org_id: String(r.org_id),
+      name: String(r.name || ""),
+      avatar: String(r.avatar || ""),
+      updated_at: Number(r.updated_at) || 0,
+    }));
+    const found = new Set(orgs.map((item) => String(item.org_id)));
+    const now = Date.now();
+    const expired = new Set(
+      orgs
+        .filter((item) => (Number(item.updated_at) || 0) + options.cacheTtlMs <= now)
+        .map((item) => String(item.org_id)),
+    );
+    const needServer = orgIds
+      .map((orgId) => String(orgId))
+      .filter((orgId) => orgId && orgId !== "0")
+      .filter((orgId) => !found.has(orgId) || expired.has(orgId));
+    void this.refreshOrgInfos(needServer, options);
+    return orgs;
+  }
+
+  async get_tag_infos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoFetchOptions<TagInfo>,
+  ): Promise<TagInfo[]> {
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await this.loadDisplayCache("tag", tagIds);
+    } catch (error) {
+      this.reportError(error, "read tag display cache failed");
+      void this.refreshTagInfos(
+        orgId,
+        tagIds.map((tagId) => String(tagId)).filter((tagId) => tagId && tagId !== "0"),
+        options,
+      );
+      return [];
+    }
+    const tags = rows.map((r) => ({
+      tag_id: String(r.tag_id),
+      name: String(r.name || ""),
+      avatar: String(r.avatar || ""),
+      updated_at: Number(r.updated_at) || 0,
+    }));
+    const found = new Set(tags.map((item) => String(item.tag_id)));
+    const now = Date.now();
+    const expired = new Set(
+      tags
+        .filter((item) => (Number(item.updated_at) || 0) + options.cacheTtlMs <= now)
+        .map((item) => String(item.tag_id)),
+    );
+    const needServer = tagIds
+      .map((tagId) => String(tagId))
+      .filter((tagId) => tagId && tagId !== "0")
+      .filter((tagId) => !found.has(tagId) || expired.has(tagId));
+    void this.refreshTagInfos(orgId, needServer, options);
+    return tags;
+  }
+
   protected override async refreshUserInfos(
     uids: string[],
     options: DisplayInfoFetchOptions<UserInfo>,
@@ -848,6 +924,8 @@ export class PersistentDataGateway extends BaseDataGateway {
           profiles.map((e) => ({
             uid: String(e.uid || "0"),
             groupId: "0",
+            orgId: "0",
+            tagId: "0",
             username: e.username || "",
             name: e.nickname || e.username || "",
             avatar: e.avatar || "",
@@ -875,6 +953,8 @@ export class PersistentDataGateway extends BaseDataGateway {
           groups.map((e) => ({
             uid: "0",
             groupId: String(e.group_id || "0"),
+            orgId: "0",
+            tagId: "0",
             username: "",
             name: e.name || "",
             avatar: e.avatar || "",
@@ -889,31 +969,104 @@ export class PersistentDataGateway extends BaseDataGateway {
     }
   }
 
+  protected override async refreshOrgInfos(
+    orgIds: string[],
+    options: DisplayInfoFetchOptions<OrgInfo>,
+  ): Promise<void> {
+    if (orgIds.length === 0) return;
+    try {
+      const orgs = await this.fetchOrgInfosFromServer(orgIds);
+      if (orgs.length > 0) {
+        const cacheUpdatedAt = Date.now();
+        await this.putDisplayCache(
+          orgs.map((e) => ({
+            uid: "0",
+            groupId: "0",
+            orgId: String(e.org_id || "0"),
+            tagId: "0",
+            username: "",
+            name: e.name || "",
+            avatar: e.avatar || "",
+            remark: "",
+            updatedAt: cacheUpdatedAt,
+          })),
+        );
+      }
+      options.updateDisplayInfos?.(orgs);
+    } catch (error) {
+      this.reportError(error, "refresh org infos failed");
+    }
+  }
+
+  protected override async refreshTagInfos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoFetchOptions<TagInfo>,
+  ): Promise<void> {
+    if (tagIds.length === 0) return;
+    try {
+      const tags = await this.fetchTagInfosFromServer(orgId, tagIds);
+      if (tags.length > 0) {
+        const cacheUpdatedAt = Date.now();
+        await this.putDisplayCache(
+          tags.map((e) => ({
+            uid: "0",
+            groupId: "0",
+            orgId: "0",
+            tagId: String(e.tag_id || "0"),
+            username: "",
+            name: e.name || "",
+            avatar: e.avatar || "",
+            remark: "",
+            updatedAt: cacheUpdatedAt,
+          })),
+        );
+      }
+      options.updateDisplayInfos?.(tags);
+    } catch (error) {
+      this.reportError(error, "refresh tag infos failed");
+    }
+  }
+
   private async loadDisplayCache(
     kind: DisplayCacheKind,
     ids: string[],
   ): Promise<Record<string, unknown>[]> {
     if (ids.length === 0) return [];
     const ph = ids.map(() => "?").join(",");
-    if (kind === "user") {
-      return this.db.query(
-        `SELECT * FROM displayinfo WHERE group_id = '0' AND uid IN (${ph})`,
-        ids,
-      );
+    switch (kind) {
+      case "user":
+        return this.db.query(
+          `SELECT * FROM displayinfo WHERE group_id = '0' AND org_id = '0' AND tag_id = '0' AND uid IN (${ph})`,
+          ids,
+        );
+      case "group":
+        return this.db.query(
+          `SELECT * FROM displayinfo WHERE uid = '0' AND org_id = '0' AND tag_id = '0' AND group_id IN (${ph})`,
+          ids,
+        );
+      case "org":
+        return this.db.query(
+          `SELECT * FROM displayinfo WHERE uid = '0' AND group_id = '0' AND tag_id = '0' AND org_id IN (${ph})`,
+          ids,
+        );
+      case "tag":
+        return this.db.query(
+          `SELECT * FROM displayinfo WHERE uid = '0' AND group_id = '0' AND org_id = '0' AND tag_id IN (${ph})`,
+          ids,
+        );
     }
-    return this.db.query(
-      `SELECT * FROM displayinfo WHERE uid = '0' AND group_id IN (${ph})`,
-      ids,
-    );
   }
 
   private async putDisplayCache(entries: DisplayCacheInput[]): Promise<void> {
     if (entries.length === 0) return;
     const stmts = entries.map((e) => ({
-      sql: "INSERT INTO displayinfo (uid, group_id, username, name, avatar, remark_name, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(uid, group_id) DO UPDATE SET username = excluded.username, name = excluded.name, avatar = excluded.avatar, remark_name = excluded.remark_name, updated_at = excluded.updated_at",
+      sql: "INSERT INTO displayinfo (uid, group_id, org_id, tag_id, username, name, avatar, remark_name, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(uid, group_id, org_id, tag_id) DO UPDATE SET username = excluded.username, name = excluded.name, avatar = excluded.avatar, remark_name = excluded.remark_name, updated_at = excluded.updated_at",
       params: [
         e.uid || "0",
         e.groupId || "0",
+        e.orgId || "0",
+        e.tagId || "0",
         e.username || "",
         e.name || "",
         e.avatar || "",
@@ -978,10 +1131,12 @@ export class PersistentDataGateway extends BaseDataGateway {
     await this.fullSyncDomain(this.mutelistSpec);
   }
 
-  // ---- 组织 tag 图：按 org_id 的本地副本与增量同步 ----
+  // ---- 组织关系表：按 org_id 的本地副本与增量同步 ----
   //
-  // 与固定域不同，组织游标是每组织一个 meta 键（org_seq:<orgId>），节点与边共用；
-  // tombstone 即删本地行；seq_too_old 清该组织本地副本后全量重建。
+  // 组织游标是每组织一个 meta 键（org_seq:<orgId>）；tombstone 即删本地行；
+  // seq_too_old 清该组织本地副本后全量重建。org_info / tag_info 是无 seq 的
+  // 展示字典，走独立的 get_org_infos / get_tag_infos 缓存通道（见 Cache support），
+  // 不进本地副本。
 
   private orgCursorKey(orgId: string): string {
     return `org_seq:${orgId}`;
@@ -1004,65 +1159,49 @@ export class PersistentDataGateway extends BaseDataGateway {
   /** 清空某组织的本地副本与游标（离职 / seq_too_old 重建）。 */
   private async purgeLocalOrg(orgId: string): Promise<void> {
     await this.db.execBatch([
-      { sql: "DELETE FROM org_tag WHERE org_id = ?", params: [orgId] },
-      { sql: "DELETE FROM org_tag_item WHERE org_id = ?", params: [orgId] },
+      { sql: "DELETE FROM tags WHERE org_id = ?", params: [orgId] },
       { sql: "DELETE FROM meta WHERE key = ?", params: [this.orgCursorKey(orgId)] },
     ]);
   }
 
-  /** org_tag / org_tag_item 本地表的唯一写入点：tombstone 即删，无本地 status。 */
+  /** tags 本地表的唯一写入点：tombstone 即删，无本地 status。 */
   private async applyOrgSyncBatch(
     orgId: string,
-    tags: OrgTag[],
-    items: OrgTagItem[],
+    tags: Tag[],
   ): Promise<void> {
     const stmts: { sql: string; params: unknown[] }[] = [];
     for (const t of tags) {
       const deleted = Number(t.status || 0) === STATUS_DELETED;
       stmts.push({
         sql: deleted
-          ? "DELETE FROM org_tag WHERE org_id = ? AND tag_id = ?"
-          : `INSERT INTO org_tag (org_id, tag_id, name, avatar, seq)
-              VALUES (?, ?, ?, ?, ?)
-              ON CONFLICT(org_id, tag_id) DO UPDATE SET
-                name = excluded.name, avatar = excluded.avatar, seq = excluded.seq`,
-        params: deleted
-          ? [orgId, t.tag_id]
-          : [orgId, t.tag_id, t.name || "", t.avatar || "", t.seq],
-      });
-    }
-    for (const i of items) {
-      const deleted = Number(i.status || 0) === STATUS_DELETED;
-      stmts.push({
-        sql: deleted
-          ? "DELETE FROM org_tag_item WHERE org_id = ? AND tag_id = ? AND child_tag_id = ? AND uid = ?"
-          : `INSERT INTO org_tag_item (org_id, tag_id, child_tag_id, uid, title, rank, sort_key, seq)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(org_id, tag_id, child_tag_id, uid) DO UPDATE SET
+          ? "DELETE FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?"
+          : `INSERT INTO tags (org_id, tag_id, child_id, child_type, title, rank, sort_key, role, seq)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(org_id, tag_id, child_id, child_type) DO UPDATE SET
                 title = excluded.title, rank = excluded.rank,
-                sort_key = excluded.sort_key, seq = excluded.seq`,
+                sort_key = excluded.sort_key, role = excluded.role, seq = excluded.seq`,
         params: deleted
-          ? [orgId, i.tag_id, i.child_tag_id, i.uid]
-          : [orgId, i.tag_id, i.child_tag_id, i.uid, i.title || "", i.rank, i.sort_key || "", i.seq],
+          ? [orgId, t.tag_id, t.child_id, t.child_type]
+          : [orgId, t.tag_id, t.child_id, t.child_type, t.title || "", t.rank, t.sort_key || "", t.role, t.seq],
       });
     }
     if (stmts.length > 0) await this.db.execBatch(stmts);
   }
 
   /**
-   * 单组织增量追平：分页拉 sync_org_tags 直到 has_more=false；
+   * 单组织增量追平：分页拉 sync_tags 直到 has_more=false；
    * seq_too_old 清本地副本后从 0 全量重建（rebuild=true），一次为限防死循环。
    */
   private async syncOrgGraph(orgId: string, rebuilt = false): Promise<void> {
     let cursor = await this.orgCursor(orgId);
     let rebuild = cursor === 0;
     for (;;) {
-      let page: { tags: OrgTag[]; items: OrgTagItem[]; hasMore: boolean; cursorSeq: number };
+      let page: { tags: Tag[]; hasMore: boolean; cursorSeq: number };
       try {
-        page = actionMappers.mapSyncOrgTagsResponse(
-          await actions.syncOrgTags(
+        page = actionMappers.mapSyncTagsResponse(
+          await actions.syncTags(
             this.transport,
-            actionMappers.syncOrgTagsRequest({
+            actionMappers.syncTagsRequest({
               org_id: orgId,
               last_seq: cursor,
               limit: DEFAULT_SYNC_BATCH_SIZE,
@@ -1078,8 +1217,8 @@ export class PersistentDataGateway extends BaseDataGateway {
         }
         throw error;
       }
-      if (page.tags.length === 0 && page.items.length === 0) return;
-      await this.applyOrgSyncBatch(orgId, page.tags, page.items);
+      if (page.tags.length === 0) return;
+      await this.applyOrgSyncBatch(orgId, page.tags);
       if (page.cursorSeq > 0) {
         cursor = Math.max(cursor, page.cursorSeq);
         await this.saveOrgCursor(orgId, cursor);
@@ -1097,15 +1236,15 @@ export class PersistentDataGateway extends BaseDataGateway {
     if (ids.length > 0) this.emitOrgsChanged(ids);
   }
 
-  async get_org_tag_items(params: OrgTagItemsPageParams): Promise<OrgTagItemsPageResult> {
+  async get_tags(params: TagsPageParams): Promise<TagsPageResult> {
     const orgId = String(params.org_id || "0");
     const cursor = await this.orgCursor(orgId);
     if (cursor === 0) {
       // 副本未就绪：走在线展开 fallback，并后台启动该组织全量同步。
       void this.syncQueuedOrg(orgId);
-      return this.fetchOrgTagItemsFromServer(params);
+      return this.fetchTagsFromServer(params);
     }
-    return this.localOrgTagItemsPage(params);
+    return this.localTagsPage(params);
   }
 
   /** 后台单组织同步（串到通知队列外的独立 promise，失败仅上报）。 */
@@ -1117,10 +1256,10 @@ export class PersistentDataGateway extends BaseDataGateway {
     ).catch((error) => this.reportError(error, "org sync failed"));
   }
 
-  /** 本地副本展开：与服务端展示通道同构的 (rank, sort_key, child_tag_id, uid) keyset 分页。 */
-  private async localOrgTagItemsPage(
-    params: OrgTagItemsPageParams,
-  ): Promise<OrgTagItemsPageResult> {
+  /** 本地副本展开：与服务端展示通道同构的 (rank, sort_key, child_type, child_id) keyset 分页。 */
+  private async localTagsPage(
+    params: TagsPageParams,
+  ): Promise<TagsPageResult> {
     const p = params.page ?? {};
     const backward = Boolean(p.backward);
     const limit = clampOptionalPageLimit(p.limit) ?? 200;
@@ -1129,60 +1268,39 @@ export class PersistentDataGateway extends BaseDataGateway {
     const binds: unknown[] = [String(params.org_id), String(params.tag_id)];
     if (parts.length >= 4) {
       where += backward
-        ? " AND (rank, sort_key, child_tag_id, uid) < (?, ?, ?, ?)"
-        : " AND (rank, sort_key, child_tag_id, uid) > (?, ?, ?, ?)";
+        ? " AND (rank, sort_key, child_type, child_id) < (?, ?, ?, ?)"
+        : " AND (rank, sort_key, child_type, child_id) > (?, ?, ?, ?)";
       binds.push(Number(parts[0]), parts[1], Number(parts[2]), Number(parts[3]));
     }
     const orderBy = backward
-      ? "rank DESC, sort_key DESC, child_tag_id DESC, uid DESC"
-      : "rank ASC, sort_key ASC, child_tag_id ASC, uid ASC";
+      ? "rank DESC, sort_key DESC, child_type DESC, child_id DESC"
+      : "rank ASC, sort_key ASC, child_type ASC, child_id ASC";
     const rows = await this.db.query(
-      `SELECT * FROM org_tag_item WHERE ${where} ORDER BY ${orderBy} LIMIT ?`,
+      `SELECT * FROM tags WHERE ${where} ORDER BY ${orderBy} LIMIT ?`,
       [...binds, limit + 1],
     );
     const hasMoreTraveled = rows.length > limit;
     if (hasMoreTraveled) rows.length = limit;
     if (backward) rows.reverse();
 
-    // 子 tag 名 / 图标：本地 org_tag 批量点查后填充（与服务端应用层聚合同构）。
-    const childIds = rows
-      .map((r) => String(r.child_tag_id || "0"))
-      .filter((id) => id !== "0");
-    const nameMap = new Map<string, { name: string; avatar: string }>();
-    if (childIds.length > 0) {
-      const ph = childIds.map(() => "?").join(", ");
-      const tagRows = await this.db.query(
-        `SELECT tag_id, name, avatar FROM org_tag WHERE org_id = ? AND tag_id IN (${ph})`,
-        [String(params.org_id), ...childIds],
-      );
-      for (const t of tagRows) {
-        nameMap.set(String(t.tag_id), { name: String(t.name || ""), avatar: String(t.avatar || "") });
-      }
-    }
-
-    const items: OrgTagItem[] = rows.map((r) => {
-      const childTagId = String(r.child_tag_id || "0");
-      const display = childTagId !== "0" ? nameMap.get(childTagId) : undefined;
-      return {
-        tag_id: String(r.tag_id || "0"),
-        child_tag_id: childTagId,
-        uid: String(r.uid || "0"),
-        name: display?.name || "",
-        avatar: display?.avatar || "",
-        title: String(r.title || ""),
-        rank: Number(r.rank || 0),
-        sort_key: String(r.sort_key || ""),
-        status: 1,
-        seq: Number(r.seq || 0),
-      };
-    });
+    const tags: Tag[] = rows.map((r) => ({
+      tag_id: String(r.tag_id || "0"),
+      child_id: String(r.child_id || "0"),
+      child_type: Number(r.child_type || 0),
+      title: String(r.title || ""),
+      rank: Number(r.rank || 0),
+      sort_key: String(r.sort_key || ""),
+      role: Number(r.role || 0),
+      status: 1,
+      seq: Number(r.seq || 0),
+    }));
 
     const cur = (r: Record<string, unknown>) =>
       encodeCursor(
         String(r.rank ?? "0"),
         String(r.sort_key ?? ""),
-        String(r.child_tag_id ?? "0"),
-        String(r.uid ?? "0"),
+        String(r.child_type ?? "0"),
+        String(r.child_id ?? "0"),
       );
     const page: PageInfoResult = {
       startCursor: rows.length ? cur(rows[0]) : "",
@@ -1191,7 +1309,7 @@ export class PersistentDataGateway extends BaseDataGateway {
       hasMoreForward: backward ? Boolean(p.cursor) : hasMoreTraveled,
       total: -1,
     };
-    return { items, page };
+    return { tags, page };
   }
 
   // ---- Private ----

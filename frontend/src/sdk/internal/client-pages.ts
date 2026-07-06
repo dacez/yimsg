@@ -1,7 +1,7 @@
 import type {
   BlocklistUser as RawBlocklistUser,
   Contact as RawContact,
-  OrgTagItem as RawOrgTagItem,
+  Tag as RawTag,
   GroupMember as RawGroupMember,
   LocalConversation as RawLocalConversation,
   Message as RawMessage,
@@ -10,7 +10,7 @@ import type {
 import type {
   BlocklistUserPage,
   ContactPage,
-  OrgTagItemsPage,
+  TagsPage,
   ConversationPage,
   GroupMemberPage,
   Message,
@@ -24,7 +24,7 @@ import { freezeArray, freezeObject } from "./readonly";
 import {
   mapBlocklistUser,
   mapContact,
-  mapOrgTagItem,
+  mapTag,
   mapGroupMember,
   mapLocalConversation,
   mapMessage,
@@ -72,12 +72,12 @@ export function wrapContactPage(page: {
   });
 }
 
-export function wrapOrgTagItemsPage(page: {
-  items: RawOrgTagItem[];
+export function wrapTagsPage(page: {
+  tags: RawTag[];
   page: PageInfoResult;
-}): OrgTagItemsPage {
+}): TagsPage {
   return freezeObject({
-    items: freezeArray(page.items.map(mapOrgTagItem)),
+    tags: freezeArray(page.tags.map(mapTag)),
     page: freezePageInfo(page.page),
   });
 }

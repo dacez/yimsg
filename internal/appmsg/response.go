@@ -73,10 +73,10 @@ type Response struct {
 	Profiles []dal.User      `json:"profiles,omitempty"`
 	Groups   []dal.GroupInfo `json:"groups,omitempty"`
 
-	// Org（组织展示资料 / tag 图展开与同步）
-	Orgs        []OrgInfo    `json:"orgs,omitempty"`
-	OrgTags     []OrgTag     `json:"tags,omitempty"`
-	OrgTagItems []OrgTagItem `json:"items,omitempty"`
+	// Org（组织/tag 展示资料字典 + tags 展开与同步）
+	Orgs     []OrgInfo `json:"orgs,omitempty"`
+	TagInfos []TagInfo `json:"tag_infos,omitempty"`
+	Tags     []Tag     `json:"tags,omitempty"`
 
 	// Upload
 	URL  string `json:"url,omitempty"`
@@ -292,34 +292,31 @@ type GroupMember struct {
 	JoinedAt int64     `json:"joined_at"`
 }
 
-// OrgInfo 是组织展示资料：根 tag（tag_id == org_id）的投影。
+// OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。
 type OrgInfo struct {
 	OrgID  JSONInt64 `json:"org_id"`
 	Name   string    `json:"name"`
 	Avatar string    `json:"avatar,omitempty"`
 }
 
-// OrgTag 是 tag 图同步的节点条目。
-type OrgTag struct {
+// TagInfo 是 tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。
+type TagInfo struct {
 	TagID  JSONInt64 `json:"tag_id"`
 	Name   string    `json:"name"`
 	Avatar string    `json:"avatar,omitempty"`
-	Status uint8     `json:"status"`
-	Seq    int64     `json:"seq"`
 }
 
-// OrgTagItem 是在线展开与同步共用的边条目：ChildTagID 与 UID 互斥。
-type OrgTagItem struct {
-	TagID      JSONInt64 `json:"tag_id"`
-	ChildTagID JSONInt64 `json:"child_tag_id"`
-	UID        JSONInt64 `json:"uid"`
-	Name       string    `json:"name,omitempty"`
-	Avatar     string    `json:"avatar,omitempty"`
-	Title      string    `json:"title,omitempty"`
-	Rank       int64     `json:"rank"`
-	SortKey    string    `json:"sort_key"`
-	Status     uint8     `json:"status"`
-	Seq        int64     `json:"seq"`
+// Tag 是 tags（组织关系表）条目：在线展开与同步共用，唯一的同步域。
+type Tag struct {
+	TagID     JSONInt64 `json:"tag_id"`
+	ChildID   JSONInt64 `json:"child_id"`
+	ChildType uint8     `json:"child_type"`
+	Title     string    `json:"title,omitempty"`
+	Rank      int64     `json:"rank"`
+	SortKey   string    `json:"sort_key"`
+	Role      uint8     `json:"role"`
+	Status    uint8     `json:"status"`
+	Seq       int64     `json:"seq"`
 }
 
 // OK responses
@@ -443,21 +440,25 @@ func OKOrgInfos(requestID uint64, orgs []OrgInfo) *Response {
 	return &Response{RequestID: requestID, OK: true, Orgs: orgs}
 }
 
-func OKOrgTagItems(requestID uint64, items []OrgTagItem) *Response {
-	if items == nil {
-		items = []OrgTagItem{}
+func OKTagInfos(requestID uint64, tagInfos []TagInfo) *Response {
+	if tagInfos == nil {
+		tagInfos = []TagInfo{}
 	}
-	return &Response{RequestID: requestID, OK: true, OrgTagItems: items}
+	return &Response{RequestID: requestID, OK: true, TagInfos: tagInfos}
 }
 
-func OKSyncOrgTags(requestID uint64, tags []OrgTag, items []OrgTagItem) *Response {
+func OKGetTags(requestID uint64, tags []Tag) *Response {
 	if tags == nil {
-		tags = []OrgTag{}
+		tags = []Tag{}
 	}
-	if items == nil {
-		items = []OrgTagItem{}
+	return &Response{RequestID: requestID, OK: true, Tags: tags}
+}
+
+func OKSyncTags(requestID uint64, tags []Tag) *Response {
+	if tags == nil {
+		tags = []Tag{}
 	}
-	return &Response{RequestID: requestID, OK: true, OrgTags: tags, OrgTagItems: items}
+	return &Response{RequestID: requestID, OK: true, Tags: tags}
 }
 
 func OKSearch(requestID uint64, profile *dal.User) *Response {

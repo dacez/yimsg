@@ -7,7 +7,8 @@ import type {
   GroupMember as RawGroupMember,
   LocalConversation as RawLocalConversation,
   OrgInfo as RawOrgInfo,
-  OrgTagItem as RawOrgTagItem,
+  TagInfo as RawTagInfo,
+  Tag as RawTag,
 } from '../../types';
 import type {
   UserInfo,
@@ -20,7 +21,10 @@ import type {
   LocalConversation,
   MutelistEntry,
   OrgInfo,
-  OrgTagItem,
+  OrgDisplayInfo,
+  TagInfo,
+  TagDisplayInfo,
+  Tag,
 } from '../types';
 import { MSG_TYPE_TEXT } from '../../constants';
 import { freezeObject } from './readonly';
@@ -96,16 +100,37 @@ export function mapOrgInfo(org: RawOrgInfo): OrgInfo {
   });
 }
 
-export function mapOrgTagItem(item: RawOrgTagItem): OrgTagItem {
+export function mapOrgDisplayInfo(info: { name: string; avatar: string }): OrgDisplayInfo {
+  return freezeObject({
+    name: info.name || '',
+    avatarUrl: info.avatar || '',
+  });
+}
+
+export function mapTagInfo(tag: RawTagInfo): TagInfo {
+  return freezeObject({
+    tagId: String(tag.tag_id || '0'),
+    name: String(tag.name || ''),
+    avatarUrl: String(tag.avatar || ''),
+  });
+}
+
+export function mapTagDisplayInfo(info: { name: string; avatar: string }): TagDisplayInfo {
+  return freezeObject({
+    name: info.name || '',
+    avatarUrl: info.avatar || '',
+  });
+}
+
+export function mapTag(item: RawTag): Tag {
   return freezeObject({
     tagId: String(item.tag_id || '0'),
-    childTagId: String(item.child_tag_id || '0'),
-    uid: String(item.uid || '0'),
-    name: String(item.name || ''),
-    avatarUrl: String(item.avatar || ''),
+    childId: String(item.child_id || '0'),
+    childType: Number(item.child_type || 0),
     title: String(item.title || ''),
     rank: Number(item.rank || 0),
     sortKey: String(item.sort_key || ''),
+    role: Number(item.role || 0),
     seq: Number(item.seq || 0),
   });
 }

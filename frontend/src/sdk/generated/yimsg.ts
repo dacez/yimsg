@@ -96,12 +96,14 @@ export enum Type {
   TYPE_ACTION_ADD_GROUP_MEMBER = 42,
   /** TYPE_ACTION_REMOVE_GROUP_MEMBER - action=remove_group_member auth=true domain=群组 desc=移除群成员 */
   TYPE_ACTION_REMOVE_GROUP_MEMBER = 43,
-  /** TYPE_ACTION_GET_ORG_INFOS - action=get_org_infos auth=true domain=组织 desc=批量读取组织展示资料（根 tag 投影） */
+  /** TYPE_ACTION_GET_ORG_INFOS - action=get_org_infos auth=true domain=组织 desc=批量读取组织展示资料 */
   TYPE_ACTION_GET_ORG_INFOS = 44,
-  /** TYPE_ACTION_GET_ORG_TAG_ITEMS - action=get_org_tag_items auth=true domain=组织 desc=在线展开 tag 的直接子项（子 tag 与人混合有序） */
-  TYPE_ACTION_GET_ORG_TAG_ITEMS = 45,
-  /** TYPE_ACTION_SYNC_ORG_TAGS - action=sync_org_tags auth=true domain=组织 desc=按 org 增量同步 tag 图（节点与边共用游标） */
-  TYPE_ACTION_SYNC_ORG_TAGS = 46,
+  /** TYPE_ACTION_GET_TAGS - action=get_tags auth=true domain=组织 desc=在线展开 tags（组织关系表）中某节点的直接子项（tag 与人混合有序） */
+  TYPE_ACTION_GET_TAGS = 45,
+  /** TYPE_ACTION_SYNC_TAGS - action=sync_tags auth=true domain=组织 desc=按 org 增量同步 tags（组织关系表） */
+  TYPE_ACTION_SYNC_TAGS = 46,
+  /** TYPE_ACTION_GET_TAG_INFOS - action=get_tag_infos auth=true domain=组织 desc=批量读取 tag（部门/横向分组）展示资料 */
+  TYPE_ACTION_GET_TAG_INFOS = 47,
   /** TYPE_NOTIFY_MESSAGES_RECEIVED - notification=messages:received desc=消息域发生变化 */
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001,
   /** TYPE_NOTIFY_CONTACTS_UPDATED - notification=contacts:updated desc=通讯录发生变化 */
@@ -257,11 +259,14 @@ export function typeFromJSON(object: any): Type {
     case "TYPE_ACTION_GET_ORG_INFOS":
       return Type.TYPE_ACTION_GET_ORG_INFOS;
     case 45:
-    case "TYPE_ACTION_GET_ORG_TAG_ITEMS":
-      return Type.TYPE_ACTION_GET_ORG_TAG_ITEMS;
+    case "TYPE_ACTION_GET_TAGS":
+      return Type.TYPE_ACTION_GET_TAGS;
     case 46:
-    case "TYPE_ACTION_SYNC_ORG_TAGS":
-      return Type.TYPE_ACTION_SYNC_ORG_TAGS;
+    case "TYPE_ACTION_SYNC_TAGS":
+      return Type.TYPE_ACTION_SYNC_TAGS;
+    case 47:
+    case "TYPE_ACTION_GET_TAG_INFOS":
+      return Type.TYPE_ACTION_GET_TAG_INFOS;
     case 10001:
     case "TYPE_NOTIFY_MESSAGES_RECEIVED":
       return Type.TYPE_NOTIFY_MESSAGES_RECEIVED;
@@ -384,10 +389,12 @@ export function typeToJSON(object: Type): string {
       return "TYPE_ACTION_REMOVE_GROUP_MEMBER";
     case Type.TYPE_ACTION_GET_ORG_INFOS:
       return "TYPE_ACTION_GET_ORG_INFOS";
-    case Type.TYPE_ACTION_GET_ORG_TAG_ITEMS:
-      return "TYPE_ACTION_GET_ORG_TAG_ITEMS";
-    case Type.TYPE_ACTION_SYNC_ORG_TAGS:
-      return "TYPE_ACTION_SYNC_ORG_TAGS";
+    case Type.TYPE_ACTION_GET_TAGS:
+      return "TYPE_ACTION_GET_TAGS";
+    case Type.TYPE_ACTION_SYNC_TAGS:
+      return "TYPE_ACTION_SYNC_TAGS";
+    case Type.TYPE_ACTION_GET_TAG_INFOS:
+      return "TYPE_ACTION_GET_TAG_INFOS";
     case Type.TYPE_NOTIFY_MESSAGES_RECEIVED:
       return "TYPE_NOTIFY_MESSAGES_RECEIVED";
     case Type.TYPE_NOTIFY_CONTACTS_UPDATED:
@@ -819,42 +826,120 @@ export function mutelistStatusToJSON(object: MutelistStatus): string {
   }
 }
 
-/** OrgTagStatus 是组织 tag 图条目（节点与边）状态；0 保留为非法值，真实业务值从 1 开始。 */
-export enum OrgTagStatus {
-  /** ORG_TAG_STATUS_INVALID - reserved=invalid meaning=无效状态 */
-  ORG_TAG_STATUS_INVALID = 0,
-  /** ORG_TAG_STATUS_ACTIVE - meaning=有效 */
-  ORG_TAG_STATUS_ACTIVE = 1,
-  /** ORG_TAG_STATUS_DELETED - meaning=已删除 tombstone */
-  ORG_TAG_STATUS_DELETED = 255,
+/** TagStatus 是 tags（组织关系表）条目状态；0 保留为非法值，真实业务值从 1 开始。 */
+export enum TagStatus {
+  /** TAG_STATUS_INVALID - reserved=invalid meaning=无效状态 */
+  TAG_STATUS_INVALID = 0,
+  /** TAG_STATUS_ACTIVE - meaning=有效 */
+  TAG_STATUS_ACTIVE = 1,
+  /** TAG_STATUS_DELETED - meaning=已删除 tombstone */
+  TAG_STATUS_DELETED = 255,
 }
 
-export function orgTagStatusFromJSON(object: any): OrgTagStatus {
+export function tagStatusFromJSON(object: any): TagStatus {
   switch (object) {
     case 0:
-    case "ORG_TAG_STATUS_INVALID":
-      return OrgTagStatus.ORG_TAG_STATUS_INVALID;
+    case "TAG_STATUS_INVALID":
+      return TagStatus.TAG_STATUS_INVALID;
     case 1:
-    case "ORG_TAG_STATUS_ACTIVE":
-      return OrgTagStatus.ORG_TAG_STATUS_ACTIVE;
+    case "TAG_STATUS_ACTIVE":
+      return TagStatus.TAG_STATUS_ACTIVE;
     case 255:
-    case "ORG_TAG_STATUS_DELETED":
-      return OrgTagStatus.ORG_TAG_STATUS_DELETED;
+    case "TAG_STATUS_DELETED":
+      return TagStatus.TAG_STATUS_DELETED;
     default:
-      throw new globalThis.Error("Unrecognized enum value " + object + " for enum OrgTagStatus");
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagStatus");
   }
 }
 
-export function orgTagStatusToJSON(object: OrgTagStatus): string {
+export function tagStatusToJSON(object: TagStatus): string {
   switch (object) {
-    case OrgTagStatus.ORG_TAG_STATUS_INVALID:
-      return "ORG_TAG_STATUS_INVALID";
-    case OrgTagStatus.ORG_TAG_STATUS_ACTIVE:
-      return "ORG_TAG_STATUS_ACTIVE";
-    case OrgTagStatus.ORG_TAG_STATUS_DELETED:
-      return "ORG_TAG_STATUS_DELETED";
+    case TagStatus.TAG_STATUS_INVALID:
+      return "TAG_STATUS_INVALID";
+    case TagStatus.TAG_STATUS_ACTIVE:
+      return "TAG_STATUS_ACTIVE";
+    case TagStatus.TAG_STATUS_DELETED:
+      return "TAG_STATUS_DELETED";
     default:
-      throw new globalThis.Error("Unrecognized enum value " + object + " for enum OrgTagStatus");
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagStatus");
+  }
+}
+
+/** TagChildType 区分 tags 一行挂载的子项是人还是 tag；0 保留为非法值。 */
+export enum TagChildType {
+  /** TAG_CHILD_TYPE_INVALID - reserved=invalid meaning=无效类型 */
+  TAG_CHILD_TYPE_INVALID = 0,
+  /** TAG_CHILD_TYPE_PERSON - meaning=子项是人，child_id 为 uid */
+  TAG_CHILD_TYPE_PERSON = 1,
+  /** TAG_CHILD_TYPE_TAG - meaning=子项是 tag，child_id 为 tag_id */
+  TAG_CHILD_TYPE_TAG = 2,
+}
+
+export function tagChildTypeFromJSON(object: any): TagChildType {
+  switch (object) {
+    case 0:
+    case "TAG_CHILD_TYPE_INVALID":
+      return TagChildType.TAG_CHILD_TYPE_INVALID;
+    case 1:
+    case "TAG_CHILD_TYPE_PERSON":
+      return TagChildType.TAG_CHILD_TYPE_PERSON;
+    case 2:
+    case "TAG_CHILD_TYPE_TAG":
+      return TagChildType.TAG_CHILD_TYPE_TAG;
+    default:
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagChildType");
+  }
+}
+
+export function tagChildTypeToJSON(object: TagChildType): string {
+  switch (object) {
+    case TagChildType.TAG_CHILD_TYPE_INVALID:
+      return "TAG_CHILD_TYPE_INVALID";
+    case TagChildType.TAG_CHILD_TYPE_PERSON:
+      return "TAG_CHILD_TYPE_PERSON";
+    case TagChildType.TAG_CHILD_TYPE_TAG:
+      return "TAG_CHILD_TYPE_TAG";
+    default:
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagChildType");
+  }
+}
+
+/** TagRole 标识某子项在其挂载节点下是否为管理员；0 保留为非法值。 */
+export enum TagRole {
+  /** TAG_ROLE_INVALID - reserved=invalid meaning=无效角色 */
+  TAG_ROLE_INVALID = 0,
+  /** TAG_ROLE_MEMBER - meaning=普通成员 */
+  TAG_ROLE_MEMBER = 1,
+  /** TAG_ROLE_ADMIN - meaning=管理员 */
+  TAG_ROLE_ADMIN = 2,
+}
+
+export function tagRoleFromJSON(object: any): TagRole {
+  switch (object) {
+    case 0:
+    case "TAG_ROLE_INVALID":
+      return TagRole.TAG_ROLE_INVALID;
+    case 1:
+    case "TAG_ROLE_MEMBER":
+      return TagRole.TAG_ROLE_MEMBER;
+    case 2:
+    case "TAG_ROLE_ADMIN":
+      return TagRole.TAG_ROLE_ADMIN;
+    default:
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagRole");
+  }
+}
+
+export function tagRoleToJSON(object: TagRole): string {
+  switch (object) {
+    case TagRole.TAG_ROLE_INVALID:
+      return "TAG_ROLE_INVALID";
+    case TagRole.TAG_ROLE_MEMBER:
+      return "TAG_ROLE_MEMBER";
+    case TagRole.TAG_ROLE_ADMIN:
+      return "TAG_ROLE_ADMIN";
+    default:
+      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagRole");
   }
 }
 
@@ -944,7 +1029,7 @@ export interface MutelistUpdatedNotification {
 
 /**
  * OrgUpdatedNotification 是组织架构轻通知：只带 org_id，禁止携带增量数据，
- * 客户端收到后按 sync_org_tags 增量追平。
+ * 客户端收到后按 sync_tags 增量追平。
  */
 export interface OrgUpdatedNotification {
   /** required 发生变化的组织 ID */
@@ -1034,7 +1119,7 @@ export interface ContactTarget {
   group_id?:
     | string
     | undefined;
-  /** 组织 ID（即根 tag 的 tag_id）；组织条目记录成员资格 */
+  /** 组织 ID；组织条目记录成员资格 */
   org_id?: string | undefined;
 }
 
@@ -1911,51 +1996,50 @@ export interface RemoveGroupMemberResponse {
   base: BaseResponse | undefined;
 }
 
-/** OrgInfo 是组织展示资料，即根 tag（tag_id == org_id）的投影。 */
+/** OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。 */
 export interface OrgInfo {
-  /** required 组织 ID，即根 tag 的 tag_id */
+  /** required 组织 ID */
   org_id: string;
-  /** required 组织名称（根 tag 的 name） */
+  /** required 组织名称 */
   name: string;
-  /** optional 组织头像 URL（根 tag 的 avatar） */
+  /** optional 组织头像 URL */
   avatar: string;
 }
 
-/** OrgTag 是 tag 图同步用的节点条目；与边共用 org 内单一 seq 空间。 */
-export interface OrgTag {
-  /** required tag ID；根 tag 的 tag_id == org_id */
+/** TagInfo 是 tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。 */
+export interface TagInfo {
+  /** required tag ID */
   tag_id: string;
-  /** required tag 名 */
+  /** required tag 名称 */
   name: string;
-  /** optional tag 图标；根 tag 即组织头像 */
+  /** optional tag 头像 URL */
   avatar: string;
-  /** required DELETED 为 tombstone，本地副本收到即删行 */
-  status: OrgTagStatus;
-  /** required 同步序号（与边共用 seq 空间） */
-  seq: string;
 }
 
-/** OrgTagItem 是在线展开与同步共用的边条目：child_tag_id 与 uid 互斥。 */
-export interface OrgTagItem {
-  /** required 父 tag；在线展开时恒等于请求的 tag_id，同步时用于定位行 */
+/**
+ * Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
+ * （组织根传 org_id，部门传 tag_id）下挂一个子项"；child_type 区分子项是
+ * 人（PERSON，child_id=uid）还是 tag（TAG，child_id=tag_id）；role 标识
+ * 该子项在这个父节点下是否为管理员。
+ */
+export interface Tag {
+  /** required 父节点 ID；在线展开时恒等于请求的 tag_id，展开组织根传 org_id */
   tag_id: string;
-  /** 与 uid 互斥；>0 表示子 tag */
-  child_tag_id: string;
-  /** 与 child_tag_id 互斥；>0 表示人，展示资料走 get_user_infos */
-  uid: string;
-  /** 在线展开时填子 tag 名；同步响应不填（本地副本从 org_tag 取） */
-  name: string;
-  /** optional 在线展开时填子 tag 图标（人条目为空） */
-  avatar: string;
-  /** optional 本 tag 下的职务展示文本（仅人条目） */
+  /** required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id */
+  child_id: string;
+  /** required 子项类型 */
+  child_type: TagChildType;
+  /** optional 本节点下的职务展示文本（仅人条目常用） */
   title: string;
   /** required 本条边的排序值，越小越靠前；2147483647 表示未显式排序 */
   rank: string;
-  /** required 名字归一化排序键（人取昵称、子 tag 取 tag 名） */
+  /** required 名字归一化排序键（人取昵称、tag 取 tag 名） */
   sort_key: string;
+  /** required 子项在本节点下的角色，标识是否为管理员 */
+  role: TagRole;
   /** required 在线展开恒为 ACTIVE；同步含 DELETED tombstone */
-  status: OrgTagStatus;
-  /** required 同步序号（与节点共用 seq 空间） */
+  status: TagStatus;
+  /** required 同步序号 */
   seq: string;
 }
 
@@ -1973,46 +2057,60 @@ export interface GetOrgInfosResponse {
   orgs: OrgInfo[];
 }
 
-export interface GetOrgTagItemsRequest {
+export interface GetTagInfosRequest {
   /** required 组织 ID（分片路由键） */
   org_id: string;
-  /** required 要展开的 tag；展开组织根传 tag_id=org_id，0 非法 */
-  tag_id: string;
-  /** optional 展示分页游标；按 (rank, sort_key, child_tag_id, uid) 升序，游标对客户端不透明 */
-  page: PageQuery | undefined;
+  /** required tag ID 列表，去重后受服务端批量上限约束 */
+  tag_ids: string[];
 }
 
-export interface GetOrgTagItemsResponse {
+export interface GetTagInfosResponse {
   /** required 通用响应状态 */
   base:
     | BaseResponse
     | undefined;
-  /** optional 直接子项，仅 ACTIVE，子 tag 与人按绝对排序混合 */
-  items: OrgTagItem[];
+  /** optional tag 展示资料列表 */
+  tags: TagInfo[];
+}
+
+export interface GetTagsRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 要展开的父节点；展开组织根传 tag_id=org_id，0 非法 */
+  tag_id: string;
+  /** optional 展示分页游标；按 (rank, sort_key, child_type, child_id) 升序，游标对客户端不透明 */
+  page: PageQuery | undefined;
+}
+
+export interface GetTagsResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** optional 直接子项，仅 ACTIVE，tag 与人按绝对排序混合 */
+  tags: Tag[];
   /** required 展示分页信息 */
   page: PageInfo | undefined;
 }
 
-export interface SyncOrgTagsRequest {
+export interface SyncTagsRequest {
   /** required 组织 ID */
   org_id: string;
-  /** optional 客户端最后同步序号；节点与边共用一个游标 */
+  /** optional 客户端最后同步序号 */
   last_seq: string;
-  /** optional 同步条数（节点与边合并计数） */
+  /** optional 同步条数 */
   limit: string;
   /** optional 是否强制重建本地副本 */
   rebuild: boolean;
 }
 
-export interface SyncOrgTagsResponse {
+export interface SyncTagsResponse {
   /** required 通用响应状态 */
   base:
     | BaseResponse
     | undefined;
-  /** optional 增量节点条目（含 tombstone） */
-  tags: OrgTag[];
-  /** optional 增量边条目（含 tombstone） */
-  items: OrgTagItem[];
+  /** optional 增量条目（含 tombstone） */
+  tags: Tag[];
   /** required 是否还有更多增量条目（达到 limit 时为 true） */
   has_more: boolean;
   /** required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0 */
@@ -11994,12 +12092,12 @@ export const OrgInfo: MessageFns<OrgInfo> = {
   },
 };
 
-function createBaseOrgTag(): OrgTag {
-  return { tag_id: "0", name: "", avatar: "", status: 0, seq: "0" };
+function createBaseTagInfo(): TagInfo {
+  return { tag_id: "0", name: "", avatar: "" };
 }
 
-export const OrgTag: MessageFns<OrgTag> = {
-  encode(message: OrgTag, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const TagInfo: MessageFns<TagInfo> = {
+  encode(message: TagInfo, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.tag_id !== "0") {
       writer.uint32(8).int64(message.tag_id);
     }
@@ -12009,19 +12107,13 @@ export const OrgTag: MessageFns<OrgTag> = {
     if (message.avatar !== "") {
       writer.uint32(26).string(message.avatar);
     }
-    if (message.status !== 0) {
-      writer.uint32(32).int32(message.status);
-    }
-    if (message.seq !== "0") {
-      writer.uint32(40).int64(message.seq);
-    }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): OrgTag {
+  decode(input: BinaryReader | Uint8Array, length?: number): TagInfo {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseOrgTag();
+    const message = createBaseTagInfo();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12049,22 +12141,6 @@ export const OrgTag: MessageFns<OrgTag> = {
           message.avatar = reader.string();
           continue;
         }
-        case 4: {
-          if (tag !== 32) {
-            break;
-          }
-
-          message.status = reader.int32() as any;
-          continue;
-        }
-        case 5: {
-          if (tag !== 40) {
-            break;
-          }
-
-          message.seq = reader.int64().toString();
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -12074,7 +12150,7 @@ export const OrgTag: MessageFns<OrgTag> = {
     return message;
   },
 
-  fromJSON(object: any): OrgTag {
+  fromJSON(object: any): TagInfo {
     return {
       tag_id: isSet(object.tagId)
         ? globalThis.String(object.tagId)
@@ -12083,12 +12159,10 @@ export const OrgTag: MessageFns<OrgTag> = {
         : "0",
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
-      status: isSet(object.status) ? orgTagStatusFromJSON(object.status) : 0,
-      seq: isSet(object.seq) ? globalThis.String(object.seq) : "0",
     };
   },
 
-  toJSON(message: OrgTag): unknown {
+  toJSON(message: TagInfo): unknown {
     const obj: any = {};
     if (message.tag_id !== "0") {
       obj.tagId = message.tag_id;
@@ -12099,83 +12173,71 @@ export const OrgTag: MessageFns<OrgTag> = {
     if (message.avatar !== "") {
       obj.avatar = message.avatar;
     }
-    if (message.status !== 0) {
-      obj.status = orgTagStatusToJSON(message.status);
-    }
-    if (message.seq !== "0") {
-      obj.seq = message.seq;
-    }
     return obj;
   },
 
-  create(base?: DeepPartial<OrgTag>): OrgTag {
-    return OrgTag.fromPartial(base ?? {});
+  create(base?: DeepPartial<TagInfo>): TagInfo {
+    return TagInfo.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<OrgTag>): OrgTag {
-    const message = createBaseOrgTag();
+  fromPartial(object: DeepPartial<TagInfo>): TagInfo {
+    const message = createBaseTagInfo();
     message.tag_id = object.tag_id ?? "0";
     message.name = object.name ?? "";
     message.avatar = object.avatar ?? "";
-    message.status = object.status ?? 0;
-    message.seq = object.seq ?? "0";
     return message;
   },
 };
 
-function createBaseOrgTagItem(): OrgTagItem {
+function createBaseTag(): Tag {
   return {
     tag_id: "0",
-    child_tag_id: "0",
-    uid: "0",
-    name: "",
-    avatar: "",
+    child_id: "0",
+    child_type: 0,
     title: "",
     rank: "0",
     sort_key: "",
+    role: 0,
     status: 0,
     seq: "0",
   };
 }
 
-export const OrgTagItem: MessageFns<OrgTagItem> = {
-  encode(message: OrgTagItem, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const Tag: MessageFns<Tag> = {
+  encode(message: Tag, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.tag_id !== "0") {
       writer.uint32(8).int64(message.tag_id);
     }
-    if (message.child_tag_id !== "0") {
-      writer.uint32(16).int64(message.child_tag_id);
+    if (message.child_id !== "0") {
+      writer.uint32(16).int64(message.child_id);
     }
-    if (message.uid !== "0") {
-      writer.uint32(24).int64(message.uid);
-    }
-    if (message.name !== "") {
-      writer.uint32(34).string(message.name);
-    }
-    if (message.avatar !== "") {
-      writer.uint32(42).string(message.avatar);
+    if (message.child_type !== 0) {
+      writer.uint32(24).int32(message.child_type);
     }
     if (message.title !== "") {
-      writer.uint32(50).string(message.title);
+      writer.uint32(34).string(message.title);
     }
     if (message.rank !== "0") {
-      writer.uint32(56).int64(message.rank);
+      writer.uint32(40).int64(message.rank);
     }
     if (message.sort_key !== "") {
-      writer.uint32(66).string(message.sort_key);
+      writer.uint32(50).string(message.sort_key);
+    }
+    if (message.role !== 0) {
+      writer.uint32(56).int32(message.role);
     }
     if (message.status !== 0) {
-      writer.uint32(72).int32(message.status);
+      writer.uint32(64).int32(message.status);
     }
     if (message.seq !== "0") {
-      writer.uint32(80).int64(message.seq);
+      writer.uint32(72).int64(message.seq);
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): OrgTagItem {
+  decode(input: BinaryReader | Uint8Array, length?: number): Tag {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseOrgTagItem();
+    const message = createBaseTag();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12192,7 +12254,7 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
             break;
           }
 
-          message.child_tag_id = reader.int64().toString();
+          message.child_id = reader.int64().toString();
           continue;
         }
         case 3: {
@@ -12200,7 +12262,7 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
             break;
           }
 
-          message.uid = reader.int64().toString();
+          message.child_type = reader.int32() as any;
           continue;
         }
         case 4: {
@@ -12208,15 +12270,15 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
             break;
           }
 
-          message.name = reader.string();
+          message.title = reader.string();
           continue;
         }
         case 5: {
-          if (tag !== 42) {
+          if (tag !== 40) {
             break;
           }
 
-          message.avatar = reader.string();
+          message.rank = reader.int64().toString();
           continue;
         }
         case 6: {
@@ -12224,7 +12286,7 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
             break;
           }
 
-          message.title = reader.string();
+          message.sort_key = reader.string();
           continue;
         }
         case 7: {
@@ -12232,27 +12294,19 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
             break;
           }
 
-          message.rank = reader.int64().toString();
+          message.role = reader.int32() as any;
           continue;
         }
         case 8: {
-          if (tag !== 66) {
-            break;
-          }
-
-          message.sort_key = reader.string();
-          continue;
-        }
-        case 9: {
-          if (tag !== 72) {
+          if (tag !== 64) {
             break;
           }
 
           message.status = reader.int32() as any;
           continue;
         }
-        case 10: {
-          if (tag !== 80) {
+        case 9: {
+          if (tag !== 72) {
             break;
           }
 
@@ -12268,21 +12322,23 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
     return message;
   },
 
-  fromJSON(object: any): OrgTagItem {
+  fromJSON(object: any): Tag {
     return {
       tag_id: isSet(object.tagId)
         ? globalThis.String(object.tagId)
         : isSet(object.tag_id)
         ? globalThis.String(object.tag_id)
         : "0",
-      child_tag_id: isSet(object.childTagId)
-        ? globalThis.String(object.childTagId)
-        : isSet(object.child_tag_id)
-        ? globalThis.String(object.child_tag_id)
+      child_id: isSet(object.childId)
+        ? globalThis.String(object.childId)
+        : isSet(object.child_id)
+        ? globalThis.String(object.child_id)
         : "0",
-      uid: isSet(object.uid) ? globalThis.String(object.uid) : "0",
-      name: isSet(object.name) ? globalThis.String(object.name) : "",
-      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+      child_type: isSet(object.childType)
+        ? tagChildTypeFromJSON(object.childType)
+        : isSet(object.child_type)
+        ? tagChildTypeFromJSON(object.child_type)
+        : 0,
       title: isSet(object.title) ? globalThis.String(object.title) : "",
       rank: isSet(object.rank) ? globalThis.String(object.rank) : "0",
       sort_key: isSet(object.sortKey)
@@ -12290,27 +12346,22 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
         : isSet(object.sort_key)
         ? globalThis.String(object.sort_key)
         : "",
-      status: isSet(object.status) ? orgTagStatusFromJSON(object.status) : 0,
+      role: isSet(object.role) ? tagRoleFromJSON(object.role) : 0,
+      status: isSet(object.status) ? tagStatusFromJSON(object.status) : 0,
       seq: isSet(object.seq) ? globalThis.String(object.seq) : "0",
     };
   },
 
-  toJSON(message: OrgTagItem): unknown {
+  toJSON(message: Tag): unknown {
     const obj: any = {};
     if (message.tag_id !== "0") {
       obj.tagId = message.tag_id;
     }
-    if (message.child_tag_id !== "0") {
-      obj.childTagId = message.child_tag_id;
+    if (message.child_id !== "0") {
+      obj.childId = message.child_id;
     }
-    if (message.uid !== "0") {
-      obj.uid = message.uid;
-    }
-    if (message.name !== "") {
-      obj.name = message.name;
-    }
-    if (message.avatar !== "") {
-      obj.avatar = message.avatar;
+    if (message.child_type !== 0) {
+      obj.childType = tagChildTypeToJSON(message.child_type);
     }
     if (message.title !== "") {
       obj.title = message.title;
@@ -12321,8 +12372,11 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
     if (message.sort_key !== "") {
       obj.sortKey = message.sort_key;
     }
+    if (message.role !== 0) {
+      obj.role = tagRoleToJSON(message.role);
+    }
     if (message.status !== 0) {
-      obj.status = orgTagStatusToJSON(message.status);
+      obj.status = tagStatusToJSON(message.status);
     }
     if (message.seq !== "0") {
       obj.seq = message.seq;
@@ -12330,19 +12384,18 @@ export const OrgTagItem: MessageFns<OrgTagItem> = {
     return obj;
   },
 
-  create(base?: DeepPartial<OrgTagItem>): OrgTagItem {
-    return OrgTagItem.fromPartial(base ?? {});
+  create(base?: DeepPartial<Tag>): Tag {
+    return Tag.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<OrgTagItem>): OrgTagItem {
-    const message = createBaseOrgTagItem();
+  fromPartial(object: DeepPartial<Tag>): Tag {
+    const message = createBaseTag();
     message.tag_id = object.tag_id ?? "0";
-    message.child_tag_id = object.child_tag_id ?? "0";
-    message.uid = object.uid ?? "0";
-    message.name = object.name ?? "";
-    message.avatar = object.avatar ?? "";
+    message.child_id = object.child_id ?? "0";
+    message.child_type = object.child_type ?? 0;
     message.title = object.title ?? "";
     message.rank = object.rank ?? "0";
     message.sort_key = object.sort_key ?? "";
+    message.role = object.role ?? 0;
     message.status = object.status ?? 0;
     message.seq = object.seq ?? "0";
     return message;
@@ -12503,12 +12556,186 @@ export const GetOrgInfosResponse: MessageFns<GetOrgInfosResponse> = {
   },
 };
 
-function createBaseGetOrgTagItemsRequest(): GetOrgTagItemsRequest {
+function createBaseGetTagInfosRequest(): GetTagInfosRequest {
+  return { org_id: "0", tag_ids: [] };
+}
+
+export const GetTagInfosRequest: MessageFns<GetTagInfosRequest> = {
+  encode(message: GetTagInfosRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    writer.uint32(90).fork();
+    for (const v of message.tag_ids) {
+      writer.int64(v);
+    }
+    writer.join();
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetTagInfosRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetTagInfosRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag === 88) {
+            message.tag_ids.push(reader.int64().toString());
+
+            continue;
+          }
+
+          if (tag === 90) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.tag_ids.push(reader.int64().toString());
+            }
+
+            continue;
+          }
+
+          break;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetTagInfosRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_ids: globalThis.Array.isArray(object?.tagIds)
+        ? object.tagIds.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.tag_ids)
+        ? object.tag_ids.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: GetTagInfosRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_ids?.length) {
+      obj.tagIds = message.tag_ids;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<GetTagInfosRequest>): GetTagInfosRequest {
+    return GetTagInfosRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<GetTagInfosRequest>): GetTagInfosRequest {
+    const message = createBaseGetTagInfosRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_ids = object.tag_ids?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseGetTagInfosResponse(): GetTagInfosResponse {
+  return { base: undefined, tags: [] };
+}
+
+export const GetTagInfosResponse: MessageFns<GetTagInfosResponse> = {
+  encode(message: GetTagInfosResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.tags) {
+      TagInfo.encode(v!, writer.uint32(82).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetTagInfosResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetTagInfosResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.tags.push(TagInfo.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetTagInfosResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      tags: globalThis.Array.isArray(object?.tags) ? object.tags.map((e: any) => TagInfo.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: GetTagInfosResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.tags?.length) {
+      obj.tags = message.tags.map((e) => TagInfo.toJSON(e));
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<GetTagInfosResponse>): GetTagInfosResponse {
+    return GetTagInfosResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<GetTagInfosResponse>): GetTagInfosResponse {
+    const message = createBaseGetTagInfosResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.tags = object.tags?.map((e) => TagInfo.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseGetTagsRequest(): GetTagsRequest {
   return { org_id: "0", tag_id: "0", page: undefined };
 }
 
-export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
-  encode(message: GetOrgTagItemsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const GetTagsRequest: MessageFns<GetTagsRequest> = {
+  encode(message: GetTagsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.org_id !== "0") {
       writer.uint32(80).int64(message.org_id);
     }
@@ -12521,10 +12748,10 @@ export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): GetOrgTagItemsRequest {
+  decode(input: BinaryReader | Uint8Array, length?: number): GetTagsRequest {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetOrgTagItemsRequest();
+    const message = createBaseGetTagsRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12561,7 +12788,7 @@ export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
     return message;
   },
 
-  fromJSON(object: any): GetOrgTagItemsRequest {
+  fromJSON(object: any): GetTagsRequest {
     return {
       org_id: isSet(object.orgId)
         ? globalThis.String(object.orgId)
@@ -12577,7 +12804,7 @@ export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
     };
   },
 
-  toJSON(message: GetOrgTagItemsRequest): unknown {
+  toJSON(message: GetTagsRequest): unknown {
     const obj: any = {};
     if (message.org_id !== "0") {
       obj.orgId = message.org_id;
@@ -12591,11 +12818,11 @@ export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
     return obj;
   },
 
-  create(base?: DeepPartial<GetOrgTagItemsRequest>): GetOrgTagItemsRequest {
-    return GetOrgTagItemsRequest.fromPartial(base ?? {});
+  create(base?: DeepPartial<GetTagsRequest>): GetTagsRequest {
+    return GetTagsRequest.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<GetOrgTagItemsRequest>): GetOrgTagItemsRequest {
-    const message = createBaseGetOrgTagItemsRequest();
+  fromPartial(object: DeepPartial<GetTagsRequest>): GetTagsRequest {
+    const message = createBaseGetTagsRequest();
     message.org_id = object.org_id ?? "0";
     message.tag_id = object.tag_id ?? "0";
     message.page = (object.page !== undefined && object.page !== null) ? PageQuery.fromPartial(object.page) : undefined;
@@ -12603,17 +12830,17 @@ export const GetOrgTagItemsRequest: MessageFns<GetOrgTagItemsRequest> = {
   },
 };
 
-function createBaseGetOrgTagItemsResponse(): GetOrgTagItemsResponse {
-  return { base: undefined, items: [], page: undefined };
+function createBaseGetTagsResponse(): GetTagsResponse {
+  return { base: undefined, tags: [], page: undefined };
 }
 
-export const GetOrgTagItemsResponse: MessageFns<GetOrgTagItemsResponse> = {
-  encode(message: GetOrgTagItemsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const GetTagsResponse: MessageFns<GetTagsResponse> = {
+  encode(message: GetTagsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.base !== undefined) {
       BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
     }
-    for (const v of message.items) {
-      OrgTagItem.encode(v!, writer.uint32(82).fork()).join();
+    for (const v of message.tags) {
+      Tag.encode(v!, writer.uint32(82).fork()).join();
     }
     if (message.page !== undefined) {
       PageInfo.encode(message.page, writer.uint32(90).fork()).join();
@@ -12621,10 +12848,10 @@ export const GetOrgTagItemsResponse: MessageFns<GetOrgTagItemsResponse> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): GetOrgTagItemsResponse {
+  decode(input: BinaryReader | Uint8Array, length?: number): GetTagsResponse {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetOrgTagItemsResponse();
+    const message = createBaseGetTagsResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12641,7 +12868,7 @@ export const GetOrgTagItemsResponse: MessageFns<GetOrgTagItemsResponse> = {
             break;
           }
 
-          message.items.push(OrgTagItem.decode(reader, reader.uint32()));
+          message.tags.push(Tag.decode(reader, reader.uint32()));
           continue;
         }
         case 11: {
@@ -12661,21 +12888,21 @@ export const GetOrgTagItemsResponse: MessageFns<GetOrgTagItemsResponse> = {
     return message;
   },
 
-  fromJSON(object: any): GetOrgTagItemsResponse {
+  fromJSON(object: any): GetTagsResponse {
     return {
       base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
-      items: globalThis.Array.isArray(object?.items) ? object.items.map((e: any) => OrgTagItem.fromJSON(e)) : [],
+      tags: globalThis.Array.isArray(object?.tags) ? object.tags.map((e: any) => Tag.fromJSON(e)) : [],
       page: isSet(object.page) ? PageInfo.fromJSON(object.page) : undefined,
     };
   },
 
-  toJSON(message: GetOrgTagItemsResponse): unknown {
+  toJSON(message: GetTagsResponse): unknown {
     const obj: any = {};
     if (message.base !== undefined) {
       obj.base = BaseResponse.toJSON(message.base);
     }
-    if (message.items?.length) {
-      obj.items = message.items.map((e) => OrgTagItem.toJSON(e));
+    if (message.tags?.length) {
+      obj.tags = message.tags.map((e) => Tag.toJSON(e));
     }
     if (message.page !== undefined) {
       obj.page = PageInfo.toJSON(message.page);
@@ -12683,26 +12910,26 @@ export const GetOrgTagItemsResponse: MessageFns<GetOrgTagItemsResponse> = {
     return obj;
   },
 
-  create(base?: DeepPartial<GetOrgTagItemsResponse>): GetOrgTagItemsResponse {
-    return GetOrgTagItemsResponse.fromPartial(base ?? {});
+  create(base?: DeepPartial<GetTagsResponse>): GetTagsResponse {
+    return GetTagsResponse.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<GetOrgTagItemsResponse>): GetOrgTagItemsResponse {
-    const message = createBaseGetOrgTagItemsResponse();
+  fromPartial(object: DeepPartial<GetTagsResponse>): GetTagsResponse {
+    const message = createBaseGetTagsResponse();
     message.base = (object.base !== undefined && object.base !== null)
       ? BaseResponse.fromPartial(object.base)
       : undefined;
-    message.items = object.items?.map((e) => OrgTagItem.fromPartial(e)) || [];
+    message.tags = object.tags?.map((e) => Tag.fromPartial(e)) || [];
     message.page = (object.page !== undefined && object.page !== null) ? PageInfo.fromPartial(object.page) : undefined;
     return message;
   },
 };
 
-function createBaseSyncOrgTagsRequest(): SyncOrgTagsRequest {
+function createBaseSyncTagsRequest(): SyncTagsRequest {
   return { org_id: "0", last_seq: "0", limit: "0", rebuild: false };
 }
 
-export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
-  encode(message: SyncOrgTagsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const SyncTagsRequest: MessageFns<SyncTagsRequest> = {
+  encode(message: SyncTagsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.org_id !== "0") {
       writer.uint32(80).int64(message.org_id);
     }
@@ -12718,10 +12945,10 @@ export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): SyncOrgTagsRequest {
+  decode(input: BinaryReader | Uint8Array, length?: number): SyncTagsRequest {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseSyncOrgTagsRequest();
+    const message = createBaseSyncTagsRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12766,7 +12993,7 @@ export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
     return message;
   },
 
-  fromJSON(object: any): SyncOrgTagsRequest {
+  fromJSON(object: any): SyncTagsRequest {
     return {
       org_id: isSet(object.orgId)
         ? globalThis.String(object.orgId)
@@ -12783,7 +13010,7 @@ export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
     };
   },
 
-  toJSON(message: SyncOrgTagsRequest): unknown {
+  toJSON(message: SyncTagsRequest): unknown {
     const obj: any = {};
     if (message.org_id !== "0") {
       obj.orgId = message.org_id;
@@ -12800,11 +13027,11 @@ export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
     return obj;
   },
 
-  create(base?: DeepPartial<SyncOrgTagsRequest>): SyncOrgTagsRequest {
-    return SyncOrgTagsRequest.fromPartial(base ?? {});
+  create(base?: DeepPartial<SyncTagsRequest>): SyncTagsRequest {
+    return SyncTagsRequest.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<SyncOrgTagsRequest>): SyncOrgTagsRequest {
-    const message = createBaseSyncOrgTagsRequest();
+  fromPartial(object: DeepPartial<SyncTagsRequest>): SyncTagsRequest {
+    const message = createBaseSyncTagsRequest();
     message.org_id = object.org_id ?? "0";
     message.last_seq = object.last_seq ?? "0";
     message.limit = object.limit ?? "0";
@@ -12813,34 +13040,31 @@ export const SyncOrgTagsRequest: MessageFns<SyncOrgTagsRequest> = {
   },
 };
 
-function createBaseSyncOrgTagsResponse(): SyncOrgTagsResponse {
-  return { base: undefined, tags: [], items: [], has_more: false, cursor_seq: "0" };
+function createBaseSyncTagsResponse(): SyncTagsResponse {
+  return { base: undefined, tags: [], has_more: false, cursor_seq: "0" };
 }
 
-export const SyncOrgTagsResponse: MessageFns<SyncOrgTagsResponse> = {
-  encode(message: SyncOrgTagsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const SyncTagsResponse: MessageFns<SyncTagsResponse> = {
+  encode(message: SyncTagsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.base !== undefined) {
       BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
     }
     for (const v of message.tags) {
-      OrgTag.encode(v!, writer.uint32(82).fork()).join();
-    }
-    for (const v of message.items) {
-      OrgTagItem.encode(v!, writer.uint32(90).fork()).join();
+      Tag.encode(v!, writer.uint32(82).fork()).join();
     }
     if (message.has_more !== false) {
-      writer.uint32(96).bool(message.has_more);
+      writer.uint32(88).bool(message.has_more);
     }
     if (message.cursor_seq !== "0") {
-      writer.uint32(104).int64(message.cursor_seq);
+      writer.uint32(96).int64(message.cursor_seq);
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): SyncOrgTagsResponse {
+  decode(input: BinaryReader | Uint8Array, length?: number): SyncTagsResponse {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     const end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseSyncOrgTagsResponse();
+    const message = createBaseSyncTagsResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -12857,27 +13081,19 @@ export const SyncOrgTagsResponse: MessageFns<SyncOrgTagsResponse> = {
             break;
           }
 
-          message.tags.push(OrgTag.decode(reader, reader.uint32()));
+          message.tags.push(Tag.decode(reader, reader.uint32()));
           continue;
         }
         case 11: {
-          if (tag !== 90) {
-            break;
-          }
-
-          message.items.push(OrgTagItem.decode(reader, reader.uint32()));
-          continue;
-        }
-        case 12: {
-          if (tag !== 96) {
+          if (tag !== 88) {
             break;
           }
 
           message.has_more = reader.bool();
           continue;
         }
-        case 13: {
-          if (tag !== 104) {
+        case 12: {
+          if (tag !== 96) {
             break;
           }
 
@@ -12893,11 +13109,10 @@ export const SyncOrgTagsResponse: MessageFns<SyncOrgTagsResponse> = {
     return message;
   },
 
-  fromJSON(object: any): SyncOrgTagsResponse {
+  fromJSON(object: any): SyncTagsResponse {
     return {
       base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
-      tags: globalThis.Array.isArray(object?.tags) ? object.tags.map((e: any) => OrgTag.fromJSON(e)) : [],
-      items: globalThis.Array.isArray(object?.items) ? object.items.map((e: any) => OrgTagItem.fromJSON(e)) : [],
+      tags: globalThis.Array.isArray(object?.tags) ? object.tags.map((e: any) => Tag.fromJSON(e)) : [],
       has_more: isSet(object.hasMore)
         ? globalThis.Boolean(object.hasMore)
         : isSet(object.has_more)
@@ -12911,16 +13126,13 @@ export const SyncOrgTagsResponse: MessageFns<SyncOrgTagsResponse> = {
     };
   },
 
-  toJSON(message: SyncOrgTagsResponse): unknown {
+  toJSON(message: SyncTagsResponse): unknown {
     const obj: any = {};
     if (message.base !== undefined) {
       obj.base = BaseResponse.toJSON(message.base);
     }
     if (message.tags?.length) {
-      obj.tags = message.tags.map((e) => OrgTag.toJSON(e));
-    }
-    if (message.items?.length) {
-      obj.items = message.items.map((e) => OrgTagItem.toJSON(e));
+      obj.tags = message.tags.map((e) => Tag.toJSON(e));
     }
     if (message.has_more !== false) {
       obj.hasMore = message.has_more;
@@ -12931,16 +13143,15 @@ export const SyncOrgTagsResponse: MessageFns<SyncOrgTagsResponse> = {
     return obj;
   },
 
-  create(base?: DeepPartial<SyncOrgTagsResponse>): SyncOrgTagsResponse {
-    return SyncOrgTagsResponse.fromPartial(base ?? {});
+  create(base?: DeepPartial<SyncTagsResponse>): SyncTagsResponse {
+    return SyncTagsResponse.fromPartial(base ?? {});
   },
-  fromPartial(object: DeepPartial<SyncOrgTagsResponse>): SyncOrgTagsResponse {
-    const message = createBaseSyncOrgTagsResponse();
+  fromPartial(object: DeepPartial<SyncTagsResponse>): SyncTagsResponse {
+    const message = createBaseSyncTagsResponse();
     message.base = (object.base !== undefined && object.base !== null)
       ? BaseResponse.fromPartial(object.base)
       : undefined;
-    message.tags = object.tags?.map((e) => OrgTag.fromPartial(e)) || [];
-    message.items = object.items?.map((e) => OrgTagItem.fromPartial(e)) || [];
+    message.tags = object.tags?.map((e) => Tag.fromPartial(e)) || [];
     message.has_more = object.has_more ?? false;
     message.cursor_seq = object.cursor_seq ?? "0";
     return message;

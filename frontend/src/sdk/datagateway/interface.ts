@@ -8,7 +8,8 @@ import type {
   BlocklistUser,
   MutelistEntry,
   OrgInfo,
-  OrgTagItem,
+  TagInfo,
+  Tag,
 } from "../../types";
 import type { PageInfoResult, PageParams } from "../internal/action-mappers";
 import type { ConversationTarget } from "../types";
@@ -42,14 +43,14 @@ export interface ContactPageParams {
   readonly org_ids?: readonly string[];
 }
 
-export interface OrgTagItemsPageParams {
+export interface TagsPageParams {
   readonly org_id: string;
   readonly tag_id: string;
   readonly page?: PageParams;
 }
 
-export interface OrgTagItemsPageResult {
-  readonly items: OrgTagItem[];
+export interface TagsPageResult {
+  readonly tags: Tag[];
   readonly page: PageInfoResult;
 }
 
@@ -124,8 +125,7 @@ export interface DataGateway {
   }): Promise<MessagePageResult>;
   get_contacts(params: ContactPageParams): Promise<ContactPageResult>;
   get_contact_count(status: number): Promise<number>;
-  get_org_infos(orgIds: string[]): Promise<OrgInfo[]>;
-  get_org_tag_items(params: OrgTagItemsPageParams): Promise<OrgTagItemsPageResult>;
+  get_tags(params: TagsPageParams): Promise<TagsPageResult>;
   get_blocklist(params: BlocklistPageParams): Promise<BlocklistPageResult>;
   get_mutelist(params: MutelistPageParams): Promise<MutelistPageResult>;
 
@@ -138,6 +138,15 @@ export interface DataGateway {
     groupIds: string[],
     options: DisplayInfoFetchOptions<GroupInfo>,
   ): MaybePromise<GroupInfo[]>;
+  get_org_infos(
+    orgIds: string[],
+    options: DisplayInfoFetchOptions<OrgInfo>,
+  ): MaybePromise<OrgInfo[]>;
+  get_tag_infos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoFetchOptions<TagInfo>,
+  ): MaybePromise<TagInfo[]>;
 
   // ---- Event callbacks ----
   onMessagesReceived(cb: (messages: Message[]) => void): void;

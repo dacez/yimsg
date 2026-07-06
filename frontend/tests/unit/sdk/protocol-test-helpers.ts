@@ -21,7 +21,8 @@ import {
   GetMessagesRequest, GetMessagesResponse,
   GetMutelistRequest, GetMutelistResponse,
   GetOrgInfosRequest, GetOrgInfosResponse,
-  GetOrgTagItemsRequest, GetOrgTagItemsResponse,
+  GetTagInfosRequest, GetTagInfosResponse,
+  GetTagsRequest, GetTagsResponse,
   GetContactCountRequest, GetContactCountResponse,
   GetUnreadCountRequest, GetUnreadCountResponse,
   GetUserInfosRequest, GetUserInfosResponse,
@@ -45,7 +46,7 @@ import {
   SyncConversationsRequest, SyncConversationsResponse,
   SyncMessagesRequest, SyncMessagesResponse,
   SyncMutelistRequest, SyncMutelistResponse,
-  SyncOrgTagsRequest, SyncOrgTagsResponse,
+  SyncTagsRequest, SyncTagsResponse,
   OrgUpdatedNotification,
   Type,
   UnblockUserRequest, UnblockUserResponse,
@@ -69,7 +70,7 @@ export const CORE_ACTION_NAMES = [
   'deleteConversation','deleteFriend','deleteMessage','favoriteGroup','getBlocklist',
   'getContacts','getConversations','getGroupInfos','getGroupMembers','getMessages',
   'getMutelist','getContactCount','getUnreadCount','getUserInfos',
-  'getOrgInfos','getOrgTagItems','syncOrgTags',
+  'getOrgInfos','getTagInfos','getTags','syncTags',
   'login','logout','clearUnread','muteConversation','ping','recallMessage','register',
   'rejectFriend','removeGroupMember','searchUser','sendMessage',
   'syncBlocklist','syncContacts','syncConversations','syncMessages','syncMutelist',
@@ -172,8 +173,9 @@ export function actionType(action: CoreActionName): number {
     case 'unmuteConversation': return Type.TYPE_ACTION_UNMUTE_CONVERSATION;
     case 'getMutelist': return Type.TYPE_ACTION_GET_MUTELIST;
     case 'getOrgInfos': return Type.TYPE_ACTION_GET_ORG_INFOS;
-    case 'getOrgTagItems': return Type.TYPE_ACTION_GET_ORG_TAG_ITEMS;
-    case 'syncOrgTags': return Type.TYPE_ACTION_SYNC_ORG_TAGS;
+    case 'getTagInfos': return Type.TYPE_ACTION_GET_TAG_INFOS;
+    case 'getTags': return Type.TYPE_ACTION_GET_TAGS;
+    case 'syncTags': return Type.TYPE_ACTION_SYNC_TAGS;
     case 'syncMutelist': return Type.TYPE_ACTION_SYNC_MUTELIST;
     case 'createGroup': return Type.TYPE_ACTION_CREATE_GROUP;
     case 'getGroupInfos': return Type.TYPE_ACTION_GET_GROUP_INFOS;
@@ -230,8 +232,9 @@ export function requestCodec(typeId: number): TestProtobufMessageCodec {
     case Type.TYPE_ACTION_GET_MUTELIST: return GetMutelistRequest;
     case Type.TYPE_ACTION_SYNC_MUTELIST: return SyncMutelistRequest;
     case Type.TYPE_ACTION_GET_ORG_INFOS: return GetOrgInfosRequest;
-    case Type.TYPE_ACTION_GET_ORG_TAG_ITEMS: return GetOrgTagItemsRequest;
-    case Type.TYPE_ACTION_SYNC_ORG_TAGS: return SyncOrgTagsRequest;
+    case Type.TYPE_ACTION_GET_TAG_INFOS: return GetTagInfosRequest;
+    case Type.TYPE_ACTION_GET_TAGS: return GetTagsRequest;
+    case Type.TYPE_ACTION_SYNC_TAGS: return SyncTagsRequest;
     case Type.TYPE_ACTION_CREATE_GROUP: return CreateGroupRequest;
     case Type.TYPE_ACTION_GET_GROUP_INFOS: return GetGroupInfosRequest;
     case Type.TYPE_ACTION_GET_GROUP_MEMBERS: return GetGroupMembersRequest;
@@ -282,8 +285,9 @@ function responseCodec(typeId: number): TestProtobufMessageCodec {
     case Type.TYPE_ACTION_GET_MUTELIST: return GetMutelistResponse;
     case Type.TYPE_ACTION_SYNC_MUTELIST: return SyncMutelistResponse;
     case Type.TYPE_ACTION_GET_ORG_INFOS: return GetOrgInfosResponse;
-    case Type.TYPE_ACTION_GET_ORG_TAG_ITEMS: return GetOrgTagItemsResponse;
-    case Type.TYPE_ACTION_SYNC_ORG_TAGS: return SyncOrgTagsResponse;
+    case Type.TYPE_ACTION_GET_TAG_INFOS: return GetTagInfosResponse;
+    case Type.TYPE_ACTION_GET_TAGS: return GetTagsResponse;
+    case Type.TYPE_ACTION_SYNC_TAGS: return SyncTagsResponse;
     case Type.TYPE_ACTION_CREATE_GROUP: return CreateGroupResponse;
     case Type.TYPE_ACTION_GET_GROUP_INFOS: return GetGroupInfosResponse;
     case Type.TYPE_ACTION_GET_GROUP_MEMBERS: return GetGroupMembersResponse;

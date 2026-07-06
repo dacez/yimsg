@@ -163,45 +163,53 @@ CREATE INDEX IF NOT EXISTS idx_group_member_order ON group_member(group_id, role
 `
 
 const schemaOrg = `
--- 节点表：组织、部门、横向分组统一为 tag；根 tag 的 tag_id == org_id，
--- 其 name / avatar 即组织名称与头像（通讯录组织条目的展示数据源）。
-CREATE TABLE IF NOT EXISTS org_tag (
+-- 组织字典表：仅组织展示信息，无 seq/status，不参与同步（与 group_info 同构）。
+CREATE TABLE IF NOT EXISTS org_info (
+    org_id     INTEGER PRIMARY KEY,
+    name       TEXT    NOT NULL DEFAULT '',
+    avatar     TEXT    NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+-- tag 字典表：部门/横向分组的展示信息，无 seq/status，不参与同步。
+CREATE TABLE IF NOT EXISTS tag_info (
     org_id     INTEGER NOT NULL,
     tag_id     INTEGER NOT NULL,
     name       TEXT    NOT NULL DEFAULT '',
     avatar     TEXT    NOT NULL DEFAULT '',
-    status     INTEGER NOT NULL CHECK (status <> 0),
-    seq        INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (org_id, tag_id)
 );
-CREATE INDEX IF NOT EXISTS idx_org_tag_seq ON org_tag(org_id, seq);
 
--- 边表：唯一的关系表。一行是"tag 包含子 tag"（child_tag_id>0, uid=0）
--- 或"tag 包含人"（uid>0, child_tag_id=0），互斥；rank/title/sort_key 是边的属性。
-CREATE TABLE IF NOT EXISTS org_tag_item (
-    org_id       INTEGER NOT NULL,
-    tag_id       INTEGER NOT NULL,
-    child_tag_id INTEGER NOT NULL DEFAULT 0,
-    uid          INTEGER NOT NULL DEFAULT 0,
-    title        TEXT    NOT NULL DEFAULT '',
-    rank         INTEGER NOT NULL DEFAULT 2147483647,
-    sort_key     TEXT    NOT NULL DEFAULT '',
-    status       INTEGER NOT NULL CHECK (status <> 0),
-    seq          INTEGER NOT NULL DEFAULT 0,
-    created_at   INTEGER NOT NULL,
-    updated_at   INTEGER NOT NULL,
-    PRIMARY KEY (org_id, tag_id, child_tag_id, uid)
+-- tags：唯一的同步域（组织关系表）。一行是"某父节点（组织根传 org_id、
+-- 部门传 tag_id）下挂一个子项"，child_type 区分子项是人（PERSON, child_id=uid）
+-- 还是 tag（TAG, child_id=tag_id）；role 标识该子项在这个父节点下是否为
+-- 管理员；rank/title/sort_key 是边的属性。
+CREATE TABLE IF NOT EXISTS tags (
+    org_id     INTEGER NOT NULL,
+    tag_id     INTEGER NOT NULL,
+    child_id   INTEGER NOT NULL,
+    child_type INTEGER NOT NULL CHECK (child_type <> 0),
+    title      TEXT    NOT NULL DEFAULT '',
+    rank       INTEGER NOT NULL DEFAULT 2147483647,
+    sort_key   TEXT    NOT NULL DEFAULT '',
+    role       INTEGER NOT NULL DEFAULT 1 CHECK (role <> 0),
+    status     INTEGER NOT NULL CHECK (status <> 0),
+    seq        INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (org_id, tag_id, child_id, child_type)
 );
--- 展开一个 tag：仅 ACTIVE 行，子 tag 与人混合的绝对排序 + keyset 分页，索引即最终顺序。
-CREATE INDEX IF NOT EXISTS idx_org_tag_item_order ON org_tag_item(org_id, tag_id, status, rank, sort_key, child_tag_id, uid);
+-- 展开一个父节点：仅 ACTIVE 行，tag 与人混合的绝对排序 + keyset 分页，索引即最终顺序。
+CREATE INDEX IF NOT EXISTS idx_tags_order ON tags(org_id, tag_id, status, rank, sort_key, child_type, child_id);
 -- 同步游标：seq 增量顺扫。
-CREATE INDEX IF NOT EXISTS idx_org_tag_item_seq ON org_tag_item(org_id, seq);
--- 按人反查：离职判定（是否还有边）、昵称变化刷投影、未来"定位某人"。
-CREATE INDEX IF NOT EXISTS idx_org_tag_item_uid ON org_tag_item(org_id, uid);
+CREATE INDEX IF NOT EXISTS idx_tags_seq ON tags(org_id, seq);
+-- 按子项反查：离职判定（人是否还有边）、昵称/tag 改名联动刷投影。
+CREATE INDEX IF NOT EXISTS idx_tags_child ON tags(org_id, child_type, child_id);
 
--- 版本表：节点与边共用的单一 seq 空间 + GC 水位线（先例：messages_version）。
+-- 版本表：tags 的 seq 空间 + GC 水位线（先例：messages_version）。
 CREATE TABLE IF NOT EXISTS org_version (
     org_id      INTEGER PRIMARY KEY,
     gc_safe_seq INTEGER NOT NULL DEFAULT 0,

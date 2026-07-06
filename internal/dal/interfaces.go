@@ -126,17 +126,21 @@ type MutelistStoreAPI interface {
 	GetVersion(uid int64) (gcSafeSeq, maxSeq int64, err error)
 }
 
-// OrgStoreAPI defines org tag graph operations（org_id 分片；节点与边共用 seq 空间）。
+// OrgStoreAPI defines org operations（org_id 分片）：org_info / tag_info 是
+// 无 seq/status 的展示字典，tags 是唯一的同步域。
 type OrgStoreAPI interface {
-	UpsertTag(orgID, tagID int64, name, avatar string, now int64) (int64, error)
-	GetTag(orgID, tagID int64) (*OrgTag, error)
-	ListInfos(orgIDs []int64) ([]OrgTag, error)
-	DeleteTag(orgID, tagID int64, now int64) (bool, error)
-	UpsertItem(orgID, tagID, childTagID, uid int64, title string, rank int64, sortKey string, now int64) (seq int64, hadActive bool, err error)
-	RemoveItem(orgID, tagID, childTagID, uid int64, now int64) (removed bool, stillActive bool, err error)
-	ListItemsPage(orgID, tagID int64, cursorParts []string, backward bool, limit int64) ([]OrgTagItem, error)
-	ListTagNames(orgID int64, tagIDs []int64) (map[int64][2]string, error)
-	SyncPage(orgID, afterSeq, limit int64) ([]OrgTag, []OrgTagItem, bool, error)
+	UpsertOrgInfo(orgID int64, name, avatar string, now int64) error
+	GetOrgInfo(orgID int64) (*OrgInfo, error)
+	ListOrgInfos(orgIDs []int64) ([]OrgInfo, error)
+	UpsertTagInfo(orgID, tagID int64, name, avatar string, now int64) error
+	RenameTagInfo(orgID, tagID int64, name, avatar string, now int64) error
+	GetTagInfo(orgID, tagID int64) (*TagInfo, error)
+	ListTagInfos(orgID int64, tagIDs []int64) ([]TagInfo, error)
+	DeleteTagInfo(orgID, tagID int64, now int64) (bool, error)
+	UpsertTag(orgID, tagID, childID int64, childType uint8, title string, rank int64, sortKey string, role uint8, now int64) (seq int64, hadActive bool, err error)
+	RemoveTag(orgID, tagID, childID int64, childType uint8, now int64) (removed bool, stillActive bool, err error)
+	ListTagsPage(orgID, tagID int64, cursorParts []string, backward bool, limit int64) ([]Tag, error)
+	SyncPage(orgID, afterSeq, limit int64) ([]Tag, bool, error)
 	ListDirectMemberUIDs(orgID, tagID int64) ([]int64, error)
 	ActiveMemberUIDs(orgID int64) ([]int64, error)
 	UpdateMemberSortKeys(orgID, uid int64, sortKey string, now int64) (int64, error)

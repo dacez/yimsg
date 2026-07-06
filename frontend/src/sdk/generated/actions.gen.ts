@@ -47,8 +47,10 @@ import {
   GetMutelistResponse,
   GetOrgInfosRequest,
   GetOrgInfosResponse,
-  GetOrgTagItemsRequest,
-  GetOrgTagItemsResponse,
+  GetTagInfosRequest,
+  GetTagInfosResponse,
+  GetTagsRequest,
+  GetTagsResponse,
   GetUnreadCountRequest,
   GetUnreadCountResponse,
   GetUserInfosRequest,
@@ -81,8 +83,8 @@ import {
   SyncMessagesResponse,
   SyncMutelistRequest,
   SyncMutelistResponse,
-  SyncOrgTagsRequest,
-  SyncOrgTagsResponse,
+  SyncTagsRequest,
+  SyncTagsResponse,
   Type,
   UnblockUserRequest,
   UnblockUserResponse,
@@ -659,29 +661,42 @@ export function getOrgInfos(
   );
 }
 
-export function getOrgTagItems(
+export function getTags(
   transport: ClientTransport,
-  req: GetOrgTagItemsRequest,
-): Promise<GetOrgTagItemsResponse> {
+  req: GetTagsRequest,
+): Promise<GetTagsResponse> {
   return sendProtoAction(
     transport,
-    Type.TYPE_ACTION_GET_ORG_TAG_ITEMS,
-    GetOrgTagItemsRequest,
+    Type.TYPE_ACTION_GET_TAGS,
+    GetTagsRequest,
     req,
-    GetOrgTagItemsResponse,
+    GetTagsResponse,
   );
 }
 
-export function syncOrgTags(
+export function syncTags(
   transport: ClientTransport,
-  req: SyncOrgTagsRequest,
-): Promise<SyncOrgTagsResponse> {
+  req: SyncTagsRequest,
+): Promise<SyncTagsResponse> {
   return sendProtoAction(
     transport,
-    Type.TYPE_ACTION_SYNC_ORG_TAGS,
-    SyncOrgTagsRequest,
+    Type.TYPE_ACTION_SYNC_TAGS,
+    SyncTagsRequest,
     req,
-    SyncOrgTagsResponse,
+    SyncTagsResponse,
+  );
+}
+
+export function getTagInfos(
+  transport: ClientTransport,
+  req: GetTagInfosRequest,
+): Promise<GetTagInfosResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_GET_TAG_INFOS,
+    GetTagInfosRequest,
+    req,
+    GetTagInfosResponse,
   );
 }
 

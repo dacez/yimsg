@@ -201,15 +201,15 @@ func main() {
 		rank     int64
 	}{
 		{leadersTag, uids[0], "总经理", 10},
-		{leadersTag, uids[1], "副总经理", dal.OrgRankUnset},
+		{leadersTag, uids[1], "副总经理", dal.TagRankUnset},
 		{deptTag, uids[1], "部门负责人", 1},
-		{deptTag, uids[2], "", dal.OrgRankUnset},
-		{deptTag, uids[3], "", dal.OrgRankUnset},
+		{deptTag, uids[2], "", dal.TagRankUnset},
+		{deptTag, uids[3], "", dal.TagRankUnset},
 		{remoteTag, uids[199], "远端负责人", 1},
-		{remoteTag, uids[200], "", dal.OrgRankUnset},
-		{remoteTag, uids[201], "", dal.OrgRankUnset},
+		{remoteTag, uids[200], "", dal.TagRankUnset},
+		{remoteTag, uids[201], "", dal.TagRankUnset},
 	} {
-		if err := state.AddOrgMember(orgID, m.tag, m.uid, m.title, m.rank); err != nil {
+		if err := state.AddOrgMember(orgID, m.tag, m.uid, m.title, m.rank, dal.TagRoleMember); err != nil {
 			log.Fatalf("添加组织成员 uid=%d 失败: %v", m.uid, err)
 		}
 	}

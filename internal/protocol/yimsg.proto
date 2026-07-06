@@ -51,9 +51,10 @@ enum Type {
   TYPE_ACTION_UPDATE_GROUP_INFO = 41; // action=update_group_info auth=true domain=群组 desc=更新群资料
   TYPE_ACTION_ADD_GROUP_MEMBER = 42; // action=add_group_member auth=true domain=群组 desc=添加群成员
   TYPE_ACTION_REMOVE_GROUP_MEMBER = 43; // action=remove_group_member auth=true domain=群组 desc=移除群成员
-  TYPE_ACTION_GET_ORG_INFOS = 44; // action=get_org_infos auth=true domain=组织 desc=批量读取组织展示资料（根 tag 投影）
-  TYPE_ACTION_GET_ORG_TAG_ITEMS = 45; // action=get_org_tag_items auth=true domain=组织 desc=在线展开 tag 的直接子项（子 tag 与人混合有序）
-  TYPE_ACTION_SYNC_ORG_TAGS = 46; // action=sync_org_tags auth=true domain=组织 desc=按 org 增量同步 tag 图（节点与边共用游标）
+  TYPE_ACTION_GET_ORG_INFOS = 44; // action=get_org_infos auth=true domain=组织 desc=批量读取组织展示资料
+  TYPE_ACTION_GET_TAGS = 45; // action=get_tags auth=true domain=组织 desc=在线展开 tags（组织关系表）中某节点的直接子项（tag 与人混合有序）
+  TYPE_ACTION_SYNC_TAGS = 46; // action=sync_tags auth=true domain=组织 desc=按 org 增量同步 tags（组织关系表）
+  TYPE_ACTION_GET_TAG_INFOS = 47; // action=get_tag_infos auth=true domain=组织 desc=批量读取 tag（部门/横向分组）展示资料
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001; // notification=messages:received desc=消息域发生变化
   TYPE_NOTIFY_CONTACTS_UPDATED = 10002; // notification=contacts:updated desc=通讯录发生变化
   TYPE_NOTIFY_SESSION_KICKED = 10003; // notification=session:kicked desc=当前登录态被踢下线
@@ -134,11 +135,25 @@ enum MutelistStatus {
   MUTELIST_STATUS_DELETED = 255; // meaning=会话免打扰关闭 tombstone
 }
 
-// OrgTagStatus 是组织 tag 图条目（节点与边）状态；0 保留为非法值，真实业务值从 1 开始。
-enum OrgTagStatus {
-  ORG_TAG_STATUS_INVALID = 0; // reserved=invalid meaning=无效状态
-  ORG_TAG_STATUS_ACTIVE = 1; // meaning=有效
-  ORG_TAG_STATUS_DELETED = 255; // meaning=已删除 tombstone
+// TagStatus 是 tags（组织关系表）条目状态；0 保留为非法值，真实业务值从 1 开始。
+enum TagStatus {
+  TAG_STATUS_INVALID = 0; // reserved=invalid meaning=无效状态
+  TAG_STATUS_ACTIVE = 1; // meaning=有效
+  TAG_STATUS_DELETED = 255; // meaning=已删除 tombstone
+}
+
+// TagChildType 区分 tags 一行挂载的子项是人还是 tag；0 保留为非法值。
+enum TagChildType {
+  TAG_CHILD_TYPE_INVALID = 0; // reserved=invalid meaning=无效类型
+  TAG_CHILD_TYPE_PERSON = 1; // meaning=子项是人，child_id 为 uid
+  TAG_CHILD_TYPE_TAG = 2; // meaning=子项是 tag，child_id 为 tag_id
+}
+
+// TagRole 标识某子项在其挂载节点下是否为管理员；0 保留为非法值。
+enum TagRole {
+  TAG_ROLE_INVALID = 0; // reserved=invalid meaning=无效角色
+  TAG_ROLE_MEMBER = 1; // meaning=普通成员
+  TAG_ROLE_ADMIN = 2; // meaning=管理员
 }
 
 // PageDirection 是展示通道翻页方向；0 保留为非法值，真实业务值从 1 开始。
@@ -178,7 +193,7 @@ message BlocklistUpdatedNotification {}
 message MutelistUpdatedNotification {}
 
 // OrgUpdatedNotification 是组织架构轻通知：只带 org_id，禁止携带增量数据，
-// 客户端收到后按 sync_org_tags 增量追平。
+// 客户端收到后按 sync_tags 增量追平。
 message OrgUpdatedNotification {
   int64 org_id = 1; // required 发生变化的组织 ID
 }
@@ -234,7 +249,7 @@ message ContactTarget {
   oneof kind {
     int64 uid = 1; // 联系人用户 ID
     int64 group_id = 2; // 通讯录收藏群 ID
-    int64 org_id = 3; // 组织 ID（即根 tag 的 tag_id）；组织条目记录成员资格
+    int64 org_id = 3; // 组织 ID；组织条目记录成员资格
   }
 }
 
@@ -715,34 +730,34 @@ message RemoveGroupMemberRequest {
 }
 message RemoveGroupMemberResponse { BaseResponse base = 1; }
 
-// OrgInfo 是组织展示资料，即根 tag（tag_id == org_id）的投影。
+// OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。
 message OrgInfo {
-  int64 org_id = 1; // required 组织 ID，即根 tag 的 tag_id
-  string name = 2; // required 组织名称（根 tag 的 name）
-  string avatar = 3; // optional 组织头像 URL（根 tag 的 avatar）
+  int64 org_id = 1; // required 组织 ID
+  string name = 2; // required 组织名称
+  string avatar = 3; // optional 组织头像 URL
 }
 
-// OrgTag 是 tag 图同步用的节点条目；与边共用 org 内单一 seq 空间。
-message OrgTag {
-  int64 tag_id = 1; // required tag ID；根 tag 的 tag_id == org_id
-  string name = 2; // required tag 名
-  string avatar = 3; // optional tag 图标；根 tag 即组织头像
-  OrgTagStatus status = 4; // required DELETED 为 tombstone，本地副本收到即删行
-  int64 seq = 5; // required 同步序号（与边共用 seq 空间）
+// TagInfo 是 tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。
+message TagInfo {
+  int64 tag_id = 1; // required tag ID
+  string name = 2; // required tag 名称
+  string avatar = 3; // optional tag 头像 URL
 }
 
-// OrgTagItem 是在线展开与同步共用的边条目：child_tag_id 与 uid 互斥。
-message OrgTagItem {
-  int64 tag_id = 1; // required 父 tag；在线展开时恒等于请求的 tag_id，同步时用于定位行
-  int64 child_tag_id = 2; // 与 uid 互斥；>0 表示子 tag
-  int64 uid = 3; // 与 child_tag_id 互斥；>0 表示人，展示资料走 get_user_infos
-  string name = 4; // 在线展开时填子 tag 名；同步响应不填（本地副本从 org_tag 取）
-  string avatar = 5; // optional 在线展开时填子 tag 图标（人条目为空）
-  string title = 6; // optional 本 tag 下的职务展示文本（仅人条目）
-  int64 rank = 7; // required 本条边的排序值，越小越靠前；2147483647 表示未显式排序
-  string sort_key = 8; // required 名字归一化排序键（人取昵称、子 tag 取 tag 名）
-  OrgTagStatus status = 9; // required 在线展开恒为 ACTIVE；同步含 DELETED tombstone
-  int64 seq = 10; // required 同步序号（与节点共用 seq 空间）
+// Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
+// （组织根传 org_id，部门传 tag_id）下挂一个子项"；child_type 区分子项是
+// 人（PERSON，child_id=uid）还是 tag（TAG，child_id=tag_id）；role 标识
+// 该子项在这个父节点下是否为管理员。
+message Tag {
+  int64 tag_id = 1; // required 父节点 ID；在线展开时恒等于请求的 tag_id，展开组织根传 org_id
+  int64 child_id = 2; // required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id
+  TagChildType child_type = 3; // required 子项类型
+  string title = 4; // optional 本节点下的职务展示文本（仅人条目常用）
+  int64 rank = 5; // required 本条边的排序值，越小越靠前；2147483647 表示未显式排序
+  string sort_key = 6; // required 名字归一化排序键（人取昵称、tag 取 tag 名）
+  TagRole role = 7; // required 子项在本节点下的角色，标识是否为管理员
+  TagStatus status = 8; // required 在线展开恒为 ACTIVE；同步含 DELETED tombstone
+  int64 seq = 9; // required 同步序号
 }
 
 message GetOrgInfosRequest {
@@ -753,27 +768,35 @@ message GetOrgInfosResponse {
   repeated OrgInfo orgs = 10; // optional 组织展示资料列表
 }
 
-message GetOrgTagItemsRequest {
+message GetTagInfosRequest {
   int64 org_id = 10; // required 组织 ID（分片路由键）
-  int64 tag_id = 11; // required 要展开的 tag；展开组织根传 tag_id=org_id，0 非法
-  PageQuery page = 12; // optional 展示分页游标；按 (rank, sort_key, child_tag_id, uid) 升序，游标对客户端不透明
+  repeated int64 tag_ids = 11; // required tag ID 列表，去重后受服务端批量上限约束
 }
-message GetOrgTagItemsResponse {
+message GetTagInfosResponse {
   BaseResponse base = 1; // required 通用响应状态
-  repeated OrgTagItem items = 10; // optional 直接子项，仅 ACTIVE，子 tag 与人按绝对排序混合
+  repeated TagInfo tags = 10; // optional tag 展示资料列表
+}
+
+message GetTagsRequest {
+  int64 org_id = 10; // required 组织 ID（分片路由键）
+  int64 tag_id = 11; // required 要展开的父节点；展开组织根传 tag_id=org_id，0 非法
+  PageQuery page = 12; // optional 展示分页游标；按 (rank, sort_key, child_type, child_id) 升序，游标对客户端不透明
+}
+message GetTagsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Tag tags = 10; // optional 直接子项，仅 ACTIVE，tag 与人按绝对排序混合
   PageInfo page = 11; // required 展示分页信息
 }
 
-message SyncOrgTagsRequest {
+message SyncTagsRequest {
   int64 org_id = 10; // required 组织 ID
-  int64 last_seq = 11; // optional 客户端最后同步序号；节点与边共用一个游标
-  int64 limit = 12; // optional 同步条数（节点与边合并计数）
+  int64 last_seq = 11; // optional 客户端最后同步序号
+  int64 limit = 12; // optional 同步条数
   bool rebuild = 13; // optional 是否强制重建本地副本
 }
-message SyncOrgTagsResponse {
+message SyncTagsResponse {
   BaseResponse base = 1; // required 通用响应状态
-  repeated OrgTag tags = 10; // optional 增量节点条目（含 tombstone）
-  repeated OrgTagItem items = 11; // optional 增量边条目（含 tombstone）
-  bool has_more = 12; // required 是否还有更多增量条目（达到 limit 时为 true）
-  int64 cursor_seq = 13; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
+  repeated Tag tags = 10; // optional 增量条目（含 tombstone）
+  bool has_more = 11; // required 是否还有更多增量条目（达到 limit 时为 true）
+  int64 cursor_seq = 12; // required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0
 }

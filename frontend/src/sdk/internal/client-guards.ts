@@ -31,7 +31,7 @@ export function assertNonEmpty(value: string, field: string, action: string): vo
 
 export function normalizeDisplayInfoKeys(
   keys: readonly string[],
-  action: 'getUserInfos' | 'getGroupInfos',
+  action: 'getUserInfos' | 'getGroupInfos' | 'getOrgInfos' | 'getTagInfos',
   batchMaxLimit: number,
 ): string[] {
   const result: string[] = [];

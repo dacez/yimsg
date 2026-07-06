@@ -1,4 +1,4 @@
-import type { UserInfo, GroupInfo } from '../../types';
+import type { UserInfo, GroupInfo, OrgInfo, TagInfo } from '../../types';
 import type { DisplayInfoScope } from '../types';
 import type { DataGateway, MaybePromise } from '../datagateway/interface';
 import { ValidationError } from '../errors';
@@ -8,10 +8,12 @@ import { BoundedU64Map, BoundedU64Set, type BoundedStats } from '../internal/bou
 
 const DEFAULT_DISPLAY_INFO_LOAD_MERGE_WINDOW_MS = 8;
 
-type DisplayEntityScope = Extract<DisplayInfoScope, 'user' | 'group'>;
+type DisplayEntityScope = Extract<DisplayInfoScope, 'user' | 'group' | 'org' | 'tag'>;
 
 type UserDisplayValue = { username: string; nickname: string; avatar: string; remark: string };
 type GroupDisplayValue = { name: string; avatar: string; remark: string };
+type OrgDisplayValue = { name: string; avatar: string };
+type TagDisplayValue = { name: string; avatar: string };
 
 interface DisplayCacheEntry {
   username: string;
@@ -21,10 +23,12 @@ interface DisplayCacheEntry {
   expireAt: number;
 }
 
-/** 运行时诊断统计：用户 / 群两套独立有界集合的状态。 */
+/** 运行时诊断统计：用户 / 群 / 组织 / tag 四套独立有界集合的状态。 */
 export interface DisplayInfoCacheStats {
   readonly user: { readonly cache: BoundedStats; readonly pending: BoundedStats; readonly loading: BoundedStats };
   readonly group: { readonly cache: BoundedStats; readonly pending: BoundedStats; readonly loading: BoundedStats };
+  readonly org: { readonly cache: BoundedStats; readonly pending: BoundedStats; readonly loading: BoundedStats };
+  readonly tag: { readonly cache: BoundedStats; readonly pending: BoundedStats; readonly loading: BoundedStats };
 }
 
 /** SDK 全部长期驻留有界集合的实时运行时统计聚合。 */
@@ -129,6 +133,10 @@ class ScopeStore {
 export class DisplayInfoCache {
   private readonly userStore: ScopeStore;
   private readonly groupStore: ScopeStore;
+  private readonly orgStore: ScopeStore;
+  private readonly tagStore: ScopeStore;
+  /** tag_id → org_id 的旁路记录：get_tag_infos 需要 org_id 做路由，供 flush 时取用；容量与待拉取队列同阶，非强一致。 */
+  private readonly tagOrgById = new Map<string, string>();
   private cacheTtlMs: number;
   private queueMaxSize: number;
   private batchMaxSize: number;
@@ -149,10 +157,36 @@ export class DisplayInfoCache {
     this.getDataGateway = options.dataGateway;
     this.userStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
     this.groupStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
+    this.orgStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
+    this.tagStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
   }
 
   private storeOf(scope: DisplayEntityScope): ScopeStore {
-    return scope === 'group' ? this.groupStore : this.userStore;
+    switch (scope) {
+      case 'group': return this.groupStore;
+      case 'org': return this.orgStore;
+      case 'tag': return this.tagStore;
+      default: return this.userStore;
+    }
+  }
+
+  /** 记录 tagId 所属 org_id，供 flush 时批量拉取 get_tag_infos 使用。 */
+  private rememberTagOrg(tagId: string, orgId: string): void {
+    if (!orgId || orgId === '0') return;
+    if (!this.tagOrgById.has(tagId) && this.tagOrgById.size >= this.queueMaxSize) {
+      const oldest = this.tagOrgById.keys().next().value;
+      if (oldest !== undefined) this.tagOrgById.delete(oldest);
+    }
+    this.tagOrgById.set(tagId, orgId);
+  }
+
+  /** 取一批待拉取 tagId 里任意一个已知的 org_id（同批通常同属一个组织）。 */
+  private orgForTags(tagIds: string[]): string {
+    for (const id of tagIds) {
+      const orgId = this.tagOrgById.get(id);
+      if (orgId) return orgId;
+    }
+    return '0';
   }
 
   getUserInfos(uids: string[]): Map<string, UserDisplayValue> {
@@ -201,6 +235,54 @@ export class DisplayInfoCache {
     return result;
   }
 
+  getOrgInfos(orgIds: string[]): Map<string, OrgDisplayValue> {
+    const result = new Map<string, OrgDisplayValue>();
+    const now = Date.now();
+    for (const raw of orgIds) {
+      const key = String(raw);
+      if (!isValidU64Id(key)) {
+        result.set(key, this.emptyOrgValue());
+        continue;
+      }
+      const entry = this.orgStore.cache.get(key);
+      if (entry) {
+        result.set(key, this.toOrgValue(entry));
+        if (entry.expireAt <= now) this.orgStore.enqueue(key, this.queueMaxSize);
+      } else {
+        result.set(key, this.emptyOrgValue());
+        this.orgStore.enqueue(key, this.queueMaxSize);
+      }
+    }
+    this.scheduleFlushScope('org');
+    this.mergeCachedOrgValues(orgIds, result);
+    return result;
+  }
+
+  getTagInfos(orgId: string, tagIds: string[]): Map<string, TagDisplayValue> {
+    const result = new Map<string, TagDisplayValue>();
+    const now = Date.now();
+    const org = String(orgId || '0');
+    for (const raw of tagIds) {
+      const key = String(raw);
+      if (!isValidU64Id(key)) {
+        result.set(key, this.emptyTagValue());
+        continue;
+      }
+      this.rememberTagOrg(key, org);
+      const entry = this.tagStore.cache.get(key);
+      if (entry) {
+        result.set(key, this.toTagValue(entry));
+        if (entry.expireAt <= now) this.tagStore.enqueue(key, this.queueMaxSize);
+      } else {
+        result.set(key, this.emptyTagValue());
+        this.tagStore.enqueue(key, this.queueMaxSize);
+      }
+    }
+    this.scheduleFlushScope('tag');
+    this.mergeCachedTagValues(tagIds, result);
+    return result;
+  }
+
   // ---- Write-through (used by client.ts mutations) ----
 
   setUserInfos(entries: Array<{ uid: string; username?: string; nickname: string; avatar: string; remark?: string }>): void {
@@ -235,9 +317,12 @@ export class DisplayInfoCache {
     this.clearFlushTimers();
     this.userStore.clear();
     this.groupStore.clear();
+    this.orgStore.clear();
+    this.tagStore.clear();
+    this.tagOrgById.clear();
   }
 
-  /** 暴露用户 / 群两套有界集合的运行时统计，用于 benchmark / debug。 */
+  /** 暴露用户 / 群 / 组织 / tag 四套有界集合的运行时统计，用于 benchmark / debug。 */
   stats(): DisplayInfoCacheStats {
     return {
       user: {
@@ -249,6 +334,16 @@ export class DisplayInfoCache {
         cache: this.groupStore.cache.stats(),
         pending: this.groupStore.pending.stats(),
         loading: this.groupStore.loading.stats(),
+      },
+      org: {
+        cache: this.orgStore.cache.stats(),
+        pending: this.orgStore.pending.stats(),
+        loading: this.orgStore.loading.stats(),
+      },
+      tag: {
+        cache: this.tagStore.cache.stats(),
+        pending: this.tagStore.pending.stats(),
+        loading: this.tagStore.loading.stats(),
       },
     };
   }
@@ -301,21 +396,66 @@ export class DisplayInfoCache {
       return;
     }
 
+    if (scope === 'group') {
+      this.batchLoad(pending, ds, {
+        scope: 'group',
+        load: (ids) => ds.get_group_infos(ids, {
+          cacheTtlMs: this.cacheTtlMs,
+          updateDisplayInfos: items => {
+            if (this.getDataGateway() !== ds) return;
+            const updated = this.upsertGroupInfos(items);
+            if (updated.length > 0) this.onDisplayUpdated?.(updated, 'group');
+          },
+        }),
+        getId: g => String(g.group_id),
+        getUpdatedAt: g => g.updated_at,
+        getRemark: g => g.remark || '',
+        toEntry: (g, remark, expireAt): DisplayCacheEntry => ({
+          username: '', name: g.name || '', avatar: g.avatar || '', remark, expireAt,
+        }),
+      });
+      return;
+    }
+
+    if (scope === 'org') {
+      this.batchLoad(pending, ds, {
+        scope: 'org',
+        load: (ids) => ds.get_org_infos(ids, {
+          cacheTtlMs: this.cacheTtlMs,
+          updateDisplayInfos: items => {
+            if (this.getDataGateway() !== ds) return;
+            const updated = this.upsertOrgInfos(items);
+            if (updated.length > 0) this.onDisplayUpdated?.(updated, 'org');
+          },
+        }),
+        getId: o => String(o.org_id),
+        // OrgInfo 是无 seq/updated_at 的字典条目，过期基准用本地接收时刻（batchLoad 内的 now 兜底）。
+        getUpdatedAt: () => 0,
+        getRemark: () => '',
+        toEntry: (o, remark, expireAt): DisplayCacheEntry => ({
+          username: '', name: o.name || '', avatar: o.avatar || '', remark, expireAt,
+        }),
+      });
+      return;
+    }
+
+    // scope === 'tag'
     this.batchLoad(pending, ds, {
-      scope: 'group',
-      load: (ids) => ds.get_group_infos(ids, {
+      scope: 'tag',
+      load: (ids) => ds.get_tag_infos(this.orgForTags(ids), ids, {
         cacheTtlMs: this.cacheTtlMs,
         updateDisplayInfos: items => {
           if (this.getDataGateway() !== ds) return;
-          const updated = this.upsertGroupInfos(items);
-          if (updated.length > 0) this.onDisplayUpdated?.(updated, 'group');
+          const updated = this.upsertTagInfos(items);
+          if (updated.length > 0) this.onDisplayUpdated?.(updated, 'tag');
         },
       }),
-      getId: g => String(g.group_id),
-      getUpdatedAt: g => g.updated_at,
-      getRemark: g => g.remark || '',
-      toEntry: (g, remark, expireAt): DisplayCacheEntry => ({
-        username: '', name: g.name || '', avatar: g.avatar || '', remark, expireAt,
+      getId: t => String(t.tag_id),
+      // TagInfo 同样是无 seq/updated_at 的字典条目。
+      getUpdatedAt: () => 0,
+      getRemark: () => '',
+      toEntry: (t, remark, expireAt): DisplayCacheEntry => ({
+        username: '', name: t.name || '', avatar: t.avatar || '', remark, expireAt,
       }),
     });
   }
@@ -424,6 +564,26 @@ export class DisplayInfoCache {
     }
   }
 
+  private mergeCachedOrgValues(orgIds: string[], result: Map<string, OrgDisplayValue>): void {
+    const now = Date.now();
+    for (const raw of orgIds) {
+      const key = String(raw);
+      if (!isValidU64Id(key)) continue;
+      const entry = this.orgStore.cache.get(key);
+      if (entry && entry.expireAt > now) result.set(key, this.toOrgValue(entry));
+    }
+  }
+
+  private mergeCachedTagValues(tagIds: string[], result: Map<string, TagDisplayValue>): void {
+    const now = Date.now();
+    for (const raw of tagIds) {
+      const key = String(raw);
+      if (!isValidU64Id(key)) continue;
+      const entry = this.tagStore.cache.get(key);
+      if (entry && entry.expireAt > now) result.set(key, this.toTagValue(entry));
+    }
+  }
+
   private splitBatches(ids: string[]): string[][] {
     const batches: string[][] = [];
     for (let i = 0; i < ids.length; i += this.batchMaxSize) {
@@ -433,7 +593,7 @@ export class DisplayInfoCache {
   }
 
   private clearFlushTimers(): void {
-    for (const scope of ['user', 'group'] as const) {
+    for (const scope of ['user', 'group', 'org', 'tag'] as const) {
       const timer = this.flushTimers[scope];
       if (timer) clearTimeout(timer);
       this.flushTimers[scope] = undefined;
@@ -488,6 +648,44 @@ export class DisplayInfoCache {
     return updatedKeys;
   }
 
+  private upsertOrgInfos(items: OrgInfo[]): string[] {
+    const cache = this.orgStore.cache;
+    const updatedKeys: string[] = [];
+    const now = Date.now();
+    for (const item of items) {
+      const id = String(item.org_id || '0');
+      if (!isValidU64Id(id)) continue;
+      cache.set(id, {
+        username: '',
+        name: item.name || '',
+        avatar: item.avatar || '',
+        remark: '',
+        expireAt: now + this.cacheTtlMs,
+      });
+      updatedKeys.push(id);
+    }
+    return updatedKeys;
+  }
+
+  private upsertTagInfos(items: TagInfo[]): string[] {
+    const cache = this.tagStore.cache;
+    const updatedKeys: string[] = [];
+    const now = Date.now();
+    for (const item of items) {
+      const id = String(item.tag_id || '0');
+      if (!isValidU64Id(id)) continue;
+      cache.set(id, {
+        username: '',
+        name: item.name || '',
+        avatar: item.avatar || '',
+        remark: '',
+        expireAt: now + this.cacheTtlMs,
+      });
+      updatedKeys.push(id);
+    }
+    return updatedKeys;
+  }
+
   private toUserValue(entry: DisplayCacheEntry): UserDisplayValue {
     return { username: entry.username, nickname: entry.name, avatar: entry.avatar, remark: entry.remark };
   }
@@ -496,12 +694,28 @@ export class DisplayInfoCache {
     return { name: entry.name, avatar: entry.avatar, remark: entry.remark };
   }
 
+  private toOrgValue(entry: DisplayCacheEntry): OrgDisplayValue {
+    return { name: entry.name, avatar: entry.avatar };
+  }
+
+  private toTagValue(entry: DisplayCacheEntry): TagDisplayValue {
+    return { name: entry.name, avatar: entry.avatar };
+  }
+
   private emptyUserValue(): UserDisplayValue {
     return { username: '', nickname: '', avatar: '', remark: '' };
   }
 
   private emptyGroupValue(): GroupDisplayValue {
     return { name: '', avatar: '', remark: '' };
+  }
+
+  private emptyOrgValue(): OrgDisplayValue {
+    return { name: '', avatar: '' };
+  }
+
+  private emptyTagValue(): TagDisplayValue {
+    return { name: '', avatar: '' };
   }
 
   private shouldIgnoreLoadError(error: unknown): boolean {
