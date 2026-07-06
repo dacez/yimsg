@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-04。
+> 最后复核：2026-07-06。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -272,6 +272,8 @@ interface MessageContentDescriptor {
 | `getContactCount` | `(status: number) => Promise<number>` | 按联系人状态统计数量；待处理好友请求传 `CONTACT_STATUS_PENDING`，好友/收藏群传 `CONTACT_STATUS_FRIEND`。memory 模式调用后端 `get_contact_count`；持久存储模式查本地副本；未认证会抛错，已认证但会话未初始化或查询失败时返回 `0` |
 | `getUserInfos` | `(uids) => ReadonlyMap<string, UserDisplayInfo>` | 用户显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
 | `getGroupInfos` | `(groupIds) => ReadonlyMap<string, GroupDisplayInfo>` | 群显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
+| `getOrgInfos` | `(orgIds) => ReadonlyMap<string, OrgDisplayInfo>` | 组织显示信息只读视图（与 `getUserInfos`/`getGroupInfos` 同构）；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
+| `getTagInfos` | `(orgId, tagIds) => ReadonlyMap<string, TagDisplayInfo>` | tag（部门/横向分组）显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
 | `searchUser` | `(username) => Promise<UserInfo \| null>` | 按用户名搜索；任一方向存在屏蔽列表时返回 `null` |
 
 `ContactPage` 的公开形状：
@@ -322,8 +324,7 @@ interface Contact {
 | `muteConversation` | `(target) => Promise<number>` |
 | `unmuteConversation` | `(target) => Promise<number>` |
 | `getMutelist` | `(params?) => Promise<MutelistEntryPage>` | 按分页读取免打扰，支持 `toUid` / `groupId` / `toUids` / `groupIds` 过滤，SDK 会裁剪单次 `limit` |
-| `getOrgInfos` | `(orgIds) => Promise<ReadonlyArray<OrgInfo>>` | 批量读取组织展示资料（根 tag 投影）；组织条目即通讯录第三类行（`target.orgId`），名称 / 头像经本接口按需补齐 |
-| `getOrgTagItems` | `({ orgId, tagId, cursor?, backward?, limit? }) => Promise<OrgTagItemsPage>` | 展开组织 tag 的直接子项（子 tag 与人按绝对排序混合）；展开组织根传 `tagId=orgId`；persistent 模式优先读本地副本，memory 模式在线展开 |
+| `getTags` | `({ orgId, tagId, cursor?, backward?, limit? }) => Promise<TagsPage>` | 展开 tags（组织关系表）某节点的直接子项（tag 与人按绝对排序混合，子项不内嵌名字）；展开组织根传 `tagId=orgId`；persistent 模式优先读本地副本，memory 模式在线展开；子项展示名另调 `getTagInfos`/`getUserInfos` |
 
 ## 4.4 群组
 

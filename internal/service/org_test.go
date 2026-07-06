@@ -9,9 +9,10 @@ import (
 )
 
 // buildTestOrg 建一个最小组织：根 + 公司领导 tag + xx 部门 tag，A 一人多岗。
+// boss 在公司领导下是管理员（role=ADMIN），其余是普通成员。
 //
 //	根（腾讯科技有限公司广州研发中心）
-//	├── 公司领导：boss(rank=10)、A(未显式排序 → 名字沉底)
+//	├── 公司领导：boss(rank=10, ADMIN)、A(未显式排序 → 名字沉底)
 //	└── xx 部门：A(rank=1 排第一)、员工按名字
 func buildTestOrg(t *testing.T, s *AppState, bossUID, aUID, staffUID int64) (orgID, leadersTag, deptTag int64) {
 	t.Helper()
@@ -27,16 +28,16 @@ func buildTestOrg(t *testing.T, s *AppState, bossUID, aUID, staffUID int64) (org
 	if err != nil {
 		t.Fatalf("AddOrgTag dept: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, leadersTag, bossUID, "总经理", 10); err != nil {
+	if err := s.AddOrgMember(orgID, leadersTag, bossUID, "总经理", 10, dal.TagRoleAdmin); err != nil {
 		t.Fatalf("AddOrgMember boss: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, leadersTag, aUID, "副总", dal.OrgRankUnset); err != nil {
+	if err := s.AddOrgMember(orgID, leadersTag, aUID, "副总", dal.TagRankUnset, dal.TagRoleMember); err != nil {
 		t.Fatalf("AddOrgMember A leaders: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, deptTag, aUID, "部门负责人", 1); err != nil {
+	if err := s.AddOrgMember(orgID, deptTag, aUID, "部门负责人", 1, dal.TagRoleMember); err != nil {
 		t.Fatalf("AddOrgMember A dept: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, deptTag, staffUID, "", dal.OrgRankUnset); err != nil {
+	if err := s.AddOrgMember(orgID, deptTag, staffUID, "", dal.TagRankUnset, dal.TagRoleMember); err != nil {
 		t.Fatalf("AddOrgMember staff: %v", err)
 	}
 	return orgID, leadersTag, deptTag
@@ -103,61 +104,81 @@ func TestOrgPermission(t *testing.T) {
 	outsider := registerUser(t, s, "out", "p", "Out")
 	orgID, _, _ := buildTestOrg(t, s, boss, a, staff)
 
-	resp := s.GetOrgTagItems(testInfo(outsider), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: orgID})
+	resp := s.GetTags(testInfo(outsider), &pb.GetTagsRequest{OrgId: orgID, TagId: orgID})
 	if resp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
 		t.Errorf("outsider expand should be forbidden, got %v", resp.Base.Code)
 	}
-	syncResp := s.SyncOrgTags(testInfo(outsider), &pb.SyncOrgTagsRequest{OrgId: orgID})
+	syncResp := s.SyncTags(testInfo(outsider), &pb.SyncTagsRequest{OrgId: orgID})
 	if syncResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
 		t.Errorf("outsider sync should be forbidden, got %v", syncResp.Base.Code)
 	}
-	memberResp := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: orgID})
+	memberResp := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: orgID})
 	if memberResp.Base.Code != pb.ErrorCode_ERROR_OK {
 		t.Errorf("member expand should succeed, got %v %s", memberResp.Base.Code, memberResp.Base.Msg)
 	}
 }
 
-// TestOrgExpandOrderAndNames 验证展开根/子 tag 的绝对排序与子 tag 名填充、一人多岗两处可见且顺序不同。
-func TestOrgExpandOrderAndNames(t *testing.T) {
+// TestOrgExpandOrderAndTagInfos 验证展开根/子 tag 的绝对排序、get_tag_infos 名字字典、
+// 一人多岗两处可见且顺序不同，以及 role 字段透传。
+func TestOrgExpandOrderAndTagInfos(t *testing.T) {
 	s := testState(t)
 	boss := registerUser(t, s, "boss", "p", "Boss")
 	a := registerUser(t, s, "usera", "p", "zz-A") // 名字沉底
 	staff := registerUser(t, s, "staff", "p", "bob")
 	orgID, leadersTag, deptTag := buildTestOrg(t, s, boss, a, staff)
 
-	// 根展开：公司领导(rank=10) 在 xx部门(rank=20) 前，且子 tag 名已填充。
-	root := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: orgID})
-	if root.Base.Code != pb.ErrorCode_ERROR_OK || len(root.Items) != 2 {
-		t.Fatalf("root expand: %v items=%d", root.Base.Code, len(root.Items))
+	// 根展开：公司领导(rank=10) 在 xx部门(rank=20) 前，均为 TAG 子项。
+	root := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: orgID})
+	if root.Base.Code != pb.ErrorCode_ERROR_OK || len(root.Tags) != 2 {
+		t.Fatalf("root expand: %v relations=%d", root.Base.Code, len(root.Tags))
 	}
-	if root.Items[0].ChildTagId != leadersTag || root.Items[0].Name != "公司领导" {
-		t.Errorf("root item0: %+v", root.Items[0])
+	if root.Tags[0].ChildId != leadersTag || root.Tags[0].ChildType != pb.TagChildType_TAG_CHILD_TYPE_TAG {
+		t.Errorf("root relation0: %+v", root.Tags[0])
 	}
-	if root.Items[1].ChildTagId != deptTag || root.Items[1].Name != "xx部门" {
-		t.Errorf("root item1: %+v", root.Items[1])
+	if root.Tags[1].ChildId != deptTag {
+		t.Errorf("root relation1: %+v", root.Tags[1])
 	}
 
-	// 公司领导：boss(rank=10) 第一，A 未显式排序按名字沉底最后。
-	leaders := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: leadersTag})
-	if len(leaders.Items) != 2 || leaders.Items[0].Uid != boss || leaders.Items[1].Uid != a {
-		t.Fatalf("leaders order wrong: %+v", leaders.Items)
+	// get_tag_infos 批量取子 tag 名字字典。
+	tagInfos := s.GetTagInfos(testInfo(staff), &pb.GetTagInfosRequest{OrgId: orgID, TagIds: []int64{leadersTag, deptTag}})
+	if tagInfos.Base.Code != pb.ErrorCode_ERROR_OK || len(tagInfos.Tags) != 2 {
+		t.Fatalf("get_tag_infos: %v tags=%d", tagInfos.Base.Code, len(tagInfos.Tags))
 	}
-	if leaders.Items[0].Title != "总经理" {
-		t.Errorf("boss title = %q", leaders.Items[0].Title)
+	names := map[int64]string{}
+	for _, tg := range tagInfos.Tags {
+		names[tg.TagId] = tg.Name
+	}
+	if names[leadersTag] != "公司领导" || names[deptTag] != "xx部门" {
+		t.Errorf("tag names wrong: %+v", names)
+	}
+
+	// 公司领导：boss(rank=10, ADMIN) 第一，A 未显式排序按名字沉底最后。
+	leaders := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: leadersTag})
+	if len(leaders.Tags) != 2 || leaders.Tags[0].ChildId != boss || leaders.Tags[1].ChildId != a {
+		t.Fatalf("leaders order wrong: %+v", leaders.Tags)
+	}
+	if leaders.Tags[0].Title != "总经理" {
+		t.Errorf("boss title = %q", leaders.Tags[0].Title)
+	}
+	if leaders.Tags[0].Role != pb.TagRole_TAG_ROLE_ADMIN {
+		t.Errorf("boss role = %v, want ADMIN", leaders.Tags[0].Role)
+	}
+	if leaders.Tags[1].Role != pb.TagRole_TAG_ROLE_MEMBER {
+		t.Errorf("A role = %v, want MEMBER", leaders.Tags[1].Role)
 	}
 
 	// xx 部门：A rank=1 排第一。
-	dept := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: deptTag})
-	if len(dept.Items) != 2 || dept.Items[0].Uid != a || dept.Items[1].Uid != staff {
-		t.Fatalf("dept order wrong: %+v", dept.Items)
+	dept := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: deptTag})
+	if len(dept.Tags) != 2 || dept.Tags[0].ChildId != a || dept.Tags[1].ChildId != staff {
+		t.Fatalf("dept order wrong: %+v", dept.Tags)
 	}
 
 	// tag_id=0 非法；展开不存在的 tag 返回 NOT_FOUND。
-	bad := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: 0})
+	bad := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: 0})
 	if bad.Base.Code != pb.ErrorCode_ERROR_INVALID_ARGUMENT {
 		t.Errorf("tag_id=0 should be invalid, got %v", bad.Base.Code)
 	}
-	missing := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: 999999})
+	missing := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: 999999})
 	if missing.Base.Code != pb.ErrorCode_ERROR_NOT_FOUND {
 		t.Errorf("missing tag should be not found, got %v", missing.Base.Code)
 	}
@@ -173,14 +194,13 @@ func TestOrgSyncAndSeqTooOld(t *testing.T) {
 
 	// 全量分页拉到底。
 	var lastSeq int64
-	totalTags, totalItems := 0, 0
+	totalTags := 0
 	for {
-		resp := s.SyncOrgTags(testInfo(staff), &pb.SyncOrgTagsRequest{OrgId: orgID, LastSeq: lastSeq, Limit: 3})
+		resp := s.SyncTags(testInfo(staff), &pb.SyncTagsRequest{OrgId: orgID, LastSeq: lastSeq, Limit: 3})
 		if resp.Base.Code != pb.ErrorCode_ERROR_OK {
 			t.Fatalf("sync: %v %s", resp.Base.Code, resp.Base.Msg)
 		}
 		totalTags += len(resp.Tags)
-		totalItems += len(resp.Items)
 		if resp.CursorSeq > 0 {
 			lastSeq = resp.CursorSeq
 		}
@@ -188,21 +208,21 @@ func TestOrgSyncAndSeqTooOld(t *testing.T) {
 			break
 		}
 	}
-	// 3 节点（根、领导、部门）+ 6 边（2 tag 边 + 4 人边）。
-	if totalTags != 3 || totalItems != 6 {
-		t.Fatalf("full sync tags=%d items=%d", totalTags, totalItems)
+	// 2 tag 边 + 4 人边 = 6 条关系。
+	if totalTags != 6 {
+		t.Fatalf("full sync relations=%d", totalTags)
 	}
 
 	// 增量：摘掉 A 的部门边 → 一条 tombstone。
 	if err := s.RemoveOrgMember(orgID, deptTag, a); err != nil {
 		t.Fatal(err)
 	}
-	resp := s.SyncOrgTags(testInfo(staff), &pb.SyncOrgTagsRequest{OrgId: orgID, LastSeq: lastSeq})
-	if len(resp.Tags) != 0 || len(resp.Items) != 1 {
-		t.Fatalf("incremental: tags=%d items=%d", len(resp.Tags), len(resp.Items))
+	resp := s.SyncTags(testInfo(staff), &pb.SyncTagsRequest{OrgId: orgID, LastSeq: lastSeq})
+	if len(resp.Tags) != 1 {
+		t.Fatalf("incremental: relations=%d", len(resp.Tags))
 	}
-	if resp.Items[0].Status != pb.OrgTagStatus_ORG_TAG_STATUS_DELETED || resp.Items[0].Uid != a || resp.Items[0].TagId != deptTag {
-		t.Errorf("tombstone wrong: %+v", resp.Items[0])
+	if resp.Tags[0].Status != pb.TagStatus_TAG_STATUS_DELETED || resp.Tags[0].ChildId != a || resp.Tags[0].TagId != deptTag {
+		t.Errorf("tombstone wrong: %+v", resp.Tags[0])
 	}
 	lastSeq = resp.CursorSeq
 
@@ -210,11 +230,11 @@ func TestOrgSyncAndSeqTooOld(t *testing.T) {
 	if _, err := s.OrgStore(orgID).Purge(orgID); err != nil {
 		t.Fatal(err)
 	}
-	old := s.SyncOrgTags(testInfo(staff), &pb.SyncOrgTagsRequest{OrgId: orgID, LastSeq: 1})
+	old := s.SyncTags(testInfo(staff), &pb.SyncTagsRequest{OrgId: orgID, LastSeq: 1})
 	if old.Base.Code != pb.ErrorCode_ERROR_SEQ_TOO_OLD {
 		t.Errorf("stale cursor should be seq_too_old, got %v", old.Base.Code)
 	}
-	rebuild := s.SyncOrgTags(testInfo(staff), &pb.SyncOrgTagsRequest{OrgId: orgID, LastSeq: 0, Rebuild: true})
+	rebuild := s.SyncTags(testInfo(staff), &pb.SyncTagsRequest{OrgId: orgID, LastSeq: 0, Rebuild: true})
 	if rebuild.Base.Code != pb.ErrorCode_ERROR_OK {
 		t.Errorf("rebuild sync should succeed, got %v", rebuild.Base.Code)
 	}
@@ -233,7 +253,7 @@ func TestOrgUpdatedFanout(t *testing.T) {
 	conn := s.Online().Register(staff, "")
 	defer s.Online().Unregister(staff, conn)
 
-	if err := s.SetOrgItemRank(orgID, deptTag, 0, staff, "新职务", 5); err != nil {
+	if err := s.SetOrgItemRank(orgID, deptTag, staff, dal.TagChildPerson, "新职务", 5, dal.TagRoleMember); err != nil {
 		t.Fatal(err)
 	}
 	drainTasks(s)
@@ -270,8 +290,8 @@ func TestOrgGetOrgInfosAndProjectionRefresh(t *testing.T) {
 		t.Errorf("org name = %q", resp.Orgs[0].Name)
 	}
 
-	// 组织改名（根 tag 改名）→ 下次 get_org_infos 刷新调用方组织行投影。
-	if err := s.RenameOrgTag(orgID, orgID, "新研发中心", ""); err != nil {
+	// 组织改名 → 下次 get_org_infos 刷新调用方组织行投影。
+	if err := s.RenameOrg(orgID, "新研发中心", ""); err != nil {
 		t.Fatal(err)
 	}
 	resp = s.GetOrgInfos(testInfo(staff), &pb.GetOrgInfosRequest{OrgIds: []int64{orgID}})
@@ -322,9 +342,9 @@ func TestOrgNicknameRefreshEdges(t *testing.T) {
 	if resp.Base.Code != pb.ErrorCode_ERROR_OK {
 		t.Fatalf("update_user_info: %v", resp.Base.Code)
 	}
-	items := s.GetOrgTagItems(testInfo(staff), &pb.GetOrgTagItemsRequest{OrgId: orgID, TagId: deptTag})
-	for _, item := range items.Items {
-		if item.Uid == staff && item.SortKey != "zzz" {
+	items := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: deptTag})
+	for _, item := range items.Tags {
+		if item.ChildId == staff && item.SortKey != "zzz" {
 			t.Errorf("edge sort_key not refreshed: %+v", item)
 		}
 	}

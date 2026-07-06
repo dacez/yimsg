@@ -23,7 +23,7 @@ import {
 import {
   wrapBlocklistUserPage,
   wrapContactPage,
-  wrapOrgTagItemsPage,
+  wrapTagsPage,
   wrapConversationPage,
   wrapGroupMemberPage,
   wrapMessagePage,
@@ -39,13 +39,14 @@ import type {
   ConversationTarget,
   ConversationPage,
   ContactPage,
-  OrgInfo,
-  OrgTagItemsPage,
+  TagsPage,
   BlocklistUserPage,
   MutelistEntryPage,
   MessageBody,
   MessagePage,
   GroupDisplayInfo,
+  OrgDisplayInfo,
+  TagDisplayInfo,
   GroupMemberPage,
   LocalConversation as PublicLocalConversation,
   Message as PublicMessage,
@@ -96,7 +97,8 @@ import {
   mapUserDisplayInfo,
   mapUserInfo,
   mapGroupDisplayInfo,
-  mapOrgInfo,
+  mapOrgDisplayInfo,
+  mapTagDisplayInfo,
 } from "./internal/model-mappers";
 import {
   AuthError,
@@ -1104,9 +1106,43 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     return freezeMap(result);
   }
 
+  /**
+   * 同步读取组织显示信息缓存视图（与 getUserInfos/getGroupInfos 同构）。
+   *
+   * 先按字符串值去重；去重后 key 数量超过 `getClientConfig().batchMaxLimit`
+   * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
+   * 循环分批调用，而不是一次传入超大 key 集。
+   */
+  getOrgInfos(orgIds: string[]): ReadonlyMap<string, OrgDisplayInfo> {
+    const input = this.normalizeDisplayInfoKeys(orgIds, "getOrgInfos");
+    const raw = this._displayInfoCache.getOrgInfos(input);
+    const result = new Map<string, OrgDisplayInfo>();
+    for (const [key, value] of raw) {
+      result.set(key, mapOrgDisplayInfo(value));
+    }
+    return freezeMap(result);
+  }
+
+  /**
+   * 同步读取 tag（部门/横向分组）显示信息缓存视图。
+   *
+   * 先按字符串值去重；去重后 key 数量超过 `getClientConfig().batchMaxLimit`
+   * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
+   * 循环分批调用，而不是一次传入超大 key 集。
+   */
+  getTagInfos(orgId: string, tagIds: string[]): ReadonlyMap<string, TagDisplayInfo> {
+    const input = this.normalizeDisplayInfoKeys(tagIds, "getTagInfos");
+    const raw = this._displayInfoCache.getTagInfos(orgId, input);
+    const result = new Map<string, TagDisplayInfo>();
+    for (const [key, value] of raw) {
+      result.set(key, mapTagDisplayInfo(value));
+    }
+    return freezeMap(result);
+  }
+
   private normalizeDisplayInfoKeys(
     keys: string[],
-    action: "getUserInfos" | "getGroupInfos",
+    action: "getUserInfos" | "getGroupInfos" | "getOrgInfos" | "getTagInfos",
   ): string[] {
     return normalizeDisplayInfoKeys(keys, action, this._batchMaxLimit);
   }
@@ -1308,40 +1344,22 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   }
 
   /**
-   * 批量读取组织展示资料（根 tag 投影）。
-   * 组织条目即通讯录第三类行（target.org_id），名称 / 头像经本接口按需补齐。
-   */
-  async getOrgInfos(orgIds: readonly string[]): Promise<ReadonlyArray<OrgInfo>> {
-    this.requireAuthenticated("getOrgInfos");
-    try {
-      const orgs = await this.runtime.getOrgInfos([...orgIds]);
-      return Object.freeze(orgs.map((o) => mapOrgInfo(o)));
-    } catch (error) {
-      throw wrapError(
-        error,
-        new RequestError("REQUEST_FAILED", "拉取组织资料失败", {
-          context: "getOrgInfos",
-        }),
-      );
-    }
-  }
-
-  /**
-   * 展开组织 tag 的直接子项（子 tag 与人按绝对排序混合返回）。
+   * 展开某个 tag 节点的直接子项（子 tag 与人按绝对排序混合返回）；
    * 展开组织根传 tagId=orgId；persistent 模式优先读本地副本，memory 模式在线展开。
+   * 子项展示名（tag 名 / 人昵称）不内嵌在返回结果里，走 getTagInfos / getUserInfos 按需补齐。
    */
-  async getOrgTagItems(params: {
+  async getTags(params: {
     orgId: string;
     tagId: string;
     cursor?: string;
     backward?: boolean;
     limit?: number;
-  }): Promise<OrgTagItemsPage> {
-    this.requireAuthenticated("getOrgTagItems");
-    this.assertNonEmpty(params.orgId, "orgId", "getOrgTagItems");
-    this.assertNonEmpty(params.tagId, "tagId", "getOrgTagItems");
+  }): Promise<TagsPage> {
+    this.requireAuthenticated("getTags");
+    this.assertNonEmpty(params.orgId, "orgId", "getTags");
+    this.assertNonEmpty(params.tagId, "tagId", "getTags");
     try {
-      const result = await this.runtime.getOrgTagItems({
+      const result = await this.runtime.getTags({
         org_id: params.orgId,
         tag_id: params.tagId,
         page: {
@@ -1350,12 +1368,12 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
           limit: clampOptionalPageLimit(params.limit, this._batchMaxLimit),
         },
       });
-      return wrapOrgTagItemsPage(result);
+      return wrapTagsPage(result);
     } catch (error) {
       throw wrapError(
         error,
-        new RequestError("REQUEST_FAILED", "展开组织 tag 失败", {
-          context: "getOrgTagItems",
+        new RequestError("REQUEST_FAILED", "展开 tags 失败", {
+          context: "getTags",
         }),
       );
     }

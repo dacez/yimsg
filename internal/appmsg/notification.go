@@ -60,7 +60,7 @@ func MutelistUpdatedNotif() *Notification {
 }
 
 // OrgUpdatedNotif creates an org:updated notification.
-// 轻通知只带 org_id，禁止携带增量数据；客户端收到后按 sync_org_tags 增量追平。
+// 轻通知只带 org_id，禁止携带增量数据；客户端收到后按 sync_tags 增量追平。
 func OrgUpdatedNotif(orgID int64) func() *Notification {
 	return func() *Notification {
 		return &Notification{Type: NotificationNameOrgUpdated, OrgID: orgID}

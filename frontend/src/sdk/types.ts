@@ -83,7 +83,7 @@ export type SyncDomain =
   | "orgs";
 export type SyncStatus = "started" | "success" | "failed" | "reset";
 export type ContactsUpdateReason = "notification_sync" | "display_reordered";
-export type DisplayInfoScope = "user" | "group" | "mixed";
+export type DisplayInfoScope = "user" | "group" | "org" | "tag" | "mixed";
 
 export interface ClientOptions {
   /** WebSocket URL. Defaults to auto-detect from location. */
@@ -266,33 +266,50 @@ export interface ContactPage {
   readonly page: PageInfo;
 }
 
-/** 组织展示资料（根 tag 投影）。 */
+/** 组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。 */
 export interface OrgInfo {
   readonly orgId: string;
   readonly name: string;
   readonly avatarUrl: string;
 }
 
-/**
- * 组织 tag 图边条目：childTagId 与 uid 互斥（一行是"含子 tag"或"含人"）。
- * rank 越小越靠前；未显式排序为 2147483647，按 sortKey（名字）字典序沉底。
- */
-export interface OrgTagItem {
-  readonly tagId: string;
-  readonly childTagId: string;
-  readonly uid: string;
-  /** 子 tag 名（人条目为空；人的昵称走 getUserInfos）。 */
+export interface OrgDisplayInfo {
   readonly name: string;
   readonly avatarUrl: string;
-  /** 本 tag 下的职务展示文本（仅人条目）。 */
+}
+
+/** tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。 */
+export interface TagInfo {
+  readonly tagId: string;
+  readonly name: string;
+  readonly avatarUrl: string;
+}
+
+export interface TagDisplayInfo {
+  readonly name: string;
+  readonly avatarUrl: string;
+}
+
+/**
+ * tags（组织关系表）条目：组织架构唯一的同步域。childType 区分 childId 是人还是 tag
+ * （子项展示名走 getUserInfos / getTagInfos，不在此内嵌）。
+ * rank 越小越靠前；未显式排序为 2147483647，按 sortKey（名字）字典序沉底。
+ * role 标识该子项在这个节点下是否为管理员。
+ */
+export interface Tag {
+  readonly tagId: string;
+  readonly childId: string;
+  readonly childType: number;
+  /** 本节点下的职务展示文本（仅人条目常用）。 */
   readonly title: string;
   readonly rank: number;
   readonly sortKey: string;
+  readonly role: number;
   readonly seq: number;
 }
 
-export interface OrgTagItemsPage {
-  readonly items: ReadonlyArray<OrgTagItem>;
+export interface TagsPage {
+  readonly tags: ReadonlyArray<Tag>;
   readonly page: PageInfo;
 }
 

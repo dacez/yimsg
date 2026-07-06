@@ -257,7 +257,7 @@ func seedOrg(state *service.AppState, uids []int64) int64 {
 		return tagID
 	}
 	mustMember := func(tagID, uid int64, title string, rank int64) {
-		if err := state.AddOrgMember(orgID, tagID, uid, title, rank); err != nil {
+		if err := state.AddOrgMember(orgID, tagID, uid, title, rank, dal.TagRoleMember); err != nil {
 			log.Fatalf("添加成员 uid=%d 到 tag=%d 失败: %v", uid, tagID, err)
 		}
 	}
@@ -271,19 +271,19 @@ func seedOrg(state *service.AppState, uids []int64) int64 {
 	// 公司领导：绝对排序（领导 1 排第一、领导 2 排第二），User3 未显式排序按名字沉底。
 	mustMember(leadersTag, uids[0], "总经理", 10)
 	mustMember(leadersTag, uids[1], "副总经理", 20)
-	mustMember(leadersTag, uids[2], "副总经理", dal.OrgRankUnset)
+	mustMember(leadersTag, uids[2], "副总经理", dal.TagRankUnset)
 	// 一人多岗：User3 在研发部 rank=1 排第一。
 	mustMember(rndTag, uids[2], "研发部负责人", 1)
 	// 后台组：User5 组长排第一，其余按名字。
 	mustMember(backendTag, uids[4], "后台组长", 1)
 	for i := 5; i < 4+orgBackendN; i++ {
-		mustMember(backendTag, uids[i], "", dal.OrgRankUnset)
+		mustMember(backendTag, uids[i], "", dal.TagRankUnset)
 	}
 	for i := 14; i < 14+orgFrontendN; i++ {
-		mustMember(frontendTag, uids[i], "", dal.OrgRankUnset)
+		mustMember(frontendTag, uids[i], "", dal.TagRankUnset)
 	}
 	for i := 24; i < 24+orgAdminN; i++ {
-		mustMember(adminTag, uids[i], "", dal.OrgRankUnset)
+		mustMember(adminTag, uids[i], "", dal.TagRankUnset)
 	}
 	return orgID
 }
@@ -425,14 +425,18 @@ func verify(db *shard.Database, uids []int64, usernames []string, bigGroupID, sm
 	memberUIDs, _ := orgStore.ActiveMemberUIDs(orgID)
 	check("组织在职成员数", int64(len(memberUIDs)), 3+orgBackendN+orgFrontendN+orgAdminN) // User3 多岗去重
 
-	rootItems, _ := orgStore.ListItemsPage(orgID, orgID, nil, false, 10)
+	rootItems, _ := orgStore.ListTagsPage(orgID, orgID, nil, false, 10)
 	check("根 tag 直接子项数", int64(len(rootItems)), 3)
 	if len(rootItems) == 3 {
 		wantOrder := []string{"公司领导", "研发部", "行政部"}
-		names, _ := orgStore.ListTagNames(orgID, []int64{rootItems[0].ChildTagID, rootItems[1].ChildTagID, rootItems[2].ChildTagID})
+		tagInfos, _ := orgStore.ListTagInfos(orgID, []int64{rootItems[0].ChildID, rootItems[1].ChildID, rootItems[2].ChildID})
+		names := make(map[int64]string, len(tagInfos))
+		for _, t := range tagInfos {
+			names[t.TagID] = t.Name
+		}
 		for i, item := range rootItems {
-			if names[item.ChildTagID][0] != wantOrder[i] {
-				fmt.Printf("  FAIL 根展开顺序[%d]: got %q, want %q\n", i, names[item.ChildTagID][0], wantOrder[i])
+			if names[item.ChildID] != wantOrder[i] {
+				fmt.Printf("  FAIL 根展开顺序[%d]: got %q, want %q\n", i, names[item.ChildID], wantOrder[i])
 				failures++
 			}
 		}

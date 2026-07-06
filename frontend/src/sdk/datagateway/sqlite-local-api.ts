@@ -11,7 +11,7 @@ type BetterSqlite3Database = {
 
 type BetterSqlite3Constructor = new (file: string) => BetterSqlite3Database;
 
-const SCHEMA_VERSION = '15';
+const SCHEMA_VERSION = '16';
 const DB_FILE_PREFIX = 'yimsg-';
 const DB_FILE_SUFFIX = '.db';
 const DEFAULT_LOCAL_DB_DIRNAME = '.yimsg-sdk';
@@ -85,38 +85,32 @@ CREATE INDEX IF NOT EXISTS idx_mutelist_seq ON mutelist(status, seq);
 CREATE TABLE IF NOT EXISTS displayinfo (
   uid TEXT NOT NULL DEFAULT '0',
   group_id TEXT NOT NULL DEFAULT '0',
+  org_id TEXT NOT NULL DEFAULT '0',
+  tag_id TEXT NOT NULL DEFAULT '0',
   username TEXT NOT NULL DEFAULT '',
   name TEXT NOT NULL DEFAULT '',
   avatar TEXT NOT NULL DEFAULT '',
   remark_name TEXT NOT NULL DEFAULT '',
   updated_at INTEGER,
-  PRIMARY KEY (uid, group_id)
+  PRIMARY KEY (uid, group_id, org_id, tag_id)
 );
 CREATE INDEX IF NOT EXISTS idx_displayinfo_updated_at ON displayinfo(updated_at);
 
 
-CREATE TABLE IF NOT EXISTS org_tag (
+CREATE TABLE IF NOT EXISTS tags (
   org_id TEXT NOT NULL DEFAULT '0',
   tag_id TEXT NOT NULL DEFAULT '0',
-  name TEXT NOT NULL DEFAULT '',
-  avatar TEXT NOT NULL DEFAULT '',
-  seq INTEGER,
-  PRIMARY KEY (org_id, tag_id)
-);
-
-CREATE TABLE IF NOT EXISTS org_tag_item (
-  org_id TEXT NOT NULL DEFAULT '0',
-  tag_id TEXT NOT NULL DEFAULT '0',
-  child_tag_id TEXT NOT NULL DEFAULT '0',
-  uid TEXT NOT NULL DEFAULT '0',
+  child_id TEXT NOT NULL DEFAULT '0',
+  child_type INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL DEFAULT '',
   rank INTEGER NOT NULL DEFAULT 2147483647,
   sort_key TEXT NOT NULL DEFAULT '',
+  role INTEGER NOT NULL DEFAULT 0,
   seq INTEGER,
-  PRIMARY KEY (org_id, tag_id, child_tag_id, uid)
+  PRIMARY KEY (org_id, tag_id, child_id, child_type)
 );
--- 展开即最终顺序：与服务端 idx_org_tag_item_order 同构（本地无 status，tombstone 即删）。
-CREATE INDEX IF NOT EXISTS idx_org_tag_item_order ON org_tag_item(org_id, tag_id, rank, sort_key, child_tag_id, uid);
+-- 展开即最终顺序：与服务端 idx_tags_order 同构（本地无 status，tombstone 即删）。
+CREATE INDEX IF NOT EXISTS idx_tags_order ON tags(org_id, tag_id, rank, sort_key, child_type, child_id);
 
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
@@ -180,8 +174,7 @@ function initializeSchema(db: BetterSqlite3Database): void {
   db.exec('DROP TABLE IF EXISTS blocklist');
   db.exec('DROP TABLE IF EXISTS mutelist');
   db.exec('DROP TABLE IF EXISTS displayinfo');
-  db.exec('DROP TABLE IF EXISTS org_tag');
-  db.exec('DROP TABLE IF EXISTS org_tag_item');
+  db.exec('DROP TABLE IF EXISTS tags');
   db.exec('DROP TABLE IF EXISTS meta');
   db.exec(SCHEMA_SQL);
   db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")

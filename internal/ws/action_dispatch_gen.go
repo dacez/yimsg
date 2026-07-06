@@ -101,10 +101,12 @@ func ActionType(action string) (uint16, bool) {
 		return uint16(pb.Type_TYPE_ACTION_REMOVE_GROUP_MEMBER), true
 	case "get_org_infos":
 		return uint16(pb.Type_TYPE_ACTION_GET_ORG_INFOS), true
-	case "get_org_tag_items":
-		return uint16(pb.Type_TYPE_ACTION_GET_ORG_TAG_ITEMS), true
-	case "sync_org_tags":
-		return uint16(pb.Type_TYPE_ACTION_SYNC_ORG_TAGS), true
+	case "get_tags":
+		return uint16(pb.Type_TYPE_ACTION_GET_TAGS), true
+	case "sync_tags":
+		return uint16(pb.Type_TYPE_ACTION_SYNC_TAGS), true
+	case "get_tag_infos":
+		return uint16(pb.Type_TYPE_ACTION_GET_TAG_INFOS), true
 	default:
 		return 0, false
 	}
@@ -199,10 +201,12 @@ func NewRequestMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.RemoveGroupMemberRequest{}, true
 	case pb.Type_TYPE_ACTION_GET_ORG_INFOS:
 		return &pb.GetOrgInfosRequest{}, true
-	case pb.Type_TYPE_ACTION_GET_ORG_TAG_ITEMS:
-		return &pb.GetOrgTagItemsRequest{}, true
-	case pb.Type_TYPE_ACTION_SYNC_ORG_TAGS:
-		return &pb.SyncOrgTagsRequest{}, true
+	case pb.Type_TYPE_ACTION_GET_TAGS:
+		return &pb.GetTagsRequest{}, true
+	case pb.Type_TYPE_ACTION_SYNC_TAGS:
+		return &pb.SyncTagsRequest{}, true
+	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
+		return &pb.GetTagInfosRequest{}, true
 	default:
 		return nil, false
 	}
@@ -297,10 +301,12 @@ func NewResponseMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.RemoveGroupMemberResponse{}, true
 	case pb.Type_TYPE_ACTION_GET_ORG_INFOS:
 		return &pb.GetOrgInfosResponse{}, true
-	case pb.Type_TYPE_ACTION_GET_ORG_TAG_ITEMS:
-		return &pb.GetOrgTagItemsResponse{}, true
-	case pb.Type_TYPE_ACTION_SYNC_ORG_TAGS:
-		return &pb.SyncOrgTagsResponse{}, true
+	case pb.Type_TYPE_ACTION_GET_TAGS:
+		return &pb.GetTagsResponse{}, true
+	case pb.Type_TYPE_ACTION_SYNC_TAGS:
+		return &pb.SyncTagsResponse{}, true
+	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
+		return &pb.GetTagInfosResponse{}, true
 	default:
 		return nil, false
 	}
@@ -419,10 +425,12 @@ func DispatchActionFrame(svc ActionService, info *service.BaseInfo, frame Frame)
 		resp = svc.RemoveGroupMember(info, req.(*pb.RemoveGroupMemberRequest))
 	case pb.Type_TYPE_ACTION_GET_ORG_INFOS:
 		resp = svc.GetOrgInfos(info, req.(*pb.GetOrgInfosRequest))
-	case pb.Type_TYPE_ACTION_GET_ORG_TAG_ITEMS:
-		resp = svc.GetOrgTagItems(info, req.(*pb.GetOrgTagItemsRequest))
-	case pb.Type_TYPE_ACTION_SYNC_ORG_TAGS:
-		resp = svc.SyncOrgTags(info, req.(*pb.SyncOrgTagsRequest))
+	case pb.Type_TYPE_ACTION_GET_TAGS:
+		resp = svc.GetTags(info, req.(*pb.GetTagsRequest))
+	case pb.Type_TYPE_ACTION_SYNC_TAGS:
+		resp = svc.SyncTags(info, req.(*pb.SyncTagsRequest))
+	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
+		resp = svc.GetTagInfos(info, req.(*pb.GetTagInfosRequest))
 	default:
 		resp = errorResponseByType(frame.Type, appmsg.ErrorCodeUnknownAction, fmt.Sprintf("unknown type: %d", frame.Type))
 	}

@@ -208,36 +208,33 @@ export interface GroupMember {
   joined_at: number;
 }
 
-/** 组织展示资料：根 tag（tag_id == org_id）的投影。 */
+/** 组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。 */
 export interface OrgInfo {
   org_id: string;
   name: string;
   avatar?: string;
 }
 
-/** 组织 tag 图同步的节点条目。 */
-export interface OrgTag {
+/** tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。 */
+export interface TagInfo {
   tag_id: string;
   name: string;
   avatar?: string;
-  status: number;
-  seq: number;
 }
 
 /**
- * 组织 tag 图的边条目（在线展开与同步共用）：child_tag_id 与 uid 互斥。
- * rank / title / sort_key 是边的属性，一人多岗即多条边、各边独立排序。
+ * 组织关系表条目（在线展开与同步共用）：组织架构唯一的同步域。
+ * child_type 区分 child_id 是人（uid）还是 tag（tag_id）；
+ * rank / title / sort_key / role 是这条边的属性，一人多岗即多条边、各边独立排序。
  */
-export interface OrgTagItem {
+export interface Tag {
   tag_id: string;
-  child_tag_id: string;
-  uid: string;
-  /** 在线展开时填子 tag 名（人条目为空）。 */
-  name?: string;
-  avatar?: string;
+  child_id: string;
+  child_type: number;
   title?: string;
   rank: number;
   sort_key: string;
+  role: number;
   status: number;
   seq: number;
 }

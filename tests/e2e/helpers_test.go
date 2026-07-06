@@ -71,10 +71,11 @@ type wsResponse struct {
 	URL  string `json:"url,omitempty"`
 	Size *int64 `json:"size,omitempty"`
 
-	// 组织域：展示资料 / 展开 / 同步。
-	Orgs  []orgInfoJSON    `json:"orgs,omitempty"`
-	Tags  []orgTagJSON     `json:"tags,omitempty"`
-	Items []orgTagItemJSON `json:"items,omitempty"`
+	// 组织域：展示资料字典（org/tag）/ tags（组织关系表）展开与同步。
+	// get_tag_infos 与 get_tags/sync_tags 的响应字段在 wire 上都叫 "tags"，
+	// 用同一个 tagJSON（两种形状的并集）承接，靠调用方读取各自用到的子集字段。
+	Orgs []orgInfoJSON `json:"orgs,omitempty"`
+	Tags []tagJSON     `json:"tags,omitempty"`
 }
 
 // 组织域响应条目。int64 ID 在 wire→JSON 映射中输出为字符串；proto3 零值字段缺省。
@@ -84,25 +85,20 @@ type orgInfoJSON struct {
 	Avatar string `json:"avatar,omitempty"`
 }
 
-type orgTagJSON struct {
-	TagID  string `json:"tag_id"`
-	Name   string `json:"name,omitempty"`
-	Avatar string `json:"avatar,omitempty"`
-	Status int    `json:"status,omitempty"`
-	Seq    int64  `json:"seq,omitempty"`
-}
-
-type orgTagItemJSON struct {
-	TagID      string `json:"tag_id,omitempty"`
-	ChildTagID string `json:"child_tag_id,omitempty"`
-	UID        string `json:"uid,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Avatar     string `json:"avatar,omitempty"`
-	Title      string `json:"title,omitempty"`
-	Rank       int64  `json:"rank,omitempty"`
-	SortKey    string `json:"sort_key,omitempty"`
-	Status     int    `json:"status,omitempty"`
-	Seq        int64  `json:"seq,omitempty"`
+// tagJSON 是 get_tag_infos（TagInfo：tag_id/name/avatar）与
+// get_tags/sync_tags（Tag：tag_id/child_id/...）两种响应形状的并集。
+type tagJSON struct {
+	TagID     string `json:"tag_id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Avatar    string `json:"avatar,omitempty"`
+	ChildID   string `json:"child_id,omitempty"`
+	ChildType int    `json:"child_type,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Rank      int64  `json:"rank,omitempty"`
+	SortKey   string `json:"sort_key,omitempty"`
+	Role      int    `json:"role,omitempty"`
+	Status    int    `json:"status,omitempty"`
+	Seq       int64  `json:"seq,omitempty"`
 }
 
 // hasMoreVal / cursorSeqVal 把可能缺省（proto3 false / 0 不上 wire）的指针归一化。

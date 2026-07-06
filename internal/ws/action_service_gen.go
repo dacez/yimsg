@@ -53,8 +53,9 @@ type ActionService interface {
 	AddGroupMember(info *service.BaseInfo, req *pb.AddGroupMemberRequest) *pb.AddGroupMemberResponse
 	RemoveGroupMember(info *service.BaseInfo, req *pb.RemoveGroupMemberRequest) *pb.RemoveGroupMemberResponse
 	GetOrgInfos(info *service.BaseInfo, req *pb.GetOrgInfosRequest) *pb.GetOrgInfosResponse
-	GetOrgTagItems(info *service.BaseInfo, req *pb.GetOrgTagItemsRequest) *pb.GetOrgTagItemsResponse
-	SyncOrgTags(info *service.BaseInfo, req *pb.SyncOrgTagsRequest) *pb.SyncOrgTagsResponse
+	GetTags(info *service.BaseInfo, req *pb.GetTagsRequest) *pb.GetTagsResponse
+	SyncTags(info *service.BaseInfo, req *pb.SyncTagsRequest) *pb.SyncTagsResponse
+	GetTagInfos(info *service.BaseInfo, req *pb.GetTagInfosRequest) *pb.GetTagInfosResponse
 }
 
 // 编译期断言：AppState 必须实现全部 action。

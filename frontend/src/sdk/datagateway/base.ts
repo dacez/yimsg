@@ -9,8 +9,8 @@ import type {
   MessagePageResult,
   MutelistPageParams,
   MutelistPageResult,
-  OrgTagItemsPageParams,
-  OrgTagItemsPageResult,
+  TagsPageParams,
+  TagsPageResult,
   SyncDomain,
   SyncEvent,
   MaybePromise,
@@ -25,6 +25,7 @@ import type {
   GroupInfo,
   Notification,
   OrgInfo,
+  TagInfo,
 } from "../../types";
 import type { ClientTransport } from "../transport/connection";
 import * as actions from "../generated/actions.gen";
@@ -166,26 +167,16 @@ export abstract class BaseDataGateway implements DataGateway {
     );
   }
 
-  async get_org_infos(orgIds: string[]): Promise<OrgInfo[]> {
-    const ids = orgIds.map((id) => String(id)).filter((id) => id && id !== "0");
-    if (ids.length === 0) return [];
-    return collectSerialBatches(ids, this.batchMaxLimit, async (batch) =>
-      actionMappers.mapGetOrgInfosResponse(
-        await actions.getOrgInfos(this.transport, actionMappers.getOrgInfosRequest(batch)),
-      ),
-    );
-  }
-
-  async get_org_tag_items(params: OrgTagItemsPageParams): Promise<OrgTagItemsPageResult> {
+  async get_tags(params: TagsPageParams): Promise<TagsPageResult> {
     // memory 基线恒走在线展开；persistent 覆盖为本地副本优先。
-    return this.fetchOrgTagItemsFromServer(params);
+    return this.fetchTagsFromServer(params);
   }
 
-  protected async fetchOrgTagItemsFromServer(
-    params: OrgTagItemsPageParams,
-  ): Promise<OrgTagItemsPageResult> {
-    return actionMappers.mapGetOrgTagItemsResponse(
-      await actions.getOrgTagItems(this.transport, actionMappers.getOrgTagItemsRequest(params)),
+  protected async fetchTagsFromServer(
+    params: TagsPageParams,
+  ): Promise<TagsPageResult> {
+    return actionMappers.mapGetTagsResponse(
+      await actions.getTags(this.transport, actionMappers.getTagsRequest(params)),
     );
   }
 
@@ -221,6 +212,23 @@ export abstract class BaseDataGateway implements DataGateway {
     return [];
   }
 
+  get_org_infos(
+    orgIds: string[],
+    options: DisplayInfoFetchOptions<OrgInfo>,
+  ): MaybePromise<OrgInfo[]> {
+    void this.refreshOrgInfos(orgIds, options);
+    return [];
+  }
+
+  get_tag_infos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoFetchOptions<TagInfo>,
+  ): MaybePromise<TagInfo[]> {
+    void this.refreshTagInfos(orgId, tagIds, options);
+    return [];
+  }
+
   protected async fetchUserInfosFromServer(
     uids: string[],
   ): Promise<UserInfo[]> {
@@ -239,6 +247,27 @@ export abstract class BaseDataGateway implements DataGateway {
         await actions.getGroupInfos(this.transport, { group_ids: batch }),
       );
     });
+  }
+
+  protected async fetchOrgInfosFromServer(
+    orgIds: string[],
+  ): Promise<OrgInfo[]> {
+    return collectSerialBatches(orgIds, this.batchMaxLimit, async (batch) =>
+      actionMappers.mapGetOrgInfosResponse(
+        await actions.getOrgInfos(this.transport, actionMappers.getOrgInfosRequest(batch)),
+      ),
+    );
+  }
+
+  protected async fetchTagInfosFromServer(
+    orgId: string,
+    tagIds: string[],
+  ): Promise<TagInfo[]> {
+    return collectSerialBatches(tagIds, this.batchMaxLimit, async (batch) =>
+      actionMappers.mapGetTagInfosResponse(
+        await actions.getTagInfos(this.transport, actionMappers.getTagInfosRequest(orgId, batch)),
+      ),
+    );
   }
 
   protected async refreshUserInfos(
@@ -264,6 +293,33 @@ export abstract class BaseDataGateway implements DataGateway {
       if (groups.length > 0) options.updateDisplayInfos?.(groups);
     } catch (error) {
       this.reportError(error, "refresh group infos failed");
+    }
+  }
+
+  protected async refreshOrgInfos(
+    orgIds: string[],
+    options: DisplayInfoFetchOptions<OrgInfo>,
+  ): Promise<void> {
+    if (orgIds.length === 0) return;
+    try {
+      const orgs = await this.fetchOrgInfosFromServer(orgIds);
+      if (orgs.length > 0) options.updateDisplayInfos?.(orgs);
+    } catch (error) {
+      this.reportError(error, "refresh org infos failed");
+    }
+  }
+
+  protected async refreshTagInfos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoFetchOptions<TagInfo>,
+  ): Promise<void> {
+    if (tagIds.length === 0) return;
+    try {
+      const tags = await this.fetchTagInfosFromServer(orgId, tagIds);
+      if (tags.length > 0) options.updateDisplayInfos?.(tags);
+    } catch (error) {
+      this.reportError(error, "refresh tag infos failed");
     }
   }
 

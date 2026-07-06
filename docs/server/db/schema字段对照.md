@@ -1,7 +1,7 @@
 # Schema 字段对照
 
 > 主要对照：`internal/dal/schema.go`。
-> 最后复核：2026-07-04。
+> 最后复核：2026-07-06。
 > 触发更新：任一 `CREATE TABLE`、索引、字段默认值或路由键说明变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 `internal/dal/schema.go` 字段、主键和索引的字段级对照入口。
 > 维护口径：本文只描述当前 DDL 字段、主键、索引和路由键；字段业务语义、读写流程和 GC 规则见同目录领域文档及上级专题文档。
@@ -30,9 +30,10 @@
   - [5.1 `group_info`](#51-group_info)
   - [5.2 `group_member`](#52-group_member)
 - [6. org 分片](#6-org-分片)
-  - [6.1 `org_tag`](#61-org_tag)
-  - [6.2 `org_tag_item`](#62-org_tag_item)
-  - [6.3 `org_version`](#63-org_version)
+  - [6.1 `org_info`](#61-org_info)
+  - [6.2 `tag_info`](#62-tag_info)
+  - [6.3 `tags`](#63-tags)
+  - [6.4 `org_version`](#64-org_version)
 - [7. 状态与类型常量](#7-状态与类型常量)
 - [8. 维护检查点](#8-维护检查点)
 
@@ -44,9 +45,9 @@
 | `username` | `username` | `user_lookup` | 用户名到 UID 映射 |
 | `token` | `token` | `session` | 登录 session |
 | `group` | `group_id` | `group_info`、`group_member` | 群资料与成员 |
-| `org` | `org_id` | `org_tag`、`org_tag_item`、`org_version` | 组织 tag 图（组织即根 tag）与同步版本 |
+| `org` | `org_id` | `org_info`、`tag_info`、`tags`、`org_version` | 组织/tag 展示字典、组织关系表（唯一同步域）与同步版本 |
 
-当前共 **5 个分片组、18 张表**。
+当前共 **5 个分片组、19 张表**。
 
 ## 2. uid 分片
 
@@ -266,59 +267,67 @@
 
 ## 6. org 分片
 
-路由键 `org_id`（即根 tag 的 tag_id，Snowflake 生成）；一个组织的节点、边与版本同分片。
-tag 图是标准同步域：节点与边共用 `org_version.max_seq` 单一 seq 空间，tombstone 由 Org GC 物理清理并升 `gc_safe_seq` 水位线。
+路由键 `org_id`（Snowflake 生成）；一个组织的字典、关系与版本同分片。
+`org_info` / `tag_info` 是无 seq/status 的展示字典（与 `group_info` 同构，不参与同步）；
+`tags` 是唯一的同步域：`seq` 来自 `org_version.max_seq`，tombstone 由 Org GC 物理清理并升 `gc_safe_seq` 水位线。
 
-### 6.1 `org_tag`
+### 6.1 `org_info`
+
+| 字段 | 类型 / 约束 | 说明 |
+|---|---|---|
+| `org_id` | `INTEGER PRIMARY KEY` | 组织 ID |
+| `name` | `TEXT NOT NULL DEFAULT ''` | 组织名称 |
+| `avatar` | `TEXT NOT NULL DEFAULT ''` | 组织头像 |
+| `created_at` | `INTEGER NOT NULL` | 创建时间，毫秒时间戳 |
+| `updated_at` | `INTEGER NOT NULL` | 更新时间，毫秒时间戳 |
+
+索引：仅主键。无 seq/status，不参与同步；改名原地更新。
+
+### 6.2 `tag_info`
 
 | 字段 | 类型 / 约束 | 说明 |
 |---|---|---|
 | `org_id` | `INTEGER NOT NULL` | 所属组织 |
-| `tag_id` | `INTEGER NOT NULL` | tag ID；根 tag 的 `tag_id == org_id`，其 name/avatar 即组织名称与头像 |
+| `tag_id` | `INTEGER NOT NULL` | tag（部门/横向分组）ID |
 | `name` | `TEXT NOT NULL DEFAULT ''` | tag 名 |
-| `avatar` | `TEXT NOT NULL DEFAULT ''` | tag 图标；根 tag 为组织头像 |
-| `status` | `INTEGER NOT NULL CHECK (status <> 0)` | 1=ACTIVE，0xff=DELETED tombstone |
-| `seq` | `INTEGER NOT NULL DEFAULT 0` | 同步序号（与边共用 seq 空间） |
+| `avatar` | `TEXT NOT NULL DEFAULT ''` | tag 图标 |
 | `created_at` | `INTEGER NOT NULL` | 创建时间，毫秒时间戳 |
 | `updated_at` | `INTEGER NOT NULL` | 更新时间，毫秒时间戳 |
 
-主键：`(org_id, tag_id)`。
+主键：`(org_id, tag_id)`。无 seq/status，不参与同步；改名原地更新并级联刷新 `tags` 里以其为子项的边的 `sort_key`；删除物理删行（无 tombstone）。
 
-索引：
-
-- `idx_org_tag_seq(org_id, seq)`
-
-### 6.2 `org_tag_item`
+### 6.3 `tags`
 
 | 字段 | 类型 / 约束 | 说明 |
 |---|---|---|
 | `org_id` | `INTEGER NOT NULL` | 所属组织 |
-| `tag_id` | `INTEGER NOT NULL` | 父 tag（根即 org_id） |
-| `child_tag_id` | `INTEGER NOT NULL DEFAULT 0` | 子 tag（与 uid 互斥） |
-| `uid` | `INTEGER NOT NULL DEFAULT 0` | 人（与 child_tag_id 互斥） |
-| `title` | `TEXT NOT NULL DEFAULT ''` | 本 tag 下的职务展示（仅人条目） |
+| `tag_id` | `INTEGER NOT NULL` | 父节点 ID；展开/挂载组织根传 `org_id` |
+| `child_id` | `INTEGER NOT NULL` | 子项 ID：`child_type=PERSON` 时为 uid，`=TAG` 时为 tag_id |
+| `child_type` | `INTEGER NOT NULL CHECK (child_type <> 0)` | 1=PERSON，2=TAG |
+| `title` | `TEXT NOT NULL DEFAULT ''` | 本节点下的职务展示（仅人条目常用） |
 | `rank` | `INTEGER NOT NULL DEFAULT 2147483647` | 边的排序值，越小越靠前；默认表示未显式排序 |
-| `sort_key` | `TEXT NOT NULL DEFAULT ''` | 名字归一化排序键（人取昵称、子 tag 取 tag 名） |
+| `sort_key` | `TEXT NOT NULL DEFAULT ''` | 名字归一化排序键（人取昵称、tag 取 tag 名） |
+| `role` | `INTEGER NOT NULL DEFAULT 1 CHECK (role <> 0)` | 1=MEMBER，2=ADMIN；标识该子项在这个父节点下是否为管理员 |
 | `status` | `INTEGER NOT NULL CHECK (status <> 0)` | 1=ACTIVE，0xff=DELETED tombstone |
-| `seq` | `INTEGER NOT NULL DEFAULT 0` | 同步序号（与节点共用 seq 空间） |
+| `seq` | `INTEGER NOT NULL DEFAULT 0` | 同步序号 |
 | `created_at` | `INTEGER NOT NULL` | 创建时间，毫秒时间戳 |
 | `updated_at` | `INTEGER NOT NULL` | 更新时间，毫秒时间戳 |
 
-主键：`(org_id, tag_id, child_tag_id, uid)`。
+主键：`(org_id, tag_id, child_id, child_type)`。
 
 索引：
 
-- `idx_org_tag_item_order(org_id, tag_id, status, rank, sort_key, child_tag_id, uid)`（展开即最终顺序）
-- `idx_org_tag_item_seq(org_id, seq)`（同步游标顺扫）
-- `idx_org_tag_item_uid(org_id, uid)`（离职判定、昵称变化刷投影）
+- `idx_tags_order(org_id, tag_id, status, rank, sort_key, child_type, child_id)`（展开即最终顺序）
+- `idx_tags_seq(org_id, seq)`（同步游标顺扫）
+- `idx_tags_child(org_id, child_type, child_id)`（离职判定、昵称/tag 改名联动刷投影）
 
-### 6.3 `org_version`
+### 6.4 `org_version`
 
 | 字段 | 类型 / 约束 | 说明 |
 |---|---|---|
 | `org_id` | `INTEGER PRIMARY KEY` | 组织 ID |
 | `gc_safe_seq` | `INTEGER NOT NULL DEFAULT 0` | 已被物理清理的安全水位 |
-| `max_seq` | `INTEGER NOT NULL DEFAULT 0` | 节点与边共用的当前最大序列 |
+| `max_seq` | `INTEGER NOT NULL DEFAULT 0` | `tags` 当前最大序列 |
 
 索引：仅主键。
 

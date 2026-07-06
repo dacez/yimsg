@@ -173,41 +173,63 @@ const (
 	RoleOwner  int8 = 2
 )
 
-// Constants for org tag graph status（节点与边共用）。
+// Constants for tags status.
 const (
-	OrgTagActive  uint8 = 1
-	OrgTagDeleted uint8 = 0xff
+	TagActive  uint8 = 1
+	TagDeleted uint8 = 0xff
 )
 
-// OrgRankUnset 表示边未显式排序：自然沉到所有显式排序之后，落到 sort_key 字典序。
-const OrgRankUnset int64 = 2147483647
+// Constants for tags child_type：区分一行挂载的子项是人还是 tag。
+const (
+	TagChildPerson uint8 = 1
+	TagChildTag    uint8 = 2
+)
 
-// OrgTag 是组织 tag 图的节点：组织（根 tag，TagID == OrgID）、部门、横向分组统一为 tag。
-type OrgTag struct {
+// Constants for tags role：标识子项在其挂载节点下是否为管理员。
+const (
+	TagRoleMember uint8 = 1
+	TagRoleAdmin  uint8 = 2
+)
+
+// TagRankUnset 表示边未显式排序：自然沉到所有显式排序之后，落到 sort_key 字典序。
+const TagRankUnset int64 = 2147483647
+
+// OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。
+type OrgInfo struct {
 	OrgID     int64  `json:"org_id,string"`
-	TagID     int64  `json:"tag_id,string"`
 	Name      string `json:"name"`
 	Avatar    string `json:"avatar"`
-	Status    uint8  `json:"status"`
-	Seq       int64  `json:"seq"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 }
 
-// OrgTagItem 是组织 tag 图的边：ChildTagID 与 UID 互斥（一行是"含子 tag"或"含人"）。
-// Rank / Title / SortKey 都是这条边的属性，一人多岗即多条边、各边独立排序。
-type OrgTagItem struct {
-	OrgID      int64  `json:"org_id,string"`
-	TagID      int64  `json:"tag_id,string"`
-	ChildTagID int64  `json:"child_tag_id,string"`
-	UID        int64  `json:"uid,string"`
-	Title      string `json:"title"`
-	Rank       int64  `json:"rank"`
-	SortKey    string `json:"sort_key"`
-	Status     uint8  `json:"status"`
-	Seq        int64  `json:"seq"`
-	CreatedAt  int64  `json:"created_at"`
-	UpdatedAt  int64  `json:"updated_at"`
+// TagInfo 是 tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。
+type TagInfo struct {
+	OrgID     int64  `json:"org_id,string"`
+	TagID     int64  `json:"tag_id,string"`
+	Name      string `json:"name"`
+	Avatar    string `json:"avatar"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
+// （TagID，组织根传 OrgID）下挂一个子项"，ChildType 区分子项是人
+// （TagChildPerson，ChildID=uid）还是 tag（TagChildTag，ChildID=tag_id）。
+// Rank / Title / SortKey / Role 都是这条边的属性，一人多岗即多条边、各边独立。
+type Tag struct {
+	OrgID     int64  `json:"org_id,string"`
+	TagID     int64  `json:"tag_id,string"`
+	ChildID   int64  `json:"child_id,string"`
+	ChildType uint8  `json:"child_type"`
+	Title     string `json:"title"`
+	Rank      int64  `json:"rank"`
+	SortKey   string `json:"sort_key"`
+	Role      uint8  `json:"role"`
+	Status    uint8  `json:"status"`
+	Seq       int64  `json:"seq"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
 }
 
 // Constants for message types. 必须与 protobuf MessageType 一致。

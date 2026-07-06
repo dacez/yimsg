@@ -512,33 +512,45 @@
       "ts_function": "getOrgInfos",
       "auth": true,
       "domain": "组织",
-      "desc": "批量读取组织展示资料（根 tag 投影）",
+      "desc": "批量读取组织展示资料",
       "request_message": "GetOrgInfosRequest",
       "response_message": "GetOrgInfosResponse"
     },
     {
       "type_id": 45,
-      "enum_name": "TYPE_ACTION_GET_ORG_TAG_ITEMS",
-      "action_name": "get_org_tag_items",
-      "go_method": "GetOrgTagItems",
-      "ts_function": "getOrgTagItems",
+      "enum_name": "TYPE_ACTION_GET_TAGS",
+      "action_name": "get_tags",
+      "go_method": "GetTags",
+      "ts_function": "getTags",
       "auth": true,
       "domain": "组织",
-      "desc": "在线展开 tag 的直接子项（子 tag 与人混合有序）",
-      "request_message": "GetOrgTagItemsRequest",
-      "response_message": "GetOrgTagItemsResponse"
+      "desc": "在线展开 tags（组织关系表）中某节点的直接子项（tag 与人混合有序）",
+      "request_message": "GetTagsRequest",
+      "response_message": "GetTagsResponse"
     },
     {
       "type_id": 46,
-      "enum_name": "TYPE_ACTION_SYNC_ORG_TAGS",
-      "action_name": "sync_org_tags",
-      "go_method": "SyncOrgTags",
-      "ts_function": "syncOrgTags",
+      "enum_name": "TYPE_ACTION_SYNC_TAGS",
+      "action_name": "sync_tags",
+      "go_method": "SyncTags",
+      "ts_function": "syncTags",
       "auth": true,
       "domain": "组织",
-      "desc": "按 org 增量同步 tag 图（节点与边共用游标）",
-      "request_message": "SyncOrgTagsRequest",
-      "response_message": "SyncOrgTagsResponse"
+      "desc": "按 org 增量同步 tags（组织关系表）",
+      "request_message": "SyncTagsRequest",
+      "response_message": "SyncTagsResponse"
+    },
+    {
+      "type_id": 47,
+      "enum_name": "TYPE_ACTION_GET_TAG_INFOS",
+      "action_name": "get_tag_infos",
+      "go_method": "GetTagInfos",
+      "ts_function": "getTagInfos",
+      "auth": true,
+      "domain": "组织",
+      "desc": "批量读取 tag（部门/横向分组）展示资料",
+      "request_message": "GetTagInfosRequest",
+      "response_message": "GetTagInfosResponse"
     }
   ],
   "notifications": [

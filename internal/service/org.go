@@ -13,11 +13,11 @@ import (
 	"yimsg/internal/shard"
 )
 
-// 组织域：一切皆 tag、组织即根 tag（tag_id == org_id）。
+// 组织域：org_info（组织字典）+ tag_info（tag/部门字典）+ org_relation（唯一同步域）。
 //
 // 成员资格是 contacts 的组织行（type=org, id=org_id），走既有通讯录同步；
-// tag 图是独立同步域（org_id 路由、节点与边共用 seq 空间），
-// 变更后经 taskqueue 向全体在线成员扇出 org:updated 轻通知。
+// 组织关系表是独立同步域（org_id 路由），变更后经 taskqueue 向全体在线成员
+// 扇出 org:updated 轻通知。
 
 // taskKindOrgUpdated 是组织架构变更通知扇出任务 kind。
 const taskKindOrgUpdated = "org_updated"
@@ -55,13 +55,13 @@ func (s *AppState) submitOrgUpdated(orgID int64) {
 	s.submitTask(taskKindOrgUpdated, orgUpdatedTask{OrgID: orgID})
 }
 
-// orgName 读取组织展示名（根 tag 的 name）。
+// orgName 读取组织展示名。
 func orgName(s *AppState, orgID int64) string {
-	tag, err := s.OrgStore(orgID).GetTag(orgID, orgID)
-	if err != nil || tag == nil || tag.Status != dal.OrgTagActive {
+	info, err := s.OrgStore(orgID).GetOrgInfo(orgID)
+	if err != nil || info == nil {
 		return ""
 	}
-	return tag.Name
+	return info.Name
 }
 
 // requireOrgMember 校验调用方是组织成员：点查调用方 uid 分片的通讯录组织行，O(1) 主键命中。
@@ -89,18 +89,18 @@ func (s *AppState) GetOrgInfos(info *BaseInfo, req *pb.GetOrgInfosRequest) *pb.G
 	if exceededBatch(orgIDs, s.MaxBatchLimit()) {
 		return toGetOrgInfosResponse(errBatchLimit(reqID, s.MaxBatchLimit()))
 	}
-	tags, err := batchQueryShard(s.DB().OrgShards, orgIDs, func(db *shard.DB, batch []int64) ([]dal.OrgTag, error) {
-		return dal.NewOrgStore(db).ListInfos(batch)
+	infos, err := batchQueryShard(s.DB().OrgShards, orgIDs, func(db *shard.DB, batch []int64) ([]dal.OrgInfo, error) {
+		return dal.NewOrgStore(db).ListOrgInfos(batch)
 	})
 	if err != nil {
 		return toGetOrgInfosResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 
 	// 与 get_group_infos 同构：拉展示资料时顺带刷新调用方通讯录组织行的排序/搜索投影。
-	if callerUID != 0 && len(tags) > 0 {
-		names := make(map[int64]string, len(tags))
-		for _, tag := range tags {
-			names[tag.OrgID] = tag.Name
+	if callerUID != 0 && len(infos) > 0 {
+		names := make(map[int64]string, len(infos))
+		for _, o := range infos {
+			names[o.OrgID] = o.Name
 		}
 		changed, err := s.ContactStore(callerUID).UpdateOrgProjections(callerUID, names, auth.NowMs())
 		if err != nil {
@@ -111,77 +111,84 @@ func (s *AppState) GetOrgInfos(info *BaseInfo, req *pb.GetOrgInfosRequest) *pb.G
 		}
 	}
 
-	orgs := make([]appmsg.OrgInfo, len(tags))
-	for i, tag := range tags {
-		orgs[i] = appmsg.OrgInfo{OrgID: appmsg.JSONInt64(tag.OrgID), Name: tag.Name, Avatar: tag.Avatar}
+	orgs := make([]appmsg.OrgInfo, len(infos))
+	for i, o := range infos {
+		orgs[i] = appmsg.OrgInfo{OrgID: appmsg.JSONInt64(o.OrgID), Name: o.Name, Avatar: o.Avatar}
 	}
 	return toGetOrgInfosResponse(appmsg.OKOrgInfos(reqID, orgs))
 }
 
-func (s *AppState) GetOrgTagItems(info *BaseInfo, req *pb.GetOrgTagItemsRequest) *pb.GetOrgTagItemsResponse {
+// GetTagInfos 批量读取本组织内 tag（部门/横向分组）的展示资料字典，仅组织成员可读。
+func (s *AppState) GetTagInfos(info *BaseInfo, req *pb.GetTagInfosRequest) *pb.GetTagInfosResponse {
+	reqID := info.RequestID
+	uid := info.UID
+	orgID := req.GetOrgId()
+	if resp := requireOrgMember(s, reqID, uid, orgID); resp != nil {
+		return toGetTagInfosResponse(resp)
+	}
+	tagIDs := req.GetTagIds()
+	if exceededBatch(tagIDs, s.MaxBatchLimit()) {
+		return toGetTagInfosResponse(errBatchLimit(reqID, s.MaxBatchLimit()))
+	}
+	rows, err := s.OrgStore(orgID).ListTagInfos(orgID, tagIDs)
+	if err != nil {
+		return toGetTagInfosResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	tags := make([]appmsg.TagInfo, len(rows))
+	for i, t := range rows {
+		tags[i] = appmsg.TagInfo{TagID: appmsg.JSONInt64(t.TagID), Name: t.Name, Avatar: t.Avatar}
+	}
+	return toGetTagInfosResponse(appmsg.OKTagInfos(reqID, tags))
+}
+
+func (s *AppState) GetTags(info *BaseInfo, req *pb.GetTagsRequest) *pb.GetTagsResponse {
 	reqID := info.RequestID
 	uid := info.UID
 	orgID := req.GetOrgId()
 	tagID := req.GetTagId()
 	if resp := requireOrgMember(s, reqID, uid, orgID); resp != nil {
-		return toGetOrgTagItemsResponse(resp)
+		return toGetTagsResponse(resp)
 	}
 	if tagID == 0 {
-		return toGetOrgTagItemsResponse(appmsg.ErrInvalidArgument(reqID, "tag_id required; expand root with tag_id=org_id"))
+		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "tag_id required; expand root with tag_id=org_id"))
 	}
 	store := s.OrgStore(orgID)
-	tag, err := store.GetTag(orgID, tagID)
-	if err != nil {
-		return toGetOrgTagItemsResponse(appmsg.ErrInternal(reqID, err.Error()))
-	}
-	if tag == nil || tag.Status != dal.OrgTagActive {
-		return toGetOrgTagItemsResponse(appmsg.ErrNotFound(reqID, "tag not found"))
+	if tagID != orgID { // 组织根天然存在，只校验非根 tag
+		tag, err := store.GetTagInfo(orgID, tagID)
+		if err != nil {
+			return toGetTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
+		}
+		if tag == nil {
+			return toGetTagsResponse(appmsg.ErrNotFound(reqID, "tag not found"))
+		}
 	}
 
 	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())
 	parts, err := decodeCursor(page.cursor)
 	if err != nil {
-		return toGetOrgTagItemsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
 	}
-	rows, err := store.ListItemsPage(orgID, tagID, parts, page.backward, page.limit+1)
+	rows, err := store.ListTagsPage(orgID, tagID, parts, page.backward, page.limit+1)
 	if err != nil {
-		return toGetOrgTagItemsResponse(appmsg.ErrInternal(reqID, err.Error()))
+		return toGetTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	hasMoreTraveled := int64(len(rows)) > page.limit
 	if hasMoreTraveled {
 		rows = rows[:page.limit]
 	}
 	if page.backward {
-		reverseInPlace(rows) // ListItemsPage backward 返回反展示序，转回展示序
+		reverseInPlace(rows) // ListTagsPage backward 返回反展示序，转回展示序
 	}
 
-	// 子 tag 名/图标：同分片批量点查后应用层填充（无 JOIN）。
-	var childTagIDs []int64
-	for _, row := range rows {
-		if row.ChildTagID > 0 {
-			childTagIDs = append(childTagIDs, row.ChildTagID)
-		}
-	}
-	tagNames, err := store.ListTagNames(orgID, childTagIDs)
-	if err != nil {
-		return toGetOrgTagItemsResponse(appmsg.ErrInternal(reqID, err.Error()))
-	}
-
-	items := make([]appmsg.OrgTagItem, len(rows))
+	relations := make([]appmsg.Tag, len(rows))
 	for i, row := range rows {
-		item := orgTagItemFromDAL(row)
-		if row.ChildTagID > 0 {
-			display := tagNames[row.ChildTagID]
-			item.Name = display[0]
-			item.Avatar = display[1]
-		}
-		items[i] = item
+		relations[i] = tagFromDAL(row)
 	}
 
 	pi := appmsg.PageInfo{Total: -1}
 	if len(rows) > 0 {
-		pi.StartCursor = orgTagItemCursor(rows[0])
-		pi.EndCursor = orgTagItemCursor(rows[len(rows)-1])
+		pi.StartCursor = tagCursor(rows[0])
+		pi.EndCursor = tagCursor(rows[len(rows)-1])
 	}
 	if page.backward {
 		pi.HasMoreBackward = hasMoreTraveled
@@ -190,27 +197,27 @@ func (s *AppState) GetOrgTagItems(info *BaseInfo, req *pb.GetOrgTagItemsRequest)
 		pi.HasMoreForward = hasMoreTraveled
 		pi.HasMoreBackward = page.hasCursor
 	}
-	resp := appmsg.OKOrgTagItems(reqID, items)
+	resp := appmsg.OKGetTags(reqID, relations)
 	resp.Page = &pi
-	return toGetOrgTagItemsResponse(resp)
+	return toGetTagsResponse(resp)
 }
 
-// orgTagItemCursor 按展示序编码边条目的不透明 keyset 游标 [rank, sort_key, child_tag_id, uid]。
-func orgTagItemCursor(item dal.OrgTagItem) string {
+// tagCursor 按展示序编码关系条目的不透明 keyset 游标 [rank, sort_key, child_type, child_id]。
+func tagCursor(r dal.Tag) string {
 	return encodeCursor(
-		strconv.FormatInt(item.Rank, 10),
-		item.SortKey,
-		strconv.FormatInt(item.ChildTagID, 10),
-		strconv.FormatInt(item.UID, 10),
+		strconv.FormatInt(r.Rank, 10),
+		r.SortKey,
+		strconv.FormatInt(int64(r.ChildType), 10),
+		strconv.FormatInt(r.ChildID, 10),
 	)
 }
 
-func (s *AppState) SyncOrgTags(info *BaseInfo, req *pb.SyncOrgTagsRequest) *pb.SyncOrgTagsResponse {
+func (s *AppState) SyncTags(info *BaseInfo, req *pb.SyncTagsRequest) *pb.SyncTagsResponse {
 	reqID := info.RequestID
 	uid := info.UID
 	orgID := req.GetOrgId()
 	if resp := requireOrgMember(s, reqID, uid, orgID); resp != nil {
-		return toSyncOrgTagsResponse(resp)
+		return toSyncTagsResponse(resp)
 	}
 	afterSeq := req.GetLastSeq()
 	limit := effectiveLimit(req.GetLimit(), s.MaxBatchLimit())
@@ -218,72 +225,66 @@ func (s *AppState) SyncOrgTags(info *BaseInfo, req *pb.SyncOrgTagsRequest) *pb.S
 
 	gcSafeSeq, _, err := store.GetVersion(orgID)
 	if err != nil {
-		return toSyncOrgTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
+		return toSyncTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if resp := rejectTooOldSyncSeq(reqID, afterSeq, gcSafeSeq, req.GetRebuild()); resp != nil {
-		return toSyncOrgTagsResponse(resp)
+		return toSyncTagsResponse(resp)
 	}
 
-	tags, items, hasMore, err := store.SyncPage(orgID, afterSeq, limit)
+	rows, hasMore, err := store.SyncPage(orgID, afterSeq, limit)
 	if err != nil {
-		return toSyncOrgTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
+		return toSyncTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
-	outTags := make([]appmsg.OrgTag, len(tags))
-	for i, tag := range tags {
-		outTags[i] = appmsg.OrgTag{TagID: appmsg.JSONInt64(tag.TagID), Name: tag.Name, Avatar: tag.Avatar, Status: tag.Status, Seq: tag.Seq}
-	}
-	outItems := make([]appmsg.OrgTagItem, len(items))
-	for i, item := range items {
-		outItems[i] = orgTagItemFromDAL(item)
+	relations := make([]appmsg.Tag, len(rows))
+	for i, row := range rows {
+		relations[i] = tagFromDAL(row)
 	}
 
-	resp := appmsg.OKSyncOrgTags(reqID, outTags, outItems)
-	seqs := make([]int64, 0, len(tags)+len(items))
-	for _, tag := range tags {
-		seqs = append(seqs, tag.Seq)
-	}
-	for _, item := range items {
-		seqs = append(seqs, item.Seq)
+	resp := appmsg.OKSyncTags(reqID, relations)
+	seqs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		seqs = append(seqs, row.Seq)
 	}
 	setCursor(resp, seqs, true, hasMore)
-	return toSyncOrgTagsResponse(resp)
+	return toSyncTagsResponse(resp)
 }
 
-func orgTagItemFromDAL(item dal.OrgTagItem) appmsg.OrgTagItem {
-	return appmsg.OrgTagItem{
-		TagID:      appmsg.JSONInt64(item.TagID),
-		ChildTagID: appmsg.JSONInt64(item.ChildTagID),
-		UID:        appmsg.JSONInt64(item.UID),
-		Title:      item.Title,
-		Rank:       item.Rank,
-		SortKey:    item.SortKey,
-		Status:     item.Status,
-		Seq:        item.Seq,
+func tagFromDAL(r dal.Tag) appmsg.Tag {
+	return appmsg.Tag{
+		TagID:     appmsg.JSONInt64(r.TagID),
+		ChildID:   appmsg.JSONInt64(r.ChildID),
+		ChildType: r.ChildType,
+		Title:     r.Title,
+		Rank:      r.Rank,
+		SortKey:   r.SortKey,
+		Role:      r.Role,
+		Status:    r.Status,
+		Seq:       r.Seq,
 	}
 }
 
 // ---- 组织建制写路径（管理工具 / seed / 测试装配使用，不上协议）----
 //
-// org 分片内所有行变更逐行 bump seq；每次操作提交后投递一条 org:updated 扇出任务。
-// org_tag_item 与 contacts 组织行跨分片双写、无事务，沿用好友双写的容忍规则，
-// 兜底方向是"以 contacts 为门"。
+// org 分片内 org_relation 行变更逐行 bump seq；每次操作提交后投递一条
+// org:updated 扇出任务。org_relation 与 contacts 组织行跨分片双写、无事务，
+// 沿用好友双写的容忍规则，兜底方向是"以 contacts 为门"。
 
-// CreateOrg 建组织：插根 tag 行（tag_id == org_id）。返回新组织 ID。
+// CreateOrg 建组织：写 org_info 字典行。返回新组织 ID。
 func (s *AppState) CreateOrg(name, avatar string) (int64, error) {
 	orgID := s.IDGen().NextID()
-	if _, err := s.OrgStore(orgID).UpsertTag(orgID, orgID, name, avatar, auth.NowMs()); err != nil {
+	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, auth.NowMs()); err != nil {
 		return 0, err
 	}
 	s.submitOrgUpdated(orgID)
 	return orgID, nil
 }
 
-// AddOrgTag 建子 tag 并挂到 parentTagID 下（防环 + 根不为子在此校验）。返回新 tag ID。
+// AddOrgTag 建 tag 字典行并挂到 parentTagID 下（防环 + 根不为子在此校验）。返回新 tag ID。
 func (s *AppState) AddOrgTag(orgID, parentTagID int64, name, avatar string, rank int64) (int64, error) {
 	tagID := s.IDGen().NextID()
 	now := auth.NowMs()
 	store := s.OrgStore(orgID)
-	if _, err := store.UpsertTag(orgID, tagID, name, avatar, now); err != nil {
+	if err := store.UpsertTagInfo(orgID, tagID, name, avatar, now); err != nil {
 		return 0, err
 	}
 	if err := s.linkOrgTag(orgID, parentTagID, tagID, rank, now); err != nil {
@@ -306,7 +307,7 @@ func (s *AppState) linkOrgTag(orgID, parentTagID, childTagID, rank int64, now in
 	if cycle {
 		return errOrgCycle
 	}
-	child, err := store.GetTag(orgID, childTagID)
+	child, err := store.GetTagInfo(orgID, childTagID)
 	if err != nil {
 		return err
 	}
@@ -314,7 +315,8 @@ func (s *AppState) linkOrgTag(orgID, parentTagID, childTagID, rank int64, now in
 	if child != nil {
 		childName = child.Name
 	}
-	_, _, err = store.UpsertItem(orgID, parentTagID, childTagID, 0, "", rank, dal.ContactSortKey("", childName), now)
+	_, _, err = store.UpsertTag(orgID, parentTagID, childTagID, dal.TagChildTag, "", rank,
+		dal.ContactSortKey("", childName), dal.TagRoleMember, now)
 	return err
 }
 
@@ -328,11 +330,13 @@ func (s *AppState) LinkOrgTag(orgID, parentTagID, childTagID, rank int64) error 
 }
 
 // AddOrgMember 把人挂进 tag：写边 + 首边时联动通讯录组织行并推送 contacts:updated。
-func (s *AppState) AddOrgMember(orgID, tagID, uid int64, title string, rank int64) error {
+// role 标识该成员在这个 tag 下是否为管理员。
+func (s *AppState) AddOrgMember(orgID, tagID, uid int64, title string, rank int64, role uint8) error {
 	now := auth.NowMs()
 	nickname := userNickname(s, uid)
 	store := s.OrgStore(orgID)
-	_, hadActive, err := store.UpsertItem(orgID, tagID, 0, uid, title, rank, dal.ContactSortKey("", nickname), now)
+	_, hadActive, err := store.UpsertTag(orgID, tagID, uid, dal.TagChildPerson, title, rank,
+		dal.ContactSortKey("", nickname), role, now)
 	if err != nil {
 		return err
 	}
@@ -352,7 +356,7 @@ func (s *AppState) AddOrgMember(orgID, tagID, uid int64, title string, rank int6
 
 // RemoveOrgMember 把人摘出 tag：墓碑边 + 末边时软删除通讯录组织行（离职）。
 func (s *AppState) RemoveOrgMember(orgID, tagID, uid int64) error {
-	removed, stillActive, err := s.OrgStore(orgID).RemoveItem(orgID, tagID, 0, uid, auth.NowMs())
+	removed, stillActive, err := s.OrgStore(orgID).RemoveTag(orgID, tagID, uid, dal.TagChildPerson, auth.NowMs())
 	if err != nil {
 		return err
 	}
@@ -370,9 +374,18 @@ func (s *AppState) RemoveOrgMember(orgID, tagID, uid int64) error {
 	return nil
 }
 
-// RenameOrgTag 改 tag 名（根 tag 即改组织名）；被挂边的 sort_key 级联在 DAL 同事务内完成。
+// RenameOrg 改组织展示名/头像（组织字典，无级联；无边引用组织根，不涉及 sort_key 刷新）。
+func (s *AppState) RenameOrg(orgID int64, name, avatar string) error {
+	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, auth.NowMs()); err != nil {
+		return err
+	}
+	s.submitOrgUpdated(orgID)
+	return nil
+}
+
+// RenameOrgTag 改 tag 名；被挂边的 sort_key 级联在 DAL 同事务内完成。
 func (s *AppState) RenameOrgTag(orgID, tagID int64, name, avatar string) error {
-	if _, err := s.OrgStore(orgID).UpsertTag(orgID, tagID, name, avatar, auth.NowMs()); err != nil {
+	if err := s.OrgStore(orgID).RenameTagInfo(orgID, tagID, name, avatar, auth.NowMs()); err != nil {
 		return err
 	}
 	s.submitOrgUpdated(orgID)
@@ -387,7 +400,7 @@ func (s *AppState) DeleteOrgTag(orgID, tagID int64) error {
 	if err != nil {
 		return err
 	}
-	found, err := store.DeleteTag(orgID, tagID, auth.NowMs())
+	found, err := store.DeleteTagInfo(orgID, tagID, auth.NowMs())
 	if err != nil || !found {
 		return err
 	}
@@ -412,14 +425,15 @@ func (s *AppState) DeleteOrgTag(orgID, tagID int64) error {
 	return nil
 }
 
-// SetOrgItemRank 调整一条边的排序/职务（人条目传 uid、tag 条目传 childTagID）。
-func (s *AppState) SetOrgItemRank(orgID, tagID, childTagID, uid int64, title string, rank int64) error {
+// SetOrgItemRank 调整一条边的排序/职务/角色（人条目传 uid+TagChildPerson、
+// tag 条目传 childTagID+TagChildTag）。
+func (s *AppState) SetOrgItemRank(orgID, tagID, childID int64, childType uint8, title string, rank int64, role uint8) error {
 	store := s.OrgStore(orgID)
 	var sortKey string
-	if uid > 0 {
-		sortKey = dal.ContactSortKey("", userNickname(s, uid))
+	if childType == dal.TagChildPerson {
+		sortKey = dal.ContactSortKey("", userNickname(s, childID))
 	} else {
-		child, err := store.GetTag(orgID, childTagID)
+		child, err := store.GetTagInfo(orgID, childID)
 		if err != nil {
 			return err
 		}
@@ -427,7 +441,7 @@ func (s *AppState) SetOrgItemRank(orgID, tagID, childTagID, uid int64, title str
 			sortKey = dal.ContactSortKey("", child.Name)
 		}
 	}
-	if _, _, err := store.UpsertItem(orgID, tagID, childTagID, uid, title, rank, sortKey, auth.NowMs()); err != nil {
+	if _, _, err := store.UpsertTag(orgID, tagID, childID, childType, title, rank, sortKey, role, auth.NowMs()); err != nil {
 		return err
 	}
 	s.submitOrgUpdated(orgID)

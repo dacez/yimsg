@@ -178,22 +178,21 @@ func orgInfoToProto(o appmsg.OrgInfo) *pb.OrgInfo {
 	return &pb.OrgInfo{OrgId: int64(o.OrgID), Name: o.Name, Avatar: o.Avatar}
 }
 
-func orgTagToProto(t appmsg.OrgTag) *pb.OrgTag {
-	return &pb.OrgTag{TagId: int64(t.TagID), Name: t.Name, Avatar: t.Avatar, Status: pb.OrgTagStatus(t.Status), Seq: t.Seq}
+func tagInfoToProto(t appmsg.TagInfo) *pb.TagInfo {
+	return &pb.TagInfo{TagId: int64(t.TagID), Name: t.Name, Avatar: t.Avatar}
 }
 
-func orgTagItemToProto(i appmsg.OrgTagItem) *pb.OrgTagItem {
-	return &pb.OrgTagItem{
-		TagId:      int64(i.TagID),
-		ChildTagId: int64(i.ChildTagID),
-		Uid:        int64(i.UID),
-		Name:       i.Name,
-		Avatar:     i.Avatar,
-		Title:      i.Title,
-		Rank:       i.Rank,
-		SortKey:    i.SortKey,
-		Status:     pb.OrgTagStatus(i.Status),
-		Seq:        i.Seq,
+func tagToProto(t appmsg.Tag) *pb.Tag {
+	return &pb.Tag{
+		TagId:     int64(t.TagID),
+		ChildId:   int64(t.ChildID),
+		ChildType: pb.TagChildType(t.ChildType),
+		Title:     t.Title,
+		Rank:      t.Rank,
+		SortKey:   t.SortKey,
+		Role:      pb.TagRole(t.Role),
+		Status:    pb.TagStatus(t.Status),
+		Seq:       t.Seq,
 	}
 }
 
@@ -528,23 +527,29 @@ func toGetOrgInfosResponse(resp *appmsg.Response) *pb.GetOrgInfosResponse {
 	}
 	return out
 }
-func toGetOrgTagItemsResponse(resp *appmsg.Response) *pb.GetOrgTagItemsResponse {
-	out := &pb.GetOrgTagItemsResponse{Base: baseFromApp(resp), Page: pageToProto(resp.Page)}
+func toGetTagInfosResponse(resp *appmsg.Response) *pb.GetTagInfosResponse {
+	out := &pb.GetTagInfosResponse{Base: baseFromApp(resp)}
 	if resp != nil {
-		for _, v := range resp.OrgTagItems {
-			out.Items = append(out.Items, orgTagItemToProto(v))
+		for _, v := range resp.TagInfos {
+			out.Tags = append(out.Tags, tagInfoToProto(v))
 		}
 	}
 	return out
 }
-func toSyncOrgTagsResponse(resp *appmsg.Response) *pb.SyncOrgTagsResponse {
-	out := &pb.SyncOrgTagsResponse{Base: baseFromApp(resp)}
+func toGetTagsResponse(resp *appmsg.Response) *pb.GetTagsResponse {
+	out := &pb.GetTagsResponse{Base: baseFromApp(resp), Page: pageToProto(resp.Page)}
 	if resp != nil {
-		for _, v := range resp.OrgTags {
-			out.Tags = append(out.Tags, orgTagToProto(v))
+		for _, v := range resp.Tags {
+			out.Tags = append(out.Tags, tagToProto(v))
 		}
-		for _, v := range resp.OrgTagItems {
-			out.Items = append(out.Items, orgTagItemToProto(v))
+	}
+	return out
+}
+func toSyncTagsResponse(resp *appmsg.Response) *pb.SyncTagsResponse {
+	out := &pb.SyncTagsResponse{Base: baseFromApp(resp)}
+	if resp != nil {
+		for _, v := range resp.Tags {
+			out.Tags = append(out.Tags, tagToProto(v))
 		}
 		if resp.HasMore != nil {
 			out.HasMore = *resp.HasMore
