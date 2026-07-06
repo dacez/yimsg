@@ -300,6 +300,15 @@ code {
 .card h3 { margin: 0 0 10px; font-size: 1.2rem; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .card p { margin: 0; color: var(--muted); position: relative; }
 
+.card-link {
+  display: inline-block;
+  margin-top: 16px;
+  font-weight: 700;
+  color: var(--brand);
+  position: relative;
+}
+.card-link:hover { color: var(--brand-2); }
+
 @media (prefers-reduced-motion: reduce) {
   .bg-aurora { animation: none; }
 }
