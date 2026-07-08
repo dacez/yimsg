@@ -53,3 +53,4 @@ config.local.toml
 test.crt
 test.key
 seed_data
+server-linux-amd64
