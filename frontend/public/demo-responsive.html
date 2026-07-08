@@ -136,7 +136,7 @@
 
       const client = new YimsgClient({ wsUrl, uploadUrl });
       client.login(item.username, PASSWORD).then(() => client.startSession()).then(() => {
-        mount(host, { client, viewMode: 'full', layout: item.layout, theme: 'auto', locale: 'auto' });
+        mount(host, { client, viewMode: 'full', layout: item.layout, theme: 'light', locale: 'auto' });
       }).catch((err) => {
         host.classList.add('panel-error');
         host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;

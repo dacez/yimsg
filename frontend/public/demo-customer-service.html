@@ -49,7 +49,7 @@
       document.getElementById('cred').textContent = `访客账号：${username}　密码：${password}`;
 
       const host = document.getElementById('chat-host');
-      const handle = mount(host, { client, viewMode: 'chat-only', theme: 'auto', locale: 'auto' });
+      const handle = mount(host, { client, viewMode: 'chat-only', theme: 'light', locale: 'auto' });
 
       const agentsEl = document.getElementById('agents');
       let activeUid = null;

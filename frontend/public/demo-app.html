@@ -27,7 +27,7 @@
 
     const client = new YimsgClient({ wsUrl, uploadUrl });
     client.login('demo_alice', 'Demo@123456').then(() => client.startSession({ storage: 'persistent' })).then(() => {
-      mount(host, { client, viewMode: 'full', theme: 'auto', locale: 'auto' });
+      mount(host, { client, viewMode: 'full', theme: 'light', locale: 'auto' });
     }).catch((err) => {
       host.className = 'host error';
       host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
