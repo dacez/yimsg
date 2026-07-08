@@ -159,7 +159,7 @@ async function loadTile(state: DashboardTileState): Promise<void> {
     state.handle = mount(state.host, {
       wsUrl: resolveWsUrl(),
       uploadUrl: '/api/upload',
-      theme: 'auto',
+      theme: 'light',
       locale: 'zh-CN',
       layout: 'auto',
       mode: state.config.mode,
