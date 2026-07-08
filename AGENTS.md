@@ -44,7 +44,8 @@
 - `frontend/src/uikit/`：主应用 / 嵌入式 UIKit 的视图、组件和挂载入口。
 - `tests/e2e/`：后端 WebSocket/HTTP 端到端测试；`frontend/tests/`：SDK unit / integration 和 Playwright UI 测试。
 - `tools/scripts/`：仓库级 shell 脚本真实实现；`tools/*.sh` 仅作为兼容入口。
-- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`tools/cmd/seed-data/`、`tools/cmd/test-seed/`、`tools/cmd/debug-messages/`：Go 工具命令目录。
+- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`tools/cmd/seed-data/`、`tools/cmd/test-seed/`、`tools/cmd/seed-demo/`、`tools/cmd/debug-messages/`：Go 工具命令目录。
+- `tools/internal/seedkit/`：seed-data / test-seed / seed-demo 共用的 service 层调用样板（BaseInfo 构造、响应判定、常见 ConversationTarget/MessageBody 构造）。
 - `tools/protocolgen/`：protocolgen 的 proto 解析、manifest 与 Go / TS / Markdown 生成库；协议机械映射生成物落在 `internal/ws/*_gen.go` 与 `frontend/src/sdk/generated/{actions,notifications}.gen.ts`。
 - `docs/`：长期设计文档；生成类协议速查位于 `docs/generated/`，过期文档放 `docs/archive/`。
 

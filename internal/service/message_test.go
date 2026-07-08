@@ -300,18 +300,31 @@ func TestSendGroupMessageNonMember(t *testing.T) {
 	}
 }
 
-func TestSendDMNonFriend(t *testing.T) {
+// TestSendDMWithoutFriendSucceeds 验证私聊不再要求好友关系：陌生人之间可以发起临时会话。
+func TestSendDMWithoutFriendSucceeds(t *testing.T) {
 	s := testState(t)
 	uidA := registerUser(t, s, "alice", "p", "Alice")
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
 	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi"}
 	result := sendMessageService(s, "r1", uidA, req)
-	if result.Response.OK {
-		t.Fatal("non-friend should not be able to send dm")
+	if !result.Response.OK {
+		t.Fatalf("non-friend dm should succeed as temporary session, got error: %s", result.Response.Error)
 	}
-	if result.Response.Error != "非好友" {
-		t.Fatalf("error = %q, want 非好友", result.Response.Error)
+}
+
+// TestSendDMToSelfRejected 验证不能给自己发送私聊消息。
+func TestSendDMToSelfRejected(t *testing.T) {
+	s := testState(t)
+	uidA := registerUser(t, s, "alice", "p", "Alice")
+
+	req := &appmsg.Request{ToUID: i64json(uidA), MsgType: dal.MsgText, Content: "note to self"}
+	result := sendMessageService(s, "r1", uidA, req)
+	if result.Response.OK {
+		t.Fatal("send dm to self should fail")
+	}
+	if result.Response.Error != "不能给自己发送消息" {
+		t.Fatalf("error = %q, want 不能给自己发送消息", result.Response.Error)
 	}
 }
 

@@ -18,6 +18,7 @@ import type {
 } from "../../../src/types";
 import {
   CONTACT_DELETED,
+  CONTACT_FRIEND,
   CONTACT_PENDING,
   MSG_TYPE_RECALL,
   MSG_TYPE_TEXT,
@@ -752,6 +753,46 @@ describe("SDK PersistentDataGateway", () => {
         }),
       ).resolves.toMatchObject({ page: { hasMoreForward: false }, contacts: [] });
       expect(transport.send).not.toHaveBeenCalled();
+    });
+
+    it("filters by org_id and by batched friend_uids/group_ids/org_ids", async () => {
+      await db.execBatch([
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
+          params: [1, "200", CONTACT_FRIEND, "Bob", 1],
+        },
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
+          params: [1, "300", CONTACT_FRIEND, "Alice", 2],
+        },
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
+          params: [2, "500", CONTACT_FRIEND, "Group500", 3],
+        },
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
+          params: [3, "900", CONTACT_FRIEND, "Org900", 4],
+        },
+      ]);
+
+      await expect(
+        ds.get_contacts({ org_id: "900", status: CONTACT_FRIEND, page: { limit: 10 } }),
+      ).resolves.toMatchObject({
+        contacts: [expect.objectContaining({ org_id: "900" })],
+      });
+
+      const batched = await ds.get_contacts({
+        friend_uids: ["200"],
+        group_ids: ["500"],
+        org_ids: ["900"],
+        status: CONTACT_FRIEND,
+        page: { limit: 10 },
+      });
+      const ids = (c: (typeof batched.contacts)[number]) =>
+        [c.friend_uid, c.group_id, c.org_id].find((id) => id && id !== "0");
+      expect(batched.contacts.map(ids).sort()).toEqual(
+        ["200", "500", "900"].sort(),
+      );
     });
 
     it("sync_contacts persists remark_name and sort_key", async () => {

@@ -171,7 +171,7 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
   shadow.appendChild(shellTemplate.content.cloneNode(true));
   const appShell = shadow.querySelector<HTMLElement>('.mc-app-shell');
   if (!appShell) throw new Error('[yimsg/uikit] failed to create app shell');
-  appShell.dataset.viewMode = options.viewMode === 'chat-only' ? 'chat-only' : 'full';
+  appShell.dataset.viewMode = options.viewMode ?? 'full';
   const sizeGuardTitle = shadow.querySelector<HTMLElement>('.mc-size-guard-title');
   const sizeGuardBody = shadow.querySelector<HTMLElement>('.mc-size-guard-body');
 

@@ -21,7 +21,7 @@ const CONTACTS_PILL_ID = 'contacts-update-pill';
 
 type ListMode = 'reset' | 'forward' | 'backward';
 
-function contactFriendUid(contact: Contact): string {
+export function contactFriendUid(contact: Contact): string {
   return 'toUid' in contact.target ? String(contact.target.toUid) : '0';
 }
 
@@ -555,10 +555,13 @@ export function createContactsView(app: AppInstance) {
     if (reqId !== detailRequestId || orgPanelOrgId !== orgId) return;
 
     // 人员昵称/头像走既有 uidCache；子 tag 名走 tag 展示资料缓存，组织根名走组织展示资料缓存。
+    // 面包屑上的祖先 tag（orgPanelStack 里非 orgId 的部分）不在当前层子项里，需要一并批量取，
+    // 否则面包屑首次经过某一层时会一直显示 tagId 而不是名字。
     const memberUids = tags.filter(i => i.childType === ORG_CHILD_PERSON).map(i => i.childId);
     const childTagIds = tags.filter(i => i.childType === ORG_CHILD_TAG).map(i => i.childId);
+    const ancestorTagIds = orgPanelStack.filter(id => id !== orgId);
     const userDisplayMap = app.client.getUserInfos(memberUids);
-    const tagDisplayMap = app.client.getTagInfos(orgId, childTagIds);
+    const tagDisplayMap = app.client.getTagInfos(orgId, [...new Set([...childTagIds, ...ancestorTagIds])]);
     const orgDisplayMap = app.client.getOrgInfos([orgId]);
 
     const crumbNameOf = (tagId: string): string => tagId === orgId

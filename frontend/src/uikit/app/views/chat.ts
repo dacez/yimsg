@@ -1,5 +1,5 @@
 import type { AppInstance } from '../app-instance';
-import { openConversation, refreshConversations, renderConversationList } from './chat/conversation-list';
+import { openConversation, refreshChatHeader, refreshConversations, renderConversationList } from './chat/conversation-list';
 import { refreshDetailPanel, rerenderCurrentDetailPanel } from './chat/detail-panel';
 import { applyConversationGuards } from './chat/composer';
 import {
@@ -18,6 +18,9 @@ export function createChatView(app: AppInstance) {
     },
     refreshOpenConversation() {
       return refreshOpenConversation(app);
+    },
+    refreshChatHeader() {
+      refreshChatHeader(app);
     },
     async openConversation(target: Parameters<typeof openConversation>[1]) {
       await openConversation(app, target);

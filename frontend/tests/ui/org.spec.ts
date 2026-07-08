@@ -44,7 +44,10 @@ test.describe('Org directory', () => {
     await expect(rootRows.nth(2)).toContainText('远端部门');
 
     // 下钻公司领导：总经理（rank=10）排第一并带职务徽标；Test2 副总沉底。
+    // 面包屑当前层名字必须补齐为"公司领导"，不能停留在纯数字 tagId（该 tag 无子 tag，
+    // 只有 getTagInfos 把面包屑祖先一起批量取回才会命中缓存）。
     await panel.locator('.org-tag-row', { hasText: '公司领导' }).click();
+    await expect(panel.locator('.org-crumb-current')).toContainText('公司领导', { timeout: 10_000 });
     const leaderRows = panel.locator('.org-member-row');
     await expect(leaderRows.first()).toContainText('测试用户1', { timeout: 10_000 });
     await expect(leaderRows.first().locator('.org-member-title')).toContainText('总经理');

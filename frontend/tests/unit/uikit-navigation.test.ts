@@ -20,7 +20,7 @@ function makeToggle() {
   };
 }
 
-function createApp(viewMode?: 'full' | 'chat-only') {
+function createApp(viewMode?: 'full' | 'chat-only' | 'contacts-only') {
   const views: Record<ViewName, ReturnType<typeof makeToggle>> = {
     chat: makeToggle(),
     contacts: makeToggle(),
@@ -84,6 +84,30 @@ describe('chat navigation switchView', () => {
     switchView(app, 'settings', { updateRoute: false });
 
     expect(views.chat.state.hidden).toBe(false);
+    expect(views.settings.state.hidden).toBe(true);
+    expect(renderSettingsFn).not.toHaveBeenCalled();
+    expect(pushRoute).not.toHaveBeenCalled();
+  });
+
+  it('contacts-only viewMode forces every switchView call back to contacts', () => {
+    const { app, views, navItems, loadContactsFn } = createApp('contacts-only');
+
+    switchView(app, 'chat');
+
+    expect(views.contacts.state.hidden).toBe(false);
+    expect(views.chat.state.hidden).toBe(true);
+    expect(navItems.contacts.state.active).toBe(true);
+    expect(loadContactsFn).toHaveBeenCalled();
+    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined });
+  });
+
+  it('contacts-only viewMode ignores host hash routing to settings without updating the route', () => {
+    const { app, views, renderSettingsFn } = createApp('contacts-only');
+    vi.mocked(pushRoute).mockClear();
+
+    switchView(app, 'settings', { updateRoute: false });
+
+    expect(views.contacts.state.hidden).toBe(false);
     expect(views.settings.state.hidden).toBe(true);
     expect(renderSettingsFn).not.toHaveBeenCalled();
     expect(pushRoute).not.toHaveBeenCalled();

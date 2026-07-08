@@ -290,14 +290,18 @@ export function getContactsRequest(params: {
   status?: number;
   friend_uid?: string;
   group_id?: string;
+  org_id?: string;
   friend_uids?: readonly string[];
   group_ids?: readonly string[];
+  org_ids?: readonly string[];
 }): GetContactsRequest {
   const targets = [
     ...(params.friend_uid ? [{ uid: params.friend_uid }] : []),
     ...(params.group_id ? [{ group_id: params.group_id }] : []),
+    ...(params.org_id ? [{ org_id: params.org_id }] : []),
     ...(params.friend_uids || []).map((uid) => ({ uid })),
     ...(params.group_ids || []).map((group_id) => ({ group_id })),
+    ...(params.org_ids || []).map((org_id) => ({ org_id })),
   ];
   return GetContactsRequest.create({
     targets,

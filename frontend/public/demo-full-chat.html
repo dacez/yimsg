@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg 完整体验 demo</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 16px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .tip { font-size: 13px; color: #666; margin-bottom: 16px; }
+    .panels { display: flex; gap: 16px; flex-wrap: wrap; }
+    .panel { flex: 1; min-width: 320px; }
+    .panel-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; padding: 8px 12px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.06); font-size: 13px; }
+    .panel-header .cred { color: #4550e5; font-weight: 600; }
+    .panel-host { width: 100%; height: min(640px, 78vh); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.08); background: #fff; }
+    .panel-error { padding: 16px; color: #b3261e; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>yimsg · 完整体验 demo</h1>
+  <p class="tip">三个账号已自动登录，互为好友并共享同一个群聊「产品体验群」。在任意一栏发消息，其余两栏会实时收到——用于演示完整的登录、群聊与单聊能力。</p>
+  <div class="panels" id="panels"></div>
+  <script type="module">
+    import { mount, YimsgClient } from '/chat/uikit/yimsg-uikit.js';
+
+    const PASSWORD = 'Demo@123456';
+    const ACCOUNTS = [
+      { username: 'demo_alice', label: 'Alice' },
+      { username: 'demo_bob', label: 'Bob' },
+      { username: 'demo_carol', label: 'Carol' },
+    ];
+
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    const uploadUrl = '/api/upload';
+    const panelsEl = document.getElementById('panels');
+
+    for (const account of ACCOUNTS) {
+      const panel = document.createElement('div');
+      panel.className = 'panel';
+      panel.innerHTML = `
+        <div class="panel-header">
+          <span>${account.label}</span>
+          <span class="cred">用户名：${account.username}　密码：${PASSWORD}</span>
+        </div>
+        <div class="panel-host panel-error" hidden></div>
+      `;
+      panelsEl.appendChild(panel);
+      const host = document.createElement('div');
+      host.className = 'panel-host';
+      panel.replaceChild(host, panel.querySelector('.panel-host'));
+
+      const client = new YimsgClient({ wsUrl, uploadUrl });
+      client.login(account.username, PASSWORD).then(() => client.startSession()).then(() => {
+        mount(host, { client, viewMode: 'full', theme: 'auto', locale: 'auto' });
+      }).catch((err) => {
+        host.classList.add('panel-error');
+        host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+        console.warn('[demo-full-chat] login failed', account.username, err);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg 客服组件 demo</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 16px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .tip { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .cred { font-size: 13px; color: #4550e5; font-weight: 600; margin-bottom: 16px; }
+    .agents { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .agents button { padding: 6px 14px; border-radius: 999px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 13px; }
+    .agents button.active { background: #4550e5; color: #fff; border-color: #4550e5; }
+    .host { width: min(480px, 100%); height: min(640px, 78vh); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.08); background: #fff; }
+    .error { padding: 16px; color: #b3261e; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>yimsg · 客服组件 demo</h1>
+  <p class="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。</p>
+  <div class="cred" id="cred">正在注册访客账号…</div>
+  <div class="agents" id="agents"></div>
+  <div id="chat-host" class="host"></div>
+  <script type="module">
+    import { mount, YimsgClient } from '/chat/uikit/yimsg-uikit.js';
+
+    const AGENTS = [
+      { username: 'demo_kf_1', label: '客服-小美' },
+      { username: 'demo_kf_2', label: '客服-小林' },
+      { username: 'demo_kf_3', label: '客服-阿强' },
+    ];
+
+    function randomSuffix() {
+      return Math.random().toString(36).slice(2, 8);
+    }
+
+    async function main() {
+      const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+      const uploadUrl = '/api/upload';
+      const username = `guest_${randomSuffix()}`;
+      const password = randomSuffix() + randomSuffix();
+
+      const client = new YimsgClient({ wsUrl, uploadUrl });
+      await client.register(username, password, '访客');
+      await client.login(username, password);
+      await client.startSession();
+
+      document.getElementById('cred').textContent = `访客账号：${username}　密码：${password}`;
+
+      const host = document.getElementById('chat-host');
+      const handle = mount(host, { client, viewMode: 'chat-only', theme: 'auto', locale: 'auto' });
+
+      const agentsEl = document.getElementById('agents');
+      let activeUid = null;
+      for (const agent of AGENTS) {
+        const btn = document.createElement('button');
+        btn.textContent = agent.label;
+        btn.addEventListener('click', async () => {
+          const info = await client.searchUser(agent.username);
+          if (!info) return;
+          activeUid = info.uid;
+          for (const b of agentsEl.querySelectorAll('button')) b.classList.remove('active');
+          btn.classList.add('active');
+          await handle.openConversation({ friendUid: info.uid });
+        });
+        agentsEl.appendChild(btn);
+      }
+      // 默认打开第一个客服的临时会话。
+      agentsEl.querySelector('button')?.click();
+    }
+
+    main().catch((err) => {
+      document.getElementById('cred').textContent = '';
+      const host = document.getElementById('chat-host');
+      host.className = 'host error';
+      host.textContent = `初始化失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+      console.warn('[demo-customer-service] init failed', err);
+    });
+  </script>
+</body>
+</html>

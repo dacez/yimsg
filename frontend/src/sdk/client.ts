@@ -1286,8 +1286,10 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       status?: number;
       friendUid?: string;
       groupId?: string;
+      orgId?: string;
       friendUids?: readonly string[];
       groupIds?: readonly string[];
+      orgIds?: readonly string[];
     } = {},
   ): Promise<ContactPage> {
     this.requireAuthenticated("getContacts");
@@ -1302,8 +1304,10 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         status: params.status,
         friend_uid: params.friendUid,
         group_id: params.groupId,
+        org_id: params.orgId,
         friend_uids: params.friendUids,
         group_ids: params.groupIds,
+        org_ids: params.orgIds,
       });
       return wrapContactPage(result);
     } catch (error) {

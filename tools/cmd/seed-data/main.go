@@ -32,6 +32,7 @@ import (
 	"yimsg/internal/service"
 	"yimsg/internal/shard"
 	"yimsg/internal/taskqueue"
+	"yimsg/tools/internal/seedkit"
 )
 
 const (
@@ -42,14 +43,6 @@ const (
 	smallGroupMsgN = 10000
 	dmMsgN         = 2
 )
-
-func baseInfo(uid int64) *service.BaseInfo {
-	return &service.BaseInfo{UID: uid, RequestID: 1}
-}
-
-func ok(base *pb.BaseResponse) bool {
-	return base != nil && base.Code == pb.ErrorCode_ERROR_OK
-}
 
 func main() {
 	configPath := flag.String("config", "config.toml", "配置文件路径")
@@ -97,8 +90,8 @@ func main() {
 	for i := 0; i < userCount; i++ {
 		usernames[i] = fmt.Sprintf("User%d", i+1)
 		nickname := fmt.Sprintf("用户%d", i+1)
-		resp := state.Register(baseInfo(0), &pb.RegisterRequest{Username: usernames[i], Password: password, Nickname: nickname})
-		if !ok(resp.GetBase()) {
+		resp := state.Register(seedkit.BaseInfo(0), &pb.RegisterRequest{Username: usernames[i], Password: password, Nickname: nickname})
+		if !seedkit.OK(resp.GetBase()) {
 			log.Fatalf("注册 %s 失败: %s", usernames[i], resp.GetBase().GetMsg())
 		}
 		uids[i] = resp.GetUid()
@@ -114,12 +107,12 @@ func main() {
 	fmt.Println("\n=== Step 2: User1 与所有用户互为好友 ===")
 	t0 = time.Now()
 	for i := 1; i < userCount; i++ {
-		resp := state.AddFriend(baseInfo(uid1), &pb.AddFriendRequest{FriendUid: uids[i]})
-		if !ok(resp.GetBase()) {
+		resp := state.AddFriend(seedkit.BaseInfo(uid1), &pb.AddFriendRequest{FriendUid: uids[i]})
+		if !seedkit.OK(resp.GetBase()) {
 			log.Fatalf("AddFriend User1→User%d: %s", i+1, resp.GetBase().GetMsg())
 		}
-		resp2 := state.AcceptFriend(baseInfo(uids[i]), &pb.AcceptFriendRequest{FriendUid: uid1})
-		if !ok(resp2.GetBase()) {
+		resp2 := state.AcceptFriend(seedkit.BaseInfo(uids[i]), &pb.AcceptFriendRequest{FriendUid: uid1})
+		if !seedkit.OK(resp2.GetBase()) {
 			log.Fatalf("AcceptFriend User%d: %s", i+1, resp2.GetBase().GetMsg())
 		}
 		if i%1000 == 0 {
@@ -131,8 +124,8 @@ func main() {
 	// Step 3: 创建大群（1000 人）并发送 1000 条消息（每人一条），每条扇出写入所有成员收件箱
 	fmt.Printf("\n=== Step 3: 大群（%d 人）+ %d 条消息 ===\n", userCount, bigGroupMsgN)
 	t0 = time.Now()
-	resp := state.CreateGroup(baseInfo(uid1), &pb.CreateGroupRequest{Name: "大群", MemberUids: uids})
-	if !ok(resp.GetBase()) {
+	resp := state.CreateGroup(seedkit.BaseInfo(uid1), &pb.CreateGroupRequest{Name: "大群", MemberUids: uids})
+	if !seedkit.OK(resp.GetBase()) {
 		log.Fatalf("创建大群失败: %s", resp.GetBase().GetMsg())
 	}
 	bigGroupID := resp.GetGroupId()
@@ -143,9 +136,9 @@ func main() {
 		senderIdx := i % userCount
 		senderUID := uids[senderIdx]
 		content := fmt.Sprintf("大群_%s_%d", usernames[senderIdx], i+1)
-		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbGroupTarget(bigGroupID), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-		sresp := state.SendMessage(baseInfo(senderUID), req)
-		if !ok(sresp.GetBase()) {
+		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.GroupTarget(bigGroupID), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+		sresp := state.SendMessage(seedkit.BaseInfo(senderUID), req)
+		if !seedkit.OK(sresp.GetBase()) {
 			log.Fatalf("大群消息 %d 失败: %s", i+1, sresp.GetBase().GetMsg())
 		}
 		if (i+1)%100 == 0 {
@@ -157,8 +150,8 @@ func main() {
 	// Step 4: 创建中群（User1-User4）并发送 10000 条消息
 	fmt.Println("\n=== Step 4: 中群（User1-User4）+ 10000 条消息 ===")
 	t0 = time.Now()
-	resp = state.CreateGroup(baseInfo(uid1), &pb.CreateGroupRequest{Name: "中群", MemberUids: uids[:smallGroupN]})
-	if !ok(resp.GetBase()) {
+	resp = state.CreateGroup(seedkit.BaseInfo(uid1), &pb.CreateGroupRequest{Name: "中群", MemberUids: uids[:smallGroupN]})
+	if !seedkit.OK(resp.GetBase()) {
 		log.Fatalf("创建中群失败: %s", resp.GetBase().GetMsg())
 	}
 	smallGroupID := resp.GetGroupId()
@@ -168,9 +161,9 @@ func main() {
 		senderIdx := i % smallGroupN
 		senderUID := uids[senderIdx]
 		content := fmt.Sprintf("中群_%s_%d", usernames[senderIdx], i+1)
-		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbGroupTarget(smallGroupID), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-		sresp := state.SendMessage(baseInfo(senderUID), req)
-		if !ok(sresp.GetBase()) {
+		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.GroupTarget(smallGroupID), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+		sresp := state.SendMessage(seedkit.BaseInfo(senderUID), req)
+		if !seedkit.OK(sresp.GetBase()) {
 			log.Fatalf("中群消息 %d 失败: %s", i+1, sresp.GetBase().GetMsg())
 		}
 		if (i+1)%1000 == 0 {
@@ -198,9 +191,9 @@ func main() {
 				senderName = usernames[peerIdx]
 			}
 			content := fmt.Sprintf("%s_%d", senderName, i+1)
-			req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbUserTarget(receiverUID), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-			resp := state.SendMessage(baseInfo(senderUID), req)
-			if !ok(resp.GetBase()) {
+			req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.UserTarget(receiverUID), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+			resp := state.SendMessage(seedkit.BaseInfo(senderUID), req)
+			if !seedkit.OK(resp.GetBase()) {
 				log.Fatalf("DM User1↔%s msg %d 失败: %s", usernames[peerIdx], i+1, resp.GetBase().GetMsg())
 			}
 		}
@@ -214,8 +207,8 @@ func main() {
 	fmt.Println("\n=== Step 6: 收藏群 + 组织架构 ===")
 	t0 = time.Now()
 	for _, gid := range []int64{bigGroupID, smallGroupID} {
-		fresp := state.FavoriteGroup(baseInfo(uid1), &pb.FavoriteGroupRequest{GroupId: gid})
-		if !ok(fresp.GetBase()) {
+		fresp := state.FavoriteGroup(seedkit.BaseInfo(uid1), &pb.FavoriteGroupRequest{GroupId: gid})
+		if !seedkit.OK(fresp.GetBase()) {
 			log.Fatalf("收藏群 %d 失败: %s", gid, fresp.GetBase().GetMsg())
 		}
 	}
@@ -477,14 +470,3 @@ func stopServer(port int) {
 	time.Sleep(500 * time.Millisecond)
 }
 
-func pbUserTarget(uid int64) *pb.ConversationTarget {
-	return &pb.ConversationTarget{Kind: &pb.ConversationTarget_Uid{Uid: uid}}
-}
-
-func pbTextBody(text string) *pb.MessageBody {
-	return &pb.MessageBody{Kind: &pb.MessageBody_Text{Text: &pb.TextBody{Text: text}}}
-}
-
-func pbGroupTarget(groupID int64) *pb.ConversationTarget {
-	return &pb.ConversationTarget{Kind: &pb.ConversationTarget_GroupId{GroupId: groupID}}
-}

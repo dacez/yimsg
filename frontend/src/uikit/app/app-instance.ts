@@ -87,6 +87,8 @@ interface ChatState {
   detailRequestId: number;
   detailOpen: boolean;
   forwardSelectionHandler: (() => Promise<void> | void) | null;
+  /** DM 对端 uid → 是否好友，用于标记"临时会话"；懒加载填充，未知时不展示标签。 */
+  friendStatusCache: Map<string, boolean>;
 }
 
 interface ContactsViewState {
@@ -123,6 +125,7 @@ interface AppViews {
     refreshDetailPanel(): void;
     rerenderCurrentDetailPanel(): void;
     refreshOpenConversation(): Promise<void>;
+    refreshChatHeader(): void;
     applyConversationGuards(): void;
     registerViewCallbacks(loadContacts: () => void, renderSettings: () => void): void;
     startDMFromContact(uid: string): void;
@@ -220,6 +223,7 @@ export class AppInstance {
     detailRequestId: 0,
     detailOpen: false,
     forwardSelectionHandler: null,
+    friendStatusCache: new Map<string, boolean>(),
   };
   readonly contactsState: ContactsViewState = {
     friendWindow: new BoundedPageWindow<Contact>(APP_CONFIG.list.maxPages, undefined, contactIdentity),

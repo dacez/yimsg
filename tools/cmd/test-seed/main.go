@@ -39,6 +39,7 @@ import (
 	"yimsg/internal/service"
 	"yimsg/internal/shard"
 	"yimsg/internal/taskqueue"
+	"yimsg/tools/internal/seedkit"
 )
 
 const (
@@ -51,14 +52,6 @@ const (
 	bigGroupMembers = 250 // Test1-Test250, 用于群成员分页测试
 	dmFanout        = 120 // Test1 与 Test6.. 各建一条 DM 会话，用于会话列表有界消息流窗口测试
 )
-
-func baseInfo(uid int64) *service.BaseInfo {
-	return &service.BaseInfo{UID: uid, RequestID: 1}
-}
-
-func ok(base *pb.BaseResponse) bool {
-	return base != nil && base.Code == pb.ErrorCode_ERROR_OK
-}
 
 func main() {
 	configPath := flag.String("config", "config.toml", "配置文件路径")
@@ -105,8 +98,8 @@ func main() {
 	for i := 0; i < userCount; i++ {
 		usernames[i] = fmt.Sprintf("%s_Test%d", prefix, i+1)
 		nickname := fmt.Sprintf("测试用户%d", i+1)
-		resp := state.Register(baseInfo(0), &pb.RegisterRequest{Username: usernames[i], Password: password, Nickname: nickname})
-		if !ok(resp.GetBase()) {
+		resp := state.Register(seedkit.BaseInfo(0), &pb.RegisterRequest{Username: usernames[i], Password: password, Nickname: nickname})
+		if !seedkit.OK(resp.GetBase()) {
 			log.Fatalf("注册 %s 失败: %s", usernames[i], resp.GetBase().GetMsg())
 		}
 		uids[i] = resp.GetUid()
@@ -117,12 +110,12 @@ func main() {
 	// Step 2: Test1 与 Test2-Test260 互为好友
 	fmt.Println("建立好友关系...")
 	for i := 1; i < userCount; i++ {
-		resp := state.AddFriend(baseInfo(uid1), &pb.AddFriendRequest{FriendUid: uids[i]})
-		if !ok(resp.GetBase()) {
+		resp := state.AddFriend(seedkit.BaseInfo(uid1), &pb.AddFriendRequest{FriendUid: uids[i]})
+		if !seedkit.OK(resp.GetBase()) {
 			log.Fatalf("AddFriend: %s", resp.GetBase().GetMsg())
 		}
-		resp2 := state.AcceptFriend(baseInfo(uids[i]), &pb.AcceptFriendRequest{FriendUid: uid1})
-		if !ok(resp2.GetBase()) {
+		resp2 := state.AcceptFriend(seedkit.BaseInfo(uids[i]), &pb.AcceptFriendRequest{FriendUid: uid1})
+		if !seedkit.OK(resp2.GetBase()) {
 			log.Fatalf("AcceptFriend: %s", resp2.GetBase().GetMsg())
 		}
 	}
@@ -134,9 +127,9 @@ func main() {
 	for i := 0; i < dmFanout; i++ {
 		friendIdx := i + 5 // 避开 Test2/Test3（后续另建 DM）
 		content := fmt.Sprintf("会话列表测试_%s_%d", usernames[friendIdx], i+1)
-		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbUserTarget(uids[friendIdx]), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-		sresp := state.SendMessage(baseInfo(uid1), req)
-		if !ok(sresp.GetBase()) {
+		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.UserTarget(uids[friendIdx]), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+		sresp := state.SendMessage(seedkit.BaseInfo(uid1), req)
+		if !seedkit.OK(sresp.GetBase()) {
 			log.Fatalf("会话列表 DM %d 失败: %s", i+1, sresp.GetBase().GetMsg())
 		}
 	}
@@ -144,8 +137,8 @@ func main() {
 	// Step 3: 创建群并发消息
 	groupName := fmt.Sprintf("%s_测试群", prefix)
 	fmt.Printf("创建群 %q（%d 人）+ %d 条消息...\n", groupName, groupMembers, groupMsgN)
-	resp := state.CreateGroup(baseInfo(uid1), &pb.CreateGroupRequest{Name: groupName, MemberUids: uids[:groupMembers]})
-	if !ok(resp.GetBase()) {
+	resp := state.CreateGroup(seedkit.BaseInfo(uid1), &pb.CreateGroupRequest{Name: groupName, MemberUids: uids[:groupMembers]})
+	if !seedkit.OK(resp.GetBase()) {
 		log.Fatalf("创建群失败: %s", resp.GetBase().GetMsg())
 	}
 	groupID := resp.GetGroupId()
@@ -153,9 +146,9 @@ func main() {
 	for i := 0; i < groupMsgN; i++ {
 		senderIdx := i % groupMembers
 		content := fmt.Sprintf("群消息_%s_%d", usernames[senderIdx], i+1)
-		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbGroupTarget(groupID), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-		sresp := state.SendMessage(baseInfo(uids[senderIdx]), req)
-		if !ok(sresp.GetBase()) {
+		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.GroupTarget(groupID), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+		sresp := state.SendMessage(seedkit.BaseInfo(uids[senderIdx]), req)
+		if !seedkit.OK(sresp.GetBase()) {
 			log.Fatalf("群消息 %d 失败: %s", i+1, sresp.GetBase().GetMsg())
 		}
 	}
@@ -163,8 +156,8 @@ func main() {
 	// Step 3.5: 创建大群
 	bigGroupName := fmt.Sprintf("%s_大测试群", prefix)
 	fmt.Printf("创建群 %q（%d 人）...\n", bigGroupName, bigGroupMembers)
-	bigResp := state.CreateGroup(baseInfo(uid1), &pb.CreateGroupRequest{Name: bigGroupName, MemberUids: uids[:bigGroupMembers]})
-	if !ok(bigResp.GetBase()) {
+	bigResp := state.CreateGroup(seedkit.BaseInfo(uid1), &pb.CreateGroupRequest{Name: bigGroupName, MemberUids: uids[:bigGroupMembers]})
+	if !seedkit.OK(bigResp.GetBase()) {
 		log.Fatalf("创建大群失败: %s", bigResp.GetBase().GetMsg())
 	}
 
@@ -241,22 +234,11 @@ func sendDM(state *service.AppState, uids []int64, usernames []string, idx1, idx
 			senderIdx, receiverIdx = idx2, idx1
 		}
 		content := fmt.Sprintf("DM_%s→%s_%d", usernames[senderIdx], usernames[receiverIdx], i+1)
-		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: pbUserTarget(uids[receiverIdx]), MsgType: pb.MessageType(dal.MsgText), Body: pbTextBody(content)}
-		resp := state.SendMessage(baseInfo(uids[senderIdx]), req)
-		if !ok(resp.GetBase()) {
+		req := &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: seedkit.UserTarget(uids[receiverIdx]), MsgType: pb.MessageType(dal.MsgText), Body: seedkit.TextBody(content)}
+		resp := state.SendMessage(seedkit.BaseInfo(uids[senderIdx]), req)
+		if !seedkit.OK(resp.GetBase()) {
 			log.Fatalf("DM %d 失败: %s", i+1, resp.GetBase().GetMsg())
 		}
 	}
 }
 
-func pbUserTarget(uid int64) *pb.ConversationTarget {
-	return &pb.ConversationTarget{Kind: &pb.ConversationTarget_Uid{Uid: uid}}
-}
-
-func pbTextBody(text string) *pb.MessageBody {
-	return &pb.MessageBody{Kind: &pb.MessageBody_Text{Text: &pb.TextBody{Text: text}}}
-}
-
-func pbGroupTarget(groupID int64) *pb.ConversationTarget {
-	return &pb.ConversationTarget{Kind: &pb.ConversationTarget_GroupId{GroupId: groupID}}
-}

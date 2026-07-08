@@ -1656,17 +1656,24 @@ export class PersistentDataGateway extends BaseDataGateway {
       where += " AND status = ?";
       binds.push(params.status);
     }
-    if (params.friend_uid && String(params.friend_uid) !== "0") {
-      where += " AND type = ? AND id = ?";
-      binds.push(1, String(params.friend_uid));
-    }
-    if (params.group_id && String(params.group_id) !== "0") {
-      where += " AND type = ? AND id = ?";
-      binds.push(2, String(params.group_id));
-    }
-    if (params.org_id && String(params.org_id) !== "0") {
-      where += " AND type = ? AND id = ?";
-      binds.push(3, String(params.org_id));
+    // 单个目标（friend_uid/group_id/org_id）与批量目标（*_uids/*_ids）语义相同、可同时传入，
+    // 统一拼成 (type = ? AND id IN (...)) OR ... 的目标过滤子句，与 targets 数组语义对齐。
+    const targetClauses: string[] = [];
+    const addTargetFilter = (type: number, single: string | undefined, many: readonly string[] | undefined) => {
+      const ids = [
+        ...(single && String(single) !== "0" ? [String(single)] : []),
+        ...(many || []).map((id) => String(id)).filter((id) => id && id !== "0"),
+      ];
+      if (ids.length === 0) return;
+      const unique = [...new Set(ids)];
+      targetClauses.push(`(type = ? AND id IN (${unique.map(() => "?").join(", ")}))`);
+      binds.push(type, ...unique);
+    };
+    addTargetFilter(1, params.friend_uid, params.friend_uids);
+    addTargetFilter(2, params.group_id, params.group_ids);
+    addTargetFilter(3, params.org_id, params.org_ids);
+    if (targetClauses.length > 0) {
+      where += ` AND (${targetClauses.join(" OR ")})`;
     }
     return { where, binds };
   }

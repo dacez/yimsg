@@ -13,6 +13,7 @@ function createApp(options: {
   const switchView = vi.fn();
   const openConversation = vi.fn();
   const renderConversationList = vi.fn();
+  const refreshChatHeader = vi.fn();
   const renderMessages = vi.fn();
   const scrollToBottom = vi.fn();
   const rerenderCurrentDetailPanel = vi.fn();
@@ -29,6 +30,7 @@ function createApp(options: {
         switchView,
         openConversation,
         renderConversationList,
+        refreshChatHeader,
         renderMessages,
         scrollToBottom,
         rerenderCurrentDetailPanel,
@@ -62,6 +64,7 @@ function createApp(options: {
     switchView,
     openConversation,
     renderConversationList,
+    refreshChatHeader,
     renderMessages,
     scrollToBottom,
     rerenderCurrentDetailPanel,
@@ -101,6 +104,7 @@ describe('view-refresh helpers', () => {
     });
 
     expect(ctx.renderConversationList).toHaveBeenCalledOnce();
+    expect(ctx.refreshChatHeader).toHaveBeenCalledOnce();
     expect(ctx.renderMessages).toHaveBeenCalledOnce();
     expect(ctx.scrollToBottom).toHaveBeenCalledOnce(); // 贴底时保持贴底
     expect(ctx.refreshDetailPanel).toHaveBeenCalledOnce();

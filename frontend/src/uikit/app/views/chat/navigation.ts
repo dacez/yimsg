@@ -9,9 +9,16 @@ export function startDMFromContact(app: AppInstance, uid: string) {
   void app.views.chat?.openConversation(conv);
 }
 
+// 显示范围收窄（chat-only / contacts-only）时没有底部导航，用户不能切到其它视图；
+// 同时挡掉宿主页面 hash 路由的误触发。
+const FORCED_VIEW_BY_MODE: Partial<Record<AppInstance['runtime']['viewMode'] & string, string>> = {
+  'chat-only': 'chat',
+  'contacts-only': 'contacts',
+};
+
 export function switchView(app: AppInstance, requestedName: string, options: { updateRoute?: boolean } = {}) {
-  // chat-only 显示范围下没有底部导航，用户不能切到联系人 / 设置；同时挡掉宿主页面 hash 路由的误触发。
-  const name = app.runtime.viewMode === 'chat-only' ? 'chat' : requestedName;
+  const forced = app.runtime.viewMode ? FORCED_VIEW_BY_MODE[app.runtime.viewMode] : undefined;
+  const name = forced ?? requestedName;
   app.dom.querySelectorAll<HTMLElement>('#main-content > .view').forEach((view) => view.classList.add('hidden'));
   app.$('view-' + name).classList.remove('hidden');
   app.dom.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));

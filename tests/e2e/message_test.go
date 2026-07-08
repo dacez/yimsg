@@ -173,14 +173,15 @@ func TestSendDMToSelf(t *testing.T) {
 		"content":  "note to self",
 	})
 	if resp.OK {
-		t.Fatal("send_message to self should fail when not friend")
+		t.Fatal("send_message to self should fail")
 	}
-	if resp.Error != "非好友" {
-		t.Fatalf("send_message to self error=%q, want 非好友", resp.Error)
+	if resp.Error != "不能给自己发送消息" {
+		t.Fatalf("send_message to self error=%q, want 不能给自己发送消息", resp.Error)
 	}
 }
 
-func TestSendToNonFriend(t *testing.T) {
+// TestSendToNonFriendSucceeds 验证私聊不再要求好友关系：可以向陌生人发起临时会话。
+func TestSendToNonFriendSucceeds(t *testing.T) {
 	a := dial(t)
 	b := dial(t)
 	a.registerAndLogin(uniqueName("msg"), "pass1234", "Alice")
@@ -192,11 +193,8 @@ func TestSendToNonFriend(t *testing.T) {
 		"msg_type": 1,
 		"content":  "hi stranger",
 	})
-	if resp.OK {
-		t.Fatal("send_message to non-friend should fail")
-	}
-	if resp.Error != "非好友" {
-		t.Fatalf("send_message to non-friend error=%q, want 非好友", resp.Error)
+	if !resp.OK {
+		t.Fatalf("send_message to non-friend should succeed as temporary session, got error: %s", resp.Error)
 	}
 }
 

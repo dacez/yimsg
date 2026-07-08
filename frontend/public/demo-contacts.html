@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg 通讯录 demo</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 16px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .tip { font-size: 13px; color: #666; margin-bottom: 8px; }
+    .cred { font-size: 13px; color: #4550e5; font-weight: 600; margin-bottom: 16px; }
+    .host { width: min(480px, 100%); height: min(640px, 78vh); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.08); background: #fff; }
+    .error { padding: 16px; color: #b3261e; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>yimsg · 通讯录 demo</h1>
+  <p class="tip">已自动登录一个真实账号，只显示通讯录视图（<code>viewMode: 'contacts-only'</code>）：既有私人好友，也挂了一个 4 层 tag、约 76 人的复杂组织架构。</p>
+  <div class="cred">用户名：demo_alice　密码：Demo@123456</div>
+  <div id="chat-host" class="host"></div>
+  <script type="module">
+    import { mount, YimsgClient } from '/chat/uikit/yimsg-uikit.js';
+
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    const uploadUrl = '/api/upload';
+    const host = document.getElementById('chat-host');
+
+    const client = new YimsgClient({ wsUrl, uploadUrl });
+    client.login('demo_alice', 'Demo@123456').then(() => client.startSession()).then(() => {
+      mount(host, { client, viewMode: 'contacts-only', theme: 'auto', locale: 'auto' });
+    }).catch((err) => {
+      host.className = 'host error';
+      host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+      console.warn('[demo-contacts] login failed', err);
+    });
+  </script>
+</body>
+</html>

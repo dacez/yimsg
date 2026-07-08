@@ -65,6 +65,18 @@ describe('action-mappers：请求整形', () => {
     expect(req.page?.limit).toBe('3');
   });
 
+  it('getContactsRequest 支持 org_id / org_ids 组装 targets', () => {
+    const req = getContactsRequest({
+      org_id: '900',
+      org_ids: ['901', '902'],
+      status: CONTACT_FRIEND,
+    });
+    expect(req.targets).toHaveLength(3);
+    expect(req.targets[0].org_id).toBe('900');
+    expect(req.targets[1].org_id).toBe('901');
+    expect(req.targets[2].org_id).toBe('902');
+  });
+
   it('contactCountRequest 必填状态非法时抛错', () => {
     expect(() => contactCountRequest(0)).toThrow();
   });

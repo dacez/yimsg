@@ -244,13 +244,8 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 }
 
 func sendDM(s *AppState, reqID uint64, msgID string, fromUID int64, toUID int64, msgType int8, body []byte, searchText string) SendMessageResult {
-	contactStore := s.ContactStore(fromUID)
-	contact, err := contactStore.Get(fromUID, toUID)
-	if err != nil {
-		return SendMessageResult{Response: appmsg.ErrInternal(reqID, err.Error())}
-	}
-	if contact == nil || contact.Status != dal.ContactFriend {
-		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "非好友")}
+	if fromUID == toUID {
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "不能给自己发送消息")}
 	}
 	blocked, err := isEitherWayBlocked(s, fromUID, toUID)
 	if err != nil {
