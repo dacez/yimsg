@@ -5,51 +5,134 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>yimsg 手机 / PC 双端布局 demo</title>
   <style>
-    body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 16px; background: #f5f6fa; color: #333; }
-    h1 { font-size: 20px; margin: 0 0 12px; }
-    .tip { font-size: 13px; color: #666; margin-bottom: 16px; }
-    .panels { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-    .panel-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; padding: 8px 12px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.06); font-size: 13px; }
-    .panel-header .cred { color: #4550e5; font-weight: 600; }
-    .panel-mobile .panel-header, .panel-mobile .panel-host { width: 375px; max-width: 100%; }
-    .panel-desktop .panel-header, .panel-desktop .panel-host { width: min(760px, 100%); }
-    .panel-mobile .panel-host { height: min(667px, 78vh); }
-    .panel-desktop .panel-host { height: min(560px, 78vh); }
-    .panel-host { border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.08); background: #fff; box-sizing: border-box; }
-    .panel-error { padding: 16px; color: #b3261e; font-size: 13px; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      margin: 0;
+      padding: 32px 16px 48px;
+      background: linear-gradient(180deg, #f6f7fc, #ffffff);
+      color: #333;
+    }
+    .page { max-width: 1280px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 12px; color: #0e1730; }
+    .tip { font-size: 13px; color: #666; margin: 0 0 32px; max-width: 760px; }
+
+    .stage {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 56px;
+      padding: 12px 0;
+    }
+
+    .device { display: flex; flex-direction: column; align-items: center; }
+
+    .device-label {
+      min-height: 38px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+    .device-label .name { font-size: 14px; font-weight: 700; color: #1d2a4a; }
+    .device-label .cred { font-size: 12px; font-weight: 600; color: #4550e5; }
+
+    /* 手机机身：深色圆角边框模拟真实设备外壳 */
+    .device-frame.mobile {
+      width: min(403px, 94vw);
+      padding: 14px 14px 26px;
+      background: linear-gradient(160deg, #262b38, #11141c);
+      border-radius: 44px;
+      box-shadow: 0 24px 48px rgba(15, 18, 30, 0.28);
+      position: relative;
+    }
+    .device-frame.mobile::before {
+      content: "";
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+    }
+    .device-frame.mobile .device-screen {
+      margin-top: 16px;
+      width: 100%;
+      height: min(667px, 72vh);
+      border-radius: 28px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    /* 桌面窗口：浏览器风格顶栏模拟真实窗口 */
+    .device-frame.desktop {
+      width: min(760px, 94vw);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid #e3e6f2;
+      box-shadow: 0 24px 48px rgba(15, 18, 30, 0.16);
+    }
+    .browser-bar {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 14px;
+      background: #eef0f7;
+      border-bottom: 1px solid #e3e6f2;
+    }
+    .browser-bar .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .browser-bar .dot.red { background: #ff5f57; }
+    .browser-bar .dot.yellow { background: #febc2e; }
+    .browser-bar .dot.green { background: #28c840; }
+    .device-frame.desktop .device-screen {
+      height: min(560px, 70vh);
+      overflow: hidden;
+    }
+
+    .device-screen.panel-error { padding: 16px; color: #b3261e; font-size: 13px; }
   </style>
 </head>
 <body>
-  <h1>yimsg · 手机 / PC 双端布局 demo</h1>
-  <p class="tip">同一套 UIKit 通过 <code>layout: 'mobile' / 'desktop'</code> 强制切换布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列。两个账号已自动登录，互为好友，可直接体验两种布局下的完整应用。</p>
-  <div class="panels" id="panels"></div>
+  <div class="page">
+    <h1>yimsg · 手机 / PC 双端布局 demo</h1>
+    <p class="tip">同一套 UIKit 通过 <code>layout: 'mobile' / 'desktop'</code> 强制切换布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列。两个账号已自动登录，互为好友，可直接体验两种布局下的完整应用。</p>
+    <div class="stage" id="stage"></div>
+  </div>
   <script type="module">
     import { mount, YimsgClient } from '/chat/uikit/yimsg-uikit.js';
 
     const PASSWORD = 'Demo@123456';
-    const PANELS = [
-      { username: 'demo_bob', label: 'Bob · 手机布局', layout: 'mobile', panelClass: 'panel-mobile' },
-      { username: 'demo_carol', label: 'Carol · 桌面布局', layout: 'desktop', panelClass: 'panel-desktop' },
+    const DEVICES = [
+      { username: 'demo_bob', name: 'Bob · 手机布局', layout: 'mobile', kind: 'mobile' },
+      { username: 'demo_carol', name: 'Carol · 桌面布局', layout: 'desktop', kind: 'desktop' },
     ];
 
     const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
     const uploadUrl = '/api/upload';
-    const panelsEl = document.getElementById('panels');
+    const stageEl = document.getElementById('stage');
 
-    for (const item of PANELS) {
-      const panel = document.createElement('div');
-      panel.className = `panel ${item.panelClass}`;
-      panel.innerHTML = `
-        <div class="panel-header">
-          <span>${item.label}</span>
+    for (const item of DEVICES) {
+      const device = document.createElement('div');
+      device.className = 'device';
+      device.innerHTML = `
+        <div class="device-label">
+          <span class="name">${item.name}</span>
           <span class="cred">用户名：${item.username}　密码：${PASSWORD}</span>
         </div>
-        <div class="panel-host panel-error" hidden></div>
+        <div class="device-frame ${item.kind}">
+          ${item.kind === 'desktop' ? '<div class="browser-bar"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div>' : ''}
+          <div class="device-screen"></div>
+        </div>
       `;
-      panelsEl.appendChild(panel);
-      const host = document.createElement('div');
-      host.className = 'panel-host';
-      panel.replaceChild(host, panel.querySelector('.panel-host'));
+      stageEl.appendChild(device);
+      const host = device.querySelector('.device-screen');
 
       const client = new YimsgClient({ wsUrl, uploadUrl });
       client.login(item.username, PASSWORD).then(() => client.startSession()).then(() => {
