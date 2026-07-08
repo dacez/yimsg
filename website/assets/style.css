@@ -193,7 +193,7 @@ code {
   gap: 0;
   flex-wrap: wrap;
   margin: 0 auto;
-  max-width: 760px;
+  max-width: 920px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
