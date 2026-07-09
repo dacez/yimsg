@@ -321,6 +321,8 @@ code {
 
 .hw-photo-wrap { position: relative; }
 
+.hw-diagram-wrap { position: relative; }
+
 .hw-photo-main {
   width: 100%;
   display: block;
@@ -351,7 +353,7 @@ code {
   white-space: nowrap;
 }
 .hw-chip-a { top: -14px; left: -12px; }
-.hw-chip-b { bottom: 10%; left: -12px; }
+.hw-chip-b { top: -14px; left: -12px; }
 
 .hw-list {
   list-style: none;
