@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>yimsg · 极简单机部署的私有化即时通讯</title>
-  <meta name="description" content="yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：一台机器即可上线，数据就在你的办公室，完全由你掌控。一行代码即可把聊天能力嵌入官网做客服组件，也能作为独立网页应用直接使用，支持本地持久化。" />
+  <meta name="description" content="yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：巴掌大的迷你主机接入内网即可使用，单台支撑数百人，多台叠加灵活扩容。一行代码即可把聊天能力嵌入官网做客服组件，也能作为独立网页应用直接使用，支持本地持久化。" />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
@@ -17,7 +17,9 @@
       </a>
       <nav class="nav-links">
         <a href="#advantages">核心优势</a>
+        <a href="#hardware">迷你主机</a>
         <a href="#scenarios">应用场景</a>
+        <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub</a>
         <a class="nav-cta" href="/chat/demo-responsive.html">打开应用</a>
       </nav>
     </div>
@@ -81,6 +83,53 @@
       </div>
     </section>
 
+    <section id="hardware" class="section">
+      <div class="container">
+        <span class="section-eyebrow">Pocket Server</span>
+        <h2 class="section-title">超小迷你，放进口袋的即时通讯系统</h2>
+        <p class="section-lead">
+          一台巴掌大的迷你主机，就是你的整套聊天服务器。
+          接入内网即可使用，聊天数据始终留在你自己手里。
+        </p>
+        <div class="hw-grid">
+          <div class="hw-visual">
+            <img class="hw-photo-main" src="assets/minipc-hand.png" alt="一只手就能托起的 yimsg 迷你主机" />
+            <img class="hw-photo-sub" src="assets/minipc-cube.png" alt="蓝色方块造型的迷你主机" />
+            <span class="hw-chip hw-chip-a">📈 多台叠加 · 灵活扩容</span>
+            <span class="hw-chip hw-chip-b">🔌 接入内网 · 即插即用</span>
+          </div>
+          <div class="hw-copy">
+            <ul class="hw-list">
+              <li>
+                <strong>小到可以随身带走</strong>
+                口袋、抽屉、桌角都放得下，不用机房、不用机柜，
+                搬办公室时装进口袋就能把整套系统带走。
+              </li>
+              <li>
+                <strong>一台就够全公司用</strong>
+                单台即可稳定支撑数百人同时在线聊天，
+                通电开机、接上网线，几分钟后全公司就能开聊。
+              </li>
+              <li>
+                <strong>人多了，再加一台</strong>
+                多台叠加、灵活扩容：部门、门店、分支机构各放一台，
+                独立部署、互联互通，规模随业务自然生长。
+              </li>
+              <li>
+                <strong>接入内网即可使用</strong>
+                无需公网、无需域名，插进办公室内网就能用，
+                聊天数据一步都不出你的办公室。
+              </li>
+            </ul>
+            <div class="hw-actions">
+              <a class="btn btn-primary" href="/chat/demo-responsive.html">立即体验</a>
+              <a class="btn btn-ghost" href="#scenarios">看看能做什么</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="scenarios" class="section section-alt">
       <div class="container">
         <span class="section-eyebrow">Use Cases</span>
@@ -140,7 +189,10 @@
   <footer class="site-footer">
     <div class="container">
       <span><span class="brand-mark">yi</span>msg · 极简单机部署的私有化即时通讯</span>
-      <span>本页面为静态官网，由服务端 <code>/site/</code> 挂载。</span>
+      <span>
+        <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub 开源仓库</a>
+        · 本页面为静态官网，由服务端 <code>/site/</code> 挂载。
+      </span>
     </div>
   </footer>
 </body>
