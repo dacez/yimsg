@@ -1,5 +1,6 @@
 # Binaries
 /server
+/server.exe
 /seed-data
 /debug-messages
 /test-seed
