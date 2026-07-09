@@ -1,0 +1,89 @@
+name: Deploy Yimsg Server
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-yimsg-server
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 刷新协议生成物
+        run: go run ./tools/cmd/protocolgen
+
+      - name: 构建前端产物
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: 交叉编译服务端二进制（Linux/amd64）
+        run: GOOS=linux GOARCH=amd64 go build -o server-linux-amd64 ./cmd/server
+
+      - name: 配置部署密钥
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/yimsg_deploy
+          chmod 600 ~/.ssh/yimsg_deploy
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 上传二进制与前端 / 官网产物
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
+          SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
+          scp "${SCP_OPTS[@]}" server-linux-amd64 "${SSH_USER}@${SSH_HOST}:/opt/yimsg/server.new"
+          scp "${SCP_OPTS[@]}" -r web/. "${SSH_USER}@${SSH_HOST}:/opt/yimsg/web/"
+          scp "${SCP_OPTS[@]}" -r website/. "${SSH_USER}@${SSH_HOST}:/opt/yimsg/website/"
+
+      - name: 远程原子替换二进制并重启服务
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${SSH_HOST}" '
+            set -euo pipefail
+            chmod +x /opt/yimsg/server.new
+            setcap "cap_net_bind_service=+ep" /opt/yimsg/server.new
+            mv /opt/yimsg/server.new /opt/yimsg/server
+            chown -R yimsg:yimsg /opt/yimsg
+            systemctl restart yimsg
+          '
+
+      - name: 验证部署结果
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${SSH_HOST}" "systemctl status yimsg --no-pager"
+          curl -k -sS -o /dev/null -w "官网 /: %{http_code}\n" "https://${SSH_HOST}/"
+          curl -k -sS -o /dev/null -w "聊天 /chat/: %{http_code}\n" "https://${SSH_HOST}/chat/"
