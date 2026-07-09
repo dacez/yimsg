@@ -406,20 +406,42 @@ code {
 }
 
 /* AI 智能引擎版块 */
-.ai-figure {
-  margin: 0;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.ai-stack {
+  display: grid;
+  gap: 24px;
+}
+
+.ai-stack img,
+.ai-poster {
+  display: block;
+  width: 100%;
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
-.ai-figure img {
-  display: block;
-  width: 100%;
-  min-width: 880px;
+.ai-poster {
+  display: none;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .ai-stack { display: none; }
+  .ai-poster { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
