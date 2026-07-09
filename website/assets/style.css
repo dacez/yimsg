@@ -405,6 +405,23 @@ code {
   .hw-actions { justify-content: center; }
 }
 
+/* AI 智能引擎版块 */
+.ai-figure {
+  margin: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ai-figure img {
+  display: block;
+  width: 100%;
+  min-width: 880px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bg-aurora { animation: none; }
 }
