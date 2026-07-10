@@ -69,79 +69,6 @@ jobs:
           chmod 600 ~/.ssh/yimsg_deploy
           ssh-keyscan -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: 首次初始化 yimsg-gz（建账号 / 目录 / config.toml / systemd unit，yimsg-se 已具备无需重复执行）
-        if: matrix.name == 'gz'
-        env:
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          PORT="${SSH_PORT:-22}"
-          SSH_OPTS=(-i ~/.ssh/yimsg_deploy -p "$PORT")
-          SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
-
-          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
-            set -euo pipefail
-            getent group yimsg >/dev/null || groupadd --system yimsg
-            id -u yimsg >/dev/null 2>&1 || useradd --system --home-dir /opt/yimsg --shell /usr/sbin/nologin --gid yimsg yimsg
-            mkdir -p /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data
-          '
-
-          cat > /tmp/yimsg-config.toml <<'EOF'
-          [server]
-          host = "0.0.0.0"
-          port = 443
-          tls_cert = "/etc/ssl/certs/yimsg.pem"
-          tls_key = "/etc/ssl/certs/yimsg.key"
-
-          [database]
-          data_dir = "/opt/yimsg/data"
-          shard_count = 4
-
-          [frontend]
-          static_dir = "/opt/yimsg/web"
-          mount_path = "/chat/"
-
-          [website]
-          static_dir = "/opt/yimsg/website"
-          mount_path = "/"
-
-          [media]
-          upload_dir = "/opt/yimsg/data/media"
-          EOF
-
-          cat > /tmp/yimsg.service <<'EOF'
-          [Unit]
-          Description=Yimsg Server
-          After=network.target
-
-          [Service]
-          Type=simple
-          User=yimsg
-          Group=yimsg
-          WorkingDirectory=/opt/yimsg
-          ExecStart=/opt/yimsg/server /opt/yimsg/config.toml
-          Restart=on-failure
-          RestartSec=3
-          AmbientCapabilities=CAP_NET_BIND_SERVICE
-          NoNewPrivileges=true
-
-          [Install]
-          WantedBy=multi-user.target
-          EOF
-
-          scp "${SCP_OPTS[@]}" /tmp/yimsg-config.toml "${SSH_USER}@${HOST}:/opt/yimsg/config.toml"
-          scp "${SCP_OPTS[@]}" /tmp/yimsg.service "${SSH_USER}@${HOST}:/etc/systemd/system/yimsg.service"
-          rm -f /tmp/yimsg-config.toml /tmp/yimsg.service
-
-          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
-            set -euo pipefail
-            systemctl daemon-reload
-            systemctl enable yimsg
-            chown -R yimsg:yimsg /opt/yimsg
-          '
-          # 注意：网站 TLS 证书（/etc/ssl/certs/yimsg.pem、.key）不由本 workflow 同步，
-          # 需要在首次运行本 job 前手动从 yimsg-se 搬到 yimsg-gz，否则后面的 systemctl start 会失败。
-
       - name: 上传二进制与前端 / 官网产物
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -169,13 +96,13 @@ jobs:
             systemctl stop yimsg
 
             chmod +x /opt/yimsg/server.new
-            setcap "cap_net_bind_service=+ep" /opt/yimsg/server.new
             mv /opt/yimsg/server.new /opt/yimsg/server
 
             chmod +x /opt/yimsg/seed-demo.new
             mv /opt/yimsg/seed-demo.new /opt/yimsg/seed-demo
 
             chown -R yimsg:yimsg /opt/yimsg
+            setcap -r /opt/yimsg/server 2>/dev/null || true
 
             # seed-demo 内部会自行清空并重建 /opt/yimsg/data（含 media 上传目录）后写入演示数据。
             /opt/yimsg/seed-demo -config /opt/yimsg/config.toml
