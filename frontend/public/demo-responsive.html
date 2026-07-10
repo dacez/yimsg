@@ -12,7 +12,7 @@
       background: linear-gradient(180deg, #f6f7fc, #ffffff);
       color: #333;
     }
-    .page { max-width: 1280px; margin: 0 auto; }
+    .page { max-width: 1480px; margin: 0 auto; }
     h1 { font-size: 20px; margin: 0 0 12px; color: #0e1730; }
     .tip { font-size: 13px; color: #666; margin: 0 0 32px; max-width: 760px; }
 
@@ -42,7 +42,7 @@
 
     /* 手机机身：深色圆角边框模拟真实设备外壳 */
     .device-frame.mobile {
-      width: min(403px, 94vw);
+      width: min(320px, 94vw);
       padding: 14px 14px 26px;
       background: linear-gradient(160deg, #262b38, #11141c);
       border-radius: 44px;
@@ -55,7 +55,7 @@
       top: 14px;
       left: 50%;
       transform: translateX(-50%);
-      width: 70px;
+      width: 56px;
       height: 6px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.22);
@@ -69,9 +69,11 @@
       background: #fff;
     }
 
-    /* 桌面窗口：浏览器风格顶栏模拟真实窗口 */
+    /* 桌面窗口：浏览器风格顶栏模拟真实窗口。
+       宽度需容纳左侧会话列表(300) + 中间聊天区最小可读宽度 + 右侧详情面板(300)，
+       过窄会把中间聊天区挤压成逐字换行（曾出现过的布局 bug）。 */
     .device-frame.desktop {
-      width: min(760px, 94vw);
+      width: min(1040px, 94vw);
       border-radius: 14px;
       overflow: hidden;
       background: #fff;
