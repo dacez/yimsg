@@ -9,8 +9,14 @@ export default defineConfig({
   retries: 0,
   // 默认按 CPU 核数并行运行 UI 用例（Playwright 默认仅用一半核数）。
   // 用例之间互不共享状态、各自创建独立用户，提升并行度只缩短耗时、不降低测试强度。
-  // 可用 PLAYWRIGHT_WORKERS 覆盖（数字或百分比，如 "4" / "50%"）。
-  workers: process.env.PLAYWRIGHT_WORKERS || '100%',
+  // 可用 PLAYWRIGHT_WORKERS 覆盖（数字或百分比，如 "4" / "50%"）。环境变量恒为字符串，
+  // 而 Playwright 校验只接受真正的 number 类型或以 "%" 结尾的字符串，纯数字字符串会被
+  // 拒绝，因此这里做一次数字字符串到 number 的转换。
+  workers: (() => {
+    const raw = process.env.PLAYWRIGHT_WORKERS;
+    if (!raw) return '100%';
+    return /^\d+$/.test(raw) ? Number(raw) : raw;
+  })(),
   globalSetup: './tests/ui/global-setup.ts',
   globalTeardown: './tests/ui/global-teardown.ts',
   use: {

@@ -13,9 +13,23 @@ esac
 EXE_EXT=""
 if $IS_WINDOWS; then EXE_EXT=".exe"; fi
 
+# 部分 Windows 环境下 %LOCALAPPDATA% 会被宿主打包机制静默重定向（例如指向
+# ...\Packages\<PackageFamilyName>\LocalCache\Local\...）；普通文件 API 能透明
+# 读到重定向后的内容，但 chrome.exe 依赖的 side-by-side 清单加载走的是另一套
+# 路径解析，找不到重定向目录下的清单文件，导致启动报 "side-by-side
+# configuration is incorrect"（与 VC++ 运行库无关，装运行库不能解决）。未显式
+# 指定 PLAYWRIGHT_BROWSERS_PATH 时，Windows 下固定装到 %LOCALAPPDATA% 之外，
+# 避开该重定向。
+if $IS_WINDOWS && [[ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]]; then
+  export PLAYWRIGHT_BROWSERS_PATH="C:/ms-playwright-browsers"
+fi
+
 SERVER_HOST="127.0.0.1"
 SERVER_PORT=38081
 PROTOC_GEN_GO_VERSION="v1.36.11"
+# Playwright 官方下载源在部分网络环境下会时快时慢甚至连接被拒；未显式指定
+# PLAYWRIGHT_DOWNLOAD_HOST 时，重试从第 2 次起自动切换到该镜像。
+PLAYWRIGHT_MIRROR_HOST="https://npmmirror.com/mirrors/playwright"
 
 # 测试环境统一把 bcrypt 哈希成本降到最低（MinCost=4）。
 # 哈希算法与校验逻辑完全不变，仅去掉生产级抗暴力成本，
@@ -180,10 +194,20 @@ ensure_playwright_browser() {
     with_deps=(--with-deps)
   fi
   local max="${YIMSG_NET_RETRY:-4}"
+  local per_attempt_timeout="${YIMSG_PLAYWRIGHT_DOWNLOAD_TIMEOUT:-150}"
+  # 用户已显式设置 PLAYWRIGHT_DOWNLOAD_HOST 时尊重其选择，全程不覆盖。
+  local user_download_host="${PLAYWRIGHT_DOWNLOAD_HOST:-}"
   local delay=2 attempt=1
   while (( attempt <= max )); do
-    echo "安装 Playwright chromium（第 ${attempt}/${max} 次）..."
-    npx playwright install ${with_deps[@]+"${with_deps[@]}"} chromium || true
+    local host="${user_download_host}"
+    if [[ -z "${host}" && ${attempt} -gt 1 ]]; then
+      host="${PLAYWRIGHT_MIRROR_HOST}"
+    fi
+    echo "安装 Playwright chromium（第 ${attempt}/${max} 次，单次超时 ${per_attempt_timeout}s${host:+，下载源=${host}}）..."
+    # 单次尝试超过 per_attempt_timeout 未完成即视为太慢，直接放弃转入下一次
+    # 重试（而非傻等它自然失败），下一次重试若未指定下载源则自动切镜像。
+    PLAYWRIGHT_DOWNLOAD_HOST="${host}" timeout "${per_attempt_timeout}" \
+      npx playwright install ${with_deps[@]+"${with_deps[@]}"} chromium || true
     if playwright_browser_ready; then
       echo "Playwright chromium 已就绪"
       return 0

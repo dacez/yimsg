@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"yimsg/tools/protocolgen"
@@ -70,6 +71,11 @@ func runCheck(root string) error {
 func runStandardCodegen(root string) error {
 	protoc := filepath.Join(root, "frontend", "node_modules", ".bin", "grpc_tools_node_protoc")
 	tsPlugin := filepath.Join(root, "frontend", "node_modules", ".bin", "protoc-gen-ts_proto")
+	if runtime.GOOS == "windows" {
+		// npm 在 Windows 下为 shell script 生成 .cmd 包装，protoc 直接以子进程方式
+		// 执行插件路径，必须指向 .cmd 而非无扩展名的 POSIX shell script。
+		tsPlugin += ".cmd"
+	}
 	goPlugin := filepath.Join(os.Getenv("GOPATH"), "bin", "protoc-gen-go")
 	if os.Getenv("GOPATH") == "" {
 		if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
@@ -77,6 +83,9 @@ func runStandardCodegen(root string) error {
 		} else {
 			goPlugin = filepath.Join(os.Getenv("HOME"), "go", "bin", "protoc-gen-go")
 		}
+	}
+	if runtime.GOOS == "windows" {
+		goPlugin += ".exe"
 	}
 	if _, err := os.Stat(protoc); err != nil {
 		return fmt.Errorf("未找到 protoc，请在 frontend 下运行 npm ci 或 npm install: %w", err)
