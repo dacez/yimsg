@@ -58,6 +58,11 @@ to{opacity:1;transform:translate(0)}
 .error-text{color:var(--error);font-size:var(--font-size-caption);min-height:var(--line-height-caption);margin-top:var(--space-xs)}
 #app{display:flex;height:100vh;max-height:100vh;max-width:1180px;margin:0 auto;overflow:hidden;box-shadow:0 10px 50px rgba(16,24,40,.16);background:var(--bg-panel)}
 
+/* 独立部署（非嵌入 UIKit）的桌面布局设最小宽度：窗口过窄时整体出现横向滚动条，
+   而不是把聊天头/详情面板挤压变形。嵌入式 UIKit（.mc-app-shell[data-embedded]）
+   依赖宿主容器尺寸自适应，不受此限制。 */
+.mc-app-shell:not([data-embedded]):not([data-layout="mobile"]) #app{min-width:960px}
+
 @media(min-width:1280px){#app{height:calc(100vh - 48px);max-height:calc(100vh - 48px);margin:24px auto;border-radius:16px;border:1px solid var(--border);overflow:hidden}
 #navbar{border-radius:16px 0 0 16px}
 }
@@ -78,7 +83,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 #conversation-list{flex:1;overflow-y:auto;padding:var(--space-xs) var(--space-sm)}
 #center-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:var(--bg-hover)}
 #chat-header{height:60px;padding:0 var(--space-lg);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-light);background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);flex-shrink:0;z-index:2}
-#chat-header h2{font-size:var(--font-size-heading);font-weight:600}
+#chat-header h2{font-size:var(--font-size-heading);font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #message-list{flex:1;overflow-y:auto;padding:var(--space-lg) var(--space-xl)}
 #message-input-area{padding:var(--space-md) var(--space-lg);border-top:1px solid var(--border-light);background:var(--bg-panel);flex-shrink:0;position:relative}
 #right-panel{width:300px;background:var(--bg-panel);border-left:1px solid var(--border);overflow-y:auto;flex-shrink:0;transition:width .2s ease-out}
@@ -211,7 +216,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .member-select-item{display:flex;align-items:center;gap:var(--space-sm);height:40px;padding:0 var(--space-sm);cursor:pointer;border-radius:4px;box-sizing:border-box}
 .member-select-item:hover{background:var(--bg-hover)}
 .member-select-item input[type=checkbox]{accent-color:var(--primary)}
-.chat-header-actions{display:flex;align-items:center;gap:var(--space-xs)}
+.chat-header-actions{display:flex;align-items:center;gap:var(--space-xs);flex-shrink:0}
 .member-picker-count{font-size:var(--font-size-body);color:var(--text-secondary);margin-bottom:8px;text-align:center}
 .msg-viewer-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:1000;background:#0006;display:flex;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
 .msg-viewer-card{width:600px;max-width:90vw;height:70vh;max-height:80vh;background:var(--bg-panel);border-radius:12px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;animation:modal-in .2s ease-out}
@@ -306,12 +311,19 @@ body[data-layout="mobile"] #main-content{order:1;flex:1;min-height:0}
 body[data-layout="mobile"] #view-chat{flex-direction:column}
 body[data-layout="mobile"] #left-panel{width:100%;flex:1;border-right:none}
 body[data-layout="mobile"] #center-panel{width:100%;flex:1}
-body[data-layout="mobile"] #right-panel{display:none!important}
+body[data-layout="mobile"] #right-panel{display:none}
 
 /* 手机模式下：选中会话后，左侧隐藏，仅显示中间聊天区 */
 
 body[data-layout="mobile"] #view-chat.mobile-showing-chat #left-panel{display:none}
 body[data-layout="mobile"] #view-chat:not(.mobile-showing-chat) #center-panel{display:none}
+
+/* 手机模式下：点击详情按钮后，全屏显示群/好友详情面板，隐藏会话列表与消息区 */
+
+body[data-layout="mobile"] #view-chat.mobile-showing-detail #left-panel,body[data-layout="mobile"] #view-chat.mobile-showing-detail #center-panel{display:none}
+body[data-layout="mobile"] #view-chat.mobile-showing-detail #right-panel{display:flex;flex-direction:column;width:100%;flex:1;border-left:none}
+.detail-mobile-back{display:none;align-self:flex-start;padding:var(--space-sm) var(--space-md);background:none;border:none;color:var(--primary);font-size:var(--font-size-body);cursor:pointer}
+body[data-layout="mobile"] .detail-mobile-back{display:block}
 
 /* 聊天头加"返回"按钮（仅手机） */
 

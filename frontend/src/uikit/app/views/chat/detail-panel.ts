@@ -207,6 +207,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
     app.chatState.detailOpen = true;
     const rightPanel = app.$('right-panel');
     rightPanel.classList.remove('collapsed');
+    app.$('view-chat').classList.add('mobile-showing-detail');
   } catch (_) {
     app.showToast(app.t('detail.failedToLoadGroupDetail'), 'error');
   }
@@ -290,6 +291,7 @@ export async function showUserDetail(app: AppInstance, uid: string) {
     renderContent(cachedProfile, false, false);
     app.chatState.detailOpen = true;
     app.$('right-panel').classList.remove('collapsed');
+    app.$('view-chat').classList.add('mobile-showing-detail');
 
     // 并行拉取 muted/blocked 状态（与后台用户信息拉取同步进行）
     const [isBlocked, muted] = await Promise.all([

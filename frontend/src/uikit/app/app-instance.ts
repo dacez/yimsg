@@ -425,6 +425,8 @@ export class AppInstance {
     if (msgSend) msgSend.textContent = this.t('chat.send');
     const toggleDetail = this.dom.getElementById('toggle-detail');
     if (toggleDetail) toggleDetail.title = this.t('chat.details');
+    const detailMobileBack = this.dom.getElementById('detail-mobile-back');
+    if (detailMobileBack) detailMobileBack.textContent = `← ${this.t('auth.mobileBack')}`;
     const msgAttach = this.dom.getElementById('msg-attach');
     if (msgAttach) msgAttach.title = this.t('chat.attachFile');
     const msgEmoji = this.dom.getElementById('msg-emoji');
