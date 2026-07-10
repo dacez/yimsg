@@ -3,9 +3,12 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: '.',
-  base: '/chat/',
+  base: '/app/',
+  // demo/ 由独立的 npm run build:demo 步骤复制到 ../web/demo，
+  // 主 App 构建不应把 public/ 一并复制到 web/app/ 下。
+  publicDir: false,
   build: {
-    outDir: '../web',
+    outDir: '../web/app',
     emptyOutDir: true,
     rollupOptions: {
       input: {

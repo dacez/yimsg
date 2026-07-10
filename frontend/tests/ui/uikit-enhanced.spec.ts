@@ -27,7 +27,7 @@ interface TestWindow extends Window {
 test.describe('uikit enhanced', () => {
   test('setTheme and setLocale update shadow DOM', async ({ page }) => {
     const username = uniqueUser('uidk_theme');
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     // 注册并进入聊天视图，确保会话列表存在
     await page.locator('.tab[data-tab="register"]').click();
@@ -60,7 +60,7 @@ test.describe('uikit enhanced', () => {
     await page.addInitScript(() => {
       (window as TestWindow).__authEvents = [];
     });
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
     // 在 widget 已挂载后订阅 authenticated 事件（demo 页把 handle 挂在 window.__demoHandle 上）
     await page.evaluate(() => {
       const w = window as TestWindow;
@@ -87,7 +87,7 @@ test.describe('uikit enhanced', () => {
 
   test('handle.logout() takes the widget back to auth view', async ({ page }) => {
     const username = uniqueUser('uidk_lo');
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
     await page.locator('.tab[data-tab="register"]').click();
     await page.locator('#reg-username').fill(username);
     await page.locator('#reg-password').fill('123456');
@@ -104,7 +104,7 @@ test.describe('uikit enhanced', () => {
   });
 
   test('ESM demo exposes mount API and renders auth form', async ({ page }) => {
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
     const hasApi = await page.evaluate(() => Boolean((window as TestWindow).YimsgUIKit));
     expect(hasApi).toBe(true);
     await expect(page.locator('.tab[data-tab="login"]')).toBeVisible({ timeout: 5_000 });

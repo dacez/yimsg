@@ -3,7 +3,7 @@ import { ensureModeSelected, uniqueUser, register } from './helpers';
 
 test.describe('Auth', () => {
   test('first launch prompts for lite, persistent and persistent-reset options', async ({ page }) => {
-    await page.goto('/chat/');
+    await page.goto('/app/');
     await expect(page.locator('#mode-opt-memory')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#mode-opt-persistent')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#mode-opt-persistent-reset')).toBeVisible({ timeout: 5000 });
@@ -29,7 +29,7 @@ test.describe('Auth', () => {
     // New context (clean state) to try registering same username
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
     const page2 = await ctx2.newPage();
-    await page2.goto('/chat/');
+    await page2.goto('/app/');
     await ensureModeSelected(page2, 'memory');
     await page2.click('[data-tab="register"]');
     await page2.fill('#reg-username', user);
@@ -43,7 +43,7 @@ test.describe('Auth', () => {
   });
 
   test('login with wrong password shows error', async ({ page }) => {
-    await page.goto('/chat/');
+    await page.goto('/app/');
     await ensureModeSelected(page, 'memory');
     await page.fill('#login-username', 'nonexistent_user_xyz');
     await page.fill('#login-password', 'wrongpass');

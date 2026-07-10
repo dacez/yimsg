@@ -55,16 +55,18 @@ type GCConfig struct {
 	UserGCIntervalSecs         int64 `toml:"user_gc_interval_secs"`
 }
 
-// FrontendConfig 描述前端 IM 应用（聊天界面）的挂载方式。默认挂载在
-// MountPath 子路径（而非根路径），根路径留给官网首页。
+// FrontendConfig 描述前端聊天相关静态资源的挂载方式。StaticDir 下固定有
+// app/、demo/、uikit/ 三个一级子目录（真正需要注册登录的 App、固定账号演示
+// 页、可嵌入第三方站点的 widget bundle），分别挂载在同名根路径子路径下
+// （/app/、/demo/、/uikit/），彼此平级、没有共同前缀。StaticDir 留空表示三者
+// 都不挂载。
 type FrontendConfig struct {
 	StaticDir string `toml:"static_dir"`
-	MountPath string `toml:"mount_path"`
 }
 
-// WebsiteConfig 描述官网（纯静态营销站）的挂载方式。官网与前端 IM 应用是
-// 两套独立的静态资源：官网默认挂载在根路径作为首页，前端 IM 应用挂载在
-// MountPath 子路径下。StaticDir 为空表示不挂载官网。
+// WebsiteConfig 描述官网（纯静态营销站）的挂载方式。官网与前端聊天资源是
+// 两套独立的静态资源：官网默认挂载在根路径作为首页。StaticDir 为空表示不
+// 挂载官网。
 type WebsiteConfig struct {
 	StaticDir string `toml:"static_dir"`
 	MountPath string `toml:"mount_path"`
@@ -110,10 +112,9 @@ const (
 	DefaultGCConversationIntervalSecs   int64 = 3600
 	DefaultGCUserIntervalSecs           int64 = 3600
 
-	// 前端 IM 应用默认从仓库根目录的 web/ 提供构建产物，挂载在 /chat/ 子路径；
-	// 根路径留给官网首页。
+	// 前端聊天相关静态资源默认从仓库根目录的 web/ 提供构建产物，其下 app/、
+	// demo/、uikit/ 分别挂载在 /app/、/demo/、/uikit/；根路径留给官网首页。
 	DefaultFrontendStaticDir = "web"
-	DefaultFrontendMountPath = "/chat/"
 
 	// 官网默认从仓库根目录的 website/ 提供纯静态资源，挂载在根路径作为首页。
 	DefaultWebsiteStaticDir = "website"
@@ -170,7 +171,6 @@ func Default() Config {
 		},
 		Frontend: FrontendConfig{
 			StaticDir: DefaultFrontendStaticDir,
-			MountPath: DefaultFrontendMountPath,
 		},
 		Website: WebsiteConfig{
 			StaticDir: DefaultWebsiteStaticDir,
@@ -229,12 +229,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Client.BatchMaxLimit > ClientBatchHardLimit {
 		cfg.Client.BatchMaxLimit = ClientBatchHardLimit
 	}
-	// 官网 / 前端 IM 应用：配置了 static_dir 却漏配 mount_path 时回落到各自默认
-	// 挂载路径；static_dir 显式留空表示不挂载。
+	// 官网：配置了 static_dir 却漏配 mount_path 时回落到默认挂载路径；
+	// static_dir 显式留空表示不挂载。
 	if cfg.Website.StaticDir != "" && cfg.Website.MountPath == "" {
 		cfg.Website.MountPath = DefaultWebsiteMountPath
-	}
-	if cfg.Frontend.StaticDir != "" && cfg.Frontend.MountPath == "" {
-		cfg.Frontend.MountPath = DefaultFrontendMountPath
 	}
 }

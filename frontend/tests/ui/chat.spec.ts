@@ -81,7 +81,7 @@ test.describe('Chat', () => {
   });
 
   test('stale group route after data reset is ignored', async ({ page }) => {
-    await page.goto('/chat/#/chat/g/1');
+    await page.goto('/app/#/chat/g/1');
     await ensureModeSelected(page, 'memory');
     await page.fill('#login-username', `${seedPrefix()}_Test1`);
     await page.fill('#login-password', 'test123');

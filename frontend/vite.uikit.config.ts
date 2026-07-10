@@ -4,7 +4,10 @@ import { resolve } from 'path';
 // 独立构建配置：将 frontend/src/uikit 打包为可嵌入的 ESM 库文件。
 export default defineConfig({
   root: '.',
-  base: '/chat/uikit/',
+  base: '/uikit/',
+  // demo/ 由独立的 npm run build:demo 步骤复制到 ../web/demo，
+  // uikit 库构建不应把 public/ 一并复制到 web/uikit/ 下。
+  publicDir: false,
   build: {
     outDir: '../web/uikit',
     emptyOutDir: true,

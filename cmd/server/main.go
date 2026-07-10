@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"yimsg/internal/config"
 	"yimsg/internal/dal"
@@ -96,15 +97,37 @@ func main() {
 		})))
 	}
 
-	// Static frontend (聊天 App): 默认挂载 /chat/ 子路径，不占用根路径。
-	if cfg.Frontend.StaticDir != "" && cfg.Frontend.MountPath != "" {
-		fs := http.FileServer(http.Dir(cfg.Frontend.StaticDir))
-		mux.Handle(cfg.Frontend.MountPath, http.StripPrefix(cfg.Frontend.MountPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-			w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
-			fs.ServeHTTP(w, r)
-		})))
+	// Static frontend (聊天相关静态资源): StaticDir 下 app/、demo/、uikit/ 三个
+	// 平级目录（真正需要注册登录的 App / 固定账号演示页 / 可嵌入第三方站点的
+	// widget bundle）分别挂载在同名根路径下（/app/、/demo/、/uikit/），彼此
+	// 平级、没有共同的 /chat/ 前缀，根路径留给官网首页。demo/、uikit/ 自身没
+	// 有 index.html，挂载根路径显式 404 而不是让 http.FileServer 回落到目录
+	// 列表，避免暴露内部目录结构；app/ 有 index.html，正常回落。
+	if cfg.Frontend.StaticDir != "" {
+		type frontendMount struct {
+			sub       string
+			guardRoot bool
+		}
+		mounts := []frontendMount{
+			{sub: "app"},
+			{sub: "demo", guardRoot: true},
+			{sub: "uikit", guardRoot: true},
+		}
+		for _, m := range mounts {
+			mountPath := "/" + m.sub + "/"
+			fs := http.FileServer(http.Dir(filepath.Join(cfg.Frontend.StaticDir, m.sub)))
+			guardRoot := m.guardRoot
+			mux.Handle(mountPath, http.StripPrefix(mountPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if guardRoot && (r.URL.Path == "" || r.URL.Path == "/") {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+				w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+				fs.ServeHTTP(w, r)
+			})))
+		}
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

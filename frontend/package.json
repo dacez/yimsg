@@ -5,8 +5,9 @@
   "scripts": {
     "check:guards": "node scripts/check-frontend-guards.mjs",
     "build:app": "npm run check:guards && tsc && vite build",
-    "build": "npm run build:app && npm run build:uikit",
+    "build": "npm run build:app && npm run build:uikit && npm run build:demo",
     "build:uikit": "tsc --noEmit && vite build --config vite.uikit.config.ts",
+    "build:demo": "node scripts/copy-demo.mjs",
     "test:ui": "npx playwright test",
     "test:ui:headed": "npx playwright test --headed",
     "test:unit": "vitest run",

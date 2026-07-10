@@ -14,7 +14,7 @@ import { uniqueUser } from './helpers';
 test.describe('uikit embed', () => {
   test('mount → register → reach chat view → unmount works inside Shadow DOM', async ({ page }) => {
     const username = uniqueUser('uikit');
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     // widget 容器存在且带有 shadow root
     const hasShadow = await page.evaluate(() => {
@@ -43,7 +43,7 @@ test.describe('uikit embed', () => {
   });
 
   test('host body styles stay isolated from widget (Shadow DOM scoping)', async ({ page }) => {
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
     // 宿主 body 背景来自 demo HTML 自身 CSS (#f5f6fa)，widget 内 .mc-root 用的是 #ffffff。
     // 若 Shadow DOM 未隔离，会出现颜色污染。
     const hostBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -53,7 +53,7 @@ test.describe('uikit embed', () => {
   test('mount accepts mode option and widget bundle exposes UIKitMode-aware API', async ({ page }) => {
     // 通过运行时加载 IIFE，然后动态构造一个隔离容器调用 mount({ mode: 'memory' })。
     // 目标：验证 `mode` 参数不会让 mount() 报错、widget 能正常渲染认证页。
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     const result = await page.evaluate(() => {
       const host = document.createElement('div');
@@ -77,7 +77,7 @@ test.describe('uikit embed', () => {
   test('viewMode: chat-only hides bottom navbar and ignores host hash routing', async ({ page }) => {
     // 页面上已有 #chat-host 默认 widget，用独立 hostId 隔离，避免全局选择器命中两个 shadow root。
     const username = uniqueUser('chatonly');
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     await page.evaluate(() => {
       const host = document.createElement('div');
@@ -152,7 +152,7 @@ test.describe('uikit embed', () => {
   });
 
   test('explicit mobile layout preserves host inline styles after unmount', async ({ page }) => {
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     const result = await page.evaluate(() => {
       const host = document.createElement('div');
@@ -191,7 +191,7 @@ test.describe('uikit embed', () => {
   });
 
   test('auto layout reacts to host resize and keeps auth card usable', async ({ page }) => {
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     await page.evaluate(() => {
       const host = document.createElement('div');
@@ -269,7 +269,7 @@ test.describe('uikit embed', () => {
   });
 
   test('host too small shows guard message until container becomes large enough', async ({ page }) => {
-    await page.goto('/chat/demo/embed.html');
+    await page.goto('/demo/embed.html');
 
     await page.evaluate(() => {
       const host = document.createElement('div');

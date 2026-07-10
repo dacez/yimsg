@@ -67,7 +67,7 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/yimsg_deploy
           chmod 600 ~/.ssh/yimsg_deploy
-          ssh-keyscan -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -T 20 -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: 上传二进制与前端 / 官网产物
         env:
@@ -75,12 +75,26 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          SSH_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
-          SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
-          scp "${SCP_OPTS[@]}" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new"
-          scp "${SCP_OPTS[@]}" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new"
-          scp "${SCP_OPTS[@]}" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web/"
-          scp "${SCP_OPTS[@]}" -r website/. "${SSH_USER}@${HOST}:/opt/yimsg/website/"
+          SCP_TIMEOUT_SECONDS="${DEPLOY_SCP_TIMEOUT_SECONDS:-600}"
+          SCP_OPTS=(
+            -i ~/.ssh/yimsg_deploy
+            -P "$PORT"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o TCPKeepAlive=yes
+          )
+          timed_scp() {
+            local label="$1"
+            shift
+            echo "Uploading ${label} with ${SCP_TIMEOUT_SECONDS}s timeout"
+            timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp "${SCP_OPTS[@]}" "$@"
+          }
+          timed_scp "server binary" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new"
+          timed_scp "seed-demo binary" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new"
+          timed_scp "web assets" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web/"
+          timed_scp "website assets" -r website/. "${SSH_USER}@${HOST}:/opt/yimsg/website/"
 
       - name: 远程原子替换二进制、清空数据并用新构建的 seed-demo 重新初始化，最后重启服务
         env:
@@ -88,7 +102,16 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${HOST}" '
+          SSH_OPTS=(
+            -i ~/.ssh/yimsg_deploy
+            -p "$PORT"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o TCPKeepAlive=yes
+          )
+          timeout --foreground 600s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
             set -euo pipefail
             # 项目处于演示/研发阶段：每次部署都清空 /opt/yimsg/data 并用 seed-demo 重建官网演示数据，
             # 不做旧数据兼容或迁移。先停服务，避免 systemd Restart=on-failure 在清空过程中把进程拉起来
@@ -117,6 +140,15 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${HOST}" "systemctl status yimsg --no-pager"
-          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${HOST}/"
-          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 聊天 /chat/: %{http_code}\n" "https://${HOST}/chat/"
+          SSH_OPTS=(
+            -i ~/.ssh/yimsg_deploy
+            -p "$PORT"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o TCPKeepAlive=yes
+          )
+          timeout --foreground 120s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "systemctl status yimsg --no-pager"
+          curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${HOST}/"
+          curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 聊天 /app/: %{http_code}\n" "https://${HOST}/app/"

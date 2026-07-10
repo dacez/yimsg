@@ -35,10 +35,11 @@
 # user_gc_interval_secs = 3600
 
 [frontend]
-# 聊天 App。static_dir 留空则不挂载；mount_path 默认挂载在 /chat/ 子路径，
-# 根路径留给官网首页。
+# 聊天相关静态资源。static_dir 留空则不挂载；其下 app/、demo/、uikit/ 三个
+# 一级子目录分别挂载在同名根路径下（/app/ 真正需要注册登录的 App、/demo/
+# 固定账号演示页、/uikit/ 可嵌入第三方站点的 widget bundle），根路径留给
+# 官网首页。
 # static_dir = "web"
-# mount_path = "/chat/"
 
 [website]
 # 官网（纯静态营销站）。static_dir 留空则不挂载；mount_path 默认挂载在根路径

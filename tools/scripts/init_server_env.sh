@@ -55,7 +55,6 @@ shard_count = 4
 
 [frontend]
 static_dir = "/opt/yimsg/web"
-mount_path = "/chat/"
 
 [website]
 static_dir = "/opt/yimsg/website"

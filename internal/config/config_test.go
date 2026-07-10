@@ -76,7 +76,6 @@ func assertDefaultConfig(t *testing.T, cfg *Config) {
 		{"server.tls_key", cfg.Server.TLSKey, ""},
 		{"database.data_dir", cfg.Database.DataDir, DefaultDatabaseDataDir},
 		{"frontend.static_dir", cfg.Frontend.StaticDir, DefaultFrontendStaticDir},
-		{"frontend.mount_path", cfg.Frontend.MountPath, DefaultFrontendMountPath},
 		{"website.static_dir", cfg.Website.StaticDir, DefaultWebsiteStaticDir},
 		{"website.mount_path", cfg.Website.MountPath, DefaultWebsiteMountPath},
 		{"media.upload_dir", cfg.Media.UploadDir, DefaultMediaUploadDir},
@@ -199,37 +198,13 @@ mount_path = ""
 	}
 }
 
-func TestLoad_FrontendMountPathFallback(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	// 只配 static_dir、漏配 mount_path 时应回落到默认子路径。
-	if err := os.WriteFile(path, []byte(`
-[frontend]
-static_dir = "app-dist"
-`), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Frontend.StaticDir != "app-dist" {
-		t.Fatalf("expected frontend static_dir %q, got %q", "app-dist", cfg.Frontend.StaticDir)
-	}
-	if cfg.Frontend.MountPath != DefaultFrontendMountPath {
-		t.Fatalf("expected frontend mount_path fallback %q, got %q", DefaultFrontendMountPath, cfg.Frontend.MountPath)
-	}
-}
-
 func TestLoad_FrontendDisabledWhenStaticDirEmpty(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	// static_dir 显式留空表示不挂载聊天 App，mount_path 不应被回落填充。
+	// static_dir 显式留空表示不挂载 app/demo/uikit 三个聊天相关子路径。
 	if err := os.WriteFile(path, []byte(`
 [frontend]
 static_dir = ""
-mount_path = ""
 `), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -240,9 +215,6 @@ mount_path = ""
 	}
 	if cfg.Frontend.StaticDir != "" {
 		t.Fatalf("expected empty frontend static_dir preserved, got %q", cfg.Frontend.StaticDir)
-	}
-	if cfg.Frontend.MountPath != "" {
-		t.Fatalf("expected empty frontend mount_path preserved, got %q", cfg.Frontend.MountPath)
 	}
 }
 

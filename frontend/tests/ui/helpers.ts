@@ -17,7 +17,7 @@ export async function register(
   nickname: string,
   layout?: 'auto' | 'desktop' | 'mobile',
 ) {
-  await page.goto('/chat/');
+  await page.goto('/app/');
   await ensureModeSelected(page, 'memory', layout);
   await page.click('[data-tab="register"]');
   await page.fill('#reg-username', username);
@@ -29,7 +29,7 @@ export async function register(
 
 /** Login with existing credentials */
 export async function login(page: Page, username: string, password: string) {
-  await page.goto('/chat/');
+  await page.goto('/app/');
   await ensureModeSelected(page, 'memory');
   await page.fill('#login-username', username);
   await page.fill('#login-password', password);
@@ -153,7 +153,7 @@ export function seedPrefix(): string {
 /** Login as a test-seed user (e.g. {prefix}_Test1/test123) and select memory mode */
 export async function loginSeedUser(page: Page, username = 'Test1', password = 'test123') {
   const fullUsername = `${seedPrefix()}_${username}`;
-  await page.goto('/chat/');
+  await page.goto('/app/');
   await ensureModeSelected(page, 'memory');
   await page.fill('#login-username', fullUsername);
   await page.fill('#login-password', password);
