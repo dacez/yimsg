@@ -30,7 +30,7 @@ button{border:none;background:none;cursor:pointer}
 .avatar-md{width:40px;height:40px;font-size:16px}
 .avatar-lg{width:64px;height:64px;font-size:24px}
 .tabs{display:flex;gap:4px;padding:4px;background:var(--bg-hover);border-radius:var(--radius-md)}
-.tab{flex:1;height:34px;padding:0 16px;font-size:var(--font-size-body);color:var(--text-secondary);cursor:pointer;border-radius:9px;transition:color .18s,background-color .18s,box-shadow .18s;display:flex;align-items:center;justify-content:center;background:none;font-weight:500}
+.tab{position:relative;flex:1;height:34px;padding:0 16px;font-size:var(--font-size-body);color:var(--text-secondary);cursor:pointer;border-radius:9px;transition:color .18s,background-color .18s,box-shadow .18s;display:flex;align-items:center;justify-content:center;background:none;font-weight:500}
 .tab:hover{color:var(--text-primary)}
 .tab.active{color:var(--primary);background:var(--bg-panel);box-shadow:var(--shadow-sm);font-weight:600}
 .modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:1000;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
@@ -189,6 +189,9 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .request-info{flex:1}
 .request-name{font-weight:500}
 .request-actions{display:flex;gap:var(--space-xs)}
+.request-section-title{font-size:12px;color:var(--text-secondary);font-weight:600;margin:0 0 var(--space-xs) 2px}
+.request-outgoing{opacity:.72}
+.request-status{font-size:12px;color:var(--text-secondary);white-space:nowrap}
 .search-row{display:flex;gap:var(--space-sm);margin-bottom:var(--space-md)}
 .search-result{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-lg);border:1px solid var(--border-light);border-radius:8px}
 .search-result-info{flex:1}

@@ -98,11 +98,14 @@ interface ContactsViewState {
   friendPageLoading: boolean;
   friendPageRequestId: number;
   contactsLoading: boolean;
-  /** 好友请求列表有界滑动窗口。 */
+  /** 好友请求列表有界滑动窗口：只装待我处理的请求（PENDING_INCOMING），驱动接受/拒绝与红点。 */
   requestWindow: BoundedPageWindow<Contact>;
   requestPageLoaded: boolean;
   requestPageLoading: boolean;
   requestPageRequestId: number;
+  /** 我发出的待处理请求（PENDING_OUTGOING）：仅信息展示，不可操作，reset 时整批重拉，不做滚动分页。 */
+  outgoingRequests: readonly Contact[];
+  outgoingRequestsLoaded: boolean;
 }
 
 interface AppViews {
@@ -235,6 +238,8 @@ export class AppInstance {
     requestPageLoaded: false,
     requestPageLoading: false,
     requestPageRequestId: 0,
+    outgoingRequests: [],
+    outgoingRequestsLoaded: false,
   };
   readonly views: Partial<AppViews> = {};
   private readonly disposers: Array<() => void> = [];

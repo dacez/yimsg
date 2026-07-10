@@ -19,7 +19,7 @@ import type {
 import {
   CONTACT_DELETED,
   CONTACT_FRIEND,
-  CONTACT_PENDING,
+  CONTACT_PENDING_INCOMING,
   MSG_TYPE_RECALL,
   MSG_TYPE_TEXT,
   STATUS_DELETED,
@@ -686,20 +686,20 @@ describe("SDK PersistentDataGateway", () => {
       await db.execBatch([
         {
           sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
-          params: [1, "200", CONTACT_PENDING, "Charlie", 1],
+          params: [1, "200", CONTACT_PENDING_INCOMING, "Charlie", 1],
         },
         {
           sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
-          params: [1, "300", CONTACT_PENDING, "Alice", 3],
+          params: [1, "300", CONTACT_PENDING_INCOMING, "Alice", 3],
         },
         {
           sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
-          params: [1, "400", CONTACT_PENDING, "Bob", 2],
+          params: [1, "400", CONTACT_PENDING_INCOMING, "Bob", 2],
         },
       ]);
 
       const page = await ds.get_contacts({
-        status: CONTACT_PENDING,
+        status: CONTACT_PENDING_INCOMING,
         offset: 0,
         limit: 10,
       });
@@ -729,7 +729,7 @@ describe("SDK PersistentDataGateway", () => {
       await db.execBatch([
         {
           sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
-          params: [1, "200", CONTACT_PENDING, "Bob", 1],
+          params: [1, "200", CONTACT_PENDING_INCOMING, "Bob", 1],
         },
         {
           sql: "INSERT INTO contacts (type, id, status, sort_key, seq) VALUES (?, ?, ?, ?, ?)",
@@ -737,18 +737,18 @@ describe("SDK PersistentDataGateway", () => {
         },
       ]);
 
-      await expect(ds.get_contact_count(CONTACT_PENDING)).resolves.toBe(1);
+      await expect(ds.get_contact_count(CONTACT_PENDING_INCOMING)).resolves.toBe(1);
       await expect(
         ds.get_contacts({
           friend_uid: "200",
-          status: CONTACT_PENDING,
+          status: CONTACT_PENDING_INCOMING,
           page: { limit: 1 },
         }),
       ).resolves.toMatchObject({ page: { hasMoreForward: false }, contacts: [expect.objectContaining({ friend_uid: "200" })] });
       await expect(
         ds.get_contacts({
           friend_uid: "999",
-          status: CONTACT_PENDING,
+          status: CONTACT_PENDING_INCOMING,
           page: { limit: 1 },
         }),
       ).resolves.toMatchObject({ page: { hasMoreForward: false }, contacts: [] });

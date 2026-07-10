@@ -60,17 +60,17 @@ func (s *AppState) AddFriend(info *BaseInfo, req *pb.AddFriendRequest) *pb.AddFr
 	friendNickname := userNickname(s, friendUID)
 	now := auth.NowMs()
 
-	// 申请方保存自己的联系人视图。
+	// 申请方保存自己的联系人视图：自身记录为 PENDING_OUTGOING（等对方处理）。
 	myStore := s.ContactStore(uid)
-	mySeq, err := myStore.Upsert(uid, friendUID, 0, 0, dal.ContactPending, remarkName,
+	mySeq, err := myStore.Upsert(uid, friendUID, 0, 0, dal.ContactPendingOutgoing, remarkName,
 		dal.ContactSortKey(remarkName, friendNickname), dal.ContactSearchText(remarkName, friendNickname), now)
 	if err != nil {
 		return toAddFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 
-	// 被申请方不自动写备注，但用申请方昵称生成排序/搜索投影。
+	// 被申请方不自动写备注，但用申请方昵称生成排序/搜索投影；自身记录为 PENDING_INCOMING（等自己处理）。
 	theirStore := s.ContactStore(friendUID)
-	_, _ = theirStore.Upsert(friendUID, uid, 0, 0, dal.ContactPending, "",
+	_, _ = theirStore.Upsert(friendUID, uid, 0, 0, dal.ContactPendingIncoming, "",
 		dal.ContactSortKey("", myNickname), dal.ContactSearchText("", myNickname), now)
 
 	notifyContactsUpdated(s, friendUID)
@@ -90,6 +90,8 @@ func (s *AppState) AcceptFriend(info *BaseInfo, req *pb.AcceptFriendRequest) *pb
 		return toAcceptFriendResponse(appmsg.ErrForbidden(reqID, "当前无法发起该操作"))
 	}
 
+	// 调用者必须是这条请求的接收方（自身记录为 PENDING_INCOMING），否则 AcceptRequest 不会命中，
+	// 避免申请方对自己发出的请求调用 accept 也能成功入库好友关系。
 	myStore := s.ContactStore(uid)
 	ok, err := myStore.AcceptRequest(uid, friendUID)
 	if err != nil {
@@ -99,9 +101,9 @@ func (s *AppState) AcceptFriend(info *BaseInfo, req *pb.AcceptFriendRequest) *pb
 		return toAcceptFriendResponse(appmsg.ErrConflict(reqID, "no pending request"))
 	}
 
-	// Their side
+	// 申请方那一侧的记录是 PENDING_OUTGOING，同步翻成 FRIEND。
 	theirStore := s.ContactStore(friendUID)
-	_, _ = theirStore.AcceptRequest(friendUID, uid)
+	_, _ = theirStore.AcceptCounterpartRequest(friendUID, uid)
 
 	notifyOnlineUsers(s, appmsg.ContactsUpdatedNotif, uid, friendUID)
 
@@ -112,6 +114,7 @@ func (s *AppState) RejectFriend(info *BaseInfo, req *pb.RejectFriendRequest) *pb
 	reqID := info.RequestID
 	uid := info.UID
 	friendUID := req.GetFriendUid()
+	// 调用者必须是这条请求的接收方（自身记录为 PENDING_INCOMING），语义与 AcceptFriend 一致。
 	myStore := s.ContactStore(uid)
 	ok, err := myStore.RejectRequest(uid, friendUID)
 	if err != nil {
@@ -121,8 +124,9 @@ func (s *AppState) RejectFriend(info *BaseInfo, req *pb.RejectFriendRequest) *pb
 		return toRejectFriendResponse(appmsg.ErrConflict(reqID, "no pending request"))
 	}
 
+	// 申请方那一侧的记录是 PENDING_OUTGOING，同步翻成 DELETED。
 	theirStore := s.ContactStore(friendUID)
-	_, _ = theirStore.RejectRequest(friendUID, uid)
+	_, _ = theirStore.RejectCounterpartRequest(friendUID, uid)
 
 	notifyOnlineUsers(s, appmsg.ContactsUpdatedNotif, uid, friendUID)
 
@@ -281,7 +285,10 @@ func optionalContactStatus(status *pb.ContactStatus) (*uint8, bool) {
 
 func requiredContactStatus(status pb.ContactStatus) (uint8, bool) {
 	switch status {
-	case pb.ContactStatus_CONTACT_STATUS_FRIEND, pb.ContactStatus_CONTACT_STATUS_PENDING, pb.ContactStatus_CONTACT_STATUS_DELETED:
+	case pb.ContactStatus_CONTACT_STATUS_FRIEND,
+		pb.ContactStatus_CONTACT_STATUS_PENDING_OUTGOING,
+		pb.ContactStatus_CONTACT_STATUS_PENDING_INCOMING,
+		pb.ContactStatus_CONTACT_STATUS_DELETED:
 		return uint8(status), true
 	default:
 		return 0, false
@@ -328,7 +335,7 @@ func (s *AppState) GetContacts(info *BaseInfo, req *pb.GetContactsRequest) *pb.G
 		reverseInPlace(rows) // ListPage backward 返回反展示序，转回展示序
 	}
 
-	pending := filter.Status != nil && *filter.Status == dal.ContactPending
+	pending := filter.Status != nil && dal.IsPendingStatus(*filter.Status)
 	pi := appmsg.PageInfo{Total: -1}
 	if len(rows) > 0 {
 		pi.StartCursor = contactCursor(rows[0], pending)

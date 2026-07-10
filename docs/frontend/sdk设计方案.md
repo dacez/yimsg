@@ -1,7 +1,7 @@
 # SDK 设计方案
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/internal/`、`frontend/src/sdk/datagateway/`、`frontend/src/sdk/state/`、`frontend/src/sdk/transport/`、`frontend/src/sdk/generated/yimsg.ts`、`frontend/src/worker/sqlite.worker.ts`、`internal/protocol/yimsg.proto`。
-> 最后复核：2026-06-16。
+> 最后复核：2026-07-10。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../同步机制方案.md`](../同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../接口总览.md`](../接口总览.md)。
 
@@ -390,7 +390,7 @@ flowchart TD
 | 未读总数 | 服务端 `get_unread_count` | 本地 `conversations.unread_count` 汇总 |
 | 消息列表 | 服务端 `get_messages` 分页 | 本地 `messages` 按会话过滤 |
 | 联系人 | 服务端 `get_contacts` 分页 | 本地 `contacts` |
-| 待处理联系人数量 | 服务端 `get_contact_count(status=CONTACT_STATUS_PENDING)` | 本地 `contacts` 统计 `CONTACT_PENDING` |
+| 待我处理联系人数量（红点） | 服务端 `get_contact_count(status=CONTACT_STATUS_PENDING_INCOMING)` | 本地 `contacts` 统计 `CONTACT_PENDING_INCOMING`（不含自己发出的 `CONTACT_PENDING_OUTGOING`） |
 | 屏蔽列表 | 服务端 `get_blocklist` 分页 | 本地 `blocklist` |
 | 免打扰列表 | 服务端 `get_mutelist` 分页 | 本地 `mutelist` |
 | 用户 / 群展示资料 | DisplayInfoCache 同步返回，后台读服务端 | DisplayInfoCache 同步返回，后台读 `displayinfo` 并刷新服务端 |

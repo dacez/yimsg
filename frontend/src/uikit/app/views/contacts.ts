@@ -1,4 +1,4 @@
-import { CONTACT_FRIEND, CONTACT_PENDING, ORG_CHILD_PERSON, ORG_CHILD_TAG } from '../../../constants';
+import { CONTACT_FRIEND, CONTACT_PENDING_INCOMING, CONTACT_PENDING_OUTGOING, ORG_CHILD_PERSON, ORG_CHILD_TAG } from '../../../constants';
 import { APP_CONFIG } from '../../../app-config';
 import type { Contact, ContactPage, LocalConversation } from '../../../sdk';
 import { displayGroupName, displayUserName } from '../../../sdk';
@@ -10,6 +10,8 @@ import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, 
 
 const FRIEND_PAGE_SIZE = APP_CONFIG.list.pageSize;
 const REQUEST_PAGE_SIZE = APP_CONFIG.list.pageSize;
+// 我发出的待处理请求仅信息展示、不可操作，不做滚动分页，一次性拉取最近这些条即可。
+const OUTGOING_REQUEST_LIMIT = APP_CONFIG.list.pageSize * 4;
 const MEMBER_SELECT_MAX_SELECTED = APP_CONFIG.memberPicker.maxSelected;
 const CONTACTS_LEFT_MIN_WIDTH = 220;
 const CONTACTS_LEFT_MAX_WIDTH = 520;
@@ -118,7 +120,7 @@ export function createContactsView(app: AppInstance) {
     if (!requestListView) {
       requestListView = new BoundedStreamWindow<Contact>({
         scrollElement: contactsScroller(),
-        contentElement: app.$('requests-tab'),
+        contentElement: app.$('requests-incoming'),
         onScroll: () => maybeCatchUpStale(),
       });
     }
@@ -200,7 +202,55 @@ export function createContactsView(app: AppInstance) {
     });
   }
 
+  // 我发出的待处理请求：仅信息展示（"等待验证"），不带接受/拒绝按钮，不参与滚动分页。
+  // 展示但不可操作是为了避免申请方误以为能对自己发出的请求做处理——接收方才能接受/拒绝。
+  function renderOutgoingRequests() {
+    const container = app.$('requests-outgoing');
+    if (!state.outgoingRequestsLoaded || state.outgoingRequests.length === 0) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      return;
+    }
+    container.classList.remove('hidden');
+    const items = state.outgoingRequests;
+    const reqDisplayMap = app.client.getUserInfos(items.map(contactFriendUid));
+    const doc = app.dom.ownerDocument;
+    const frag = doc.createDocumentFragment();
+    const title = doc.createElement('div');
+    title.className = 'request-section-title';
+    title.textContent = app.t('contacts.pendingOutgoing');
+    frag.appendChild(title);
+    for (const r of items) {
+      const uid = contactFriendUid(r);
+      const ud = reqDisplayMap.get(uid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
+      const name = displayUserName(ud, uid);
+      const div = doc.createElement('div');
+      div.className = 'request-item request-outgoing';
+      div.innerHTML = `
+        <div class="avatar avatar-md">${app.escapeHtml(name[0] || '?')}</div>
+        <div class="request-info"><div class="request-name">${app.escapeHtml(name)}</div></div>
+        <div class="request-status">${app.escapeHtml(app.t('contacts.waitingVerification'))}</div>
+      `;
+      frag.appendChild(div);
+    }
+    container.innerHTML = '';
+    container.appendChild(frag);
+  }
+
+  async function loadOutgoingRequests(): Promise<void> {
+    try {
+      const page = await app.client.getContacts({ status: CONTACT_PENDING_OUTGOING, limit: OUTGOING_REQUEST_LIMIT });
+      state.outgoingRequests = page.contacts;
+    } catch (_) {
+      // 静默失败：这是次要的信息展示，不应打断主请求列表加载。
+    } finally {
+      state.outgoingRequestsLoaded = true;
+      renderOutgoingRequests();
+    }
+  }
+
   function renderRequests() {
+    renderOutgoingRequests();
     if (!state.requestPageLoaded) return;
 
     const view = getRequestListView();
@@ -290,13 +340,17 @@ export function createContactsView(app: AppInstance) {
     if (options.mode === 'reset') {
       window.reset();
       state.requestPageLoaded = false;
+      state.outgoingRequestsLoaded = false;
+      void loadOutgoingRequests();
     }
     try {
       const backward = options.mode === 'backward';
       const cursor = options.mode === 'reset'
         ? undefined
         : (backward ? window.backwardCursor : window.forwardCursor) || undefined;
-      const page = await app.client.getContacts({ status: CONTACT_PENDING, cursor, backward, limit: REQUEST_PAGE_SIZE });
+      // 「请求」tab 只展示待我处理的请求（PENDING_INCOMING）；我自己发出、待对方处理的请求
+      // 单独走 loadOutgoingRequests，只做信息展示、不带接受/拒绝按钮。
+      const page = await app.client.getContacts({ status: CONTACT_PENDING_INCOMING, cursor, backward, limit: REQUEST_PAGE_SIZE });
       if (requestId !== state.requestPageRequestId) return;
       const result = contactPageLoad(page);
       if (options.mode === 'reset') window.setInitial(result);
@@ -479,9 +533,13 @@ export function createContactsView(app: AppInstance) {
 
   function updateContactBadges(pendingCount: number) {
     // 只用红点表达「有待处理请求」，不再展示精确数字；请求 tab 标题恒为「请求」。
+    // pendingCount 必须只统计 PENDING_INCOMING（待我处理），不能包含自己发出的 PENDING_OUTGOING，
+    // 否则用户发起请求后红点会被自己点亮，语义就错了。
     app.setNavBadge('.nav-item[data-view="contacts"]', pendingCount > 0);
+    // 先重置文案再挂红点：textContent 赋值会清空子节点，必须在 setNavBadge 之前做。
     const reqTab = app.dom.querySelector('[data-ctab="requests"]');
     if (reqTab) reqTab.textContent = app.t('contacts.requests');
+    app.setNavBadge('[data-ctab="requests"]', pendingCount > 0);
   }
 
   async function deleteFriend(friendUid: string) {

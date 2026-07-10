@@ -101,6 +101,65 @@ func TestAcceptFriend(t *testing.T) {
 	}
 }
 
+// TestAcceptFriendRejectsRequester 覆盖好友请求方向 bug 的回归：申请方 A 不能对自己
+// 发出的请求调用 accept_friend/reject_friend，只有接收方 B 才能处理这条请求。
+func TestAcceptFriendRejectsRequester(t *testing.T) {
+	a := dial(t)
+	b := dial(t)
+	a.registerAndLogin(uniqueName("ct"), "pass1234", "Alice")
+	b.registerAndLogin(uniqueName("ct"), "pass1234", "Bob")
+
+	a.sendOK(wsRequest{
+		"action":     "add_friend",
+		"friend_uid": b.uid,
+	})
+	b.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+
+	// A（申请方）自己接受自己发出的请求应该失败。
+	resp := a.sendErr(wsRequest{
+		"action":     "accept_friend",
+		"friend_uid": b.uid,
+	})
+	if resp.ErrorCode != "CONFLICT" {
+		t.Fatalf("A accepting own request: error_code = %q, want CONFLICT", resp.ErrorCode)
+	}
+
+	// A（申请方）自己拒绝自己发出的请求同样应该失败。
+	resp = a.sendErr(wsRequest{
+		"action":     "reject_friend",
+		"friend_uid": b.uid,
+	})
+	if resp.ErrorCode != "CONFLICT" {
+		t.Fatalf("A rejecting own request: error_code = %q, want CONFLICT", resp.ErrorCode)
+	}
+
+	// 关系应该仍然是 PENDING，双方都还不是好友。
+	aContacts := a.sendOK(wsRequest{"action": "get_contacts"})
+	for _, c := range aContacts.Contacts {
+		if c.FriendUID == b.uid && c.Status == 1 {
+			t.Fatalf("A should not become FRIEND with B via self-accept, got: %+v", c)
+		}
+	}
+
+	// B（接收方）才能正常接受，验证 bug 修复没有破坏正常流程。
+	b.sendOK(wsRequest{
+		"action":     "accept_friend",
+		"friend_uid": a.uid,
+	})
+	a.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+
+	aContacts = a.sendOK(wsRequest{"action": "get_contacts"})
+	found := false
+	for _, c := range aContacts.Contacts {
+		if c.FriendUID == b.uid && c.Status == 1 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("A should see B as FRIEND after B's legitimate accept, contacts: %+v", aContacts.Contacts)
+	}
+}
+
 func TestRejectFriend(t *testing.T) {
 	a := dial(t)
 	b := dial(t)

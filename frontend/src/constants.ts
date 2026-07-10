@@ -9,7 +9,9 @@ export const MSG_TYPE_MARKDOWN = 8 as const;
 
 export const CONTACT_FRIEND = 1;
 export const CONTACT_DELETED = 0xff;
-export const CONTACT_PENDING = 2;
+// CONTACT_PENDING_OUTGOING 是我发出、待对方处理的请求；CONTACT_PENDING_INCOMING 是对方发出、待我处理的请求。
+export const CONTACT_PENDING_OUTGOING = 2;
+export const CONTACT_PENDING_INCOMING = 3;
 export const BLOCKLIST_ACTIVE = 1;
 export const MUTELIST_ACTIVE = 1;
 export const STATUS_DELETED = 0xff;

@@ -103,7 +103,8 @@ enum MessageType {
 enum ContactStatus {
   CONTACT_STATUS_INVALID = 0; // reserved=invalid meaning=无效联系人状态
   CONTACT_STATUS_FRIEND = 1; // meaning=好友或已收藏群
-  CONTACT_STATUS_PENDING = 2; // meaning=待处理好友申请
+  CONTACT_STATUS_PENDING_OUTGOING = 2; // meaning=我发起的好友申请，待对方处理
+  CONTACT_STATUS_PENDING_INCOMING = 3; // meaning=对方发起的好友申请，待我处理
   CONTACT_STATUS_DELETED = 255; // meaning=已删除 tombstone
 }
 
@@ -452,12 +453,12 @@ message AddFriendResponse {
 }
 
 message AcceptFriendRequest {
-  int64 friend_uid = 10; // required 好友用户 ID
+  int64 friend_uid = 10; // required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT
 }
 message AcceptFriendResponse { BaseResponse base = 1; }
 
 message RejectFriendRequest {
-  int64 friend_uid = 10; // required 好友用户 ID
+  int64 friend_uid = 10; // required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT
 }
 message RejectFriendResponse { BaseResponse base = 1; }
 
@@ -487,7 +488,7 @@ message GetContactsResponse {
 }
 
 message GetContactCountRequest {
-  ContactStatus status = 10; // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING 表示待处理好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
+  ContactStatus status = 10; // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING_INCOMING 表示待我处理的好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
 }
 message GetContactCountResponse {
   BaseResponse base = 1; // required 通用响应状态

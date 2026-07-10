@@ -630,8 +630,10 @@ export enum ContactStatus {
   CONTACT_STATUS_INVALID = 0,
   /** CONTACT_STATUS_FRIEND - meaning=好友或已收藏群 */
   CONTACT_STATUS_FRIEND = 1,
-  /** CONTACT_STATUS_PENDING - meaning=待处理好友申请 */
-  CONTACT_STATUS_PENDING = 2,
+  /** CONTACT_STATUS_PENDING_OUTGOING - meaning=我发起的好友申请，待对方处理 */
+  CONTACT_STATUS_PENDING_OUTGOING = 2,
+  /** CONTACT_STATUS_PENDING_INCOMING - meaning=对方发起的好友申请，待我处理 */
+  CONTACT_STATUS_PENDING_INCOMING = 3,
   /** CONTACT_STATUS_DELETED - meaning=已删除 tombstone */
   CONTACT_STATUS_DELETED = 255,
 }
@@ -645,8 +647,11 @@ export function contactStatusFromJSON(object: any): ContactStatus {
     case "CONTACT_STATUS_FRIEND":
       return ContactStatus.CONTACT_STATUS_FRIEND;
     case 2:
-    case "CONTACT_STATUS_PENDING":
-      return ContactStatus.CONTACT_STATUS_PENDING;
+    case "CONTACT_STATUS_PENDING_OUTGOING":
+      return ContactStatus.CONTACT_STATUS_PENDING_OUTGOING;
+    case 3:
+    case "CONTACT_STATUS_PENDING_INCOMING":
+      return ContactStatus.CONTACT_STATUS_PENDING_INCOMING;
     case 255:
     case "CONTACT_STATUS_DELETED":
       return ContactStatus.CONTACT_STATUS_DELETED;
@@ -661,8 +666,10 @@ export function contactStatusToJSON(object: ContactStatus): string {
       return "CONTACT_STATUS_INVALID";
     case ContactStatus.CONTACT_STATUS_FRIEND:
       return "CONTACT_STATUS_FRIEND";
-    case ContactStatus.CONTACT_STATUS_PENDING:
-      return "CONTACT_STATUS_PENDING";
+    case ContactStatus.CONTACT_STATUS_PENDING_OUTGOING:
+      return "CONTACT_STATUS_PENDING_OUTGOING";
+    case ContactStatus.CONTACT_STATUS_PENDING_INCOMING:
+      return "CONTACT_STATUS_PENDING_INCOMING";
     case ContactStatus.CONTACT_STATUS_DELETED:
       return "CONTACT_STATUS_DELETED";
     default:
@@ -1478,7 +1485,7 @@ export interface AddFriendResponse {
 }
 
 export interface AcceptFriendRequest {
-  /** required 好友用户 ID */
+  /** required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT */
   friend_uid: string;
 }
 
@@ -1487,7 +1494,7 @@ export interface AcceptFriendResponse {
 }
 
 export interface RejectFriendRequest {
-  /** required 好友用户 ID */
+  /** required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT */
   friend_uid: string;
 }
 
@@ -1545,7 +1552,7 @@ export interface GetContactsResponse {
 }
 
 export interface GetContactCountRequest {
-  /** required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING 表示待处理好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量 */
+  /** required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING_INCOMING 表示待我处理的好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量 */
   status: ContactStatus;
 }
 

@@ -138,31 +138,53 @@ func (s *ContactStore) Delete(uid, friendUID, groupID, orgID int64) (int64, bool
 	return newSeq, found, nil
 }
 
-// AcceptRequest changes status from PENDING to FRIEND. Returns false if no pending request.
+// AcceptRequest changes the recipient's own record from PENDING_INCOMING to FRIEND.
+// 调用者必须是这条请求的接收方；申请方自身记录是 PENDING_OUTGOING，不会命中，返回 false。
 func (s *ContactStore) AcceptRequest(uid, friendUID int64) (bool, error) {
-	found, err := s.resolveRequest(uid, friendUID, ContactFriend)
+	found, err := s.resolveRequest(uid, friendUID, ContactPendingIncoming, ContactFriend)
 	if err != nil {
 		return false, fmt.Errorf("accept request: %w", err)
 	}
 	return found, nil
 }
 
-// RejectRequest changes status from PENDING to DELETED. Returns false if no pending request.
+// RejectRequest changes the recipient's own record from PENDING_INCOMING to DELETED.
+// 调用者必须是这条请求的接收方；申请方自身记录是 PENDING_OUTGOING，不会命中，返回 false。
 func (s *ContactStore) RejectRequest(uid, friendUID int64) (bool, error) {
-	found, err := s.resolveRequest(uid, friendUID, ContactDeleted)
+	found, err := s.resolveRequest(uid, friendUID, ContactPendingIncoming, ContactDeleted)
 	if err != nil {
 		return false, fmt.Errorf("reject request: %w", err)
 	}
 	return found, nil
 }
 
-// resolveRequest atomically transitions a pending friend request to newStatus and bumps seq.
-func (s *ContactStore) resolveRequest(uid, friendUID int64, newStatus uint8) (bool, error) {
+// AcceptCounterpartRequest changes the requester's own record from PENDING_OUTGOING to FRIEND。
+// 在接收方 AcceptRequest 成功后，服务层调用本方法把申请方那一侧的记录同步翻成 FRIEND。
+func (s *ContactStore) AcceptCounterpartRequest(uid, friendUID int64) (bool, error) {
+	found, err := s.resolveRequest(uid, friendUID, ContactPendingOutgoing, ContactFriend)
+	if err != nil {
+		return false, fmt.Errorf("accept counterpart request: %w", err)
+	}
+	return found, nil
+}
+
+// RejectCounterpartRequest changes the requester's own record from PENDING_OUTGOING to DELETED。
+// 在接收方 RejectRequest 成功后，服务层调用本方法把申请方那一侧的记录同步翻成 DELETED。
+func (s *ContactStore) RejectCounterpartRequest(uid, friendUID int64) (bool, error) {
+	found, err := s.resolveRequest(uid, friendUID, ContactPendingOutgoing, ContactDeleted)
+	if err != nil {
+		return false, fmt.Errorf("reject counterpart request: %w", err)
+	}
+	return found, nil
+}
+
+// resolveRequest atomically transitions a contact record matching fromStatus to newStatus and bumps seq.
+func (s *ContactStore) resolveRequest(uid, friendUID int64, fromStatus, newStatus uint8) (bool, error) {
 	var found bool
 	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
 		r, err := tx.Exec(
 			"UPDATE contacts SET status = ? WHERE uid = ? AND type = ? AND id = ? AND status = ?",
-			newStatus, uid, ContactTypeFriend, friendUID, ContactPending,
+			newStatus, uid, ContactTypeFriend, friendUID, fromStatus,
 		)
 		if err != nil {
 			return err
@@ -270,7 +292,7 @@ func contactWhereClause(uid int64, filter ContactListFilter) (string, []interfac
 // 为空表示从对应方向起点开始。backward=true 时按反方向查询，调用方需把结果反转回展示序。
 func (s *ContactStore) ListPage(uid int64, filter ContactListFilter, cursorParts []string, backward bool, limit int64) ([]Contact, error) {
 	where, args := contactWhereClause(uid, filter)
-	pending := filter.Status != nil && *filter.Status == ContactPending
+	pending := filter.Status != nil && IsPendingStatus(*filter.Status)
 
 	var orderBy string
 	if pending {
