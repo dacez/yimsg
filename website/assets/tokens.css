@@ -1,0 +1,30 @@
+:root {
+  /* 品牌色 */
+  --color-brand-500: #5b5bf0;
+  --color-brand-600: #4a4ad9;
+  --color-brand-400: #7d7df5;
+  --color-brand-100: #eeedfe;
+  --gradient-brand: linear-gradient(90deg, #5b5bf0, #8b5cf6);
+
+  /* 语义色 */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* 中性色 */
+  --color-bg-page: #f6f7fc;
+  --color-bg-surface: #ffffff;
+  --color-bg-hover: #f3f5f8;
+  --color-bg-active: #eef2ff;
+  --color-text-primary: #1c1e21;
+  --color-text-secondary: #5c636e;
+  --color-text-placeholder: #8a909a;
+  --color-text-muted: #717a92;
+  --color-border: #e8eaee;
+  --color-border-light: #f1f2f5;
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
