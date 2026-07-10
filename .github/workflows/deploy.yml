@@ -81,7 +81,8 @@ jobs:
 
           ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" '
             set -euo pipefail
-            id -u yimsg >/dev/null 2>&1 || useradd --system --home-dir /opt/yimsg --shell /usr/sbin/nologin yimsg
+            getent group yimsg >/dev/null || groupadd --system yimsg
+            id -u yimsg >/dev/null 2>&1 || useradd --system --home-dir /opt/yimsg --shell /usr/sbin/nologin --gid yimsg yimsg
             mkdir -p /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data
           '
 
