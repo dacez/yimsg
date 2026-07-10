@@ -100,6 +100,7 @@ export const APP_SHELL_HTML = `
           </div>
         </div>
         <div id="right-panel" class="collapsed">
+          <button class="detail-mobile-back" id="detail-mobile-back">← 返回</button>
           <div id="detail-panel"></div>
         </div>
       </section>

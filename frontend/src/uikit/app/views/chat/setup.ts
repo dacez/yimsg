@@ -111,6 +111,7 @@ export function setupChat(app: AppInstance) {
       app.chatState.detailRequestId++;
       app.chatState.detailOpen = false;
       app.$('right-panel').classList.add('collapsed');
+      app.$('view-chat').classList.remove('mobile-showing-detail');
       return;
     }
     if (!app.chatState.currentConvKey) return;
@@ -118,5 +119,12 @@ export function setupChat(app: AppInstance) {
     const conversation = app.client.describeConversation(app.chatState.currentConvKey);
     if (conversation.kind === 'group') void showGroupDetail(app, conversation.id);
     else void showUserDetail(app, conversation.id);
+  });
+
+  app.$('detail-mobile-back').addEventListener('click', () => {
+    app.chatState.detailRequestId++;
+    app.chatState.detailOpen = false;
+    app.$('right-panel').classList.add('collapsed');
+    app.$('view-chat').classList.remove('mobile-showing-detail');
   });
 }

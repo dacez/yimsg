@@ -445,6 +445,7 @@ function closeStaleConversation(app: AppInstance, expectedKey: string): void {
   app.$("chat-empty").classList.remove("hidden");
   app.$("message-list").innerHTML = "";
   app.$("view-chat").classList.remove("mobile-showing-chat");
+  app.$("view-chat").classList.remove("mobile-showing-detail");
   replaceRoute({ view: "chat" });
   renderConversationList(app, { force: true });
 }
@@ -468,6 +469,7 @@ export async function openConversation(
     app.chatState.detailOpen = false;
     app.chatState.detailRequestId++;
     app.$("right-panel").classList.add("collapsed");
+    app.$("view-chat").classList.remove("mobile-showing-detail");
   }
 
   if ((conv.unreadCount || 0) > 0) {
