@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`frontend/src/uikit/index.ts`、`frontend/src/uikit/embed.ts`、`frontend/src/uikit/options.ts`、`frontend/src/uikit/mode.ts`。
-> 最后复核：2026-07-07。
+> 最后复核：2026-07-10。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -114,7 +114,7 @@ cd frontend && npm run build:uikit  # 仅构建 UIKit ESM 包
 
 UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 warning 会被视为失败，避免重新引入不可运行产物。
 
-示例页面位于 `frontend/public/uikit-demo.html` 与 `frontend/public/uikit-multi-demo.html`。
+示例页面位于 `frontend/public/demo/embed.html` 与 `frontend/public/demo/embed-multi.html`；官网营销向体验 demo（含九宫格客服工作台）位于 `frontend/public/demo/` 下的其余页面。
 
 ## 6. 快速接入
 

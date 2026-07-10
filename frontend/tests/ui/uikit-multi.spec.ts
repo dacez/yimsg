@@ -103,7 +103,7 @@ async function sendShadowMessage(page: Page, hostId: string, text: string) {
 
 test.describe('uikit multi instance', () => {
   test('网格内 widget 会按宿主尺寸自适应，认证卡完整显示', async ({ page }) => {
-    await page.goto('/chat/uikit-multi-demo.html');
+    await page.goto('/chat/demo/embed-multi.html');
 
     const hostIds = ['host-u1-persistent', 'host-u1-reset', 'host-u1-lite', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-lite', 'host-u5-persistent', 'host-u5-lite'];
     for (const hostId of hostIds) {
@@ -149,7 +149,7 @@ test.describe('uikit multi instance', () => {
   });
 
   test('seed 用户登录后好友长列表不会把格子撑高', async ({ page }) => {
-    await page.goto('/chat/uikit-multi-demo.html');
+    await page.goto('/chat/demo/embed-multi.html');
 
     const seededUser = `${seedPrefix()}_Test1`;
     await page.waitForFunction(() => Boolean(document.getElementById('host-u1-persistent')?.shadowRoot?.querySelector('#login-form')));
@@ -223,7 +223,7 @@ test.describe('uikit multi instance', () => {
     const user4 = uniqueUser('grid_u4');
     const user5 = uniqueUser('grid_u5');
 
-    await page.goto('/chat/uikit-multi-demo.html');
+    await page.goto('/chat/demo/embed-multi.html');
 
     const hostIds = ['host-u1-persistent', 'host-u1-reset', 'host-u1-lite', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-lite', 'host-u5-persistent', 'host-u5-lite'];
     for (const hostId of hostIds) {

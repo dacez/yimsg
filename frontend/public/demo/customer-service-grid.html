@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg 九宫格客服工作台 demo</title>
+  <link rel="stylesheet" href="common.css">
+  <style>
+    body { padding: 20px 16px 40px; }
+    .tip { margin-bottom: 8px; max-width: 860px; }
+    .cred { margin-bottom: 16px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .cell {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+      overflow: hidden;
+    }
+    .cell-header {
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #1d2a4a;
+      border-bottom: 1px solid #eef2f7;
+      background: #fafbfc;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .cell-header .username { font-weight: 400; color: #8a8fa3; }
+    .cell-host { height: clamp(320px, 34vh, 380px); }
+    .cell-host.error { padding: 16px; color: #b3261e; font-size: 12px; }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>yimsg · 九宫格客服工作台 demo</h1>
+  <p class="tip">模拟一位客服值班人员身兼 9 个客服账号、同屏坐镇 9 路会话的真实场景——小团队多店铺、多渠道客服共用同一坐席时，一个人也能同时盯住全部客户消息，逐格直接回复即可，无需在多个账号间来回切换登录。</p>
+  <div class="cred">统一密码：Demo@123456（账号 demo_kf_1 ~ demo_kf_9，每格已预置一条待处理的客户留言）</div>
+  <div class="grid" id="grid"></div>
+  <script type="module">
+    import { mount, YimsgClient } from '/chat/uikit/yimsg-uikit.js';
+
+    const PASSWORD = 'Demo@123456';
+    const AGENTS = [
+      { username: 'demo_kf_1', label: '客服-小美' },
+      { username: 'demo_kf_2', label: '客服-小林' },
+      { username: 'demo_kf_3', label: '客服-阿强' },
+      { username: 'demo_kf_4', label: '客服-晓雯' },
+      { username: 'demo_kf_5', label: '客服-老陈' },
+      { username: 'demo_kf_6', label: '客服-思思' },
+      { username: 'demo_kf_7', label: '客服-阿伟' },
+      { username: 'demo_kf_8', label: '客服-小雨' },
+      { username: 'demo_kf_9', label: '客服-阿泽' },
+    ];
+
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    const uploadUrl = '/api/upload';
+    const gridEl = document.getElementById('grid');
+
+    for (const agent of AGENTS) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.innerHTML = `
+        <div class="cell-header">
+          <span>${agent.label}</span>
+          <span class="username">${agent.username}</span>
+        </div>
+        <div class="cell-host"></div>
+      `;
+      gridEl.appendChild(cell);
+      const host = cell.querySelector('.cell-host');
+
+      const client = new YimsgClient({ wsUrl, uploadUrl });
+      client.login(agent.username, PASSWORD).then(() => client.startSession()).then(() => {
+        mount(host, { client, viewMode: 'full', theme: 'light', locale: 'auto' });
+      }).catch((err) => {
+        host.classList.add('error');
+        host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+        console.warn('[customer-service-grid] login failed', agent.username, err);
+      });
+    }
+  </script>
+</body>
+</html>

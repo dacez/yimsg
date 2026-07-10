@@ -9,8 +9,10 @@
 //
 //   - 完整体验：demo_alice / demo_bob / demo_carol 互为好友，一个三人群「产品体验群」，
 //     群里和两两单聊都预置几条消息。
-//   - 客服：demo_kf_1 / demo_kf_2 / demo_kf_3 三个客服人设账号；访客通过临时会话（无需好友
-//     关系，见 send_message 私聊校验放宽）直接联系，不需要任何预先加好友或白名单配置。
+//   - 客服：demo_kf_1 ~ demo_kf_9 九个客服人设账号；访客通过临时会话（无需好友关系，见
+//     send_message 私聊校验放宽）直接联系，不需要任何预先加好友或白名单配置。每个客服账号
+//     还预置了一条来自专属访客账号的留言，用于九宫格客服工作台 demo（一人同屏登录全部 9
+//     个客服账号，模拟身兼多个客服账号的值班场景）。
 //   - 通讯录 + 组织架构：复用 demo_alice（已有 demo_bob / demo_carol 两个私人好友），额外
 //     挂一个 4 层 tag、约 76 人的复杂组织架构，展示通讯录里"私人好友 + 组织"两种条目。
 package main
@@ -77,7 +79,7 @@ func main() {
 	fmt.Println("\n=== Step 1: 完整体验账号（demo_alice/demo_bob/demo_carol） ===")
 	alice, bob, carol := seedFullChatDemo(state)
 
-	fmt.Println("\n=== Step 2: 客服账号（demo_kf_1/2/3） ===")
+	fmt.Println("\n=== Step 2: 客服账号（demo_kf_1 ~ demo_kf_9） ===")
 	kfUIDs, kfUsernames := seedCustomerServiceDemo(state)
 
 	fmt.Println("\n=== Step 3: 通讯录 + 组织架构（挂在 demo_alice 名下） ===")
@@ -87,6 +89,7 @@ func main() {
 	fmt.Printf("完整体验 demo：demo_alice / demo_bob / demo_carol，密码 %s\n", demoPassword)
 	fmt.Printf("  群聊：产品体验群 group_id=%d；两两单聊已预置消息\n", alice.groupID)
 	fmt.Printf("客服 demo：%s，密码 %s（访客侧走临时注册 + 临时会话，无需预先加好友）\n", strings.Join(kfUsernames, " / "), demoPassword)
+	fmt.Printf("九宫格客服工作台 demo：以上 9 个客服账号已各预置一条待处理留言，密码同为 %s\n", demoPassword)
 	fmt.Printf("通讯录 demo：demo_alice，密码 %s；组织 org_id=%d，共 %d 名在职成员\n", demoPassword, orgID, orgMemberCount)
 	_ = bob
 	_ = carol
@@ -168,23 +171,37 @@ func seedFullChatDemo(state *service.AppState) (alice, bob, carol demoUser) {
 	return demoUser{uid: aliceUID, groupID: groupID}, demoUser{uid: bobUID}, demoUser{uid: carolUID}
 }
 
-// seedCustomerServiceDemo 构造客服 demo 用到的三个客服人设账号；访客侧走真实临时注册 + 临时会话，
+// seedCustomerServiceDemo 构造客服 demo 用到的九个客服人设账号；访客侧走真实临时注册 + 临时会话，
 // 客服账号不需要任何预先加好友或白名单配置（私聊已不要求好友关系）。
+// 每个客服账号额外预置一个专属访客账号发来的一条留言，供九宫格客服工作台 demo 使用：
+// 一人同屏登录全部 9 个客服账号时，每格都已经有一条待处理的真实客户消息。
 func seedCustomerServiceDemo(state *service.AppState) (uids []int64, usernames []string) {
 	agents := []struct {
-		username string
-		nickname string
+		username   string
+		nickname   string
+		visitorMsg string
 	}{
-		{"demo_kf_1", "客服-小美"},
-		{"demo_kf_2", "客服-小林"},
-		{"demo_kf_3", "客服-阿强"},
+		{"demo_kf_1", "客服-小美", "您好，请问这个月账单为什么比上月多了20元？"},
+		{"demo_kf_2", "客服-小林", "在的哈，我想咨询一下退货流程"},
+		{"demo_kf_3", "客服-阿强", "订单一直显示配送中，能帮我查一下吗？"},
+		{"demo_kf_4", "客服-晓雯", "优惠券领取不了，提示已过期"},
+		{"demo_kf_5", "客服-老陈", "想问一下你们支持企业对公转账吗？"},
+		{"demo_kf_6", "客服-思思", "刚才付款失败了，钱好像扣了"},
+		{"demo_kf_7", "客服-阿伟", "能不能帮我改一下收货地址？"},
+		{"demo_kf_8", "客服-小雨", "会员到期了，续费有优惠吗？"},
+		{"demo_kf_9", "客服-阿泽", "商品页面打不开，一直转圈"},
 	}
 	for _, a := range agents {
 		uid := register(state, a.username, a.nickname)
 		uids = append(uids, uid)
 		usernames = append(usernames, a.username)
+
+		visitorUsername := a.username + "_visitor"
+		visitorUID := register(state, visitorUsername, "客户-"+a.nickname)
+		sendText(state, visitorUID, seedkit.UserTarget(uid), a.visitorMsg)
 	}
 	fmt.Println("  客服账号已注册：" + strings.Join(usernames, " / "))
+	fmt.Println("  每个客服账号已预置一条专属访客留言")
 	return uids, usernames
 }
 

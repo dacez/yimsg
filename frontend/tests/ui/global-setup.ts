@@ -123,12 +123,12 @@ export default async function globalSetup(_config: FullConfig) {
       timeout: 120_000,
     });
   }
-  const uikitDemo = path.join(ROOT, 'web', 'uikit-demo.html');
+  const webDemoDir = path.join(ROOT, 'web', 'demo');
+  fs.mkdirSync(webDemoDir, { recursive: true });
   // 示例 HTML 体积极小，始终覆盖同步，避免 playwright 反复使用陈旧模板。
   console.log('[globalSetup] Refreshing uikit demo htmls...');
-  fs.copyFileSync(path.join(ROOT, 'frontend', 'public', 'uikit-demo.html'), uikitDemo);
-  const uikitMultiDemo = path.join(ROOT, 'web', 'uikit-multi-demo.html');
-  fs.copyFileSync(path.join(ROOT, 'frontend', 'public', 'uikit-multi-demo.html'), uikitMultiDemo);
+  fs.copyFileSync(path.join(ROOT, 'frontend', 'public', 'demo', 'embed.html'), path.join(webDemoDir, 'embed.html'));
+  fs.copyFileSync(path.join(ROOT, 'frontend', 'public', 'demo', 'embed-multi.html'), path.join(webDemoDir, 'embed-multi.html'));
 
   console.log('[globalSetup] Starting server...');
   const server = spawn(serverExe, [CONFIG], {
