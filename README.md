@@ -1,6 +1,6 @@
 # Yimsg
 
-https://yimsg.im
+https://www.yimsg.im
 
 ## 目录
 
