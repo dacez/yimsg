@@ -286,16 +286,113 @@ describe('WsTransport', () => {
 
   // ---- New: reconnecting callback ----
 
-  it('calls onReconnecting before scheduling reconnect', async () => {
+  it('calls onReconnecting once the notify threshold is reached', async () => {
+    const thresholdTransport = new WsTransport({
+      url: 'ws://test/ws',
+      timeout: 1000,
+      reconnectInterval: 500,
+      heartbeatInterval: 0,
+      reconnectNotifyThreshold: 1,
+      wsFactory: (url) => {
+        mockWs = new MockWebSocket(url);
+        return mockWs as unknown as WebSocket;
+      },
+    });
     const onReconnecting = vi.fn();
-    transport.onReconnecting = onReconnecting;
-    transport.connect();
+    thresholdTransport.onReconnecting = onReconnecting;
+    thresholdTransport.connect();
     await vi.advanceTimersByTimeAsync(0);
 
     // Simulate server-side close
     mockWs.onclose!();
 
     expect(onReconnecting).toHaveBeenCalledTimes(1);
+    thresholdTransport.disconnect();
+  });
+
+  // ManualSocket never auto-opens — the test drives onopen/onclose explicitly,
+  // so consecutive failed reconnect attempts can be simulated deterministically
+  // (MockWebSocket's queued auto-open would otherwise race with manual onclose calls).
+  class ManualSocket {
+    readyState = 1; // mimic WS_OPEN so WsTransport.connect() doesn't treat it as still connecting
+    onopen: (() => void) | null = null;
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    onclose: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    binaryType = 'arraybuffer';
+    send() {}
+    close() {}
+  }
+
+  it('does not call onReconnecting before consecutive failures reach the default threshold (3)', () => {
+    const sockets: ManualSocket[] = [];
+    const manualTransport = new WsTransport({
+      url: 'ws://test/ws',
+      timeout: 1000,
+      reconnectInterval: 500,
+      heartbeatInterval: 0,
+      wsFactory: () => {
+        const sock = new ManualSocket();
+        sockets.push(sock);
+        return sock as unknown as WebSocket;
+      },
+    });
+    const onReconnecting = vi.fn();
+    manualTransport.onReconnecting = onReconnecting;
+    manualTransport.connect();
+    sockets[0].onopen!();
+    expect(manualTransport.connected).toBe(true);
+
+    // 1st and 2nd failed attempts: still below default threshold, should stay silent
+    sockets[0].onclose!();
+    expect(onReconnecting).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(500);
+
+    sockets[1].onclose!();
+    expect(onReconnecting).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(500);
+
+    // 3rd consecutive failed attempt: threshold reached, now notify
+    sockets[2].onclose!();
+    expect(onReconnecting).toHaveBeenCalledTimes(1);
+
+    manualTransport.disconnect();
+  });
+
+  it('resets the reconnect attempt count after a successful reconnect', () => {
+    const sockets: ManualSocket[] = [];
+    const manualTransport = new WsTransport({
+      url: 'ws://test/ws',
+      timeout: 1000,
+      reconnectInterval: 500,
+      heartbeatInterval: 0,
+      wsFactory: () => {
+        const sock = new ManualSocket();
+        sockets.push(sock);
+        return sock as unknown as WebSocket;
+      },
+    });
+    const onReconnecting = vi.fn();
+    manualTransport.onReconnecting = onReconnecting;
+    manualTransport.connect();
+    sockets[0].onopen!();
+
+    // 2 failed attempts (below threshold), then a successful reconnect resets the counter
+    sockets[0].onclose!();
+    vi.advanceTimersByTime(500);
+    sockets[1].onclose!();
+    vi.advanceTimersByTime(500);
+    sockets[2].onopen!();
+    expect(manualTransport.connected).toBe(true);
+    expect(onReconnecting).not.toHaveBeenCalled();
+
+    // 2 more consecutive failures afterwards should still not reach the threshold
+    sockets[2].onclose!();
+    vi.advanceTimersByTime(500);
+    sockets[3].onclose!();
+    expect(onReconnecting).not.toHaveBeenCalled();
+
+    manualTransport.disconnect();
   });
 
   // ---- New: heartbeat ----

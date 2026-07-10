@@ -144,6 +144,7 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
     uploadUrl: options.uploadUrl,
     requestTimeout: options.requestTimeout,
     reconnectInterval: options.reconnectInterval,
+    reconnectNotifyThreshold: options.reconnectNotifyThreshold,
     heartbeatInterval: options.heartbeatInterval,
   });
 

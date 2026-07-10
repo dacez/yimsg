@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_WS_TIMEOUT_MS,
   DEFAULT_WS_RECONNECT_INTERVAL_MS,
+  DEFAULT_WS_RECONNECT_NOTIFY_THRESHOLD,
   DEFAULT_WS_HEARTBEAT_INTERVAL_MS,
   DEFAULT_WS_MAX_PENDING_REQUESTS,
   PENDING_REQUEST_BUCKET_CAPACITY,
@@ -82,6 +83,8 @@ interface WsTransportOptions {
   wsFactory?: (url: string) => WebSocket;
   /** 最大并发未响应请求数。超出后 send() 立即以 CONNECTION_FAILED 拒绝。默认 100。 */
   maxPendingRequests?: number;
+  /** 连续重连尝试达到该次数后才触发 onReconnecting。默认 3。 */
+  reconnectNotifyThreshold?: number;
 }
 
 /**
@@ -96,6 +99,8 @@ export class WsTransport implements ClientTransport {
   private reqIdCounter = 0;
   private readonly pendingRequests: BoundedU64Map<PendingReq>;
   private intentionalClose = false;
+  /** 连续重连尝试计数；成功建连后清零。 */
+  private reconnectAttempts = 0;
 
   private readonly url: string;
   private readonly timeout: number;
@@ -103,6 +108,7 @@ export class WsTransport implements ClientTransport {
   private readonly heartbeatInterval: number;
   private readonly wsFactory: (url: string) => WebSocket;
   private readonly maxPendingRequests: number;
+  private readonly reconnectNotifyThreshold: number;
 
   onNotification: ((n: Notification) => void) | null = null;
   onConnected: (() => void) | null = null;
@@ -142,6 +148,7 @@ export class WsTransport implements ClientTransport {
     this.heartbeatInterval = options.heartbeatInterval ?? DEFAULT_WS_HEARTBEAT_INTERVAL_MS;
     this.wsFactory = options.wsFactory ?? ((u: string) => new WebSocket(u));
     this.maxPendingRequests = options.maxPendingRequests ?? DEFAULT_WS_MAX_PENDING_REQUESTS;
+    this.reconnectNotifyThreshold = options.reconnectNotifyThreshold ?? DEFAULT_WS_RECONNECT_NOTIFY_THRESHOLD;
     // 待响应请求采用固定容量有界 map：reject 策略 + headroom，size 永不超过 maxPendingRequests。
     this.pendingRequests = new BoundedU64Map<PendingReq>({
       capacity: this.maxPendingRequests,
@@ -185,6 +192,7 @@ export class WsTransport implements ClientTransport {
     socket.onopen = () => {
       if (this.ws !== socket) return;
       this.wsConnected = true;
+      this.reconnectAttempts = 0;
       this.startHeartbeat();
       this.onConnected?.();
     };
@@ -214,6 +222,7 @@ export class WsTransport implements ClientTransport {
 
   disconnect(): void {
     this.intentionalClose = true;
+    this.reconnectAttempts = 0;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -342,7 +351,10 @@ export class WsTransport implements ClientTransport {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
-    this.onReconnecting?.();
+    this.reconnectAttempts += 1;
+    if (this.reconnectAttempts >= this.reconnectNotifyThreshold) {
+      this.onReconnecting?.();
+    }
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

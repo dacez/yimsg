@@ -108,7 +108,7 @@ interface SessionSnapshot {
 | `disconnected` | 当前未连上 WebSocket |
 | `connecting` | 正在建立连接 |
 | `connected` | 当前连接已建立 |
-| `reconnecting` | 连接断开后正在等待或执行重连 |
+| `reconnecting` | 连续重连尝试达到 `reconnectNotifyThreshold`（默认 3 次）仍未成功，正在等待或执行重连 |
 
 ### 2.1.2 推荐判定方式
 
@@ -588,6 +588,7 @@ client.on('display:updated', () => {
 | `uploadUrl` | `string` | `/api/upload` | HTTP 上传地址 |
 | `requestTimeout` | `number` | 15000 ms | 请求超时时间 |
 | `reconnectInterval` | `number` | 2000 ms | 断连后重连间隔 |
+| `reconnectNotifyThreshold` | `number` | 3 | 连续重连尝试达到该次数才触发 `connection:reconnecting`；`connection:disconnected` 不受影响，仍每次断开立即触发 |
 | `heartbeatInterval` | `number` | 30000 ms | 心跳间隔（0 禁用） |
 | `wsFactory` | `(url) => WebSocket` | 原生 `WebSocket` | 自定义 WebSocket 工厂，主要用于测试或宿主环境适配 |
 | `maxPendingRequests` | `number` | 100 | 最大并发未响应请求数，超限立即拒绝 |

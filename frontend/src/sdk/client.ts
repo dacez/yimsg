@@ -170,6 +170,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       url: wsUrl,
       timeout: options.requestTimeout,
       reconnectInterval: options.reconnectInterval,
+      reconnectNotifyThreshold: options.reconnectNotifyThreshold,
       heartbeatInterval: options.heartbeatInterval,
       wsFactory: options.wsFactory,
       maxPendingRequests: options.maxPendingRequests,

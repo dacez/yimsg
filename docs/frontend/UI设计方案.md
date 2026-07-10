@@ -220,7 +220,7 @@ initAfterAuth():
 | 事件 | 处理函数 | UI 行为 |
 |------|---------|---------|
 | `connection:connected` | — | 隐藏状态栏；若当前已处于已登录状态，则读 UI 层保存的 token 并调 `authenticate(token)` 重新认证 |
-| `connection:disconnected` | — | 显示 "Reconnecting..." 状态栏 |
+| `connection:reconnecting` | — | 显示 "Reconnecting..." 状态栏（连续重连尝试达到 `reconnectNotifyThreshold` 才触发，过滤瞬时抖动） |
 | `session:sync` | — | `started` / `reset` 时显示同步状态栏；对应域 `success` / `failed` 后隐藏或保留其他同步域状态，并按域刷新会话 / 联系人 |
 | `messages:received` | `handleMessagesReceived` | 重绘信号：`renderConversationList({force, keys})` + `refreshOpenConversation()` 重新拉取打开中会话；贴顶整列表 reset 重排，不贴顶则按 `event.conversationKeys` 定向刷新窗口内会话（不重排）；`event.messages` 仅用于 `onMessages`（角标/响铃），不直接追加 |
 | `conversations:clearunread` / `conversations:delete` | — | `refreshConversations(keys)`：对在窗口会话 `getConversations({targets})` 定向拉取并更新/移除 |
@@ -993,7 +993,7 @@ checkReach():
 | 认证失败 | `#auth-error` 元素 | 内嵌表单下方，非 Toast |
 | 网络操作失败 | `showToast(msg, 'error')` | 4s 自动消失 |
 | 操作成功 | `showToast(msg, 'success')` | 4s 自动消失 |
-| 连接断开 | `showStatus('Reconnecting...', 'reconnecting')` | 顶部横条，重连后隐藏 |
+| 连接断开 | `connection:reconnecting` → `showStatus('Reconnecting...', 'reconnecting')` | 顶部横条；连续重连尝试达到 `reconnectNotifyThreshold`（默认 3 次）仍未成功才显示，避免瞬时抖动闪烁，重连成功后隐藏 |
 | SDK 同步中 | `session:sync` → `showStatus('Syncing messages...', 'syncing')` | 顶部横条；可覆盖启动后台同步和通知同步，所有同步域结束后隐藏 |
 | 被踢下线 | Toast + 自动登出 | 跳转到登录页 |
 

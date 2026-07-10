@@ -106,7 +106,7 @@ export function startApp(app: AppInstance): () => void {
     if (token && app.client.getSessionSnapshot().currentUid) void app.views.auth?.authenticate(token);
   });
 
-  bindClient('connection:disconnected', () => {
+  bindClient('connection:reconnecting', () => {
     app.showStatus(app.t('status.reconnecting'), 'reconnecting');
   });
 
