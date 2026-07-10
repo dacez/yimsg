@@ -13,11 +13,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: se
-            host: ${{ secrets.SSH_HOST_SE }}
-          - name: gz
-            host: ${{ secrets.SSH_HOST_GZ }}
+        name: [se, gz]
+    env:
+      # strategy.matrix 表达式上下文不能访问 secrets，SSH_HOST 改在 job 级别按 matrix.name 计算。
+      SSH_HOST: ${{ matrix.name == 'se' && secrets.SSH_HOST_SE || secrets.SSH_HOST_GZ }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -61,7 +60,6 @@ jobs:
       - name: 配置部署密钥
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ matrix.host }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
@@ -76,7 +74,6 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_HOST: ${{ matrix.host }}
         run: |
           PORT="${SSH_PORT:-22}"
           SSH_OPTS=(-i ~/.ssh/yimsg_deploy -p "$PORT")
@@ -146,7 +143,6 @@ jobs:
 
       - name: 上传二进制与前端 / 官网产物
         env:
-          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
@@ -160,7 +156,6 @@ jobs:
 
       - name: 远程原子替换二进制、清空数据并用新构建的 seed-demo 重新初始化，最后重启服务
         env:
-          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
@@ -190,7 +185,6 @@ jobs:
 
       - name: 验证部署结果
         env:
-          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
