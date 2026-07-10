@@ -15,8 +15,8 @@ jobs:
       matrix:
         name: [se, gz]
     env:
-      # strategy.matrix 表达式上下文不能访问 secrets，SSH_HOST 改在 job 级别按 matrix.name 计算。
-      SSH_HOST: ${{ matrix.name == 'se' && secrets.SSH_HOST_SE || secrets.SSH_HOST_GZ }}
+      # strategy.matrix 表达式上下文不能访问 secrets，HOST 改在 job 级别按 matrix.name 计算。
+      HOST: ${{ matrix.name == 'se' && secrets.SSH_HOST_SE || secrets.SSH_HOST_GZ }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/yimsg_deploy
           chmod 600 ~/.ssh/yimsg_deploy
-          ssh-keyscan -H -p "$PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: 首次初始化 yimsg-gz（建账号 / 目录 / config.toml / systemd unit，yimsg-se 已具备无需重复执行）
         if: matrix.name == 'gz'
@@ -79,7 +79,7 @@ jobs:
           SSH_OPTS=(-i ~/.ssh/yimsg_deploy -p "$PORT")
           SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
 
-          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" '
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
             set -euo pipefail
             getent group yimsg >/dev/null || groupadd --system yimsg
             id -u yimsg >/dev/null 2>&1 || useradd --system --home-dir /opt/yimsg --shell /usr/sbin/nologin --gid yimsg yimsg
@@ -129,11 +129,11 @@ jobs:
           WantedBy=multi-user.target
           EOF
 
-          scp "${SCP_OPTS[@]}" /tmp/yimsg-config.toml "${SSH_USER}@${SSH_HOST}:/opt/yimsg/config.toml"
-          scp "${SCP_OPTS[@]}" /tmp/yimsg.service "${SSH_USER}@${SSH_HOST}:/etc/systemd/system/yimsg.service"
+          scp "${SCP_OPTS[@]}" /tmp/yimsg-config.toml "${SSH_USER}@${HOST}:/opt/yimsg/config.toml"
+          scp "${SCP_OPTS[@]}" /tmp/yimsg.service "${SSH_USER}@${HOST}:/etc/systemd/system/yimsg.service"
           rm -f /tmp/yimsg-config.toml /tmp/yimsg.service
 
-          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" '
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
             set -euo pipefail
             systemctl daemon-reload
             systemctl enable yimsg
@@ -150,10 +150,10 @@ jobs:
           PORT="${SSH_PORT:-22}"
           SSH_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
           SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
-          scp "${SCP_OPTS[@]}" server-linux-amd64 "${SSH_USER}@${SSH_HOST}:/opt/yimsg/server.new"
-          scp "${SCP_OPTS[@]}" seed-demo-linux-amd64 "${SSH_USER}@${SSH_HOST}:/opt/yimsg/seed-demo.new"
-          scp "${SCP_OPTS[@]}" -r web/. "${SSH_USER}@${SSH_HOST}:/opt/yimsg/web/"
-          scp "${SCP_OPTS[@]}" -r website/. "${SSH_USER}@${SSH_HOST}:/opt/yimsg/website/"
+          scp "${SCP_OPTS[@]}" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new"
+          scp "${SCP_OPTS[@]}" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new"
+          scp "${SCP_OPTS[@]}" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web/"
+          scp "${SCP_OPTS[@]}" -r website/. "${SSH_USER}@${HOST}:/opt/yimsg/website/"
 
       - name: 远程原子替换二进制、清空数据并用新构建的 seed-demo 重新初始化，最后重启服务
         env:
@@ -161,7 +161,7 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${SSH_HOST}" '
+          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${HOST}" '
             set -euo pipefail
             # 项目处于演示/研发阶段：每次部署都清空 /opt/yimsg/data 并用 seed-demo 重建官网演示数据，
             # 不做旧数据兼容或迁移。先停服务，避免 systemd Restart=on-failure 在清空过程中把进程拉起来
@@ -190,6 +190,6 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${SSH_HOST}" "systemctl status yimsg --no-pager"
-          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${SSH_HOST}/"
-          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 聊天 /chat/: %{http_code}\n" "https://${SSH_HOST}/chat/"
+          ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${HOST}" "systemctl status yimsg --no-pager"
+          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${HOST}/"
+          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 聊天 /chat/: %{http_code}\n" "https://${HOST}/chat/"
