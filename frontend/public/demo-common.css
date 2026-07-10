@@ -1,0 +1,20 @@
+/* yimsg demo 页面共享样式：统一品牌色、辅助文案色与常用容器样式，供 5 个 demo 页面引入 */
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 16px;
+  background: #f6f7fc;
+  color: #333;
+}
+h1 { font-size: 20px; margin: 0 0 12px; }
+.tip { font-size: 13px; color: #5a5a5a; }
+.cred { font-size: 13px; color: #5b5bf0; font-weight: 600; }
+.host {
+  width: min(480px, 100%);
+  height: min(640px, 78vh);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .08);
+  background: #fff;
+}
+.error { padding: 16px; color: #b3261e; font-size: 13px; }
