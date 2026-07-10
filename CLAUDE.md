@@ -9,7 +9,7 @@
 + 任何数据库 schema 变更和接口变更都要先征求确认。
 + 项目处于研发阶段，不做 migration、ALTER TABLE 升级逻辑或旧数据兼容，只要最优雅的代码。
 + 过期的文档放到 ./docs/archive 里面。
-+ 如果需要部署，线上有两台互相独立的服务器，使用 `ssh yimsg-se`（首尔）或 `ssh yimsg-gz`（广州）登录对应服务器后部署，详见 `docs/部署方案.md`。
++ 如果需要部署，线上服务器相互独立，当前实际部署 `ssh yimsg-se`（首尔）一台，登录对应服务器后部署；部署脚本支持按同样步骤增加更多独立服务器，详见 `docs/部署方案.md`。
 + 修改任何文档（含本指南三份文件）后，必须从仓库根目录运行 `go run ./tools/cmd/check-docs-consistency/`（或 `./tools/scripts/check_docs_consistency.sh`）校验文档一致性。
 + 仓库同时维护 `AGENTS.md`、`.github/copilot-instructions.md`、`CLAUDE.md` 三份编码指南，分别供 Agent/Codex、GitHub Copilot、Claude 使用；除各自标题（`Yimsg Agent Guide`、`Yimsg Copilot Instructions`、`Yimsg Claude Guide`）外，正文内容必须完全一致。主动修改其中任意一份时，必须把改动同步到另外两份。
 

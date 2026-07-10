@@ -8,7 +8,6 @@ Usage:
 
 Examples:
   tools/scripts/init_server_env.sh yimsg-se
-  tools/scripts/init_server_env.sh yimsg-gz
 
 The target host must already be reachable by ssh, and the login user must be
 root or have passwordless sudo for user/group, filesystem, and systemd setup.

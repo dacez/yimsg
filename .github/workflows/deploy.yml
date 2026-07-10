@@ -13,10 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [se, gz]
+        # 每台独立服务器一个 include 项：name 是展示用别名，host_secret 是对应 SSH_HOST_* secret 名。
+        # 新增服务器时只需在这里加一行 include，无需改动后续步骤。
+        include:
+          - name: se
+            host_secret: SSH_HOST_SE
     env:
-      # strategy.matrix 表达式上下文不能访问 secrets，HOST 改在 job 级别按 matrix.name 计算。
-      HOST: ${{ matrix.name == 'se' && secrets.SSH_HOST_SE || secrets.SSH_HOST_GZ }}
+      HOST: ${{ secrets[matrix.host_secret] }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4

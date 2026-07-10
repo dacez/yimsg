@@ -16,4 +16,4 @@
 | `cmd/test-seed/` | Playwright / E2E 测试数据生成 |
 | `cmd/debug-messages/` | 消息调试辅助命令 |
 
-根目录下的 `tools/*.sh` 是兼容入口，供文档、CI 和开发者继续使用稳定命令；新增脚本实现应放到 `tools/scripts/`。全量测试入口 `tools/scripts/run_all_tests.sh` 会准备前端依赖、安装 Playwright Chromium 依赖，并把固定版本的 `protoc-gen-go` 安装到 `$(go env GOPATH)/bin` 后再运行协议生成。服务器环境初始化入口是 `tools/init_server_env.sh <ssh-alias>`，用于按 `docs/部署方案.md` 标准化 `yimsg-se` / `yimsg-gz` 的账号、目录、配置、systemd unit 和证书权限。
+根目录下的 `tools/*.sh` 是兼容入口，供文档、CI 和开发者继续使用稳定命令；新增脚本实现应放到 `tools/scripts/`。全量测试入口 `tools/scripts/run_all_tests.sh` 会准备前端依赖、安装 Playwright Chromium 依赖，并把固定版本的 `protoc-gen-go` 安装到 `$(go env GOPATH)/bin` 后再运行协议生成。服务器环境初始化入口是 `tools/init_server_env.sh <ssh-alias>`，用于按 `docs/部署方案.md` 标准化各台独立服务器（当前实际是 `yimsg-se`）的账号、目录、配置、systemd unit 和证书权限。
