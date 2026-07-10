@@ -4,12 +4,20 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: deploy-yimsg-server
+  group: deploy-yimsg
   cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: se
+            host: ${{ secrets.SSH_HOST_SE }}
+          - name: gz
+            host: ${{ secrets.SSH_HOST_GZ }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -53,16 +61,92 @@ jobs:
       - name: 配置部署密钥
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ matrix.host }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
+          PORT="${SSH_PORT:-22}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/yimsg_deploy
           chmod 600 ~/.ssh/yimsg_deploy
-          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H -p "$PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 首次初始化 yimsg-gz（建账号 / 目录 / config.toml / systemd unit，yimsg-se 已具备无需重复执行）
+        if: matrix.name == 'gz'
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_HOST: ${{ matrix.host }}
+        run: |
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTS=(-i ~/.ssh/yimsg_deploy -p "$PORT")
+          SCP_OPTS=(-i ~/.ssh/yimsg_deploy -P "$PORT")
+
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" '
+            set -euo pipefail
+            id -u yimsg >/dev/null 2>&1 || useradd --system --home-dir /opt/yimsg --shell /usr/sbin/nologin yimsg
+            mkdir -p /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data
+          '
+
+          cat > /tmp/yimsg-config.toml <<'EOF'
+          [server]
+          host = "0.0.0.0"
+          port = 443
+          tls_cert = "/etc/ssl/certs/yimsg.pem"
+          tls_key = "/etc/ssl/certs/yimsg.key"
+
+          [database]
+          data_dir = "/opt/yimsg/data"
+          shard_count = 4
+
+          [frontend]
+          static_dir = "/opt/yimsg/web"
+          mount_path = "/chat/"
+
+          [website]
+          static_dir = "/opt/yimsg/website"
+          mount_path = "/"
+
+          [media]
+          upload_dir = "/opt/yimsg/data/media"
+          EOF
+
+          cat > /tmp/yimsg.service <<'EOF'
+          [Unit]
+          Description=Yimsg Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=yimsg
+          Group=yimsg
+          WorkingDirectory=/opt/yimsg
+          ExecStart=/opt/yimsg/server /opt/yimsg/config.toml
+          Restart=on-failure
+          RestartSec=3
+          AmbientCapabilities=CAP_NET_BIND_SERVICE
+          NoNewPrivileges=true
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          scp "${SCP_OPTS[@]}" /tmp/yimsg-config.toml "${SSH_USER}@${SSH_HOST}:/opt/yimsg/config.toml"
+          scp "${SCP_OPTS[@]}" /tmp/yimsg.service "${SSH_USER}@${SSH_HOST}:/etc/systemd/system/yimsg.service"
+          rm -f /tmp/yimsg-config.toml /tmp/yimsg.service
+
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SSH_HOST}" '
+            set -euo pipefail
+            systemctl daemon-reload
+            systemctl enable yimsg
+            chown -R yimsg:yimsg /opt/yimsg
+          '
+          # 注意：网站 TLS 证书（/etc/ssl/certs/yimsg.pem、.key）不由本 workflow 同步，
+          # 需要在首次运行本 job 前手动从 yimsg-se 搬到 yimsg-gz，否则后面的 systemctl start 会失败。
 
       - name: 上传二进制与前端 / 官网产物
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
@@ -76,7 +160,7 @@ jobs:
 
       - name: 远程原子替换二进制、清空数据并用新构建的 seed-demo 重新初始化，最后重启服务
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
@@ -106,11 +190,11 @@ jobs:
 
       - name: 验证部署结果
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ matrix.host }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/yimsg_deploy -p "$PORT" "${SSH_USER}@${SSH_HOST}" "systemctl status yimsg --no-pager"
-          curl -k -sS -o /dev/null -w "官网 /: %{http_code}\n" "https://${SSH_HOST}/"
-          curl -k -sS -o /dev/null -w "聊天 /chat/: %{http_code}\n" "https://${SSH_HOST}/chat/"
+          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${SSH_HOST}/"
+          curl -k -sS -o /dev/null -w "[${{ matrix.name }}] 聊天 /chat/: %{http_code}\n" "https://${SSH_HOST}/chat/"
