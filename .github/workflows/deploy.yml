@@ -75,7 +75,7 @@ jobs:
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           PORT="${SSH_PORT:-22}"
-          SCP_TIMEOUT_SECONDS="${DEPLOY_SCP_TIMEOUT_SECONDS:-600}"
+          SCP_TIMEOUT_SECONDS="${DEPLOY_SCP_TIMEOUT_SECONDS:-1800}"
           SCP_OPTS=(
             -i ~/.ssh/yimsg_deploy
             -P "$PORT"
@@ -111,7 +111,7 @@ jobs:
             -o ServerAliveCountMax=4
             -o TCPKeepAlive=yes
           )
-          timeout --foreground 600s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
+          timeout --foreground 1800s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
             set -euo pipefail
             # 项目处于演示/研发阶段：每次部署都清空 /opt/yimsg/data 并用 seed-demo 重建官网演示数据，
             # 不做旧数据兼容或迁移。先停服务，避免 systemd Restart=on-failure 在清空过程中把进程拉起来
