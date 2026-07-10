@@ -16,11 +16,11 @@ func TestAddFriendBilateral(t *testing.T) {
 		t.Fatalf("add_friend failed: %s", resp.Error)
 	}
 
-	// Both sides should have pending contact
+	// 申请方（alice）自身记录是 PENDING_OUTGOING，被申请方（bob）自身记录是 PENDING_INCOMING。
 	storeA := s.ContactStore(uidA)
 	cA, _ := storeA.Get(uidA, uidB)
-	if cA == nil || cA.Status != dal.ContactPending {
-		t.Errorf("alice's contact status = %v, want pending(%d)", cA, dal.ContactPending)
+	if cA == nil || cA.Status != dal.ContactPendingOutgoing {
+		t.Errorf("alice's contact status = %v, want pending_outgoing(%d)", cA, dal.ContactPendingOutgoing)
 	}
 	if cA.SortKey != "bobby" {
 		t.Errorf("alice sort_key = %q, want bobby", cA.SortKey)
@@ -31,8 +31,8 @@ func TestAddFriendBilateral(t *testing.T) {
 
 	storeB := s.ContactStore(uidB)
 	cB, _ := storeB.Get(uidB, uidA)
-	if cB == nil || cB.Status != dal.ContactPending {
-		t.Errorf("bob's contact status = %v, want pending(%d)", cB, dal.ContactPending)
+	if cB == nil || cB.Status != dal.ContactPendingIncoming {
+		t.Errorf("bob's contact status = %v, want pending_incoming(%d)", cB, dal.ContactPendingIncoming)
 	}
 	if cB.SortKey != "alice" || cB.SearchText != "Alice" {
 		t.Errorf("bob projection = sort:%q search:%q, want alice/Alice", cB.SortKey, cB.SearchText)

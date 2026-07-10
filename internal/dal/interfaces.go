@@ -43,6 +43,8 @@ type ContactStoreAPI interface {
 	Delete(uid, friendUID, groupID, orgID int64) (seq int64, ok bool, err error)
 	AcceptRequest(uid, friendUID int64) (bool, error)
 	RejectRequest(uid, friendUID int64) (bool, error)
+	AcceptCounterpartRequest(uid, friendUID int64) (bool, error)
+	RejectCounterpartRequest(uid, friendUID int64) (bool, error)
 	UpdateRemark(uid, friendUID, groupID, orgID int64, remarkName, sortKey, searchText string, now int64) (bool, error)
 	List(uid, limit int64) ([]Contact, error)
 	ListPage(uid int64, filter ContactListFilter, cursorParts []string, backward bool, limit int64) ([]Contact, error)

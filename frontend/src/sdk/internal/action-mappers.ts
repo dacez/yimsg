@@ -23,7 +23,8 @@ import {
   BLOCKLIST_ACTIVE,
   CONTACT_DELETED,
   CONTACT_FRIEND,
-  CONTACT_PENDING,
+  CONTACT_PENDING_INCOMING,
+  CONTACT_PENDING_OUTGOING,
   MSG_TYPE_RECALL,
   MSG_TYPE_TEXT,
   MUTELIST_ACTIVE,
@@ -305,7 +306,7 @@ export function getContactsRequest(params: {
   ];
   return GetContactsRequest.create({
     targets,
-    status: assertValidStatus(params.status, [CONTACT_FRIEND, CONTACT_PENDING, CONTACT_DELETED]),
+    status: assertValidStatus(params.status, [CONTACT_FRIEND, CONTACT_PENDING_OUTGOING, CONTACT_PENDING_INCOMING, CONTACT_DELETED]),
     page: pageQueryOf(params.page),
   });
 }
@@ -322,7 +323,7 @@ export function mapGetContactsResponse(resp: GetContactsResponse): {
 
 export function contactCountRequest(status: number): GetContactCountRequest {
   return GetContactCountRequest.create({
-    status: assertValidStatus(status, [CONTACT_FRIEND, CONTACT_PENDING, CONTACT_DELETED], true),
+    status: assertValidStatus(status, [CONTACT_FRIEND, CONTACT_PENDING_OUTGOING, CONTACT_PENDING_INCOMING, CONTACT_DELETED], true),
   });
 }
 

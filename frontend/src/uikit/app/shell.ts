@@ -114,7 +114,10 @@ export const APP_SHELL_HTML = `
           </div>
           <div class="contacts-content">
             <div id="friends-tab"></div>
-            <div id="requests-tab" class="hidden"></div>
+            <div id="requests-tab" class="hidden">
+              <div id="requests-outgoing" class="hidden"></div>
+              <div id="requests-incoming"></div>
+            </div>
             <div id="search-tab" class="hidden">
               <div class="search-row">
                 <input class="input" type="text" id="search-username" placeholder="输入用户名...">

@@ -49,6 +49,50 @@ test.describe('Contacts', () => {
     await ctx2.close();
   });
 
+  // 回归用例：申请方自己在「请求」tab 不应该出现接受/拒绝按钮，避免误以为能对自己发出的
+  // 请求做处理；申请方自己的红点也不应该被点亮，只有接收方待处理时才点亮。
+  test('requester sees own request as non-actionable and gets no red dot', async ({ browser }) => {
+    const u1 = uniqueUser('so1');
+    const u2 = uniqueUser('so2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'Requester');
+    await register(page2, u2, password, 'Recipient');
+
+    // u1 发起请求
+    await page1.click('[data-view="contacts"]');
+    await page1.click('[data-ctab="search"]');
+    await page1.fill('#search-username', u2);
+    await page1.click('#search-btn');
+    const addBtn = page1.locator('#search-results button');
+    await expect(addBtn).toBeVisible({ timeout: 5000 });
+    await addBtn.click();
+    await expect(page1.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+    await page1.click('#modal-confirm-btn');
+
+    // u1（申请方）自己的请求 tab：能看到 Recipient，但不应该有接受/拒绝按钮，也不应该点亮红点。
+    await page1.click('[data-view="contacts"]');
+    await page1.click('[data-ctab="requests"]');
+    await expect(page1.locator('#requests-tab')).toContainText('Recipient', { timeout: 10_000 });
+    await expect(page1.locator('#requests-tab .btn-primary')).toHaveCount(0);
+    await expect(page1.locator('#requests-tab .btn-danger')).toHaveCount(0);
+    await expect(page1.locator('.nav-item[data-view="contacts"] .nav-badge')).toHaveCount(0);
+    await expect(page1.locator('[data-ctab="requests"] .nav-badge')).toHaveCount(0);
+
+    // u2（接收方）应该能看到可操作的接受/拒绝按钮，并且两处红点都应该点亮。
+    await expect(page2.locator('.nav-item[data-view="contacts"] .nav-badge')).toBeVisible({ timeout: 10_000 });
+    await page2.click('[data-view="contacts"]');
+    await expect(page2.locator('[data-ctab="requests"] .nav-badge')).toBeVisible({ timeout: 10_000 });
+    await page2.click('[data-ctab="requests"]');
+    await expect(page2.locator('#requests-tab .btn-primary')).toBeVisible({ timeout: 10_000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('accept friend request - both see each other in friends list', async ({ browser }) => {
     const u1 = uniqueUser('af1');
     const u2 = uniqueUser('af2');

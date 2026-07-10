@@ -388,10 +388,11 @@ func (MessageType) EnumDescriptor() ([]byte, []int) {
 type ContactStatus int32
 
 const (
-	ContactStatus_CONTACT_STATUS_INVALID ContactStatus = 0   // reserved=invalid meaning=无效联系人状态
-	ContactStatus_CONTACT_STATUS_FRIEND  ContactStatus = 1   // meaning=好友或已收藏群
-	ContactStatus_CONTACT_STATUS_PENDING ContactStatus = 2   // meaning=待处理好友申请
-	ContactStatus_CONTACT_STATUS_DELETED ContactStatus = 255 // meaning=已删除 tombstone
+	ContactStatus_CONTACT_STATUS_INVALID          ContactStatus = 0   // reserved=invalid meaning=无效联系人状态
+	ContactStatus_CONTACT_STATUS_FRIEND           ContactStatus = 1   // meaning=好友或已收藏群
+	ContactStatus_CONTACT_STATUS_PENDING_OUTGOING ContactStatus = 2   // meaning=我发起的好友申请，待对方处理
+	ContactStatus_CONTACT_STATUS_PENDING_INCOMING ContactStatus = 3   // meaning=对方发起的好友申请，待我处理
+	ContactStatus_CONTACT_STATUS_DELETED          ContactStatus = 255 // meaning=已删除 tombstone
 )
 
 // Enum value maps for ContactStatus.
@@ -399,14 +400,16 @@ var (
 	ContactStatus_name = map[int32]string{
 		0:   "CONTACT_STATUS_INVALID",
 		1:   "CONTACT_STATUS_FRIEND",
-		2:   "CONTACT_STATUS_PENDING",
+		2:   "CONTACT_STATUS_PENDING_OUTGOING",
+		3:   "CONTACT_STATUS_PENDING_INCOMING",
 		255: "CONTACT_STATUS_DELETED",
 	}
 	ContactStatus_value = map[string]int32{
-		"CONTACT_STATUS_INVALID": 0,
-		"CONTACT_STATUS_FRIEND":  1,
-		"CONTACT_STATUS_PENDING": 2,
-		"CONTACT_STATUS_DELETED": 255,
+		"CONTACT_STATUS_INVALID":          0,
+		"CONTACT_STATUS_FRIEND":           1,
+		"CONTACT_STATUS_PENDING_OUTGOING": 2,
+		"CONTACT_STATUS_PENDING_INCOMING": 3,
+		"CONTACT_STATUS_DELETED":          255,
 	}
 )
 
@@ -3950,7 +3953,7 @@ func (x *AddFriendResponse) GetSeq() int64 {
 
 type AcceptFriendRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FriendUid     int64                  `protobuf:"varint,10,opt,name=friend_uid,json=friendUid,proto3" json:"friend_uid,omitempty"` // required 好友用户 ID
+	FriendUid     int64                  `protobuf:"varint,10,opt,name=friend_uid,json=friendUid,proto3" json:"friend_uid,omitempty"` // required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4038,7 +4041,7 @@ func (x *AcceptFriendResponse) GetBase() *BaseResponse {
 
 type RejectFriendRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FriendUid     int64                  `protobuf:"varint,10,opt,name=friend_uid,json=friendUid,proto3" json:"friend_uid,omitempty"` // required 好友用户 ID
+	FriendUid     int64                  `protobuf:"varint,10,opt,name=friend_uid,json=friendUid,proto3" json:"friend_uid,omitempty"` // required 好友用户 ID；调用者必须是该请求的接收方（自身记录为 CONTACT_STATUS_PENDING_INCOMING），否则返回 ERROR_CONFLICT
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4438,7 +4441,7 @@ func (x *GetContactsResponse) GetPage() *PageInfo {
 
 type GetContactCountRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        ContactStatus          `protobuf:"varint,10,opt,name=status,proto3,enum=yimsg.protocol.ContactStatus" json:"status,omitempty"` // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING 表示待处理好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
+	Status        ContactStatus          `protobuf:"varint,10,opt,name=status,proto3,enum=yimsg.protocol.ContactStatus" json:"status,omitempty"` // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING_INCOMING 表示待我处理的好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8644,11 +8647,12 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x13MESSAGE_TYPE_RECALL\x10\x05\x12\x16\n" +
 	"\x12MESSAGE_TYPE_QUOTE\x10\x06\x12\x18\n" +
 	"\x14MESSAGE_TYPE_FORWARD\x10\a\x12\x19\n" +
-	"\x15MESSAGE_TYPE_MARKDOWN\x10\b*\x7f\n" +
+	"\x15MESSAGE_TYPE_MARKDOWN\x10\b*\xad\x01\n" +
 	"\rContactStatus\x12\x1a\n" +
 	"\x16CONTACT_STATUS_INVALID\x10\x00\x12\x19\n" +
-	"\x15CONTACT_STATUS_FRIEND\x10\x01\x12\x1a\n" +
-	"\x16CONTACT_STATUS_PENDING\x10\x02\x12\x1b\n" +
+	"\x15CONTACT_STATUS_FRIEND\x10\x01\x12#\n" +
+	"\x1fCONTACT_STATUS_PENDING_OUTGOING\x10\x02\x12#\n" +
+	"\x1fCONTACT_STATUS_PENDING_INCOMING\x10\x03\x12\x1b\n" +
 	"\x16CONTACT_STATUS_DELETED\x10\xff\x01*k\n" +
 	"\x0fBlocklistStatus\x12\x1c\n" +
 	"\x18BLOCKLIST_STATUS_INVALID\x10\x00\x12\x1b\n" +

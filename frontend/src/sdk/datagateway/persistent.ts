@@ -33,7 +33,8 @@ import { MessageBody } from "../generated/yimsg";
 import { messageSearchText } from "../internal/message-search";
 import {
   CONTACT_DELETED,
-  CONTACT_PENDING,
+  CONTACT_PENDING_INCOMING,
+  CONTACT_PENDING_OUTGOING,
   MSG_TYPE_RECALL,
   STATUS_DELETED,
 } from "../../constants";
@@ -589,7 +590,7 @@ export class PersistentDataGateway extends BaseDataGateway {
     const p = params.page ?? {};
     const backward = Boolean(p.backward);
     const limit = clampOptionalPageLimit(p.limit) ?? 200;
-    const pending = params.status === CONTACT_PENDING;
+    const pending = params.status === CONTACT_PENDING_OUTGOING || params.status === CONTACT_PENDING_INCOMING;
     const parts = p.cursor ? decodeCursor(p.cursor) : [];
     let w = where;
     const b = [...binds];

@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-07。
+> 最后复核：2026-07-10。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -269,7 +269,7 @@ interface MessageContentDescriptor {
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `getContacts` | `({ cursor?, backward?, around?, limit?, status?, friendUid?, groupId?, orgId?, friendUids?, groupIds?, orgIds? }) => Promise<ContactPage>` | 按 keyset 游标拉取展示分页（friend 按 sort_key、pending 按 seq 倒序），返回 `{ contacts, page }`，展示总数改用 `getContactCount`；显示资料由 UI 另行调用 `getUserInfos` / `getGroupInfos` / `getOrgInfos` 合并 |
-| `getContactCount` | `(status: number) => Promise<number>` | 按联系人状态统计数量；待处理好友请求传 `CONTACT_STATUS_PENDING`，好友/收藏群传 `CONTACT_STATUS_FRIEND`。memory 模式调用后端 `get_contact_count`；持久存储模式查本地副本；未认证会抛错，已认证但会话未初始化或查询失败时返回 `0` |
+| `getContactCount` | `(status: number) => Promise<number>` | 按联系人状态统计数量；待我处理的好友请求（驱动红点）传 `CONTACT_STATUS_PENDING_INCOMING`，我自己发出、待对方处理的传 `CONTACT_STATUS_PENDING_OUTGOING`，好友/收藏群传 `CONTACT_STATUS_FRIEND`。memory 模式调用后端 `get_contact_count`；持久存储模式查本地副本；未认证会抛错，已认证但会话未初始化或查询失败时返回 `0` |
 | `getUserInfos` | `(uids) => ReadonlyMap<string, UserDisplayInfo>` | 用户显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
 | `getGroupInfos` | `(groupIds) => ReadonlyMap<string, GroupDisplayInfo>` | 群显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
 | `getOrgInfos` | `(orgIds) => ReadonlyMap<string, OrgDisplayInfo>` | 组织显示信息只读视图（与 `getUserInfos`/`getGroupInfos` 同构）；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
@@ -305,8 +305,8 @@ interface Contact {
 | 方法 | 签名 |
 |------|------|
 | `addFriend` | `(friendUid, remarkName?) => Promise<void>` |
-| `acceptFriend` | `(friendUid) => Promise<void>` |
-| `rejectFriend` | `(friendUid) => Promise<void>` |
+| `acceptFriend` | `(friendUid) => Promise<void>`；调用者必须是该请求的接收方，否则服务端返回 `CONFLICT` |
+| `rejectFriend` | `(friendUid) => Promise<void>`；调用者必须是该请求的接收方，否则服务端返回 `CONFLICT` |
 | `deleteFriend` | `(friendUid) => Promise<void>` |
 | `blockUser` | `(uid) => Promise<number>` |
 | `unblockUser` | `(uid) => Promise<number>` |

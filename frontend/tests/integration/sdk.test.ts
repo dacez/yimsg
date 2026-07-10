@@ -10,7 +10,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createClient, createAuthenticatedClient, destroyClient, waitEvent, delay, uniqueUser } from './helpers';
 import type { YimsgClient } from '../../src/sdk/client';
-import { MSG_TYPE_TEXT, MSG_TYPE_QUOTE, MSG_TYPE_FORWARD, MSG_TYPE_RECALL, CONTACT_PENDING } from '../../src/constants';
+import { MSG_TYPE_TEXT, MSG_TYPE_QUOTE, MSG_TYPE_FORWARD, MSG_TYPE_RECALL, CONTACT_PENDING_INCOMING } from '../../src/constants';
 import { seqCursor } from '../../src/sdk';
 function bodyText(m: { body?: Record<string, { text?: string; markdown?: string } | { text?: { text?: string } }> }): string {
   const b = (m.body || {}) as any;
@@ -342,6 +342,31 @@ describe('Contacts', () => {
     expect(unmuteSeq).toBeGreaterThan(muteSeq);
     const afterUnmute = await alice.getMutelist({ toUid: bobUid, limit: 1 });
     expect(afterUnmute.mutes.some(entry => entry.toUid === bobUid)).toBe(false);
+  });
+
+  it('requester cannot accept or reject own outgoing request', async () => {
+    const { client: alice, uid: aliceUid } = await createAuthenticatedClient('selfacc_a');
+    const { client: bob, uid: bobUid } = await createAuthenticatedClient('selfacc_b');
+    track(alice); track(bob);
+    await alice.startSession({ storage: 'memory' });
+    await bob.startSession({ storage: 'memory' });
+
+    // Alice 是申请方，向 Bob 发起请求。
+    await alice.addFriend(bobUid);
+    await delay(300);
+
+    // Alice 对自己发出的请求调用 accept/reject 应该失败，不能把自己变成好友。
+    await expect(alice.acceptFriend(bobUid)).rejects.toThrow();
+    await expect(alice.rejectFriend(bobUid)).rejects.toThrow();
+
+    const { contacts } = await alice.getContacts({ friendUid: bobUid, limit: 1 });
+    expect(contacts.some(c => String(c.friendUid) === bobUid && c.status === 1)).toBe(false);
+
+    // Bob（接收方）才能正常接受。
+    await bob.acceptFriend(aliceUid);
+    await delay(300);
+    const { contacts: afterAccept } = await alice.getContacts({ friendUid: bobUid, limit: 1 });
+    expect(afterAccept.some(c => String(c.friendUid) === bobUid && c.status === 1)).toBe(true);
   });
 
   it('reject friend', async () => {
@@ -728,7 +753,7 @@ describe('Edge Cases', () => {
     await delay(500);
 
     // Alice should have pending count
-    const count = await alice.getContactCount(CONTACT_PENDING);
+    const count = await alice.getContactCount(CONTACT_PENDING_INCOMING);
     expect(count).toBeGreaterThanOrEqual(1);
   });
 

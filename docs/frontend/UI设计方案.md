@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
-> 最后复核：2026-07-05。
+> 最后复核：2026-07-10。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -127,7 +127,7 @@ frontend/src/
 ```
 #navbar（56px 宽，垂直排列）
 ├── .nav-item[data-view="chat"]       聊天图标 + .nav-badge（未读红点）
-├── .nav-item[data-view="contacts"]   通讯录图标 + .nav-badge（PENDING 红点）
+├── .nav-item[data-view="contacts"]   通讯录图标 + .nav-badge（PENDING_INCOMING 红点，即待我处理的请求）
 ├── .nav-spacer                       弹性空白
 └── .nav-item[data-view="settings"]   设置图标
 ```
@@ -207,7 +207,7 @@ initAfterAuth():
   mode = getStoredMode()
   if mode == null → 抛错（调用方必须先完成模式选择）
   await client.startSession({ storage })      // SDK 内部：判断持久化能力、创建 DataGateway；persistent 打开本地库后后台同步
-  pendingCount = client.getContactCount(CONTACT_STATUS_PENDING)
+  pendingCount = client.getContactCount(CONTACT_STATUS_PENDING_INCOMING)   // 只统计待我处理的请求，不含自己发出的
   updateContactBadges(pendingCount)
   showAppView()
   renderConversationList()
@@ -623,8 +623,8 @@ showGroupDetail(groupId):
 | `refreshContactsDisplay()` | `display:updated` 等显示资料变化时重绘联系人列表；若组织详情面板打开，也重新渲染当前 tag |
 | `searchUser()` | 按用户名搜索用户 |
 | `addFriend(friendUid)` | 发送好友请求 |
-| `acceptFriend(friendUid)` | 接受好友请求 |
-| `rejectFriend(friendUid)` | 拒绝好友请求 |
+| `acceptFriend(friendUid)` | 接受好友请求；只有接收方能调用成功，UI 只在 `#requests-incoming` 渲染按钮 |
+| `rejectFriend(friendUid)` | 拒绝好友请求；只有接收方能调用成功，UI 只在 `#requests-incoming` 渲染按钮 |
 | `deleteFriend(friendUid)` | 删除好友 |
 | `showCreateGroupModal()` | 显示建群 Modal |
 
@@ -635,11 +635,13 @@ showGroupDetail(groupId):
 ├── .contacts-left（桌面默认 280px，可通过 #contacts-resizer 拖拽调整）
 │   ├── .tabs
 │   │   ├── [data-ctab="friends"]     Friends
-│   │   ├── [data-ctab="requests"]    Requests
+│   │   ├── [data-ctab="requests"]    Requests（.nav-badge，PENDING_INCOMING 红点）
 │   │   └── [data-ctab="search"]      Search
 │   ├── .contacts-content（滚动容器）
 │   │   ├── #friends-tab              好友列表（点击选中，操作在右侧详情面板）
-│   │   ├── #requests-tab             待处理请求（Accept / Reject 按钮）
+│   │   ├── #requests-tab             请求列表容器
+│   │   │   ├── #requests-outgoing    我发出的请求（仅"等待验证"文案，无按钮，为空时隐藏）
+│   │   │   └── #requests-incoming    待我处理的请求（Accept / Reject 按钮）
 │   │   └── #search-tab               搜索 + 结果 + Add 按钮
 │   └── .contacts-footer
 │       └── #create-group-btn         Create Group 按钮
@@ -880,7 +882,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 会话列表 | **有界窗口全量渲染** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
 | 消息列表 | **有界窗口全量渲染** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
 | 好友列表 | **有界窗口全量渲染** | `get_contacts(status=FRIEND)` 双向翻页，不为总数或搜索预拉全量 |
-| 请求列表 | **有界窗口全量渲染** | `get_contacts(status=PENDING)` 双向翻页；红点只表达已加载窗口内是否存在请求 |
+| 请求列表（待我处理） | **有界窗口全量渲染** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
+| 请求列表（我发出的） | **一次性拉取，不分页** | `get_contacts(status=PENDING_OUTGOING, limit=N)`，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
 | 建群候选 / 转发候选 / 群成员 | **有界窗口全量渲染** | 选中状态独立于 DOM 保存，双向翻页，群成员标题用 `page.total` 显示成员总数 |
 | 设置页 | **局部更新** | 更新特定元素的 `textContent` / `src` |
 

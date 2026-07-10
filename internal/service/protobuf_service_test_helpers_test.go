@@ -253,7 +253,7 @@ func listContactsService(s *AppState, _ string, uid int64, filter dal.ContactLis
 }
 
 func countPendingContactsService(s *AppState, _ string, uid int64) *appmsg.Response {
-	return responseFromProto(s.GetContactCount(testInfo(uid), &pb.GetContactCountRequest{Status: pb.ContactStatus_CONTACT_STATUS_PENDING}))
+	return responseFromProto(s.GetContactCount(testInfo(uid), &pb.GetContactCountRequest{Status: pb.ContactStatus_CONTACT_STATUS_PENDING_INCOMING}))
 }
 
 func syncContactsService(s *AppState, _ string, uid, lastSeq, limit int64, rebuild bool) *appmsg.Response {

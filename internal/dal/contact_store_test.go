@@ -11,7 +11,7 @@ func TestUpsertAndList(t *testing.T) {
 	db := setupDB(t)
 	store := NewContactStore(db.UIDShards.AllShards()[0])
 
-	seq1, err := upsertC(store, 1, 2, 0, ContactPending, "", "Charlie", 1000)
+	seq1, err := upsertC(store, 1, 2, 0, ContactPendingIncoming, "", "Charlie", 1000)
 	if err != nil {
 		t.Fatalf("UpsertContact: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestUpsertAndList(t *testing.T) {
 		t.Errorf("first upsert: seq %d, want 1", seq1)
 	}
 
-	seq2, err := upsertC(store, 1, 3, 0, ContactPending, "Bob", "Alice", 1000)
+	seq2, err := upsertC(store, 1, 3, 0, ContactPendingIncoming, "Bob", "Alice", 1000)
 	if err != nil {
 		t.Fatalf("UpsertContact: %v", err)
 	}
@@ -61,17 +61,17 @@ func TestListFilteredOrdersPendingByNewestSeq(t *testing.T) {
 	db := setupDB(t)
 	store := NewContactStore(db.UIDShards.AllShards()[0])
 
-	if _, err := upsertC(store, 1, 2, 0, ContactPending, "", "Charlie", 1000); err != nil {
+	if _, err := upsertC(store, 1, 2, 0, ContactPendingIncoming, "", "Charlie", 1000); err != nil {
 		t.Fatalf("UpsertContact: %v", err)
 	}
-	if _, err := upsertC(store, 1, 3, 0, ContactPending, "", "Alice", 1000); err != nil {
+	if _, err := upsertC(store, 1, 3, 0, ContactPendingIncoming, "", "Alice", 1000); err != nil {
 		t.Fatalf("UpsertContact: %v", err)
 	}
-	if _, err := upsertC(store, 1, 4, 0, ContactPending, "", "Bob", 1000); err != nil {
+	if _, err := upsertC(store, 1, 4, 0, ContactPendingIncoming, "", "Bob", 1000); err != nil {
 		t.Fatalf("UpsertContact: %v", err)
 	}
 
-	status := ContactPending
+	status := ContactPendingIncoming
 	contacts, err := store.ListPage(1, ContactListFilter{Status: &status}, nil, false, 100)
 	if err != nil {
 		t.Fatalf("ListFiltered pending: %v", err)
@@ -190,7 +190,7 @@ func TestAcceptRejectRequest(t *testing.T) {
 	db := setupDB(t)
 	store := NewContactStore(db.UIDShards.AllShards()[0])
 
-	upsertC(store, 1, 2, 0, ContactPending, "", "Bob", 1000)
+	upsertC(store, 1, 2, 0, ContactPendingIncoming, "", "Bob", 1000)
 	ok, err := store.AcceptRequest(1, 2)
 	if err != nil {
 		t.Fatalf("AcceptRequest: %v", err)
@@ -203,7 +203,7 @@ func TestAcceptRejectRequest(t *testing.T) {
 		t.Errorf("status should be Friend, got %d", c.Status)
 	}
 
-	upsertC(store, 1, 3, 0, ContactPending, "", "Carol", 1000)
+	upsertC(store, 1, 3, 0, ContactPendingIncoming, "", "Carol", 1000)
 	ok, err = store.RejectRequest(1, 3)
 	if err != nil {
 		t.Fatalf("RejectRequest: %v", err)
@@ -215,6 +215,49 @@ func TestAcceptRejectRequest(t *testing.T) {
 	ok, _ = store.AcceptRequest(1, 999)
 	if ok {
 		t.Error("should not accept nonexistent")
+	}
+}
+
+// TestAcceptRequestRejectsOutgoingSide 覆盖好友请求方向 bug 的回归：申请方自身记录是
+// PENDING_OUTGOING，不是 PENDING_INCOMING，AcceptRequest/RejectRequest 不应该命中它。
+func TestAcceptRequestRejectsOutgoingSide(t *testing.T) {
+	db := setupDB(t)
+	store := NewContactStore(db.UIDShards.AllShards()[0])
+
+	// uid=1 是申请方，自身记录写成 PENDING_OUTGOING（等 uid=2 处理）。
+	upsertC(store, 1, 2, 0, ContactPendingOutgoing, "", "Bob", 1000)
+
+	ok, err := store.AcceptRequest(1, 2)
+	if err != nil {
+		t.Fatalf("AcceptRequest: %v", err)
+	}
+	if ok {
+		t.Error("申请方不应该能对自己发出的请求调用 accept 成功")
+	}
+	c, _ := store.Get(1, 2)
+	if c.Status != ContactPendingOutgoing {
+		t.Errorf("状态不应该被改变，got %d", c.Status)
+	}
+
+	ok, err = store.RejectRequest(1, 2)
+	if err != nil {
+		t.Fatalf("RejectRequest: %v", err)
+	}
+	if ok {
+		t.Error("申请方不应该能对自己发出的请求调用 reject 成功")
+	}
+
+	// AcceptCounterpartRequest/RejectCounterpartRequest 才是用来翻转申请方自身 OUTGOING 记录的方法。
+	ok, err = store.AcceptCounterpartRequest(1, 2)
+	if err != nil {
+		t.Fatalf("AcceptCounterpartRequest: %v", err)
+	}
+	if !ok {
+		t.Error("AcceptCounterpartRequest 应该能翻转申请方自身的 PENDING_OUTGOING 记录")
+	}
+	c, _ = store.Get(1, 2)
+	if c.Status != ContactFriend {
+		t.Errorf("counterpart accept 后状态应为 Friend，got %d", c.Status)
 	}
 }
 

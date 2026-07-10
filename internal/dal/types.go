@@ -147,11 +147,19 @@ type GroupMember struct {
 }
 
 // Constants for contact status.
+// ContactPendingOutgoing 是申请方自身的记录（等对方处理），ContactPendingIncoming 是被申请方自身的记录（等自己处理）；
+// 二者不可互换，accept/reject 只能作用于 ContactPendingIncoming 一侧。
 const (
-	ContactFriend  uint8 = 1
-	ContactPending uint8 = 2
-	ContactDeleted uint8 = 0xff
+	ContactFriend          uint8 = 1
+	ContactPendingOutgoing uint8 = 2
+	ContactPendingIncoming uint8 = 3
+	ContactDeleted         uint8 = 0xff
 )
+
+// IsPendingStatus 报告该状态是否属于待处理好友申请（无论方向）；两者展示序都按 seq 倒序。
+func IsPendingStatus(status uint8) bool {
+	return status == ContactPendingOutgoing || status == ContactPendingIncoming
+}
 
 // Constants for blocklist status.
 const (

@@ -1,6 +1,6 @@
 import type { Message } from '../../sdk';
 import type { AppInstance } from './app-instance';
-import { CONTACT_PENDING } from '../../constants';
+import { CONTACT_PENDING_INCOMING } from '../../constants';
 import { watchLayoutChangesForApp } from './layout';
 import { createAuthView } from './views/auth';
 import { createChatView } from './views/chat';
@@ -35,7 +35,7 @@ export async function initAfterAuth(app: AppInstance, options: {
     throw error;
   }
 
-  void app.client.getContactCount(CONTACT_PENDING).then(n => app.views.contacts?.updateContactBadges(n));
+  void app.client.getContactCount(CONTACT_PENDING_INCOMING).then(n => app.views.contacts?.updateContactBadges(n));
   renderReadyState(app);
 }
 
@@ -47,7 +47,7 @@ function handleMessagesReceived(app: AppInstance, keys: ReadonlyArray<string>) {
 }
 
 function handleContactsChanged(app: AppInstance) {
-  void app.client.getContactCount(CONTACT_PENDING).then(n => app.views.contacts?.updateContactBadges(n));
+  void app.client.getContactCount(CONTACT_PENDING_INCOMING).then(n => app.views.contacts?.updateContactBadges(n));
 
   if (!app.$('view-contacts').classList.contains('hidden')) {
     // 背景刷新：用户不在列表顶部时不打断浏览（loadContacts 内部判定并推迟）。
@@ -177,7 +177,7 @@ export function startApp(app: AppInstance): () => void {
   void (async () => {
     const snapshot = app.client.getSessionSnapshot();
     if (snapshot.isAuthenticated && snapshot.isSessionInitialized) {
-      void app.client.getContactCount(CONTACT_PENDING).then(n => app.views.contacts?.updateContactBadges(n));
+      void app.client.getContactCount(CONTACT_PENDING_INCOMING).then(n => app.views.contacts?.updateContactBadges(n));
       renderReadyState(app);
       return;
     }
