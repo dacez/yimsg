@@ -33,7 +33,6 @@ import {
   removeMessageFromPage,
   setInitialMessagePage,
 } from './message-page';
-import { applyMessageActionTriggerVisibilityForButton } from '../../utils';
 
 const messageListViews = new WeakMap<AppInstance, BoundedStreamWindow<Message>>();
 const BOTTOM_SETTLE_FRAME_COUNT = 4;
@@ -154,7 +153,6 @@ export function renderMessages(app: AppInstance) {
         actionsBtn.type = 'button';
         actionsBtn.textContent = '⋯';
         actionsBtn.setAttribute('aria-label', app.t('chat.messageActionsAria'));
-        applyMessageActionTriggerVisibilityForButton(app, actionsBtn);
         actionsBtn.addEventListener('click', (event) => {
           event.stopPropagation();
           showMessageActionMenu(app, actionsBtn, msg, fromName);

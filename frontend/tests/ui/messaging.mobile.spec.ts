@@ -39,9 +39,57 @@ test.describe('Mobile layout & recall', () => {
       timeout: 3000,
     }).toBeGreaterThan(0.9);
 
+    // 按钮不应被消息行的 flex 布局压扁：宽高应保持接近相等的正圆
+    const box = await trigger.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) {
+      expect(Math.abs(box.width - box.height)).toBeLessThan(2);
+    }
+
     // 点击 ⋯ 按钮（相当于手机用户的替代入口）应能弹出含"撤回"的菜单
     await trigger.click();
     await expect(page1.locator('.message-action-menu [data-action="recall"]')).toBeVisible({ timeout: 3000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('桌面鼠标环境下手动选择手机布局，消息操作按钮无需悬停即可见且不被压扁', async ({ browser }) => {
+    // 复现真实场景：非触屏设备（真实鼠标，hover:hover / pointer:fine），
+    // 用户在启动页手动把布局偏好切成"手机"，此时不应依赖 hover 才显示操作按钮。
+    const ctx1 = await browser.newContext({ viewport: { width: 1280, height: 800 }, ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    const u1 = uniqueUser('mobd1');
+    const u2 = uniqueUser('mobd2');
+
+    await register(page1, u1, password, 'MobileDesktopA', 'mobile');
+    await register(page2, u2, password, 'MobileDesktopB');
+
+    await expect(page1.locator('body')).toHaveAttribute('data-layout', 'mobile');
+
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'MobileDesktopB');
+
+    await page1.fill('#msg-input', 'desktop-mouse mobile layout');
+    await page1.click('#msg-send');
+    await expect(page1.locator('#message-list', { hasText: 'desktop-mouse mobile layout' })).toBeVisible();
+
+    const trigger = page1.locator('.message-row.self .message-actions-trigger').last();
+    // 关键：鼠标停在别处（不 hover 这一行），按钮也必须可见
+    await page1.mouse.move(10, 10);
+    await expect.poll(async () => Number(await trigger.evaluate((el) => getComputedStyle(el).opacity)), {
+      message: 'manually-selected mobile layout should keep the trigger visible without hover',
+      timeout: 3000,
+    }).toBeGreaterThan(0.9);
+
+    const box = await trigger.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) {
+      expect(Math.abs(box.width - box.height)).toBeLessThan(2);
+    }
 
     await ctx1.close();
     await ctx2.close();

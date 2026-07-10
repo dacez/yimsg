@@ -247,12 +247,14 @@ to{background-color:transparent}
 .lang-select .btn{flex:1}
 .msg-quote-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:#f3f4f6;color:#4b5563;font-size:12px}
 .message-row{position:relative}
-.message-actions-trigger{opacity:1;align-self:center;width:28px;height:28px;border-radius:999px;color:#6b7280;background:#ffffffd9;border:1px solid #e5e7eb;box-shadow:0 4px 14px rgba(15,23,42,.08);transition:background-color .15s ease,color .15s ease}
+.message-actions-trigger{opacity:1;flex:0 0 auto;align-self:center;width:26px;height:26px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:999px;color:#9ca3af;background:transparent;border:none;font-size:16px;line-height:1;transition:background-color .15s ease,color .15s ease}
+/* 仅在真正的桌面指针环境（非移动布局）下默认隐藏、悬停才显示；移动布局下始终保持可见，不依赖 hover。 */
 @media (hover: hover) and (pointer: fine){
-  .message-actions-trigger{opacity:0;transition:opacity .15s ease,background-color .15s ease,color .15s ease}
-  .message-row:hover .message-actions-trigger,.message-actions-trigger:focus-visible{opacity:1}
+  body:not([data-layout="mobile"]) .message-actions-trigger,.mc-app-shell:not([data-layout="mobile"]) .message-actions-trigger{opacity:0;transition:opacity .15s ease,background-color .15s ease,color .15s ease}
+  body:not([data-layout="mobile"]) .message-row:hover .message-actions-trigger,body:not([data-layout="mobile"]) .message-actions-trigger:focus-visible,
+  .mc-app-shell:not([data-layout="mobile"]) .message-row:hover .message-actions-trigger,.mc-app-shell:not([data-layout="mobile"]) .message-actions-trigger:focus-visible{opacity:1}
 }
-.message-actions-trigger:hover{background:#f9fafb;color:#111827}
+.message-actions-trigger:hover{background:var(--bg-hover);color:#111827}
 .message-action-menu{position:fixed;z-index:1200;min-width:96px;padding:6px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 18px 40px rgba(15,23,42,.16)}
 .message-action-item{display:block;width:100%;padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:#111827}
 .message-action-item:hover{background:#f3f4f6}
@@ -291,13 +293,6 @@ to{background-color:transparent}
 .layout-option{flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-panel);color:var(--text-primary);font-size:var(--font-size-body);cursor:pointer;transition:border-color .15s,background .15s}
 .layout-option:hover{border-color:var(--primary)}
 .layout-option.active{border-color:var(--primary);background:var(--primary-light);color:var(--primary);font-weight:600}
-
-/* ========== 触屏设备：消息操作按钮始终可见 ========== */
-
-@media (hover: none), (pointer: coarse){
-  .message-actions-trigger{opacity:1!important;transition:background-color .15s ease,color .15s ease}
-}
-body[data-layout="mobile"] .message-actions-trigger,.mc-app-shell[data-layout="mobile"] .message-actions-trigger{opacity:1!important;transition:background-color .15s ease,color .15s ease}
 
 /* ========== 手机布局：单列堆叠 + 底部导航 ========== */
 
