@@ -114,7 +114,7 @@ cd frontend && npm run build:uikit  # 仅构建 UIKit ESM 包
 
 UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 warning 会被视为失败，避免重新引入不可运行产物。
 
-示例页面位于 `frontend/public/demo/embed.html` 与 `frontend/public/demo/embed-multi.html`；官网营销向体验 demo（含九宫格客服工作台）位于 `frontend/public/demo/` 下的其余页面。
+示例页面位于 `frontend/public/demo/embed.html` 与 `frontend/public/demo/embed-multi.html`；官网营销向体验 demo（含六宫格客服工作台）位于 `frontend/public/demo/` 下的其余页面。
 
 ## 6. 快速接入
 
@@ -181,7 +181,7 @@ function mount(target: HTMLElement | string, options?: MountOptions): MountHandl
 | 字段 | 类型 / 语义 |
 |---|---|
 | `wsUrl`、`uploadUrl` | 透传给 `YimsgClient` 的服务地址 |
-| `requestTimeout`、`reconnectInterval`、`heartbeatInterval` | UIKit 自建 `YimsgClient` 时透传给 SDK 的连接参数 |
+| `requestTimeout`、`reconnectInterval`、`reconnectNotifyThreshold`、`heartbeatInterval` | UIKit 自建 `YimsgClient` 时透传给 SDK 的连接参数 |
 | `recallWindowSeconds` | `MountOptions` 类型保留该字段；当前 `mount()` 自建 client 不透传它，宿主如需认证前自定义撤回时限，应自行创建已配置的 `YimsgClient` 并通过 `client` 传入。登录 / 鉴权成功后仍以后端 `client_config.recall_window_seconds` 为准 |
 | `instanceId` | 当前挂载实例唯一标识，用于运行时和 持久存储本地库隔离 |
 | `token` | 宿主已有 token，UIKit 挂载后自动 authenticate |

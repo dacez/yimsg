@@ -42,7 +42,7 @@ export type UIKitMode = 'memory' | 'persistent' | 'persistent-cleardata';
 export type UIKitViewMode = 'full' | 'chat-only' | 'contacts-only';
 
 /** 宿主传入的装载参数。 */
-export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'heartbeatInterval' | 'recallWindowSeconds'> {
+export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'reconnectNotifyThreshold' | 'heartbeatInterval' | 'recallWindowSeconds'> {
   /** 当前挂载实例的唯一标识；用于 memory/persistent 状态与 持久存储 dbName 隔离。 */
   readonly instanceId?: string;
   /** 宿主已持有的 token（SSO 场景），widget 会自动 authenticate。 */

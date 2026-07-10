@@ -92,6 +92,11 @@ export interface ClientOptions {
   readonly uploadUrl?: string;
   /** Auto-reconnect interval in ms. Default 2000. */
   readonly reconnectInterval?: number;
+  /**
+   * 连续重连尝试达到该次数后才触发 `connection:reconnecting`（UI 才据此提示"正在重连"）。
+   * `connection:disconnected` 不受影响，仍在每次断开时立即触发。默认 DEFAULT_WS_RECONNECT_NOTIFY_THRESHOLD（3）。
+   */
+  readonly reconnectNotifyThreshold?: number;
   /** Request timeout in ms. Default 15000. */
   readonly requestTimeout?: number;
   /** Heartbeat (ping) interval in ms. Default 30000. Set 0 to disable. */

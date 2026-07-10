@@ -113,7 +113,7 @@ stateDiagram-v2
 | `connecting` | `ensureConnected()` 调用 `transport.connect()` |
 | `connected` | WebSocket `onopen` |
 | `disconnected` | 主动断开、登出、销毁或 WebSocket `onclose` |
-| `reconnecting` | 非主动关闭后 `WsTransport.scheduleReconnect()` |
+| `reconnecting` | 非主动关闭后 `WsTransport.scheduleReconnect()` 累计连续失败达到 `reconnectNotifyThreshold` |
 
 ### 3.3 启动流程
 
@@ -174,6 +174,7 @@ sequenceDiagram
 | `uploadUrl` | `/api/upload` | HTTP 上传地址 |
 | `requestTimeout` | `15000` ms | 连接等待、请求超时 |
 | `reconnectInterval` | `2000` ms | 非主动断开后的重连等待 |
+| `reconnectNotifyThreshold` | `3` | 连续重连尝试达到该次数才触发 `connection:reconnecting`，用于过滤瞬时网络抖动导致的 UI 闪烁提示 |
 | `heartbeatInterval` | `30000` ms | 定时发送 protobuf `ping`；`<= 0` 禁用 |
 | `wsFactory` | 原生 `WebSocket` | 测试或自定义运行时注入 |
 | `maxPendingRequests` | `100` | WebSocket pending request 上限 |
@@ -267,7 +268,7 @@ SDK 发送请求时使用 big-endian；解码响应和通知时按 codec endian 
 - 自增 `request_id`，保存每个 pending request 的 resolve / reject / timer / response codec。
 - pending 数量达到 `maxPendingRequests` 时直接拒绝新请求。
 - 请求超时后删除 pending 并抛 `ConnectionError(CONNECTION_TIMEOUT)`。
-- 连接关闭时拒绝全部 pending；非主动关闭会触发 `connection:reconnecting` 并按 `reconnectInterval` 重连。
+- 连接关闭时拒绝全部 pending；非主动关闭立即触发 `connection:disconnected` 并按 `reconnectInterval` 重连，连续重连尝试达到 `reconnectNotifyThreshold`（默认 3 次）仍未成功才触发 `connection:reconnecting`，成功重连后计数清零。
 - 按 `heartbeatInterval` 发送 `TYPE_ACTION_PING`。
 - 收到 `request_id = 0` 时，调用生成的 `dispatchNotificationFrame(handler, frame)`（`generated/notifications.gen.ts`）解码并分发；默认 handler 把强类型通知压平为既有 `Notification` 记录交给 DataGateway，可用 `setNotificationHandler()` 覆盖；`ok:false` 通过 `onNotificationError` 上报，不静默吞掉。
 - 收到普通响应时使用请求保存的 `responseCodec` 解码；`base.code !== ERROR_OK` 时抛 `RequestError(REQUEST_FAILED)`，`details.serverErrorCode` 保存稳定服务端错误码名称。

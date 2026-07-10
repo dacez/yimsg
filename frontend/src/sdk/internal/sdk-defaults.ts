@@ -9,6 +9,13 @@ export const DEFAULT_WS_TIMEOUT_MS = 15_000;
 /** WebSocket 断连后自动重连等待毫秒数。默认 2 秒。 */
 export const DEFAULT_WS_RECONNECT_INTERVAL_MS = 2_000;
 
+/**
+ * 连续重连尝试达到该次数后，才对外触发 `connection:reconnecting`（UI 才据此显示"正在重连"）。
+ * 避免网络抖动导致的单次瞬时断线在界面上频繁闪烁提示。`connection:disconnected` 仍在每次断开时立即触发。
+ * 默认 3 次。
+ */
+export const DEFAULT_WS_RECONNECT_NOTIFY_THRESHOLD = 3;
+
 /** WebSocket 心跳（ping）发送间隔毫秒数。设为 0 禁用心跳。默认 30 秒。 */
 export const DEFAULT_WS_HEARTBEAT_INTERVAL_MS = 30_000;
 
