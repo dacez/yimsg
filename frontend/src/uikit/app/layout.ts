@@ -1,7 +1,6 @@
 import { type LayoutChoice, type ResolvedLayout } from './session-storage';
 import { resolveLayout } from './startup-mode';
 import type { AppInstance } from './app-instance';
-import { applyMessageActionTriggerVisibility } from './utils';
 
 /**
  * 布局装配：全部方法都以 `AppInstance` 为作用域，确保多实例挂载彼此独立。
@@ -13,7 +12,6 @@ export function applyResolvedLayoutForApp(app: AppInstance, layout: ResolvedLayo
   if (shell && shell !== app.dom.layoutHost) {
     shell.dataset.layout = layout;
   }
-  applyMessageActionTriggerVisibility(app, layout);
 }
 
 function applyLayoutFromPreferenceForApp(app: AppInstance): ResolvedLayout {

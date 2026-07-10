@@ -5,10 +5,20 @@ export function uniqueUser(prefix = 'u') {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** Register a new user and land on the app (memory mode) */
-export async function register(page: Page, username: string, password: string, nickname: string) {
+/**
+ * Register a new user and land on the app (memory mode).
+ * `layout` 可选：在启动模态框上顺带手动选择布局偏好（auto/desktop/mobile），
+ * 用于覆盖“桌面鼠标环境下手动选择手机布局”这类场景，不传则保持自动检测。
+ */
+export async function register(
+  page: Page,
+  username: string,
+  password: string,
+  nickname: string,
+  layout?: 'auto' | 'desktop' | 'mobile',
+) {
   await page.goto('/chat/');
-  await ensureModeSelected(page, 'memory');
+  await ensureModeSelected(page, 'memory', layout);
   await page.click('[data-tab="register"]');
   await page.fill('#reg-username', username);
   await page.fill('#reg-password', password);
@@ -33,8 +43,12 @@ async function waitForAppReady(page: Page) {
   await expect(page.locator('#view-chat')).toBeVisible({ timeout: 20_000 });
 }
 
-/** Select memory or 持久存储 mode when the startup modal is visible */
-export async function ensureModeSelected(page: Page, mode: 'memory' | 'persistent') {
+/** Select memory or 持久存储 mode when the startup modal is visible; 可选顺带手动选择布局偏好 */
+export async function ensureModeSelected(
+  page: Page,
+  mode: 'memory' | 'persistent',
+  layout?: 'auto' | 'desktop' | 'mobile',
+) {
   const modal = page.locator('#modal-overlay:not(.hidden)');
   try {
     await page.locator('#mode-opt-memory').waitFor({ state: 'visible', timeout: 1000 });
@@ -42,6 +56,9 @@ export async function ensureModeSelected(page: Page, mode: 'memory' | 'persisten
     if (await modal.count() === 0) return;
   }
   await expect(modal).toBeVisible({ timeout: 5000 });
+  if (layout) {
+    await page.click(`.layout-option[data-layout="${layout}"]`);
+  }
   await page.click(mode === 'memory' ? '#mode-opt-memory' : '#mode-opt-persistent');
   await expect(modal).toHaveCount(0);
 }
