@@ -2,6 +2,8 @@
 /server
 /server.exe
 /seed-data
+/seed-demo
+/seed-demo.exe
 /debug-messages
 /test-seed
 
