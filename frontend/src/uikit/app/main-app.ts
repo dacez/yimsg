@@ -7,7 +7,7 @@ import { createChatView } from './views/chat';
 import { createContactsView } from './views/contacts';
 import { createSettingsView } from './views/settings';
 import { createSessionPreferencesView } from './views/session-preferences';
-import { parseRoute } from './router';
+import { parseRoute, routeNamespaceFor } from './router';
 import {
   applyRoute,
   refreshVisibleViews,
@@ -87,7 +87,7 @@ export function startApp(app: AppInstance): () => void {
     item.addEventListener('click', () => app.views.chat?.switchView(item.dataset.view!));
   });
 
-  const onHashChange = () => applyRoute(app, parseRoute(app.dom.ownerDocument.defaultView?.location.hash ?? ''));
+  const onHashChange = () => applyRoute(app, parseRoute(app.dom.ownerDocument.defaultView?.location.hash ?? '', routeNamespaceFor(app.runtime)));
   app.dom.ownerDocument.defaultView?.addEventListener('hashchange', onHashChange);
   app.registerDisposer(() => app.dom.ownerDocument.defaultView?.removeEventListener('hashchange', onHashChange));
 

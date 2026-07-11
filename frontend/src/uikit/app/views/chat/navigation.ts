@@ -1,7 +1,7 @@
 import type { LocalConversation } from '../../../../sdk';
 import type { AppInstance } from '../../app-instance';
 import { canAutoClearUnreadCurrentConversation } from './helpers';
-import { pushRoute, type AppViewName } from '../../router';
+import { pushRoute, routeNamespaceFor, type AppViewName } from '../../router';
 
 export function startDMFromContact(app: AppInstance, uid: string) {
   switchView(app, 'chat');
@@ -38,6 +38,6 @@ export function switchView(app: AppInstance, requestedName: string, options: { u
     const conversation = name === 'chat' && app.chatState.currentConvKey
       ? app.client.describeConversation(app.chatState.currentConvKey).target
       : undefined;
-    pushRoute({ view: name as AppViewName, conversation });
+    pushRoute({ view: name as AppViewName, conversation }, routeNamespaceFor(app.runtime));
   }
 }

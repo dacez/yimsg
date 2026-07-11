@@ -137,6 +137,8 @@ frontend/src/
 
 会话深链使用 `#/chat/u/:uid` 和 `#/chat/g/:groupId`。恢复路由时，空单聊占位只用于“从联系人发起私聊”这类可编辑场景；群聊路由若在当前数据集中拉不到消息，会视为过期 hash，清空当前会话并回到 `#/chat`，避免 seed 重建或数据重置后出现空白“群组”会话。
 
+独立主应用（`app.ts`，`embedded: false`）页面上只有它自己，hash 不加前缀，就是上面这套格式；嵌入式 widget（`embed.ts` `mount()`，`embedded: true`）hash 会按自己的 `instanceId` 加前缀，形如 `#/<instanceId>/chat/u/:uid`（`router.ts` 的 `routeNamespaceFor`）。这是因为同一页面可以同时挂载多个 widget（如客服工作台一屏多开多个客服账号），它们共享同一个浏览器 `location`/`history`；不加命名空间隔离的话，任意一个 widget 的 `pushRoute` 都会被其它 widget 的 `hashchange` 监听器一起收到并误当成自己的路由执行，导致会话串号到别的账号名下。宿主页面如果要通过改 hash 主动驱动某个嵌入式 widget 跳转，需要用该 widget 的 `instanceId`（未显式传时取挂载容器的 `id`，否则是随机值）拼出带前缀的 hash，而不是直接写无前缀的 `#/chat/...`。
+
 ### 3.3 聊天视图（#view-chat）三栏布局
 
 ```mermaid

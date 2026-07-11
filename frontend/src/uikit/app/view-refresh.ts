@@ -1,6 +1,6 @@
 import type { LocalConversation } from '../../sdk';
 import type { AppInstance } from './app-instance';
-import { getCurrentRoute, parseRoute } from './router';
+import { getCurrentRoute, parseRoute, routeNamespaceFor } from './router';
 import { isNearBottom } from './views/chat/message-list';
 
 function findConversationByRoute(target: { toUid?: string; groupId?: string }): LocalConversation | null {
@@ -14,6 +14,7 @@ function findConversationByRoute(target: { toUid?: string; groupId?: string }): 
 }
 
 export function applyRoute(app: AppInstance, route: ReturnType<typeof parseRoute>): void {
+  if (!route) return;
   app.views.chat?.switchView(route.view, { updateRoute: false });
   if (!route.conversation || route.view !== 'chat') return;
   const conversation = findConversationByRoute({
@@ -26,7 +27,7 @@ export function applyRoute(app: AppInstance, route: ReturnType<typeof parseRoute
 
 export function renderReadyState(app: AppInstance): void {
   app.views.auth?.showAppView();
-  applyRoute(app, getCurrentRoute());
+  applyRoute(app, getCurrentRoute(routeNamespaceFor(app.runtime)));
   app.views.chat?.renderConversationList();
   app.views.settings?.renderSettings();
 }

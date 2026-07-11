@@ -24,6 +24,7 @@ function createApp(options: {
   const showAppView = vi.fn();
   const showToast = vi.fn();
   const app = {
+    runtime: { embedded: false, instanceId: 'default' },
     views: {
       auth: { showAppView },
       chat: {

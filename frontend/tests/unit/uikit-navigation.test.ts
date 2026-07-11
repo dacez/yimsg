@@ -3,6 +3,7 @@ import { switchView } from '../../src/uikit/app/views/chat/navigation';
 
 vi.mock('../../src/uikit/app/router', () => ({
   pushRoute: vi.fn(),
+  routeNamespaceFor: vi.fn(() => null),
 }));
 
 import { pushRoute } from '../../src/uikit/app/router';
@@ -35,7 +36,7 @@ function createApp(viewMode?: 'full' | 'chat-only' | 'contacts-only') {
   const renderSettingsFn = vi.fn();
 
   const app = {
-    runtime: { viewMode },
+    runtime: { viewMode, embedded: false, instanceId: 'default' },
     chatState: { currentConvKey: null, currentConversation: null, loadContactsFn, renderSettingsFn },
     dom: {
       querySelectorAll: (selector: string) => {
@@ -62,7 +63,7 @@ describe('chat navigation switchView', () => {
 
     expect(views.contacts.state.hidden).toBe(false);
     expect(views.chat.state.hidden).toBe(true);
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined });
+    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined }, null);
   });
 
   it('chat-only viewMode forces every switchView call back to chat', () => {
@@ -74,7 +75,7 @@ describe('chat navigation switchView', () => {
     expect(views.contacts.state.hidden).toBe(true);
     expect(navItems.chat.state.active).toBe(true);
     expect(loadContactsFn).not.toHaveBeenCalled();
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'chat', conversation: undefined });
+    expect(pushRoute).toHaveBeenCalledWith({ view: 'chat', conversation: undefined }, null);
   });
 
   it('chat-only viewMode ignores host hash routing to settings without updating the route', () => {
@@ -98,7 +99,7 @@ describe('chat navigation switchView', () => {
     expect(views.chat.state.hidden).toBe(true);
     expect(navItems.contacts.state.active).toBe(true);
     expect(loadContactsFn).toHaveBeenCalled();
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined });
+    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined }, null);
   });
 
   it('contacts-only viewMode ignores host hash routing to settings without updating the route', () => {

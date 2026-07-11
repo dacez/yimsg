@@ -183,7 +183,7 @@ function mount(target: HTMLElement | string, options?: MountOptions): MountHandl
 | `wsUrl`、`uploadUrl` | 透传给 `YimsgClient` 的服务地址 |
 | `requestTimeout`、`reconnectInterval`、`reconnectNotifyThreshold`、`heartbeatInterval` | UIKit 自建 `YimsgClient` 时透传给 SDK 的连接参数 |
 | `recallWindowSeconds` | `MountOptions` 类型保留该字段；当前 `mount()` 自建 client 不透传它，宿主如需认证前自定义撤回时限，应自行创建已配置的 `YimsgClient` 并通过 `client` 传入。登录 / 鉴权成功后仍以后端 `client_config.recall_window_seconds` 为准 |
-| `instanceId` | 当前挂载实例唯一标识，用于运行时和 持久存储本地库隔离 |
+| `instanceId` | 当前挂载实例唯一标识，用于运行时和 持久存储本地库隔离；同时也是 hash 路由的命名空间前缀（同页多开多个 widget 时避免路由互相串扰，详见 [`UI设计方案.md`](UI设计方案.md) §3.2） |
 | `token` | 宿主已有 token，UIKit 挂载后自动 authenticate |
 | `getToken()` | 异步 token 提供者，挂载时调用一次 |
 | `client` | 复用宿主已有 `YimsgClient`；若已 ready 则跳过登录页 |
