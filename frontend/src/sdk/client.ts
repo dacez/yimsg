@@ -831,19 +831,16 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     if (!options.fileSystem) return;
     const { createPersistentDbApi } =
       await import("./datagateway/sqlite-db-factory");
-    const { buildPersistentDbName } = await import("./datagateway/persistent");
+    const { buildPersistentDbName, terminateDbApi } = await import(
+      "./datagateway/persistent"
+    );
     const db = await createPersistentDbApi(options.fileSystem);
     try {
       await db.deleteDb(
         buildPersistentDbName(options.uid, options.instanceId ?? "default"),
       );
     } finally {
-      if (
-        "terminate" in db &&
-        typeof (db as { terminate?: () => void }).terminate === "function"
-      ) {
-        (db as { terminate: () => void }).terminate();
-      }
+      terminateDbApi(db);
     }
   }
 

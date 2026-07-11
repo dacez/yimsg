@@ -129,7 +129,11 @@ function resolveInstanceId(host: HTMLElement, options: MountOptions): string {
   if ('instanceId' in options && typeof (options as MountOptions & { instanceId?: string }).instanceId === 'string' && (options as MountOptions & { instanceId?: string }).instanceId) {
     return (options as MountOptions & { instanceId?: string }).instanceId!;
   }
-  return host.id || `widget-${Math.random().toString(36).slice(2, 10)}`;
+  // 未显式指定、宿主也没有稳定 id 时固定回退为 'default'（与非嵌入式 app.ts 的槽位一致）：
+  // persistent 模式下 DB 文件按 uid+instanceId 命名，回退值若每次 mount 都不同，会导致
+  // 同一账号每次都对应一个新的空库，persistent 形同虚设。同页需要并发挂载多个独立持久化
+  // 实例时（如 home-dashboard），调用方必须显式传各自不同的 instanceId。
+  return host.id || 'default';
 }
 
 export function mount(container: MountTarget, options: MountOptions = {}): MountHandle {

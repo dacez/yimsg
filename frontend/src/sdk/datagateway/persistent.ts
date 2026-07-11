@@ -67,6 +67,13 @@ export interface DbApi {
   execBatch(statements: { sql: string; params?: unknown[] }[]): Promise<void>;
   close(): Promise<void>;
   deleteDb(dbName: string): Promise<void>;
+  /** 仅浏览器 OPFS 后端（SqliteWorkerApi）实现：终止其专属 Worker 线程，释放句柄之外的线程本身。 */
+  terminate?(): void;
+}
+
+/** duck-type 调用可选的 terminate()，避免 close() 之后 Worker 线程残留。 */
+export function terminateDbApi(db: DbApi): void {
+  if (typeof db.terminate === "function") db.terminate();
 }
 
 interface PersistentDataGatewayOptions {
@@ -322,7 +329,10 @@ export class PersistentDataGateway extends BaseDataGateway {
     this.backgroundSyncRun += 1;
     super.clear();
     this.resetSyncCursors();
-    this.db.close().catch((e) => this.reportError(e, "db close error"));
+    this.db
+      .close()
+      .catch((e) => this.reportError(e, "db close error"))
+      .finally(() => terminateDbApi(this.db));
   }
 
   // ---- Data reads (local SQLite) ----
