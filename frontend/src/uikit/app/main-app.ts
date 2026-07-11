@@ -7,9 +7,7 @@ import { createChatView } from './views/chat';
 import { createContactsView } from './views/contacts';
 import { createSettingsView } from './views/settings';
 import { createSessionPreferencesView } from './views/session-preferences';
-import { parseRoute, routeNamespaceFor } from './router';
 import {
-  applyRoute,
   refreshVisibleViews,
   renderReadyState,
 } from './view-refresh';
@@ -86,10 +84,6 @@ export function startApp(app: AppInstance): () => void {
   app.dom.querySelectorAll<HTMLElement>('.nav-item[data-view]').forEach(item => {
     item.addEventListener('click', () => app.views.chat?.switchView(item.dataset.view!));
   });
-
-  const onHashChange = () => applyRoute(app, parseRoute(app.dom.ownerDocument.defaultView?.location.hash ?? '', routeNamespaceFor(app.runtime)));
-  app.dom.ownerDocument.defaultView?.addEventListener('hashchange', onHashChange);
-  app.registerDisposer(() => app.dom.ownerDocument.defaultView?.removeEventListener('hashchange', onHashChange));
 
   app.$('modal-overlay').addEventListener('click', (e) => {
     if (e.target === e.currentTarget && !app.$('modal-overlay').dataset.preventClose) app.closeModal();

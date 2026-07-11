@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   refreshVisibleViews,
   renderReadyState,
@@ -79,18 +79,13 @@ function createApp(options: {
 }
 
 describe('view-refresh helpers', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('renderReadyState shows app view and syncs route-driven surfaces', () => {
-    vi.stubGlobal('location', { hash: '#/chat' });
+  it('renderReadyState shows app view and always lands on the chat view', () => {
     const ctx = createApp();
 
     renderReadyState(ctx.app);
 
     expect(ctx.showAppView).toHaveBeenCalledOnce();
-    expect(ctx.switchView).toHaveBeenCalledWith('chat', { updateRoute: false });
+    expect(ctx.switchView).toHaveBeenCalledWith('chat');
     expect(ctx.renderConversationList).toHaveBeenCalledOnce();
     expect(ctx.renderSettings).toHaveBeenCalledOnce();
   });

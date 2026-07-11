@@ -80,7 +80,9 @@ test.describe('Chat', () => {
     await ctx2.close();
   });
 
-  test('stale group route after data reset is ignored', async ({ page }) => {
+  test('app ignores any pre-existing URL hash and always lands on empty chat view', async ({ page }) => {
+    // 应用不做 URL 深链恢复：即使地址栏带着一个陈旧/无效的会话 hash，登录后也必须
+    // 固定落在空的会话列表视图，而不是尝试按 hash 打开一个可能已不存在的会话。
     await page.goto('/app/#/chat/g/1');
     await ensureModeSelected(page, 'memory');
     await page.fill('#login-username', `${seedPrefix()}_Test1`);
@@ -88,10 +90,6 @@ test.describe('Chat', () => {
     await page.click('#login-form button[type="submit"]');
     await expect(page.locator('#app')).toBeVisible({ timeout: 15_000 });
 
-    await expect(async () => {
-      const hash = await page.evaluate(() => location.hash);
-      expect(hash).toBe('#/chat');
-    }).toPass({ timeout: 10_000 });
     await expect(page.locator('#message-input-area')).toHaveClass(/hidden/);
     await expect(page.locator('#chat-empty')).not.toHaveClass(/hidden/);
     await expect(page.locator('#conversation-list .conversation-item.active')).toHaveCount(0);

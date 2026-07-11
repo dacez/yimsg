@@ -132,7 +132,7 @@ interface AppViews {
     applyConversationGuards(): void;
     registerViewCallbacks(loadContacts: () => void, renderSettings: () => void): void;
     startDMFromContact(uid: string): void;
-    switchView(name: string, options?: { updateRoute?: boolean }): void;
+    switchView(name: string): void;
     getCurrentConvKey(): string | null;
   };
   contacts: {

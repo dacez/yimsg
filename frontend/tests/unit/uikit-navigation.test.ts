@@ -1,13 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { switchView } from '../../src/uikit/app/views/chat/navigation';
 
-vi.mock('../../src/uikit/app/router', () => ({
-  pushRoute: vi.fn(),
-  routeNamespaceFor: vi.fn(() => null),
-}));
-
-import { pushRoute } from '../../src/uikit/app/router';
-
 type ViewName = 'chat' | 'contacts' | 'settings';
 
 function makeToggle() {
@@ -56,14 +49,13 @@ function createApp(viewMode?: 'full' | 'chat-only' | 'contacts-only') {
 }
 
 describe('chat navigation switchView', () => {
-  it('full viewMode switches to the requested view and pushes its route', () => {
+  it('full viewMode switches to the requested view', () => {
     const { app, views } = createApp('full');
 
     switchView(app, 'contacts');
 
     expect(views.contacts.state.hidden).toBe(false);
     expect(views.chat.state.hidden).toBe(true);
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined }, null);
   });
 
   it('chat-only viewMode forces every switchView call back to chat', () => {
@@ -75,19 +67,16 @@ describe('chat navigation switchView', () => {
     expect(views.contacts.state.hidden).toBe(true);
     expect(navItems.chat.state.active).toBe(true);
     expect(loadContactsFn).not.toHaveBeenCalled();
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'chat', conversation: undefined }, null);
   });
 
-  it('chat-only viewMode ignores host hash routing to settings without updating the route', () => {
+  it('chat-only viewMode ignores requests to switch to settings', () => {
     const { app, views, renderSettingsFn } = createApp('chat-only');
-    vi.mocked(pushRoute).mockClear();
 
-    switchView(app, 'settings', { updateRoute: false });
+    switchView(app, 'settings');
 
     expect(views.chat.state.hidden).toBe(false);
     expect(views.settings.state.hidden).toBe(true);
     expect(renderSettingsFn).not.toHaveBeenCalled();
-    expect(pushRoute).not.toHaveBeenCalled();
   });
 
   it('contacts-only viewMode forces every switchView call back to contacts', () => {
@@ -99,18 +88,15 @@ describe('chat navigation switchView', () => {
     expect(views.chat.state.hidden).toBe(true);
     expect(navItems.contacts.state.active).toBe(true);
     expect(loadContactsFn).toHaveBeenCalled();
-    expect(pushRoute).toHaveBeenCalledWith({ view: 'contacts', conversation: undefined }, null);
   });
 
-  it('contacts-only viewMode ignores host hash routing to settings without updating the route', () => {
+  it('contacts-only viewMode ignores requests to switch to settings', () => {
     const { app, views, renderSettingsFn } = createApp('contacts-only');
-    vi.mocked(pushRoute).mockClear();
 
-    switchView(app, 'settings', { updateRoute: false });
+    switchView(app, 'settings');
 
     expect(views.contacts.state.hidden).toBe(false);
     expect(views.settings.state.hidden).toBe(true);
     expect(renderSettingsFn).not.toHaveBeenCalled();
-    expect(pushRoute).not.toHaveBeenCalled();
   });
 });

@@ -1,33 +1,11 @@
-import type { LocalConversation } from '../../sdk';
 import type { AppInstance } from './app-instance';
-import { getCurrentRoute, parseRoute, routeNamespaceFor } from './router';
 import { isNearBottom } from './views/chat/message-list';
 
-function findConversationByRoute(target: { toUid?: string; groupId?: string }): LocalConversation | null {
-  if (target.toUid) {
-    return { groupId: '0', friendUid: target.toUid, lastSeq: 0, lastMessage: null };
-  }
-  if (target.groupId) {
-    return { groupId: target.groupId, friendUid: '0', lastSeq: 0, lastMessage: null };
-  }
-  return null;
-}
-
-export function applyRoute(app: AppInstance, route: ReturnType<typeof parseRoute>): void {
-  if (!route) return;
-  app.views.chat?.switchView(route.view, { updateRoute: false });
-  if (!route.conversation || route.view !== 'chat') return;
-  const conversation = findConversationByRoute({
-    toUid: 'toUid' in route.conversation ? route.conversation.toUid : undefined,
-    groupId: 'groupId' in route.conversation ? route.conversation.groupId : undefined,
-  });
-  if (!conversation) return;
-  void app.views.chat?.openConversation(conversation);
-}
-
+// 不做 URL 深链恢复：每次进入 ready 状态都固定落在会话列表（chat）视图，
+// 不读取、也不依赖任何外部（宿主页面）URL 状态。
 export function renderReadyState(app: AppInstance): void {
   app.views.auth?.showAppView();
-  applyRoute(app, getCurrentRoute(routeNamespaceFor(app.runtime)));
+  app.views.chat?.switchView('chat');
   app.views.chat?.renderConversationList();
   app.views.settings?.renderSettings();
 }

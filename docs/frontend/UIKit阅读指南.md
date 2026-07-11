@@ -1,7 +1,7 @@
 # UIKit 阅读指南
 
 > 主要对照：`frontend/src/uikit/app/shell.ts`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/app-instance.ts`、`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/safe-dom.ts`、`frontend/src/uikit/embed.ts`。
-> 最后复核：2026-07-10。
+> 最后复核：2026-07-11。
 > 触发更新：UIKit 视图结构、样式系统、DOM 构建模式、布局机制或新手上手路线发生变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
 
@@ -412,7 +412,7 @@ function renderConversationPage(app) {
 
 ### 6.4 视图切换靠 `hidden` class
 
-应用有「聊天 / 通讯录 / 设置」几个顶层视图，它们在 `shell.ts` 里**全部同时存在于 DOM**，只是用 `hidden` class 控制谁可见（`shell.ts:99,123` 初始就给通讯录、设置加了 `hidden`）。切换视图 = 改 class，不重建 DOM。路由逻辑见 `app/router.ts`，导航点击在 `navbar` 上（`shell.ts:34-55`，每个 `.nav-item` 带 `data-view` 标明目标视图）。
+应用有「聊天 / 通讯录 / 设置」几个顶层视图，它们在 `shell.ts` 里**全部同时存在于 DOM**，只是用 `hidden` class 控制谁可见（`shell.ts:99,123` 初始就给通讯录、设置加了 `hidden`）。切换视图 = 改 class，不重建 DOM，也不读写 `location`/`history`（当前视图只是内存里的一个状态，见 `app/views/chat/navigation.ts` 的 `switchView`），导航点击在 `navbar` 上（`shell.ts:34-55`，每个 `.nav-item` 带 `data-view` 标明目标视图）。
 
 ### 6.5 国际化 i18n：界面不写死中文
 

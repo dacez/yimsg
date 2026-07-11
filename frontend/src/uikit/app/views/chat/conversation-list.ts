@@ -6,7 +6,6 @@ import type { AppInstance } from "../../app-instance";
 import { msgPreview } from "./helpers";
 import { applyConversationGuards } from "./composer";
 import { closeMessageActionMenu, exitMessageSelectionMode } from "./selection";
-import { pushRoute, replaceRoute, routeNamespaceFor } from "../../router";
 import {
   getOrCreateBoundedStreamWindow,
   BoundedStreamWindow,
@@ -446,7 +445,6 @@ function closeStaleConversation(app: AppInstance, expectedKey: string): void {
   app.$("message-list").innerHTML = "";
   app.$("view-chat").classList.remove("mobile-showing-chat");
   app.$("view-chat").classList.remove("mobile-showing-detail");
-  replaceRoute({ view: "chat" }, routeNamespaceFor(app.runtime));
   renderConversationList(app, { force: true });
 }
 
@@ -458,7 +456,6 @@ export async function openConversation(
   const isPlaceholderGroup =
     conversation.kind === "group" && conv.lastSeq === 0 && !conv.lastMessage;
   app.emitConversationOpen(conversation);
-  pushRoute({ view: "chat", conversation: conversation.target }, routeNamespaceFor(app.runtime));
   app.chatState.currentConvKey = conversation.key;
   app.chatState.currentConversation = conv;
   const messagePageRequestId = resetMessagePage(app);

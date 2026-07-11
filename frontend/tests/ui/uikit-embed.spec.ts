@@ -74,7 +74,7 @@ test.describe('uikit embed', () => {
     expect(result.hasAuthCard).toBe(true);
   });
 
-  test('viewMode: chat-only hides bottom navbar and ignores host hash routing', async ({ page }) => {
+  test('viewMode: chat-only hides bottom navbar and host hash changes never affect the widget', async ({ page }) => {
     // 页面上已有 #chat-host 默认 widget，用独立 hostId 隔离，避免全局选择器命中两个 shadow root。
     const username = uniqueUser('chatonly');
     await page.goto('/demo/embed.html');
@@ -129,7 +129,7 @@ test.describe('uikit embed', () => {
     expect(readyState.navbarDisplay).toBe('none');
     expect(readyState.viewMode).toBe('chat-only');
 
-    // 宿主页面 hash 改到 #/contacts：chat-only widget 没有底部导航可切换，也必须挡掉这次路由触发。
+    // widget 不使用/不监听 URL hash：改宿主页面 hash 对 widget 当前视图必须完全没有影响。
     await page.evaluate(() => { location.hash = '#/contacts'; });
     await page.waitForTimeout(200);
     const routedState = await page.evaluate(() => {

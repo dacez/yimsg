@@ -59,8 +59,8 @@ export function createChatView(app: AppInstance) {
     startDMFromContact(uid: string) {
       startDMFromContact(app, uid);
     },
-    switchView(name: string, options?: { updateRoute?: boolean }) {
-      switchView(app, name, options);
+    switchView(name: string) {
+      switchView(app, name);
     },
   };
 }

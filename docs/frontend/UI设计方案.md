@@ -68,7 +68,7 @@
 | **框架** | 无框架（Vanilla TypeScript） | 直接使用 DOM API，零依赖，轻量 |
 | **渲染** | `createElement` + 受控 `SafeHtml` | 用户输入默认 `textContent`；需要 HTML 的路径必须显式包装 |
 | **样式** | 单文件 CSS + CSS Variables | `style.css`，BEM 风格命名，CSS 变量主题 |
-| **路由** | Hash Router | `#/chat`、`#/contacts`、`#/settings` 与会话深链 |
+| **路由** | 无 URL 路由 | 当前视图（chat/contacts/settings）与打开中的会话只存于 `AppInstance` 内存状态，不读写 `location`/`history`，不支持 URL 深链 |
 | **大列表** | `BoundedPageWindow` + `BoundedStreamWindow` | 所有列表统一为有界滑动窗口全量渲染、双向翻页；滚动处理按动画帧合并，翻页用 `keyOf` 锚点保持位置 |
 | **状态** | `AppInstance` 本地状态 + SDK 只读快照 API | 按事件局部刷新可见页 |
 
@@ -131,13 +131,11 @@ frontend/src/
 └── .nav-item[data-view="settings"]   设置图标
 ```
 
-点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`，并同步 hash 路由。
+点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`。只改内存态和 DOM class，不触碰 `location`/`history`：无论在应用内做任何操作（登录/注册、聊天、建群、加好友等），浏览器"后退"都应该直接离开应用本身，而不是回退到应用内部的上一个视图或上一个打开的会话——这是所有视图切换和打开会话都不写 URL 的直接原因。
 
 会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪（细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §6），触底向后翻、触顶向前翻；未读角标直接使用会话项携带的 `unreadCount`；memory 模式由后端返回，持久存储模式来自本地会话表。他端来消息 `messages:received` 触发 `force` 刷新：用户贴顶时直接清空重拉首页；不贴顶时列表不动，只点亮"有新消息"提示条（`#conversation-update-pill`）并刷新未读角标，点击提示条或滚回顶部后追平。本端发送消息 `conversations:sent` 默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页并滚回顶部（`renderConversationList({ toTop:true })`），不点亮提示条；会话列表初始渲染由 `renderReadyState` 负责、不依赖该事件。`conversations:clearunread` / `conversations:delete` 携带 `keys`：对仍在数据窗口内的会话调 `getConversations({ targets })` 定向拉取当前状态并更新窗口（删除态返回空 → 移除往上补齐），不整列表重拉、会话不在窗口则忽略（`refreshConversations`）。
 
-会话深链使用 `#/chat/u/:uid` 和 `#/chat/g/:groupId`。恢复路由时，空单聊占位只用于“从联系人发起私聊”这类可编辑场景；群聊路由若在当前数据集中拉不到消息，会视为过期 hash，清空当前会话并回到 `#/chat`，避免 seed 重建或数据重置后出现空白“群组”会话。
-
-独立主应用（`app.ts`，`embedded: false`）页面上只有它自己，hash 不加前缀，就是上面这套格式；嵌入式 widget（`embed.ts` `mount()`，`embedded: true`）hash 会按自己的 `instanceId` 加前缀，形如 `#/<instanceId>/chat/u/:uid`（`router.ts` 的 `routeNamespaceFor`）。这是因为同一页面可以同时挂载多个 widget（如客服工作台一屏多开多个客服账号），它们共享同一个浏览器 `location`/`history`；不加命名空间隔离的话，任意一个 widget 的 `pushRoute` 都会被其它 widget 的 `hashchange` 监听器一起收到并误当成自己的路由执行，导致会话串号到别的账号名下。宿主页面如果要通过改 hash 主动驱动某个嵌入式 widget 跳转，需要用该 widget 的 `instanceId`（未显式传时取挂载容器的 `id`，否则是随机值）拼出带前缀的 hash，而不是直接写无前缀的 `#/chat/...`。
+不支持会话深链：应用不读取、也不写入任何 URL 状态（无论独立主应用 `embedded: false` 还是嵌入式 widget `embedded: true`），进入 ready 状态固定落在会话列表（chat 视图，不预选会话）。宿主页面如需让嵌入式 widget 直接打开指定会话，走 `mount()` 返回的 `handle.openConversation(target)` 编程式接口，不经过 URL。这个设计同时解决了两个问题：一是同一页面可以同时挂载多个 widget（如客服工作台一屏多开多个客服账号）时，多个 widget 不再需要抢同一份浏览器 `location`/`history`；二是应用内部导航（切视图、打开会话等）不再往宿主页面的浏览器历史里塞状态，避免用户点"后退"时先被迫在应用内部状态间来回，而不是直接离开应用。
 
 ### 3.3 聊天视图（#view-chat）三栏布局
 

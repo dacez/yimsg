@@ -1,7 +1,6 @@
 import type { LocalConversation } from '../../../../sdk';
 import type { AppInstance } from '../../app-instance';
 import { canAutoClearUnreadCurrentConversation } from './helpers';
-import { pushRoute, routeNamespaceFor, type AppViewName } from '../../router';
 
 export function startDMFromContact(app: AppInstance, uid: string) {
   switchView(app, 'chat');
@@ -9,14 +8,13 @@ export function startDMFromContact(app: AppInstance, uid: string) {
   void app.views.chat?.openConversation(conv);
 }
 
-// 显示范围收窄（chat-only / contacts-only）时没有底部导航，用户不能切到其它视图；
-// 同时挡掉宿主页面 hash 路由的误触发。
+// 显示范围收窄（chat-only / contacts-only）时没有底部导航，用户不能切到其它视图。
 const FORCED_VIEW_BY_MODE: Partial<Record<AppInstance['runtime']['viewMode'] & string, string>> = {
   'chat-only': 'chat',
   'contacts-only': 'contacts',
 };
 
-export function switchView(app: AppInstance, requestedName: string, options: { updateRoute?: boolean } = {}) {
+export function switchView(app: AppInstance, requestedName: string) {
   const forced = app.runtime.viewMode ? FORCED_VIEW_BY_MODE[app.runtime.viewMode] : undefined;
   const name = forced ?? requestedName;
   app.dom.querySelectorAll<HTMLElement>('#main-content > .view').forEach((view) => view.classList.add('hidden'));
@@ -33,11 +31,4 @@ export function switchView(app: AppInstance, requestedName: string, options: { u
   }
   if (name === 'contacts') app.chatState.loadContactsFn?.();
   if (name === 'settings') app.chatState.renderSettingsFn?.();
-
-  if (options.updateRoute !== false && (name === 'chat' || name === 'contacts' || name === 'settings')) {
-    const conversation = name === 'chat' && app.chatState.currentConvKey
-      ? app.client.describeConversation(app.chatState.currentConvKey).target
-      : undefined;
-    pushRoute({ view: name as AppViewName, conversation }, routeNamespaceFor(app.runtime));
-  }
 }
