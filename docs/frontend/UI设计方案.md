@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
-> 最后复核：2026-07-10。
+> 最后复核：2026-07-11。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -109,7 +109,6 @@ frontend/src/
 ```
 <body>
 ├── .mc-app-shell                — `shell.ts` 生成的统一应用骨架
-├── #status-bar                  — 连接状态横条（fixed top，正常隐藏）
 ├── #view-auth                   — 认证视图（登录/注册表单）
 ├── #app                         — 主应用容器（认证前隐藏）
 │   ├── #navbar                  — 侧边导航（56px 宽）
@@ -144,7 +143,7 @@ frontend/src/
 graph LR
     subgraph 左栏["#left-panel · 280px"]
         direction TB
-        L1["#left-panel-header"]
+        L1["#left-panel-header<br/>#status-bar 重连/同步提示条"]
         L2["#conversation-list<br/>滚动分页"]
         L1 --- L2
     end
@@ -220,7 +219,7 @@ initAfterAuth():
 | 事件 | 处理函数 | UI 行为 |
 |------|---------|---------|
 | `connection:connected` | — | 隐藏状态栏；若当前已处于已登录状态，则读 UI 层保存的 token 并调 `authenticate(token)` 重新认证 |
-| `connection:reconnecting` | — | 显示 "Reconnecting..." 状态栏（连续重连尝试达到 `reconnectNotifyThreshold` 才触发，过滤瞬时抖动） |
+| `connection:disconnected` | — | 显示 "Reconnecting..." 状态栏（每次断线/重连尝试都立即显示，不设失败次数阈值） |
 | `session:sync` | — | `started` / `reset` 时显示同步状态栏；对应域 `success` / `failed` 后隐藏或保留其他同步域状态，并按域刷新会话 / 联系人 |
 | `messages:received` | `handleMessagesReceived` | 重绘信号：`renderConversationList({force, keys})` + `refreshOpenConversation()` 重新拉取打开中会话；贴顶整列表 reset 重排，不贴顶则按 `event.conversationKeys` 定向刷新窗口内会话（不重排）；`event.messages` 仅用于 `onMessages`（角标/响铃），不直接追加 |
 | `conversations:clearunread` / `conversations:delete` | — | `refreshConversations(keys)`：对在窗口会话 `getConversations({targets})` 定向拉取并更新/移除 |
@@ -844,7 +843,7 @@ showStatus(text: string, cls: string)   // 显示，cls = 'syncing' | 'reconnect
 hideStatus()                             // 隐藏
 ```
 
-顶部固定横条。`syncing` → 蓝色背景；`reconnecting` → 红色背景。
+内嵌在会话列表顶部 `#left-panel-header` 内的小提示条（非 fixed，不覆盖全局视口），移动端/桌面端布局共用同一实现。`syncing` → 浅蓝底 + 蓝字；`reconnecting` → 灰底 + 灰字（不使用红色，避免过度告警）。
 
 ### 7.4 Modal
 
@@ -993,8 +992,8 @@ checkReach():
 | 认证失败 | `#auth-error` 元素 | 内嵌表单下方，非 Toast |
 | 网络操作失败 | `showToast(msg, 'error')` | 4s 自动消失 |
 | 操作成功 | `showToast(msg, 'success')` | 4s 自动消失 |
-| 连接断开 | `connection:reconnecting` → `showStatus('Reconnecting...', 'reconnecting')` | 顶部横条；连续重连尝试达到 `reconnectNotifyThreshold`（默认 3 次）仍未成功才显示，避免瞬时抖动闪烁，重连成功后隐藏 |
-| SDK 同步中 | `session:sync` → `showStatus('Syncing messages...', 'syncing')` | 顶部横条；可覆盖启动后台同步和通知同步，所有同步域结束后隐藏 |
+| 连接断开 | `connection:disconnected` → `showStatus('Reconnecting...', 'reconnecting')` | 会话列表顶部提示条（灰色）；每次断线/重连尝试都立即显示，不等待失败次数阈值，重连成功后隐藏 |
+| SDK 同步中 | `session:sync` → `showStatus('Syncing messages...', 'syncing')` | 会话列表顶部提示条（浅蓝色）；可覆盖启动后台同步和通知同步，所有同步域结束后隐藏 |
 | 被踢下线 | Toast + 自动登出 | 跳转到登录页 |
 
 所有异步操作使用 `try/catch`，捕获后 Toast 显示错误信息。

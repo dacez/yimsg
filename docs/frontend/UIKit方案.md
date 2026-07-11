@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`frontend/src/uikit/index.ts`、`frontend/src/uikit/embed.ts`、`frontend/src/uikit/options.ts`、`frontend/src/uikit/mode.ts`。
-> 最后复核：2026-07-10。
+> 最后复核：2026-07-11。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -94,7 +94,7 @@ frontend/src/uikit/
 | 设置 | 支持 | 资料、头像、密码、语言、登出 |
 | 主题 | 支持 | `light` / `dark` / `auto`，支持 token 覆盖和运行期切换 |
 | 国际化 | 支持 | 内置 `zh-CN` / `en`，支持 `messages` 覆盖 |
-| 连接状态 | 支持 | 断开、重连、同步中通过顶部状态条提示 |
+| 连接状态 | 支持 | 断开、重连、同步中通过会话列表顶部状态条提示（灰色，每次断线立即提示） |
 | 运行期控制 | 支持 | `setTheme` / `setLocale` / `openConversation` / `logout` / `on` |
 | 存储模式 | 支持 | `memory` / `persistent` / `persistent-cleardata`，具体持久化能力由 SDK 判断 |
 

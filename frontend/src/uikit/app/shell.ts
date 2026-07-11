@@ -6,8 +6,6 @@ export const APP_SHELL_HTML = `
       <p class="mc-size-guard-body"></p>
     </div>
   </section>
-  <div id="status-bar" class="status-bar hidden"></div>
-
   <section id="view-auth" class="view">
     <div class="auth-card">
       <h1>yimsg</h1>
@@ -57,7 +55,9 @@ export const APP_SHELL_HTML = `
     <div id="main-content">
       <section id="view-chat" class="view">
         <div id="left-panel">
-          <div id="left-panel-header"></div>
+          <div id="left-panel-header">
+            <div id="status-bar" class="status-bar hidden"></div>
+          </div>
           <div id="conversation-list"></div>
         </div>
         <div id="center-panel">
