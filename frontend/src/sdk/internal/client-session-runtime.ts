@@ -1,5 +1,4 @@
 import { MemoryDataGateway } from "../datagateway/memory";
-import { clampOptionalPageLimit } from "./limits";
 import { DisplayInfoCache } from "../state/cache";
 import { SessionLifecycleMachine } from "../state/lifecycle";
 import { WsTransport } from "../transport/connection";

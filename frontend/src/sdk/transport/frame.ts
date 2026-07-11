@@ -44,7 +44,7 @@ export function encodeFrameWithEndian(codec: FrameCodec, littleEndian: boolean, 
   const frame = new Uint8Array(FRAME_HEADER_SIZE + body.byteLength);
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
   frame[FRAME_MAGIC_OFFSET] = FRAME_MAGIC;
-  frame[FRAME_CODEC_OFFSET] = encodeFrameCodec(codec, littleEndian);
+  frame[FRAME_CODEC_OFFSET] = encodeFrameCodec(littleEndian);
   frame[FRAME_RESERVED_OFFSET] = FRAME_RESERVED;
   view.setUint16(FRAME_BODY_SIZE_OFFSET, body.byteLength, littleEndian);
   view.setBigUint64(FRAME_REQUEST_ID_OFFSET, BigInt(requestId), littleEndian);
@@ -94,7 +94,7 @@ export function decodeFrame(data: Uint8Array): Frame {
   };
 }
 
-function encodeFrameCodec(codec: FrameCodec, littleEndian: boolean): number {
+function encodeFrameCodec(littleEndian: boolean): number {
   let value = FRAME_CODEC_VERSION << FRAME_CODEC_VERSION_SHIFT;
   if (littleEndian) value |= FRAME_CODEC_LITTLE_ENDIAN_MASK;
   return value;

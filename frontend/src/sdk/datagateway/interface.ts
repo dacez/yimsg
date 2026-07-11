@@ -12,7 +12,9 @@ import type {
   Tag,
 } from "../../types";
 import type { PageInfoResult, PageParams } from "../internal/action-mappers";
-import type { ConversationTarget } from "../types";
+import type { ConversationTarget, SyncDomain, SyncStatus } from "../types";
+
+export type { SyncDomain, SyncStatus };
 
 // 展示通道统一分页：所有 get_* 返回 { items, page }，page 为不透明 keyset 游标信息。
 // 与 sync_* 的 seq 同步游标相互独立。
@@ -78,16 +80,6 @@ export interface MutelistPageParams {
   readonly to_uids?: readonly string[];
   readonly group_ids?: readonly string[];
 }
-
-export type SyncDomain =
-  | "storage"
-  | "messages"
-  | "conversations"
-  | "contacts"
-  | "blocklist"
-  | "mutelist"
-  | "orgs";
-export type SyncStatus = "started" | "success" | "failed" | "reset";
 
 export interface SyncEvent {
   readonly domain: SyncDomain;

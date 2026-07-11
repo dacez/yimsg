@@ -1689,23 +1689,6 @@ export class PersistentDataGateway extends BaseDataGateway {
     return { where, binds };
   }
 
-  private pageCursor(rows: Array<{ seq?: unknown }>, newer: boolean): number {
-    if (rows.length === 0) return 0;
-    const seqs = rows.map((row) => Number(row.seq || 0));
-    return newer ? Math.max(...seqs) : seqs[seqs.length - 1];
-  }
-
-  private cursorClause(
-    beforeSeq: number,
-    afterSeq: number,
-  ): { where: string; binds: unknown[]; orderBy: string } {
-    if (afterSeq > 0)
-      return { where: " AND seq > ?", binds: [afterSeq], orderBy: "seq ASC" };
-    if (beforeSeq > 0)
-      return { where: " AND seq < ?", binds: [beforeSeq], orderBy: "seq DESC" };
-    return { where: "", binds: [], orderBy: "seq DESC" };
-  }
-
   private blocklistFilter(params: BlocklistPageParams): {
     where: string;
     binds: unknown[];

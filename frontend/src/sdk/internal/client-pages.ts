@@ -13,7 +13,6 @@ import type {
   TagsPage,
   ConversationPage,
   GroupMemberPage,
-  Message,
   MessagePage,
   MutelistEntryPage,
   PageInfo,

@@ -1,4 +1,3 @@
-import type { Message } from '../../sdk';
 import type { AppInstance } from './app-instance';
 import { CONTACT_PENDING_INCOMING } from '../../constants';
 import { watchLayoutChangesForApp } from './layout';

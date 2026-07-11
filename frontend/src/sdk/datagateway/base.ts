@@ -18,7 +18,6 @@ import type {
 import type { PageParams } from "../internal/action-mappers";
 import type { ConversationTarget } from "../types";
 import type {
-  ConversationEntry,
   Message,
   Contact,
   UserInfo,
@@ -33,7 +32,6 @@ import * as actionMappers from "../internal/action-mappers";
 import { DEFAULT_MAX_BATCH_LIMIT } from "../internal/sdk-defaults";
 import {
   clampBatchLimit,
-  clampOptionalPageLimit,
   collectSerialBatches,
 } from "../internal/limits";
 

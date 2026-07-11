@@ -5,7 +5,6 @@ import {
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
   MSG_TYPE_QUOTE,
-  MSG_TYPE_RECALL,
   MSG_TYPE_SYSTEM,
 } from '../../../../constants';
 import {

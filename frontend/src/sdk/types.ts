@@ -2,14 +2,9 @@ import type {
   MsgType as RawMsgType,
   GroupRole as RawGroupRole,
   MessageBody as RawMessageBody,
-  TextBody,
-  MarkdownBody,
   ImageBody,
   FileBody,
-  SystemBody,
   RecallBody,
-  QuoteBody,
-  ForwardBody,
 } from "../types";
 
 export type {

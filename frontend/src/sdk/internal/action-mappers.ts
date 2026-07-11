@@ -31,7 +31,7 @@ import {
   STATUS_DELETED,
 } from '../../constants';
 import type { ConversationTarget, MsgType } from '../types';
-import { clampOptionalPageLimit, normalizePageParams } from './limits';
+import { clampOptionalPageLimit } from './limits';
 import { generateMsgId } from './msgid';
 import {
   GetBlocklistRequest,

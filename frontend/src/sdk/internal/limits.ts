@@ -22,14 +22,6 @@ export function clampOptionalPageLimit(limit: number | undefined, maxLimit = DEF
   return Math.min(Math.max(0, Math.floor(limit)), Math.min(maxLimit, DEFAULT_MAX_PAGE_LIMIT));
 }
 
-export function normalizePageParams<T extends { limit?: number }>(params?: T): T | undefined {
-  if (!params || typeof params.limit !== 'number') return params;
-  return {
-    ...params,
-    limit: clampOptionalPageLimit(params.limit),
-  };
-}
-
 export function clampBatchLimit(limit: number | undefined): number {
   return clampPositiveLimit(limit, DEFAULT_MAX_BATCH_LIMIT, DEFAULT_MAX_BATCH_LIMIT);
 }

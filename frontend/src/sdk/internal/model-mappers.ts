@@ -6,8 +6,6 @@ import type {
   Message as RawMessage,
   GroupMember as RawGroupMember,
   LocalConversation as RawLocalConversation,
-  OrgInfo as RawOrgInfo,
-  TagInfo as RawTagInfo,
   Tag as RawTag,
 } from '../../types';
 import type {
@@ -20,9 +18,7 @@ import type {
   GroupMember,
   LocalConversation,
   MutelistEntry,
-  OrgInfo,
   OrgDisplayInfo,
-  TagInfo,
   TagDisplayInfo,
   Tag,
 } from '../types';
@@ -92,26 +88,10 @@ export function mapContact(contact: RawContact): Contact {
   });
 }
 
-export function mapOrgInfo(org: RawOrgInfo): OrgInfo {
-  return freezeObject({
-    orgId: String(org.org_id || '0'),
-    name: String(org.name || ''),
-    avatarUrl: String(org.avatar || ''),
-  });
-}
-
 export function mapOrgDisplayInfo(info: { name: string; avatar: string }): OrgDisplayInfo {
   return freezeObject({
     name: info.name || '',
     avatarUrl: info.avatar || '',
-  });
-}
-
-export function mapTagInfo(tag: RawTagInfo): TagInfo {
-  return freezeObject({
-    tagId: String(tag.tag_id || '0'),
-    name: String(tag.name || ''),
-    avatarUrl: String(tag.avatar || ''),
   });
 }
 

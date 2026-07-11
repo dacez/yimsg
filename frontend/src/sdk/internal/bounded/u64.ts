@@ -10,7 +10,6 @@
  * 禁止使用 `"u:123"` 字符串 key 或无界 object map —— 这是有界集合基础设施的硬约束。
  */
 
-const U32_MASK = 0xffffffff;
 const TWO_POW_32 = 0x1_0000_0000n;
 const TWO_POW_32_NUMBER = 0x1_0000_0000;
 const U32_BIGINT_MASK = 0xffffffffn;
