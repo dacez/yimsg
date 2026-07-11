@@ -23,8 +23,12 @@
     const host = document.getElementById('chat-host');
 
     const client = new YimsgClient({ wsUrl, uploadUrl });
-    client.login('demo_alice', 'Demo@123456').then(() => client.startSession({ storage: 'persistent' })).then(() => {
-      mount(host, { client, viewMode: 'full', theme: 'light', locale: 'auto' });
+    let token = '';
+    client.login('demo_alice', 'Demo@123456').then((auth) => {
+      token = auth.token;
+      return client.startSession({ storage: 'persistent' });
+    }).then(() => {
+      mount(host, { client, token, viewMode: 'full', theme: 'light', locale: 'auto' });
     }).catch((err) => {
       host.className = 'host error';
       host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;

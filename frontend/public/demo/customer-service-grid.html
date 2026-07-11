@@ -85,8 +85,12 @@
       const host = cell.querySelector('.cell-host');
 
       const client = new YimsgClient({ wsUrl, uploadUrl });
-      client.login(agent.username, PASSWORD).then(() => client.startSession()).then(() => {
-        mount(host, { client, viewMode: 'full', theme: 'light', locale: 'auto' });
+      let token = '';
+      client.login(agent.username, PASSWORD).then((auth) => {
+        token = auth.token;
+        return client.startSession();
+      }).then(() => {
+        mount(host, { client, token, viewMode: 'full', theme: 'light', locale: 'auto' });
       }).catch((err) => {
         host.classList.add('error');
         host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;

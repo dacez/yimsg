@@ -40,13 +40,13 @@
 
       const client = new YimsgClient({ wsUrl, uploadUrl });
       await client.register(username, password, '访客');
-      await client.login(username, password);
+      const auth = await client.login(username, password);
       await client.startSession();
 
       document.getElementById('cred').textContent = `访客账号：${username}　密码：${password}`;
 
       const host = document.getElementById('chat-host');
-      const handle = mount(host, { client, viewMode: 'chat-only', theme: 'light', locale: 'auto' });
+      const handle = mount(host, { client, token: auth.token, viewMode: 'chat-only', theme: 'light', locale: 'auto' });
 
       const agentsEl = document.getElementById('agents');
       let activeUid = null;
