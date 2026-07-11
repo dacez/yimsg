@@ -26,7 +26,7 @@
 </head>
 <body>
   <h1>yimsg · UIKit 多实例 8 宫格</h1>
-  <p class="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 持久存储清数据 / Lite）共存，不共享会话、语言、布局与本地数据库。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
+  <p class="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 持久存储清数据 / 内存）共存，不共享会话、语言、布局与本地数据库。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
   <div class="toolbar">
     <button id="btn-remount-all">重新挂载全部</button>
     <button id="btn-unmount-all">卸载全部</button>
@@ -34,12 +34,12 @@
   <div class="grid" id="multi-grid">
     <section class="cell"><div class="cell-header">格 1 · user1 · 持久存储</div><div id="host-u1-persistent" class="cell-host"></div></section>
     <section class="cell"><div class="cell-header">格 2 · user1 · 持久存储清数据</div><div id="host-u1-reset" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 3 · user1 · Lite</div><div id="host-u1-lite" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 3 · user1 · 内存</div><div id="host-u1-memory" class="cell-host"></div></section>
     <section class="cell"><div class="cell-header">格 4 · user2 · 持久存储</div><div id="host-u2-persistent" class="cell-host"></div></section>
     <section class="cell"><div class="cell-header">格 5 · user3 · 持久存储</div><div id="host-u3-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 6 · user4 · Lite</div><div id="host-u4-lite" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 6 · user4 · 内存</div><div id="host-u4-memory" class="cell-host"></div></section>
     <section class="cell"><div class="cell-header">格 7 · user5 · 持久存储</div><div id="host-u5-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 8 · user5 · Lite</div><div id="host-u5-lite" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header">格 8 · user5 · 内存</div><div id="host-u5-memory" class="cell-host"></div></section>
   </div>
   <script type="module">
     import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
@@ -49,12 +49,12 @@
     const configs = [
       { hostId: 'host-u1-persistent', mode: 'persistent', instanceId: 'grid-u1-persistent' },
       { hostId: 'host-u1-reset', mode: 'persistent-cleardata', instanceId: 'grid-u1-reset' },
-      { hostId: 'host-u1-lite', mode: 'lite', instanceId: 'grid-u1-lite' },
+      { hostId: 'host-u1-memory', mode: 'memory', instanceId: 'grid-u1-memory' },
       { hostId: 'host-u2-persistent', mode: 'persistent', instanceId: 'grid-u2-persistent' },
       { hostId: 'host-u3-persistent', mode: 'persistent', instanceId: 'grid-u3-persistent' },
-      { hostId: 'host-u4-lite', mode: 'lite', instanceId: 'grid-u4-lite' },
+      { hostId: 'host-u4-memory', mode: 'memory', instanceId: 'grid-u4-memory' },
       { hostId: 'host-u5-persistent', mode: 'persistent', instanceId: 'grid-u5-persistent' },
-      { hostId: 'host-u5-lite', mode: 'lite', instanceId: 'grid-u5-lite' },
+      { hostId: 'host-u5-memory', mode: 'memory', instanceId: 'grid-u5-memory' },
     ];
 
     window.__gridHandles = {};

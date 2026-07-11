@@ -76,7 +76,7 @@ frontend/src/uikit/
 | 调用者 | 第三方站点、内部自服务页、九宫格控制台 tile | `frontend/src/main.ts` |
 | DOM 模型 | Shadow DOM，样式隔离 | Light DOM，启动时注入 `shell.ts` 骨架 |
 | UI 覆盖 | 认证、会话、联系人、群、设置完整能力 | 同左 |
-| 事件语义 | 桥接 `authenticated` / `logout` / `message` / `conversation:open` / `error` | SDK 事件 + 页面级事件 |
+| 事件语义 | 桥接 `authenticated` / `logout` / `messages` / `conversation:open` / `error` | SDK 事件 + 页面级事件 |
 | 模式支持 | `memory` / `persistent` / `persistent-cleardata` 由挂载参数指定 | 登录前模式选择 + localStorage 记忆 |
 | 存储 | 默认隔离存储适配器，可按 `instanceId` 隔离 | 浏览器 `localStorage` |
 | 打包配置 | `vite.uikit.config.ts` | `vite.config.ts` |
@@ -219,7 +219,7 @@ Widget 事件：
 |---|---|
 | `authenticated` | `{ token, uid, event }` |
 | `logout` | 无 |
-| `message` | `Message` |
+| `messages` | `readonly Message[]` |
 | `conversation:open` | `ConversationDescriptor` |
 | `error` | `(error, context)` |
 
