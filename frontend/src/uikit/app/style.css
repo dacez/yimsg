@@ -277,7 +277,6 @@ to{background-color:transparent}
 .mode-option{padding:var(--space-xl) var(--space-lg)}
 .conversation-name-row{display:flex;align-items:center;gap:6px;min-width:0}
 .conversation-muted-badge{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;border-radius:999px;background:#fff7e6;color:#b26b00;font-size:11px;line-height:16px;flex-shrink:0}
-.temp-session-badge{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;border-radius:999px;background:#eef2ff;color:#5b5bf0;font-size:11px;line-height:16px;flex-shrink:0;margin-left:6px}
 .contact-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
 .contact-remark-text{font-size:var(--font-size-caption);color:var(--text-secondary)}
 .contact-status-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;background:#ffebee;color:var(--error);font-size:11px;line-height:16px}
