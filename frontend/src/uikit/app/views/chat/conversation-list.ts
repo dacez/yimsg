@@ -1,7 +1,6 @@
 import type { ConversationDescriptor, ConversationTarget, LocalConversation } from "../../../../sdk";
 import { displayGroupName, displayUserName, formatTime } from "../../../../sdk";
 import { APP_CONFIG } from "../../../../app-config";
-import { CONTACT_FRIEND } from "../../../../constants";
 import type { AppInstance } from "../../app-instance";
 import { msgPreview } from "./helpers";
 import { applyConversationGuards } from "./composer";
@@ -11,62 +10,23 @@ import {
   BoundedStreamWindow,
 } from "../../bounded-stream-window";
 import { resetMessagePage, setInitialMessagePage } from "./message-page";
-import { contactFriendUid } from "../contacts";
 
-// 判断 DM 对端是否好友，用于标记"临时会话"：私聊已不要求好友关系（见 sendDM），
-// 前端按已同步的联系人状态本地判断是否提示。结果按 uid 懒加载缓存在 chatState 上，
-// 未知时不展示标签，查询回来后触发一次重渲。
-async function ensureFriendStatus(app: AppInstance, uids: readonly string[]): Promise<void> {
-  const cache = app.chatState.friendStatusCache;
-  const unknown = [...new Set(uids)].filter((uid) => uid !== "0" && !cache.has(uid));
-  if (unknown.length === 0) return;
-  try {
-    const page = await app.client.getContacts({
-      friendUids: unknown,
-      status: CONTACT_FRIEND,
-      limit: unknown.length,
-    });
-    const friends = new Set(page.contacts.map((c) => contactFriendUid(c)));
-    for (const uid of unknown) cache.set(uid, friends.has(uid));
-  } catch (error) {
-    console.warn("ensureFriendStatus failed:", error);
-    return;
-  }
-  renderConversationPage(app);
-  refreshChatHeader(app);
-}
-
-// isTempSession：只在明确查到"不是好友"时才提示，避免未知状态下的误报。
-function isTempSession(app: AppInstance, friendUid: string): boolean {
-  return app.chatState.friendStatusCache.get(friendUid) === false;
-}
-
-// 设置聊天头部标题 + "临时会话"标签；群名 / 好友昵称取自 DisplayInfoCache 的同步快照，
+// 设置聊天头部标题；群名 / 好友昵称取自 DisplayInfoCache 的同步快照，
 // 首次打开陌生对端时可能还没缓存，靠 refreshChatHeader 在展示资料到达后补上。
 function updateChatHeaderTitle(app: AppInstance, conversation: ConversationDescriptor, conv: LocalConversation): void {
   let title = "";
-  let tempSession = false;
   if (conversation.kind === "group") {
     const groupId = conv.groupId || "0";
     title = displayGroupName(app.client.getGroupInfos([groupId]).get(groupId), app.t("chat.group"));
   } else {
     const friendUid = conv.friendUid || "0";
     title = displayUserName(app.client.getUserInfos([friendUid]).get(friendUid), friendUid);
-    void ensureFriendStatus(app, [friendUid]);
-    tempSession = isTempSession(app, friendUid);
   }
 
   app.$("chat-title").textContent = title;
-  app.$("chat-title").parentElement?.querySelector(".temp-session-badge")?.remove();
-  if (tempSession) {
-    const badge = app.dom.ownerDocument.createElement("span");
-    badge.className = "temp-session-badge";
-    badge.textContent = app.t("chat.tempSession");
-    app.$("chat-title").insertAdjacentElement("afterend", badge);
-  }
 }
 
-// refreshChatHeader：display:updated 等异步展示资料到达后，重算当前打开会话的标题 / 临时会话标签。
+// refreshChatHeader：display:updated 等异步展示资料到达后，重算当前打开会话的标题。
 export function refreshChatHeader(app: AppInstance): void {
   const conv = app.chatState.currentConversation;
   if (!conv || !app.chatState.currentConvKey) return;
@@ -235,7 +195,6 @@ function renderConversationPage(app: AppInstance): void {
   // 窗口有界，全量渲染：为窗口内全部会话预取展示信息（昵称、群名）。
   const userIds: string[] = [];
   const groupIds: string[] = [];
-  const dmPeerUids: string[] = [];
   for (const conv of conversations) {
     const conversation = app.client.describeConversation(conv);
     if (conversation.kind === "group") {
@@ -246,12 +205,10 @@ function renderConversationPage(app: AppInstance): void {
     } else {
       const friendUid = conv.friendUid || "0";
       userIds.push(friendUid);
-      dmPeerUids.push(friendUid);
     }
   }
   const userDisplayMap = app.client.getUserInfos(userIds);
   const groupDisplayMap = app.client.getGroupInfos(groupIds);
-  void ensureFriendStatus(app, dmPeerUids);
 
   view.render({
     items: conversations,
@@ -274,7 +231,6 @@ function renderConversationPage(app: AppInstance): void {
     let name = "";
     let avatarText = "";
     let avatarUrl = "";
-    let tempSession = false;
     if (isGroup) {
       const group = groupDisplayMap.get(conv.groupId || "0") || {
         name: "",
@@ -295,7 +251,6 @@ function renderConversationPage(app: AppInstance): void {
       name = displayUserName(user, friendUid);
       avatarText = name[0];
       avatarUrl = user.avatarUrl || "";
-      tempSession = isTempSession(app, friendUid);
     }
 
     const lastMessage = conv.lastMessage;
@@ -314,9 +269,6 @@ function renderConversationPage(app: AppInstance): void {
       unread > 0
         ? `<span class="unread-badge">${unread > 99 ? "99+" : unread}</span>`
         : "";
-    const tempBadge = tempSession
-      ? `<span class="temp-session-badge">${app.escapeHtml(app.t("chat.tempSession"))}</span>`
-      : "";
     div.innerHTML = `
         <div class="avatar-wrapper">
           <div class="avatar avatar-md">${app.avatarInnerHtml({ avatar: avatarUrl, nickname: avatarText })}</div>
@@ -326,7 +278,6 @@ function renderConversationPage(app: AppInstance): void {
           <div class="conversation-top">
             <div class="conversation-name-row">
               <span class="conversation-name">${app.escapeHtml(name)}</span>
-              ${tempBadge}
             </div>
             <span class="conversation-time">${timeStr}</span>
           </div>
