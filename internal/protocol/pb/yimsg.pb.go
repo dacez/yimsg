@@ -72,6 +72,17 @@ const (
 	Type_TYPE_ACTION_GET_TAGS                  Type = 45    // action=get_tags auth=true domain=组织 desc=在线展开 tags（组织关系表）中某节点的直接子项（tag 与人混合有序）
 	Type_TYPE_ACTION_SYNC_TAGS                 Type = 46    // action=sync_tags auth=true domain=组织 desc=按 org 增量同步 tags（组织关系表）
 	Type_TYPE_ACTION_GET_TAG_INFOS             Type = 47    // action=get_tag_infos auth=true domain=组织 desc=批量读取 tag（部门/横向分组）展示资料
+	Type_TYPE_ACTION_CREATE_ORG_TAG            Type = 48    // action=create_org_tag auth=true domain=组织 desc=创建 tag（部门/横向分组）并挂到父节点下，需对父节点有管理权限
+	Type_TYPE_ACTION_RENAME_ORG_TAG            Type = 49    // action=rename_org_tag auth=true domain=组织 desc=重命名 tag 展示资料，需对该 tag 有管理权限
+	Type_TYPE_ACTION_DELETE_ORG_TAG            Type = 50    // action=delete_org_tag auth=true domain=组织 desc=删除 tag 及其两个方向的关联边，需对该 tag 有管理权限
+	Type_TYPE_ACTION_LINK_ORG_TAG              Type = 51    // action=link_org_tag auth=true domain=组织 desc=把已存在的 tag 额外挂到另一个父节点下（DAG 多父），需对目标父节点有管理权限
+	Type_TYPE_ACTION_ADD_ORG_MEMBER            Type = 52    // action=add_org_member auth=true domain=组织 desc=把人挂进某个组织节点，需对该节点有管理权限
+	Type_TYPE_ACTION_REMOVE_ORG_MEMBER         Type = 53    // action=remove_org_member auth=true domain=组织 desc=把人从某个组织节点移除，需对该节点有管理权限
+	Type_TYPE_ACTION_SET_ORG_ITEM_RANK         Type = 54    // action=set_org_item_rank auth=true domain=组织 desc=调整某条边的排序与职务展示，需对该边所属父节点有管理权限
+	Type_TYPE_ACTION_RENAME_ORG                Type = 55    // action=rename_org auth=true domain=组织 desc=重命名组织展示资料，需对组织根有管理权限
+	Type_TYPE_ACTION_GRANT_ORG_ADMIN           Type = 56    // action=grant_org_admin auth=true domain=组织 desc=授予某人管理某节点为根子树的权限，需调用方自己已对该节点有管理权限
+	Type_TYPE_ACTION_REVOKE_ORG_ADMIN          Type = 57    // action=revoke_org_admin auth=true domain=组织 desc=撤销某人对某节点为根子树的管理权限，需调用方自己已对该节点有管理权限
+	Type_TYPE_ACTION_LIST_ORG_ADMINS           Type = 58    // action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限
 	Type_TYPE_NOTIFY_MESSAGES_RECEIVED         Type = 10001 // notification=messages:received desc=消息域发生变化
 	Type_TYPE_NOTIFY_CONTACTS_UPDATED          Type = 10002 // notification=contacts:updated desc=通讯录发生变化
 	Type_TYPE_NOTIFY_SESSION_KICKED            Type = 10003 // notification=session:kicked desc=当前登录态被踢下线
@@ -133,6 +144,17 @@ var (
 		45:    "TYPE_ACTION_GET_TAGS",
 		46:    "TYPE_ACTION_SYNC_TAGS",
 		47:    "TYPE_ACTION_GET_TAG_INFOS",
+		48:    "TYPE_ACTION_CREATE_ORG_TAG",
+		49:    "TYPE_ACTION_RENAME_ORG_TAG",
+		50:    "TYPE_ACTION_DELETE_ORG_TAG",
+		51:    "TYPE_ACTION_LINK_ORG_TAG",
+		52:    "TYPE_ACTION_ADD_ORG_MEMBER",
+		53:    "TYPE_ACTION_REMOVE_ORG_MEMBER",
+		54:    "TYPE_ACTION_SET_ORG_ITEM_RANK",
+		55:    "TYPE_ACTION_RENAME_ORG",
+		56:    "TYPE_ACTION_GRANT_ORG_ADMIN",
+		57:    "TYPE_ACTION_REVOKE_ORG_ADMIN",
+		58:    "TYPE_ACTION_LIST_ORG_ADMINS",
 		10001: "TYPE_NOTIFY_MESSAGES_RECEIVED",
 		10002: "TYPE_NOTIFY_CONTACTS_UPDATED",
 		10003: "TYPE_NOTIFY_SESSION_KICKED",
@@ -191,6 +213,17 @@ var (
 		"TYPE_ACTION_GET_TAGS":                  45,
 		"TYPE_ACTION_SYNC_TAGS":                 46,
 		"TYPE_ACTION_GET_TAG_INFOS":             47,
+		"TYPE_ACTION_CREATE_ORG_TAG":            48,
+		"TYPE_ACTION_RENAME_ORG_TAG":            49,
+		"TYPE_ACTION_DELETE_ORG_TAG":            50,
+		"TYPE_ACTION_LINK_ORG_TAG":              51,
+		"TYPE_ACTION_ADD_ORG_MEMBER":            52,
+		"TYPE_ACTION_REMOVE_ORG_MEMBER":         53,
+		"TYPE_ACTION_SET_ORG_ITEM_RANK":         54,
+		"TYPE_ACTION_RENAME_ORG":                55,
+		"TYPE_ACTION_GRANT_ORG_ADMIN":           56,
+		"TYPE_ACTION_REVOKE_ORG_ADMIN":          57,
+		"TYPE_ACTION_LIST_ORG_ADMINS":           58,
 		"TYPE_NOTIFY_MESSAGES_RECEIVED":         10001,
 		"TYPE_NOTIFY_CONTACTS_UPDATED":          10002,
 		"TYPE_NOTIFY_SESSION_KICKED":            10003,
@@ -690,13 +723,17 @@ func (TagStatus) EnumDescriptor() ([]byte, []int) {
 	return file_yimsg_proto_rawDescGZIP(), []int{8}
 }
 
-// TagChildType 区分 tags 一行挂载的子项是人还是 tag；0 保留为非法值。
+// TagChildType 区分 tags 一行挂载的子项是人、tag 还是管理员授权；0 保留为非法值。
+// GRANT 行与组织架构位置（PERSON/TAG 行）完全解耦：child_id=uid 表示该用户被
+// 授权管理 tag_id 为根的整棵子树，与此人在组织架构里的职位无关（他可能同时
+// 是别的部门的普通成员），不占用职位展示，不出现在 get_tags/sync_tags 的展开结果里。
 type TagChildType int32
 
 const (
 	TagChildType_TAG_CHILD_TYPE_INVALID TagChildType = 0 // reserved=invalid meaning=无效类型
-	TagChildType_TAG_CHILD_TYPE_PERSON  TagChildType = 1 // meaning=子项是人，child_id 为 uid
+	TagChildType_TAG_CHILD_TYPE_PERSON  TagChildType = 1 // meaning=子项是人，child_id 为 uid，代表组织架构中的真实职位
 	TagChildType_TAG_CHILD_TYPE_TAG     TagChildType = 2 // meaning=子项是 tag，child_id 为 tag_id
+	TagChildType_TAG_CHILD_TYPE_GRANT   TagChildType = 3 // meaning=管理员授权，child_id 为 uid，代表被授权管理 tag_id 为根的子树
 )
 
 // Enum value maps for TagChildType.
@@ -705,11 +742,13 @@ var (
 		0: "TAG_CHILD_TYPE_INVALID",
 		1: "TAG_CHILD_TYPE_PERSON",
 		2: "TAG_CHILD_TYPE_TAG",
+		3: "TAG_CHILD_TYPE_GRANT",
 	}
 	TagChildType_value = map[string]int32{
 		"TAG_CHILD_TYPE_INVALID": 0,
 		"TAG_CHILD_TYPE_PERSON":  1,
 		"TAG_CHILD_TYPE_TAG":     2,
+		"TAG_CHILD_TYPE_GRANT":   3,
 	}
 )
 
@@ -738,56 +777,6 @@ func (x TagChildType) Number() protoreflect.EnumNumber {
 // Deprecated: Use TagChildType.Descriptor instead.
 func (TagChildType) EnumDescriptor() ([]byte, []int) {
 	return file_yimsg_proto_rawDescGZIP(), []int{9}
-}
-
-// TagRole 标识某子项在其挂载节点下是否为管理员；0 保留为非法值。
-type TagRole int32
-
-const (
-	TagRole_TAG_ROLE_INVALID TagRole = 0 // reserved=invalid meaning=无效角色
-	TagRole_TAG_ROLE_MEMBER  TagRole = 1 // meaning=普通成员
-	TagRole_TAG_ROLE_ADMIN   TagRole = 2 // meaning=管理员
-)
-
-// Enum value maps for TagRole.
-var (
-	TagRole_name = map[int32]string{
-		0: "TAG_ROLE_INVALID",
-		1: "TAG_ROLE_MEMBER",
-		2: "TAG_ROLE_ADMIN",
-	}
-	TagRole_value = map[string]int32{
-		"TAG_ROLE_INVALID": 0,
-		"TAG_ROLE_MEMBER":  1,
-		"TAG_ROLE_ADMIN":   2,
-	}
-)
-
-func (x TagRole) Enum() *TagRole {
-	p := new(TagRole)
-	*p = x
-	return p
-}
-
-func (x TagRole) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (TagRole) Descriptor() protoreflect.EnumDescriptor {
-	return file_yimsg_proto_enumTypes[10].Descriptor()
-}
-
-func (TagRole) Type() protoreflect.EnumType {
-	return &file_yimsg_proto_enumTypes[10]
-}
-
-func (x TagRole) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use TagRole.Descriptor instead.
-func (TagRole) EnumDescriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{10}
 }
 
 // PageDirection 是展示通道翻页方向；0 保留为非法值，真实业务值从 1 开始。
@@ -827,11 +816,11 @@ func (x PageDirection) String() string {
 }
 
 func (PageDirection) Descriptor() protoreflect.EnumDescriptor {
-	return file_yimsg_proto_enumTypes[11].Descriptor()
+	return file_yimsg_proto_enumTypes[10].Descriptor()
 }
 
 func (PageDirection) Type() protoreflect.EnumType {
-	return &file_yimsg_proto_enumTypes[11]
+	return &file_yimsg_proto_enumTypes[10]
 }
 
 func (x PageDirection) Number() protoreflect.EnumNumber {
@@ -840,7 +829,7 @@ func (x PageDirection) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PageDirection.Descriptor instead.
 func (PageDirection) EnumDescriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{11}
+	return file_yimsg_proto_rawDescGZIP(), []int{10}
 }
 
 type MessagesReceivedNotification struct {
@@ -7443,17 +7432,17 @@ func (x *TagInfo) GetAvatar() string {
 
 // Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
 // （组织根传 org_id，部门传 tag_id）下挂一个子项"；child_type 区分子项是
-// 人（PERSON，child_id=uid）还是 tag（TAG，child_id=tag_id）；role 标识
-// 该子项在这个父节点下是否为管理员。
+// 人（PERSON，child_id=uid）、tag（TAG，child_id=tag_id）还是管理员授权
+// （GRANT，child_id=uid，与组织架构位置解耦，get_tags/sync_tags 的展开结果
+// 不含 GRANT 行，仅通过 list_org_admins 读取）。
 type Tag struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TagId         int64                  `protobuf:"varint,1,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"`                                              // required 父节点 ID；在线展开时恒等于请求的 tag_id，展开组织根传 org_id
-	ChildId       int64                  `protobuf:"varint,2,opt,name=child_id,json=childId,proto3" json:"child_id,omitempty"`                                        // required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id
+	ChildId       int64                  `protobuf:"varint,2,opt,name=child_id,json=childId,proto3" json:"child_id,omitempty"`                                        // required 子项 ID：child_type=PERSON/GRANT 时为 uid，child_type=TAG 时为 tag_id
 	ChildType     TagChildType           `protobuf:"varint,3,opt,name=child_type,json=childType,proto3,enum=yimsg.protocol.TagChildType" json:"child_type,omitempty"` // required 子项类型
 	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`                                                            // optional 本节点下的职务展示文本（仅人条目常用）
 	Rank          int64                  `protobuf:"varint,5,opt,name=rank,proto3" json:"rank,omitempty"`                                                             // required 本条边的排序值，越小越靠前；2147483647 表示未显式排序
 	SortKey       string                 `protobuf:"bytes,6,opt,name=sort_key,json=sortKey,proto3" json:"sort_key,omitempty"`                                         // required 名字归一化排序键（人取昵称、tag 取 tag 名）
-	Role          TagRole                `protobuf:"varint,7,opt,name=role,proto3,enum=yimsg.protocol.TagRole" json:"role,omitempty"`                                 // required 子项在本节点下的角色，标识是否为管理员
 	Status        TagStatus              `protobuf:"varint,8,opt,name=status,proto3,enum=yimsg.protocol.TagStatus" json:"status,omitempty"`                           // required 在线展开恒为 ACTIVE；同步含 DELETED tombstone
 	Seq           int64                  `protobuf:"varint,9,opt,name=seq,proto3" json:"seq,omitempty"`                                                               // required 同步序号
 	unknownFields protoimpl.UnknownFields
@@ -7530,13 +7519,6 @@ func (x *Tag) GetSortKey() string {
 		return x.SortKey
 	}
 	return ""
-}
-
-func (x *Tag) GetRole() TagRole {
-	if x != nil {
-		return x.Role
-	}
-	return TagRole_TAG_ROLE_INVALID
 }
 
 func (x *Tag) GetStatus() TagStatus {
@@ -8007,6 +7989,1222 @@ func (x *SyncTagsResponse) GetCursorSeq() int64 {
 		return x.CursorSeq
 	}
 	return 0
+}
+
+type CreateOrgTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                     // required 组织 ID（分片路由键）
+	ParentTagId   int64                  `protobuf:"varint,11,opt,name=parent_tag_id,json=parentTagId,proto3" json:"parent_tag_id,omitempty"` // required 挂载的父节点；组织根传 org_id
+	Name          string                 `protobuf:"bytes,12,opt,name=name,proto3" json:"name,omitempty"`                                     // required tag 名称
+	Avatar        string                 `protobuf:"bytes,13,opt,name=avatar,proto3" json:"avatar,omitempty"`                                 // optional tag 头像 URL
+	Rank          *int64                 `protobuf:"varint,14,opt,name=rank,proto3,oneof" json:"rank,omitempty"`                              // optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateOrgTagRequest) Reset() {
+	*x = CreateOrgTagRequest{}
+	mi := &file_yimsg_proto_msgTypes[127]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateOrgTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateOrgTagRequest) ProtoMessage() {}
+
+func (x *CreateOrgTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[127]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateOrgTagRequest.ProtoReflect.Descriptor instead.
+func (*CreateOrgTagRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{127}
+}
+
+func (x *CreateOrgTagRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *CreateOrgTagRequest) GetParentTagId() int64 {
+	if x != nil {
+		return x.ParentTagId
+	}
+	return 0
+}
+
+func (x *CreateOrgTagRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateOrgTagRequest) GetAvatar() string {
+	if x != nil {
+		return x.Avatar
+	}
+	return ""
+}
+
+func (x *CreateOrgTagRequest) GetRank() int64 {
+	if x != nil && x.Rank != nil {
+		return *x.Rank
+	}
+	return 0
+}
+
+type CreateOrgTagResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`                  // required 通用响应状态
+	TagId         int64                  `protobuf:"varint,10,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"` // required 新建 tag ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateOrgTagResponse) Reset() {
+	*x = CreateOrgTagResponse{}
+	mi := &file_yimsg_proto_msgTypes[128]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateOrgTagResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateOrgTagResponse) ProtoMessage() {}
+
+func (x *CreateOrgTagResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[128]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateOrgTagResponse.ProtoReflect.Descriptor instead.
+func (*CreateOrgTagResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{128}
+}
+
+func (x *CreateOrgTagResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+func (x *CreateOrgTagResponse) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+type RenameOrgTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	TagId         int64                  `protobuf:"varint,11,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"` // required 目标 tag ID
+	Name          string                 `protobuf:"bytes,12,opt,name=name,proto3" json:"name,omitempty"`                 // required 新名称
+	Avatar        string                 `protobuf:"bytes,13,opt,name=avatar,proto3" json:"avatar,omitempty"`             // optional 新头像 URL
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameOrgTagRequest) Reset() {
+	*x = RenameOrgTagRequest{}
+	mi := &file_yimsg_proto_msgTypes[129]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameOrgTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameOrgTagRequest) ProtoMessage() {}
+
+func (x *RenameOrgTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[129]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameOrgTagRequest.ProtoReflect.Descriptor instead.
+func (*RenameOrgTagRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{129}
+}
+
+func (x *RenameOrgTagRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *RenameOrgTagRequest) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+func (x *RenameOrgTagRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RenameOrgTagRequest) GetAvatar() string {
+	if x != nil {
+		return x.Avatar
+	}
+	return ""
+}
+
+type RenameOrgTagResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameOrgTagResponse) Reset() {
+	*x = RenameOrgTagResponse{}
+	mi := &file_yimsg_proto_msgTypes[130]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameOrgTagResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameOrgTagResponse) ProtoMessage() {}
+
+func (x *RenameOrgTagResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[130]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameOrgTagResponse.ProtoReflect.Descriptor instead.
+func (*RenameOrgTagResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{130}
+}
+
+func (x *RenameOrgTagResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type DeleteOrgTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	TagId         int64                  `protobuf:"varint,11,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"` // required 目标 tag ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteOrgTagRequest) Reset() {
+	*x = DeleteOrgTagRequest{}
+	mi := &file_yimsg_proto_msgTypes[131]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteOrgTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrgTagRequest) ProtoMessage() {}
+
+func (x *DeleteOrgTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[131]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrgTagRequest.ProtoReflect.Descriptor instead.
+func (*DeleteOrgTagRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{131}
+}
+
+func (x *DeleteOrgTagRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *DeleteOrgTagRequest) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+type DeleteOrgTagResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteOrgTagResponse) Reset() {
+	*x = DeleteOrgTagResponse{}
+	mi := &file_yimsg_proto_msgTypes[132]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteOrgTagResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrgTagResponse) ProtoMessage() {}
+
+func (x *DeleteOrgTagResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[132]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrgTagResponse.ProtoReflect.Descriptor instead.
+func (*DeleteOrgTagResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{132}
+}
+
+func (x *DeleteOrgTagResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type LinkOrgTagRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                     // required 组织 ID（分片路由键）
+	ParentTagId   int64                  `protobuf:"varint,11,opt,name=parent_tag_id,json=parentTagId,proto3" json:"parent_tag_id,omitempty"` // required 挂载的父节点
+	ChildTagId    int64                  `protobuf:"varint,12,opt,name=child_tag_id,json=childTagId,proto3" json:"child_tag_id,omitempty"`    // required 已存在的子 tag ID（DAG 多父，防环由服务端校验）
+	Rank          *int64                 `protobuf:"varint,13,opt,name=rank,proto3,oneof" json:"rank,omitempty"`                              // optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkOrgTagRequest) Reset() {
+	*x = LinkOrgTagRequest{}
+	mi := &file_yimsg_proto_msgTypes[133]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkOrgTagRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkOrgTagRequest) ProtoMessage() {}
+
+func (x *LinkOrgTagRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[133]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkOrgTagRequest.ProtoReflect.Descriptor instead.
+func (*LinkOrgTagRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{133}
+}
+
+func (x *LinkOrgTagRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *LinkOrgTagRequest) GetParentTagId() int64 {
+	if x != nil {
+		return x.ParentTagId
+	}
+	return 0
+}
+
+func (x *LinkOrgTagRequest) GetChildTagId() int64 {
+	if x != nil {
+		return x.ChildTagId
+	}
+	return 0
+}
+
+func (x *LinkOrgTagRequest) GetRank() int64 {
+	if x != nil && x.Rank != nil {
+		return *x.Rank
+	}
+	return 0
+}
+
+type LinkOrgTagResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkOrgTagResponse) Reset() {
+	*x = LinkOrgTagResponse{}
+	mi := &file_yimsg_proto_msgTypes[134]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkOrgTagResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkOrgTagResponse) ProtoMessage() {}
+
+func (x *LinkOrgTagResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[134]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkOrgTagResponse.ProtoReflect.Descriptor instead.
+func (*LinkOrgTagResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{134}
+}
+
+func (x *LinkOrgTagResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type AddOrgMemberRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	TagId         int64                  `protobuf:"varint,11,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"` // required 挂载的节点；组织根传 org_id
+	Uid           int64                  `protobuf:"varint,12,opt,name=uid,proto3" json:"uid,omitempty"`                  // required 新成员用户 ID
+	Title         string                 `protobuf:"bytes,13,opt,name=title,proto3" json:"title,omitempty"`               // optional 本节点下的职务展示文本
+	Rank          *int64                 `protobuf:"varint,14,opt,name=rank,proto3,oneof" json:"rank,omitempty"`          // optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddOrgMemberRequest) Reset() {
+	*x = AddOrgMemberRequest{}
+	mi := &file_yimsg_proto_msgTypes[135]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddOrgMemberRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddOrgMemberRequest) ProtoMessage() {}
+
+func (x *AddOrgMemberRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[135]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddOrgMemberRequest.ProtoReflect.Descriptor instead.
+func (*AddOrgMemberRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{135}
+}
+
+func (x *AddOrgMemberRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *AddOrgMemberRequest) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+func (x *AddOrgMemberRequest) GetUid() int64 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
+func (x *AddOrgMemberRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *AddOrgMemberRequest) GetRank() int64 {
+	if x != nil && x.Rank != nil {
+		return *x.Rank
+	}
+	return 0
+}
+
+type AddOrgMemberResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddOrgMemberResponse) Reset() {
+	*x = AddOrgMemberResponse{}
+	mi := &file_yimsg_proto_msgTypes[136]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddOrgMemberResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddOrgMemberResponse) ProtoMessage() {}
+
+func (x *AddOrgMemberResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[136]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddOrgMemberResponse.ProtoReflect.Descriptor instead.
+func (*AddOrgMemberResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{136}
+}
+
+func (x *AddOrgMemberResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type RemoveOrgMemberRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	TagId         int64                  `protobuf:"varint,11,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"` // required 挂载的节点
+	Uid           int64                  `protobuf:"varint,12,opt,name=uid,proto3" json:"uid,omitempty"`                  // required 移除成员用户 ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveOrgMemberRequest) Reset() {
+	*x = RemoveOrgMemberRequest{}
+	mi := &file_yimsg_proto_msgTypes[137]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveOrgMemberRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveOrgMemberRequest) ProtoMessage() {}
+
+func (x *RemoveOrgMemberRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[137]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveOrgMemberRequest.ProtoReflect.Descriptor instead.
+func (*RemoveOrgMemberRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{137}
+}
+
+func (x *RemoveOrgMemberRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *RemoveOrgMemberRequest) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+func (x *RemoveOrgMemberRequest) GetUid() int64 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
+type RemoveOrgMemberResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveOrgMemberResponse) Reset() {
+	*x = RemoveOrgMemberResponse{}
+	mi := &file_yimsg_proto_msgTypes[138]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveOrgMemberResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveOrgMemberResponse) ProtoMessage() {}
+
+func (x *RemoveOrgMemberResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[138]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveOrgMemberResponse.ProtoReflect.Descriptor instead.
+func (*RemoveOrgMemberResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{138}
+}
+
+func (x *RemoveOrgMemberResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type SetOrgItemRankRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                                              // required 组织 ID（分片路由键）
+	TagId         int64                  `protobuf:"varint,11,opt,name=tag_id,json=tagId,proto3" json:"tag_id,omitempty"`                                              // required 该边所属父节点
+	ChildId       int64                  `protobuf:"varint,12,opt,name=child_id,json=childId,proto3" json:"child_id,omitempty"`                                        // required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id
+	ChildType     TagChildType           `protobuf:"varint,13,opt,name=child_type,json=childType,proto3,enum=yimsg.protocol.TagChildType" json:"child_type,omitempty"` // required 子项类型，仅支持 PERSON / TAG
+	Title         string                 `protobuf:"bytes,14,opt,name=title,proto3" json:"title,omitempty"`                                                            // optional 本节点下的职务展示文本（仅人条目常用）
+	Rank          int64                  `protobuf:"varint,15,opt,name=rank,proto3" json:"rank,omitempty"`                                                             // required 新排序值
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOrgItemRankRequest) Reset() {
+	*x = SetOrgItemRankRequest{}
+	mi := &file_yimsg_proto_msgTypes[139]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOrgItemRankRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOrgItemRankRequest) ProtoMessage() {}
+
+func (x *SetOrgItemRankRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[139]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOrgItemRankRequest.ProtoReflect.Descriptor instead.
+func (*SetOrgItemRankRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{139}
+}
+
+func (x *SetOrgItemRankRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *SetOrgItemRankRequest) GetTagId() int64 {
+	if x != nil {
+		return x.TagId
+	}
+	return 0
+}
+
+func (x *SetOrgItemRankRequest) GetChildId() int64 {
+	if x != nil {
+		return x.ChildId
+	}
+	return 0
+}
+
+func (x *SetOrgItemRankRequest) GetChildType() TagChildType {
+	if x != nil {
+		return x.ChildType
+	}
+	return TagChildType_TAG_CHILD_TYPE_INVALID
+}
+
+func (x *SetOrgItemRankRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *SetOrgItemRankRequest) GetRank() int64 {
+	if x != nil {
+		return x.Rank
+	}
+	return 0
+}
+
+type SetOrgItemRankResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOrgItemRankResponse) Reset() {
+	*x = SetOrgItemRankResponse{}
+	mi := &file_yimsg_proto_msgTypes[140]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOrgItemRankResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOrgItemRankResponse) ProtoMessage() {}
+
+func (x *SetOrgItemRankResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[140]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOrgItemRankResponse.ProtoReflect.Descriptor instead.
+func (*SetOrgItemRankResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{140}
+}
+
+func (x *SetOrgItemRankResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type RenameOrgRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	Name          string                 `protobuf:"bytes,11,opt,name=name,proto3" json:"name,omitempty"`                 // required 新组织名称
+	Avatar        string                 `protobuf:"bytes,12,opt,name=avatar,proto3" json:"avatar,omitempty"`             // optional 新组织头像 URL
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameOrgRequest) Reset() {
+	*x = RenameOrgRequest{}
+	mi := &file_yimsg_proto_msgTypes[141]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameOrgRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameOrgRequest) ProtoMessage() {}
+
+func (x *RenameOrgRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[141]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameOrgRequest.ProtoReflect.Descriptor instead.
+func (*RenameOrgRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{141}
+}
+
+func (x *RenameOrgRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *RenameOrgRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RenameOrgRequest) GetAvatar() string {
+	if x != nil {
+		return x.Avatar
+	}
+	return ""
+}
+
+type RenameOrgResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameOrgResponse) Reset() {
+	*x = RenameOrgResponse{}
+	mi := &file_yimsg_proto_msgTypes[142]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameOrgResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameOrgResponse) ProtoMessage() {}
+
+func (x *RenameOrgResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[142]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameOrgResponse.ProtoReflect.Descriptor instead.
+func (*RenameOrgResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{142}
+}
+
+func (x *RenameOrgResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type GrantOrgAdminRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                  // required 组织 ID（分片路由键）
+	ScopeTagId    int64                  `protobuf:"varint,11,opt,name=scope_tag_id,json=scopeTagId,proto3" json:"scope_tag_id,omitempty"` // required 被授权管理的子树根；组织根传 org_id
+	Uid           int64                  `protobuf:"varint,12,opt,name=uid,proto3" json:"uid,omitempty"`                                   // required 被授权人；不要求其本身是该子树的成员
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrantOrgAdminRequest) Reset() {
+	*x = GrantOrgAdminRequest{}
+	mi := &file_yimsg_proto_msgTypes[143]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantOrgAdminRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantOrgAdminRequest) ProtoMessage() {}
+
+func (x *GrantOrgAdminRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[143]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantOrgAdminRequest.ProtoReflect.Descriptor instead.
+func (*GrantOrgAdminRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{143}
+}
+
+func (x *GrantOrgAdminRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *GrantOrgAdminRequest) GetScopeTagId() int64 {
+	if x != nil {
+		return x.ScopeTagId
+	}
+	return 0
+}
+
+func (x *GrantOrgAdminRequest) GetUid() int64 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
+type GrantOrgAdminResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrantOrgAdminResponse) Reset() {
+	*x = GrantOrgAdminResponse{}
+	mi := &file_yimsg_proto_msgTypes[144]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantOrgAdminResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantOrgAdminResponse) ProtoMessage() {}
+
+func (x *GrantOrgAdminResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[144]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantOrgAdminResponse.ProtoReflect.Descriptor instead.
+func (*GrantOrgAdminResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{144}
+}
+
+func (x *GrantOrgAdminResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type RevokeOrgAdminRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                  // required 组织 ID（分片路由键）
+	ScopeTagId    int64                  `protobuf:"varint,11,opt,name=scope_tag_id,json=scopeTagId,proto3" json:"scope_tag_id,omitempty"` // required 被撤权的子树根
+	Uid           int64                  `protobuf:"varint,12,opt,name=uid,proto3" json:"uid,omitempty"`                                   // required 被撤权人
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeOrgAdminRequest) Reset() {
+	*x = RevokeOrgAdminRequest{}
+	mi := &file_yimsg_proto_msgTypes[145]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeOrgAdminRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeOrgAdminRequest) ProtoMessage() {}
+
+func (x *RevokeOrgAdminRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[145]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeOrgAdminRequest.ProtoReflect.Descriptor instead.
+func (*RevokeOrgAdminRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{145}
+}
+
+func (x *RevokeOrgAdminRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *RevokeOrgAdminRequest) GetScopeTagId() int64 {
+	if x != nil {
+		return x.ScopeTagId
+	}
+	return 0
+}
+
+func (x *RevokeOrgAdminRequest) GetUid() int64 {
+	if x != nil {
+		return x.Uid
+	}
+	return 0
+}
+
+type RevokeOrgAdminResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeOrgAdminResponse) Reset() {
+	*x = RevokeOrgAdminResponse{}
+	mi := &file_yimsg_proto_msgTypes[146]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeOrgAdminResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeOrgAdminResponse) ProtoMessage() {}
+
+func (x *RevokeOrgAdminResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[146]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeOrgAdminResponse.ProtoReflect.Descriptor instead.
+func (*RevokeOrgAdminResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{146}
+}
+
+func (x *RevokeOrgAdminResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+type ListOrgAdminsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"`                  // required 组织 ID（分片路由键）
+	ScopeTagId    int64                  `protobuf:"varint,11,opt,name=scope_tag_id,json=scopeTagId,proto3" json:"scope_tag_id,omitempty"` // required 目标节点；组织根传 org_id
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOrgAdminsRequest) Reset() {
+	*x = ListOrgAdminsRequest{}
+	mi := &file_yimsg_proto_msgTypes[147]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOrgAdminsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOrgAdminsRequest) ProtoMessage() {}
+
+func (x *ListOrgAdminsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[147]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOrgAdminsRequest.ProtoReflect.Descriptor instead.
+func (*ListOrgAdminsRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{147}
+}
+
+func (x *ListOrgAdminsRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+func (x *ListOrgAdminsRequest) GetScopeTagId() int64 {
+	if x != nil {
+		return x.ScopeTagId
+	}
+	return 0
+}
+
+type ListOrgAdminsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`                                     // required 通用响应状态
+	AdminUids     []int64                `protobuf:"varint,10,rep,packed,name=admin_uids,json=adminUids,proto3" json:"admin_uids,omitempty"` // optional 直接挂在该节点上的管理员 uid 列表（不含挂在祖先节点、递归覆盖到此的管理员）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOrgAdminsResponse) Reset() {
+	*x = ListOrgAdminsResponse{}
+	mi := &file_yimsg_proto_msgTypes[148]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOrgAdminsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOrgAdminsResponse) ProtoMessage() {}
+
+func (x *ListOrgAdminsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[148]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOrgAdminsResponse.ProtoReflect.Descriptor instead.
+func (*ListOrgAdminsResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{148}
+}
+
+func (x *ListOrgAdminsResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+func (x *ListOrgAdminsResponse) GetAdminUids() []int64 {
+	if x != nil {
+		return x.AdminUids
+	}
+	return nil
 }
 
 var File_yimsg_proto protoreflect.FileDescriptor
@@ -8509,7 +9707,7 @@ const file_yimsg_proto_rawDesc = "" +
 	"\aTagInfo\x12\x15\n" +
 	"\x06tag_id\x18\x01 \x01(\x03R\x05tagId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
-	"\x06avatar\x18\x03 \x01(\tR\x06avatar\"\xab\x02\n" +
+	"\x06avatar\x18\x03 \x01(\tR\x06avatar\"\xfe\x01\n" +
 	"\x03Tag\x12\x15\n" +
 	"\x06tag_id\x18\x01 \x01(\x03R\x05tagId\x12\x19\n" +
 	"\bchild_id\x18\x02 \x01(\x03R\achildId\x12;\n" +
@@ -8517,8 +9715,7 @@ const file_yimsg_proto_rawDesc = "" +
 	"child_type\x18\x03 \x01(\x0e2\x1c.yimsg.protocol.TagChildTypeR\tchildType\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x12\n" +
 	"\x04rank\x18\x05 \x01(\x03R\x04rank\x12\x19\n" +
-	"\bsort_key\x18\x06 \x01(\tR\asortKey\x12+\n" +
-	"\x04role\x18\a \x01(\x0e2\x17.yimsg.protocol.TagRoleR\x04role\x121\n" +
+	"\bsort_key\x18\x06 \x01(\tR\asortKey\x121\n" +
 	"\x06status\x18\b \x01(\x0e2\x19.yimsg.protocol.TagStatusR\x06status\x12\x10\n" +
 	"\x03seq\x18\t \x01(\x03R\x03seq\"-\n" +
 	"\x12GetOrgInfosRequest\x12\x17\n" +
@@ -8558,7 +9755,104 @@ const file_yimsg_proto_rawDesc = "" +
 	" \x03(\v2\x13.yimsg.protocol.TagR\x04tags\x12\x19\n" +
 	"\bhas_more\x18\v \x01(\bR\ahasMore\x12\x1d\n" +
 	"\n" +
-	"cursor_seq\x18\f \x01(\x03R\tcursorSeq*\xf5\r\n" +
+	"cursor_seq\x18\f \x01(\x03R\tcursorSeq\"\x9e\x01\n" +
+	"\x13CreateOrgTagRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\"\n" +
+	"\rparent_tag_id\x18\v \x01(\x03R\vparentTagId\x12\x12\n" +
+	"\x04name\x18\f \x01(\tR\x04name\x12\x16\n" +
+	"\x06avatar\x18\r \x01(\tR\x06avatar\x12\x17\n" +
+	"\x04rank\x18\x0e \x01(\x03H\x00R\x04rank\x88\x01\x01B\a\n" +
+	"\x05_rank\"_\n" +
+	"\x14CreateOrgTagResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\x12\x15\n" +
+	"\x06tag_id\x18\n" +
+	" \x01(\x03R\x05tagId\"o\n" +
+	"\x13RenameOrgTagRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x15\n" +
+	"\x06tag_id\x18\v \x01(\x03R\x05tagId\x12\x12\n" +
+	"\x04name\x18\f \x01(\tR\x04name\x12\x16\n" +
+	"\x06avatar\x18\r \x01(\tR\x06avatar\"H\n" +
+	"\x14RenameOrgTagResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"C\n" +
+	"\x13DeleteOrgTagRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x15\n" +
+	"\x06tag_id\x18\v \x01(\x03R\x05tagId\"H\n" +
+	"\x14DeleteOrgTagResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"\x92\x01\n" +
+	"\x11LinkOrgTagRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\"\n" +
+	"\rparent_tag_id\x18\v \x01(\x03R\vparentTagId\x12 \n" +
+	"\fchild_tag_id\x18\f \x01(\x03R\n" +
+	"childTagId\x12\x17\n" +
+	"\x04rank\x18\r \x01(\x03H\x00R\x04rank\x88\x01\x01B\a\n" +
+	"\x05_rank\"F\n" +
+	"\x12LinkOrgTagResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"\x8d\x01\n" +
+	"\x13AddOrgMemberRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x15\n" +
+	"\x06tag_id\x18\v \x01(\x03R\x05tagId\x12\x10\n" +
+	"\x03uid\x18\f \x01(\x03R\x03uid\x12\x14\n" +
+	"\x05title\x18\r \x01(\tR\x05title\x12\x17\n" +
+	"\x04rank\x18\x0e \x01(\x03H\x00R\x04rank\x88\x01\x01B\a\n" +
+	"\x05_rank\"H\n" +
+	"\x14AddOrgMemberResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"X\n" +
+	"\x16RemoveOrgMemberRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x15\n" +
+	"\x06tag_id\x18\v \x01(\x03R\x05tagId\x12\x10\n" +
+	"\x03uid\x18\f \x01(\x03R\x03uid\"K\n" +
+	"\x17RemoveOrgMemberResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"\xc7\x01\n" +
+	"\x15SetOrgItemRankRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x15\n" +
+	"\x06tag_id\x18\v \x01(\x03R\x05tagId\x12\x19\n" +
+	"\bchild_id\x18\f \x01(\x03R\achildId\x12;\n" +
+	"\n" +
+	"child_type\x18\r \x01(\x0e2\x1c.yimsg.protocol.TagChildTypeR\tchildType\x12\x14\n" +
+	"\x05title\x18\x0e \x01(\tR\x05title\x12\x12\n" +
+	"\x04rank\x18\x0f \x01(\x03R\x04rank\"J\n" +
+	"\x16SetOrgItemRankResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"U\n" +
+	"\x10RenameOrgRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12\x12\n" +
+	"\x04name\x18\v \x01(\tR\x04name\x12\x16\n" +
+	"\x06avatar\x18\f \x01(\tR\x06avatar\"E\n" +
+	"\x11RenameOrgResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"a\n" +
+	"\x14GrantOrgAdminRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12 \n" +
+	"\fscope_tag_id\x18\v \x01(\x03R\n" +
+	"scopeTagId\x12\x10\n" +
+	"\x03uid\x18\f \x01(\x03R\x03uid\"I\n" +
+	"\x15GrantOrgAdminResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"b\n" +
+	"\x15RevokeOrgAdminRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12 \n" +
+	"\fscope_tag_id\x18\v \x01(\x03R\n" +
+	"scopeTagId\x12\x10\n" +
+	"\x03uid\x18\f \x01(\x03R\x03uid\"J\n" +
+	"\x16RevokeOrgAdminResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\"O\n" +
+	"\x14ListOrgAdminsRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\x12 \n" +
+	"\fscope_tag_id\x18\v \x01(\x03R\n" +
+	"scopeTagId\"h\n" +
+	"\x15ListOrgAdminsResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\x12\x1d\n" +
+	"\n" +
+	"admin_uids\x18\n" +
+	" \x03(\x03R\tadminUids*\xd9\x10\n" +
 	"\x04Type\x12\x10\n" +
 	"\fTYPE_INVALID\x10\x00\x12\x18\n" +
 	"\x14TYPE_ACTION_REGISTER\x10\x01\x12\x15\n" +
@@ -8607,7 +9901,18 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x19TYPE_ACTION_GET_ORG_INFOS\x10,\x12\x18\n" +
 	"\x14TYPE_ACTION_GET_TAGS\x10-\x12\x19\n" +
 	"\x15TYPE_ACTION_SYNC_TAGS\x10.\x12\x1d\n" +
-	"\x19TYPE_ACTION_GET_TAG_INFOS\x10/\x12\"\n" +
+	"\x19TYPE_ACTION_GET_TAG_INFOS\x10/\x12\x1e\n" +
+	"\x1aTYPE_ACTION_CREATE_ORG_TAG\x100\x12\x1e\n" +
+	"\x1aTYPE_ACTION_RENAME_ORG_TAG\x101\x12\x1e\n" +
+	"\x1aTYPE_ACTION_DELETE_ORG_TAG\x102\x12\x1c\n" +
+	"\x18TYPE_ACTION_LINK_ORG_TAG\x103\x12\x1e\n" +
+	"\x1aTYPE_ACTION_ADD_ORG_MEMBER\x104\x12!\n" +
+	"\x1dTYPE_ACTION_REMOVE_ORG_MEMBER\x105\x12!\n" +
+	"\x1dTYPE_ACTION_SET_ORG_ITEM_RANK\x106\x12\x1a\n" +
+	"\x16TYPE_ACTION_RENAME_ORG\x107\x12\x1f\n" +
+	"\x1bTYPE_ACTION_GRANT_ORG_ADMIN\x108\x12 \n" +
+	"\x1cTYPE_ACTION_REVOKE_ORG_ADMIN\x109\x12\x1f\n" +
+	"\x1bTYPE_ACTION_LIST_ORG_ADMINS\x10:\x12\"\n" +
 	"\x1dTYPE_NOTIFY_MESSAGES_RECEIVED\x10\x91N\x12!\n" +
 	"\x1cTYPE_NOTIFY_CONTACTS_UPDATED\x10\x92N\x12\x1f\n" +
 	"\x1aTYPE_NOTIFY_SESSION_KICKED\x10\x93N\x12\"\n" +
@@ -8673,15 +9978,12 @@ const file_yimsg_proto_rawDesc = "" +
 	"\tTagStatus\x12\x16\n" +
 	"\x12TAG_STATUS_INVALID\x10\x00\x12\x15\n" +
 	"\x11TAG_STATUS_ACTIVE\x10\x01\x12\x17\n" +
-	"\x12TAG_STATUS_DELETED\x10\xff\x01*]\n" +
+	"\x12TAG_STATUS_DELETED\x10\xff\x01*w\n" +
 	"\fTagChildType\x12\x1a\n" +
 	"\x16TAG_CHILD_TYPE_INVALID\x10\x00\x12\x19\n" +
 	"\x15TAG_CHILD_TYPE_PERSON\x10\x01\x12\x16\n" +
-	"\x12TAG_CHILD_TYPE_TAG\x10\x02*H\n" +
-	"\aTagRole\x12\x14\n" +
-	"\x10TAG_ROLE_INVALID\x10\x00\x12\x13\n" +
-	"\x0fTAG_ROLE_MEMBER\x10\x01\x12\x12\n" +
-	"\x0eTAG_ROLE_ADMIN\x10\x02*d\n" +
+	"\x12TAG_CHILD_TYPE_TAG\x10\x02\x12\x18\n" +
+	"\x14TAG_CHILD_TYPE_GRANT\x10\x03*d\n" +
 	"\rPageDirection\x12\x1a\n" +
 	"\x16PAGE_DIRECTION_INVALID\x10\x00\x12\x1a\n" +
 	"\x16PAGE_DIRECTION_FORWARD\x10\x01\x12\x1b\n" +
@@ -8699,8 +10001,8 @@ func file_yimsg_proto_rawDescGZIP() []byte {
 	return file_yimsg_proto_rawDescData
 }
 
-var file_yimsg_proto_enumTypes = make([]protoimpl.EnumInfo, 12)
-var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 127)
+var file_yimsg_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
+var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 149)
 var file_yimsg_proto_goTypes = []any{
 	(Type)(0),                                    // 0: yimsg.protocol.Type
 	(ErrorCode)(0),                               // 1: yimsg.protocol.ErrorCode
@@ -8712,268 +10014,300 @@ var file_yimsg_proto_goTypes = []any{
 	(MutelistStatus)(0),                          // 7: yimsg.protocol.MutelistStatus
 	(TagStatus)(0),                               // 8: yimsg.protocol.TagStatus
 	(TagChildType)(0),                            // 9: yimsg.protocol.TagChildType
-	(TagRole)(0),                                 // 10: yimsg.protocol.TagRole
-	(PageDirection)(0),                           // 11: yimsg.protocol.PageDirection
-	(*MessagesReceivedNotification)(nil),         // 12: yimsg.protocol.MessagesReceivedNotification
-	(*ContactsUpdatedNotification)(nil),          // 13: yimsg.protocol.ContactsUpdatedNotification
-	(*SessionKickedNotification)(nil),            // 14: yimsg.protocol.SessionKickedNotification
-	(*ConversationsClearunreadNotification)(nil), // 15: yimsg.protocol.ConversationsClearunreadNotification
-	(*ConversationsDeleteNotification)(nil),      // 16: yimsg.protocol.ConversationsDeleteNotification
-	(*MessagesDeleteNotification)(nil),           // 17: yimsg.protocol.MessagesDeleteNotification
-	(*BlocklistUpdatedNotification)(nil),         // 18: yimsg.protocol.BlocklistUpdatedNotification
-	(*MutelistUpdatedNotification)(nil),          // 19: yimsg.protocol.MutelistUpdatedNotification
-	(*OrgUpdatedNotification)(nil),               // 20: yimsg.protocol.OrgUpdatedNotification
-	(*BaseResponse)(nil),                         // 21: yimsg.protocol.BaseResponse
-	(*PageQuery)(nil),                            // 22: yimsg.protocol.PageQuery
-	(*PageInfo)(nil),                             // 23: yimsg.protocol.PageInfo
-	(*ClientConfig)(nil),                         // 24: yimsg.protocol.ClientConfig
-	(*UserInfo)(nil),                             // 25: yimsg.protocol.UserInfo
-	(*ConversationTarget)(nil),                   // 26: yimsg.protocol.ConversationTarget
-	(*ContactTarget)(nil),                        // 27: yimsg.protocol.ContactTarget
-	(*Contact)(nil),                              // 28: yimsg.protocol.Contact
-	(*BlocklistUser)(nil),                        // 29: yimsg.protocol.BlocklistUser
-	(*MutelistEntry)(nil),                        // 30: yimsg.protocol.MutelistEntry
-	(*Message)(nil),                              // 31: yimsg.protocol.Message
-	(*MessageBody)(nil),                          // 32: yimsg.protocol.MessageBody
-	(*TextBody)(nil),                             // 33: yimsg.protocol.TextBody
-	(*MarkdownBody)(nil),                         // 34: yimsg.protocol.MarkdownBody
-	(*ImageBody)(nil),                            // 35: yimsg.protocol.ImageBody
-	(*FileBody)(nil),                             // 36: yimsg.protocol.FileBody
-	(*SystemBody)(nil),                           // 37: yimsg.protocol.SystemBody
-	(*RecallBody)(nil),                           // 38: yimsg.protocol.RecallBody
-	(*QuoteBody)(nil),                            // 39: yimsg.protocol.QuoteBody
-	(*ForwardBody)(nil),                          // 40: yimsg.protocol.ForwardBody
-	(*ConversationEntry)(nil),                    // 41: yimsg.protocol.ConversationEntry
-	(*GroupInfo)(nil),                            // 42: yimsg.protocol.GroupInfo
-	(*GroupMember)(nil),                          // 43: yimsg.protocol.GroupMember
-	(*RegisterRequest)(nil),                      // 44: yimsg.protocol.RegisterRequest
-	(*RegisterResponse)(nil),                     // 45: yimsg.protocol.RegisterResponse
-	(*LoginRequest)(nil),                         // 46: yimsg.protocol.LoginRequest
-	(*LoginResponse)(nil),                        // 47: yimsg.protocol.LoginResponse
-	(*AuthenticateRequest)(nil),                  // 48: yimsg.protocol.AuthenticateRequest
-	(*AuthenticateResponse)(nil),                 // 49: yimsg.protocol.AuthenticateResponse
-	(*LogoutRequest)(nil),                        // 50: yimsg.protocol.LogoutRequest
-	(*LogoutResponse)(nil),                       // 51: yimsg.protocol.LogoutResponse
-	(*PingRequest)(nil),                          // 52: yimsg.protocol.PingRequest
-	(*PingResponse)(nil),                         // 53: yimsg.protocol.PingResponse
-	(*UpdateUserInfoRequest)(nil),                // 54: yimsg.protocol.UpdateUserInfoRequest
-	(*UpdateUserInfoResponse)(nil),               // 55: yimsg.protocol.UpdateUserInfoResponse
-	(*UpdatePasswordRequest)(nil),                // 56: yimsg.protocol.UpdatePasswordRequest
-	(*UpdatePasswordResponse)(nil),               // 57: yimsg.protocol.UpdatePasswordResponse
-	(*GetUserInfosRequest)(nil),                  // 58: yimsg.protocol.GetUserInfosRequest
-	(*GetUserInfosResponse)(nil),                 // 59: yimsg.protocol.GetUserInfosResponse
-	(*SearchUserRequest)(nil),                    // 60: yimsg.protocol.SearchUserRequest
-	(*SearchUserResponse)(nil),                   // 61: yimsg.protocol.SearchUserResponse
-	(*AddFriendRequest)(nil),                     // 62: yimsg.protocol.AddFriendRequest
-	(*AddFriendResponse)(nil),                    // 63: yimsg.protocol.AddFriendResponse
-	(*AcceptFriendRequest)(nil),                  // 64: yimsg.protocol.AcceptFriendRequest
-	(*AcceptFriendResponse)(nil),                 // 65: yimsg.protocol.AcceptFriendResponse
-	(*RejectFriendRequest)(nil),                  // 66: yimsg.protocol.RejectFriendRequest
-	(*RejectFriendResponse)(nil),                 // 67: yimsg.protocol.RejectFriendResponse
-	(*DeleteFriendRequest)(nil),                  // 68: yimsg.protocol.DeleteFriendRequest
-	(*DeleteFriendResponse)(nil),                 // 69: yimsg.protocol.DeleteFriendResponse
-	(*UpdateRemarkRequest)(nil),                  // 70: yimsg.protocol.UpdateRemarkRequest
-	(*UpdateRemarkResponse)(nil),                 // 71: yimsg.protocol.UpdateRemarkResponse
-	(*GetContactsRequest)(nil),                   // 72: yimsg.protocol.GetContactsRequest
-	(*GetContactsResponse)(nil),                  // 73: yimsg.protocol.GetContactsResponse
-	(*GetContactCountRequest)(nil),               // 74: yimsg.protocol.GetContactCountRequest
-	(*GetContactCountResponse)(nil),              // 75: yimsg.protocol.GetContactCountResponse
-	(*SyncContactsRequest)(nil),                  // 76: yimsg.protocol.SyncContactsRequest
-	(*SyncContactsResponse)(nil),                 // 77: yimsg.protocol.SyncContactsResponse
-	(*FavoriteGroupRequest)(nil),                 // 78: yimsg.protocol.FavoriteGroupRequest
-	(*FavoriteGroupResponse)(nil),                // 79: yimsg.protocol.FavoriteGroupResponse
-	(*UnfavoriteGroupRequest)(nil),               // 80: yimsg.protocol.UnfavoriteGroupRequest
-	(*UnfavoriteGroupResponse)(nil),              // 81: yimsg.protocol.UnfavoriteGroupResponse
-	(*BlockUserRequest)(nil),                     // 82: yimsg.protocol.BlockUserRequest
-	(*BlockUserResponse)(nil),                    // 83: yimsg.protocol.BlockUserResponse
-	(*UnblockUserRequest)(nil),                   // 84: yimsg.protocol.UnblockUserRequest
-	(*UnblockUserResponse)(nil),                  // 85: yimsg.protocol.UnblockUserResponse
-	(*GetBlocklistRequest)(nil),                  // 86: yimsg.protocol.GetBlocklistRequest
-	(*GetBlocklistResponse)(nil),                 // 87: yimsg.protocol.GetBlocklistResponse
-	(*SyncBlocklistRequest)(nil),                 // 88: yimsg.protocol.SyncBlocklistRequest
-	(*SyncBlocklistResponse)(nil),                // 89: yimsg.protocol.SyncBlocklistResponse
-	(*SendMessageRequest)(nil),                   // 90: yimsg.protocol.SendMessageRequest
-	(*SendMessageResponse)(nil),                  // 91: yimsg.protocol.SendMessageResponse
-	(*SyncMessagesRequest)(nil),                  // 92: yimsg.protocol.SyncMessagesRequest
-	(*SyncMessagesResponse)(nil),                 // 93: yimsg.protocol.SyncMessagesResponse
-	(*GetMessagesRequest)(nil),                   // 94: yimsg.protocol.GetMessagesRequest
-	(*GetMessagesResponse)(nil),                  // 95: yimsg.protocol.GetMessagesResponse
-	(*DeleteMessageRequest)(nil),                 // 96: yimsg.protocol.DeleteMessageRequest
-	(*DeleteMessageResponse)(nil),                // 97: yimsg.protocol.DeleteMessageResponse
-	(*GetConversationsRequest)(nil),              // 98: yimsg.protocol.GetConversationsRequest
-	(*GetConversationsResponse)(nil),             // 99: yimsg.protocol.GetConversationsResponse
-	(*SyncConversationsRequest)(nil),             // 100: yimsg.protocol.SyncConversationsRequest
-	(*SyncConversationsResponse)(nil),            // 101: yimsg.protocol.SyncConversationsResponse
-	(*GetUnreadCountRequest)(nil),                // 102: yimsg.protocol.GetUnreadCountRequest
-	(*GetUnreadCountResponse)(nil),               // 103: yimsg.protocol.GetUnreadCountResponse
-	(*ClearUnreadRequest)(nil),                   // 104: yimsg.protocol.ClearUnreadRequest
-	(*ClearUnreadResponse)(nil),                  // 105: yimsg.protocol.ClearUnreadResponse
-	(*DeleteConversationRequest)(nil),            // 106: yimsg.protocol.DeleteConversationRequest
-	(*DeleteConversationResponse)(nil),           // 107: yimsg.protocol.DeleteConversationResponse
-	(*MuteConversationRequest)(nil),              // 108: yimsg.protocol.MuteConversationRequest
-	(*MuteConversationResponse)(nil),             // 109: yimsg.protocol.MuteConversationResponse
-	(*UnmuteConversationRequest)(nil),            // 110: yimsg.protocol.UnmuteConversationRequest
-	(*UnmuteConversationResponse)(nil),           // 111: yimsg.protocol.UnmuteConversationResponse
-	(*GetMutelistRequest)(nil),                   // 112: yimsg.protocol.GetMutelistRequest
-	(*GetMutelistResponse)(nil),                  // 113: yimsg.protocol.GetMutelistResponse
-	(*SyncMutelistRequest)(nil),                  // 114: yimsg.protocol.SyncMutelistRequest
-	(*SyncMutelistResponse)(nil),                 // 115: yimsg.protocol.SyncMutelistResponse
-	(*CreateGroupRequest)(nil),                   // 116: yimsg.protocol.CreateGroupRequest
-	(*CreateGroupResponse)(nil),                  // 117: yimsg.protocol.CreateGroupResponse
-	(*GetGroupInfosRequest)(nil),                 // 118: yimsg.protocol.GetGroupInfosRequest
-	(*GetGroupInfosResponse)(nil),                // 119: yimsg.protocol.GetGroupInfosResponse
-	(*GetGroupMembersRequest)(nil),               // 120: yimsg.protocol.GetGroupMembersRequest
-	(*GetGroupMembersResponse)(nil),              // 121: yimsg.protocol.GetGroupMembersResponse
-	(*UpdateGroupInfoRequest)(nil),               // 122: yimsg.protocol.UpdateGroupInfoRequest
-	(*UpdateGroupInfoResponse)(nil),              // 123: yimsg.protocol.UpdateGroupInfoResponse
-	(*AddGroupMemberRequest)(nil),                // 124: yimsg.protocol.AddGroupMemberRequest
-	(*AddGroupMemberResponse)(nil),               // 125: yimsg.protocol.AddGroupMemberResponse
-	(*RemoveGroupMemberRequest)(nil),             // 126: yimsg.protocol.RemoveGroupMemberRequest
-	(*RemoveGroupMemberResponse)(nil),            // 127: yimsg.protocol.RemoveGroupMemberResponse
-	(*OrgInfo)(nil),                              // 128: yimsg.protocol.OrgInfo
-	(*TagInfo)(nil),                              // 129: yimsg.protocol.TagInfo
-	(*Tag)(nil),                                  // 130: yimsg.protocol.Tag
-	(*GetOrgInfosRequest)(nil),                   // 131: yimsg.protocol.GetOrgInfosRequest
-	(*GetOrgInfosResponse)(nil),                  // 132: yimsg.protocol.GetOrgInfosResponse
-	(*GetTagInfosRequest)(nil),                   // 133: yimsg.protocol.GetTagInfosRequest
-	(*GetTagInfosResponse)(nil),                  // 134: yimsg.protocol.GetTagInfosResponse
-	(*GetTagsRequest)(nil),                       // 135: yimsg.protocol.GetTagsRequest
-	(*GetTagsResponse)(nil),                      // 136: yimsg.protocol.GetTagsResponse
-	(*SyncTagsRequest)(nil),                      // 137: yimsg.protocol.SyncTagsRequest
-	(*SyncTagsResponse)(nil),                     // 138: yimsg.protocol.SyncTagsResponse
+	(PageDirection)(0),                           // 10: yimsg.protocol.PageDirection
+	(*MessagesReceivedNotification)(nil),         // 11: yimsg.protocol.MessagesReceivedNotification
+	(*ContactsUpdatedNotification)(nil),          // 12: yimsg.protocol.ContactsUpdatedNotification
+	(*SessionKickedNotification)(nil),            // 13: yimsg.protocol.SessionKickedNotification
+	(*ConversationsClearunreadNotification)(nil), // 14: yimsg.protocol.ConversationsClearunreadNotification
+	(*ConversationsDeleteNotification)(nil),      // 15: yimsg.protocol.ConversationsDeleteNotification
+	(*MessagesDeleteNotification)(nil),           // 16: yimsg.protocol.MessagesDeleteNotification
+	(*BlocklistUpdatedNotification)(nil),         // 17: yimsg.protocol.BlocklistUpdatedNotification
+	(*MutelistUpdatedNotification)(nil),          // 18: yimsg.protocol.MutelistUpdatedNotification
+	(*OrgUpdatedNotification)(nil),               // 19: yimsg.protocol.OrgUpdatedNotification
+	(*BaseResponse)(nil),                         // 20: yimsg.protocol.BaseResponse
+	(*PageQuery)(nil),                            // 21: yimsg.protocol.PageQuery
+	(*PageInfo)(nil),                             // 22: yimsg.protocol.PageInfo
+	(*ClientConfig)(nil),                         // 23: yimsg.protocol.ClientConfig
+	(*UserInfo)(nil),                             // 24: yimsg.protocol.UserInfo
+	(*ConversationTarget)(nil),                   // 25: yimsg.protocol.ConversationTarget
+	(*ContactTarget)(nil),                        // 26: yimsg.protocol.ContactTarget
+	(*Contact)(nil),                              // 27: yimsg.protocol.Contact
+	(*BlocklistUser)(nil),                        // 28: yimsg.protocol.BlocklistUser
+	(*MutelistEntry)(nil),                        // 29: yimsg.protocol.MutelistEntry
+	(*Message)(nil),                              // 30: yimsg.protocol.Message
+	(*MessageBody)(nil),                          // 31: yimsg.protocol.MessageBody
+	(*TextBody)(nil),                             // 32: yimsg.protocol.TextBody
+	(*MarkdownBody)(nil),                         // 33: yimsg.protocol.MarkdownBody
+	(*ImageBody)(nil),                            // 34: yimsg.protocol.ImageBody
+	(*FileBody)(nil),                             // 35: yimsg.protocol.FileBody
+	(*SystemBody)(nil),                           // 36: yimsg.protocol.SystemBody
+	(*RecallBody)(nil),                           // 37: yimsg.protocol.RecallBody
+	(*QuoteBody)(nil),                            // 38: yimsg.protocol.QuoteBody
+	(*ForwardBody)(nil),                          // 39: yimsg.protocol.ForwardBody
+	(*ConversationEntry)(nil),                    // 40: yimsg.protocol.ConversationEntry
+	(*GroupInfo)(nil),                            // 41: yimsg.protocol.GroupInfo
+	(*GroupMember)(nil),                          // 42: yimsg.protocol.GroupMember
+	(*RegisterRequest)(nil),                      // 43: yimsg.protocol.RegisterRequest
+	(*RegisterResponse)(nil),                     // 44: yimsg.protocol.RegisterResponse
+	(*LoginRequest)(nil),                         // 45: yimsg.protocol.LoginRequest
+	(*LoginResponse)(nil),                        // 46: yimsg.protocol.LoginResponse
+	(*AuthenticateRequest)(nil),                  // 47: yimsg.protocol.AuthenticateRequest
+	(*AuthenticateResponse)(nil),                 // 48: yimsg.protocol.AuthenticateResponse
+	(*LogoutRequest)(nil),                        // 49: yimsg.protocol.LogoutRequest
+	(*LogoutResponse)(nil),                       // 50: yimsg.protocol.LogoutResponse
+	(*PingRequest)(nil),                          // 51: yimsg.protocol.PingRequest
+	(*PingResponse)(nil),                         // 52: yimsg.protocol.PingResponse
+	(*UpdateUserInfoRequest)(nil),                // 53: yimsg.protocol.UpdateUserInfoRequest
+	(*UpdateUserInfoResponse)(nil),               // 54: yimsg.protocol.UpdateUserInfoResponse
+	(*UpdatePasswordRequest)(nil),                // 55: yimsg.protocol.UpdatePasswordRequest
+	(*UpdatePasswordResponse)(nil),               // 56: yimsg.protocol.UpdatePasswordResponse
+	(*GetUserInfosRequest)(nil),                  // 57: yimsg.protocol.GetUserInfosRequest
+	(*GetUserInfosResponse)(nil),                 // 58: yimsg.protocol.GetUserInfosResponse
+	(*SearchUserRequest)(nil),                    // 59: yimsg.protocol.SearchUserRequest
+	(*SearchUserResponse)(nil),                   // 60: yimsg.protocol.SearchUserResponse
+	(*AddFriendRequest)(nil),                     // 61: yimsg.protocol.AddFriendRequest
+	(*AddFriendResponse)(nil),                    // 62: yimsg.protocol.AddFriendResponse
+	(*AcceptFriendRequest)(nil),                  // 63: yimsg.protocol.AcceptFriendRequest
+	(*AcceptFriendResponse)(nil),                 // 64: yimsg.protocol.AcceptFriendResponse
+	(*RejectFriendRequest)(nil),                  // 65: yimsg.protocol.RejectFriendRequest
+	(*RejectFriendResponse)(nil),                 // 66: yimsg.protocol.RejectFriendResponse
+	(*DeleteFriendRequest)(nil),                  // 67: yimsg.protocol.DeleteFriendRequest
+	(*DeleteFriendResponse)(nil),                 // 68: yimsg.protocol.DeleteFriendResponse
+	(*UpdateRemarkRequest)(nil),                  // 69: yimsg.protocol.UpdateRemarkRequest
+	(*UpdateRemarkResponse)(nil),                 // 70: yimsg.protocol.UpdateRemarkResponse
+	(*GetContactsRequest)(nil),                   // 71: yimsg.protocol.GetContactsRequest
+	(*GetContactsResponse)(nil),                  // 72: yimsg.protocol.GetContactsResponse
+	(*GetContactCountRequest)(nil),               // 73: yimsg.protocol.GetContactCountRequest
+	(*GetContactCountResponse)(nil),              // 74: yimsg.protocol.GetContactCountResponse
+	(*SyncContactsRequest)(nil),                  // 75: yimsg.protocol.SyncContactsRequest
+	(*SyncContactsResponse)(nil),                 // 76: yimsg.protocol.SyncContactsResponse
+	(*FavoriteGroupRequest)(nil),                 // 77: yimsg.protocol.FavoriteGroupRequest
+	(*FavoriteGroupResponse)(nil),                // 78: yimsg.protocol.FavoriteGroupResponse
+	(*UnfavoriteGroupRequest)(nil),               // 79: yimsg.protocol.UnfavoriteGroupRequest
+	(*UnfavoriteGroupResponse)(nil),              // 80: yimsg.protocol.UnfavoriteGroupResponse
+	(*BlockUserRequest)(nil),                     // 81: yimsg.protocol.BlockUserRequest
+	(*BlockUserResponse)(nil),                    // 82: yimsg.protocol.BlockUserResponse
+	(*UnblockUserRequest)(nil),                   // 83: yimsg.protocol.UnblockUserRequest
+	(*UnblockUserResponse)(nil),                  // 84: yimsg.protocol.UnblockUserResponse
+	(*GetBlocklistRequest)(nil),                  // 85: yimsg.protocol.GetBlocklistRequest
+	(*GetBlocklistResponse)(nil),                 // 86: yimsg.protocol.GetBlocklistResponse
+	(*SyncBlocklistRequest)(nil),                 // 87: yimsg.protocol.SyncBlocklistRequest
+	(*SyncBlocklistResponse)(nil),                // 88: yimsg.protocol.SyncBlocklistResponse
+	(*SendMessageRequest)(nil),                   // 89: yimsg.protocol.SendMessageRequest
+	(*SendMessageResponse)(nil),                  // 90: yimsg.protocol.SendMessageResponse
+	(*SyncMessagesRequest)(nil),                  // 91: yimsg.protocol.SyncMessagesRequest
+	(*SyncMessagesResponse)(nil),                 // 92: yimsg.protocol.SyncMessagesResponse
+	(*GetMessagesRequest)(nil),                   // 93: yimsg.protocol.GetMessagesRequest
+	(*GetMessagesResponse)(nil),                  // 94: yimsg.protocol.GetMessagesResponse
+	(*DeleteMessageRequest)(nil),                 // 95: yimsg.protocol.DeleteMessageRequest
+	(*DeleteMessageResponse)(nil),                // 96: yimsg.protocol.DeleteMessageResponse
+	(*GetConversationsRequest)(nil),              // 97: yimsg.protocol.GetConversationsRequest
+	(*GetConversationsResponse)(nil),             // 98: yimsg.protocol.GetConversationsResponse
+	(*SyncConversationsRequest)(nil),             // 99: yimsg.protocol.SyncConversationsRequest
+	(*SyncConversationsResponse)(nil),            // 100: yimsg.protocol.SyncConversationsResponse
+	(*GetUnreadCountRequest)(nil),                // 101: yimsg.protocol.GetUnreadCountRequest
+	(*GetUnreadCountResponse)(nil),               // 102: yimsg.protocol.GetUnreadCountResponse
+	(*ClearUnreadRequest)(nil),                   // 103: yimsg.protocol.ClearUnreadRequest
+	(*ClearUnreadResponse)(nil),                  // 104: yimsg.protocol.ClearUnreadResponse
+	(*DeleteConversationRequest)(nil),            // 105: yimsg.protocol.DeleteConversationRequest
+	(*DeleteConversationResponse)(nil),           // 106: yimsg.protocol.DeleteConversationResponse
+	(*MuteConversationRequest)(nil),              // 107: yimsg.protocol.MuteConversationRequest
+	(*MuteConversationResponse)(nil),             // 108: yimsg.protocol.MuteConversationResponse
+	(*UnmuteConversationRequest)(nil),            // 109: yimsg.protocol.UnmuteConversationRequest
+	(*UnmuteConversationResponse)(nil),           // 110: yimsg.protocol.UnmuteConversationResponse
+	(*GetMutelistRequest)(nil),                   // 111: yimsg.protocol.GetMutelistRequest
+	(*GetMutelistResponse)(nil),                  // 112: yimsg.protocol.GetMutelistResponse
+	(*SyncMutelistRequest)(nil),                  // 113: yimsg.protocol.SyncMutelistRequest
+	(*SyncMutelistResponse)(nil),                 // 114: yimsg.protocol.SyncMutelistResponse
+	(*CreateGroupRequest)(nil),                   // 115: yimsg.protocol.CreateGroupRequest
+	(*CreateGroupResponse)(nil),                  // 116: yimsg.protocol.CreateGroupResponse
+	(*GetGroupInfosRequest)(nil),                 // 117: yimsg.protocol.GetGroupInfosRequest
+	(*GetGroupInfosResponse)(nil),                // 118: yimsg.protocol.GetGroupInfosResponse
+	(*GetGroupMembersRequest)(nil),               // 119: yimsg.protocol.GetGroupMembersRequest
+	(*GetGroupMembersResponse)(nil),              // 120: yimsg.protocol.GetGroupMembersResponse
+	(*UpdateGroupInfoRequest)(nil),               // 121: yimsg.protocol.UpdateGroupInfoRequest
+	(*UpdateGroupInfoResponse)(nil),              // 122: yimsg.protocol.UpdateGroupInfoResponse
+	(*AddGroupMemberRequest)(nil),                // 123: yimsg.protocol.AddGroupMemberRequest
+	(*AddGroupMemberResponse)(nil),               // 124: yimsg.protocol.AddGroupMemberResponse
+	(*RemoveGroupMemberRequest)(nil),             // 125: yimsg.protocol.RemoveGroupMemberRequest
+	(*RemoveGroupMemberResponse)(nil),            // 126: yimsg.protocol.RemoveGroupMemberResponse
+	(*OrgInfo)(nil),                              // 127: yimsg.protocol.OrgInfo
+	(*TagInfo)(nil),                              // 128: yimsg.protocol.TagInfo
+	(*Tag)(nil),                                  // 129: yimsg.protocol.Tag
+	(*GetOrgInfosRequest)(nil),                   // 130: yimsg.protocol.GetOrgInfosRequest
+	(*GetOrgInfosResponse)(nil),                  // 131: yimsg.protocol.GetOrgInfosResponse
+	(*GetTagInfosRequest)(nil),                   // 132: yimsg.protocol.GetTagInfosRequest
+	(*GetTagInfosResponse)(nil),                  // 133: yimsg.protocol.GetTagInfosResponse
+	(*GetTagsRequest)(nil),                       // 134: yimsg.protocol.GetTagsRequest
+	(*GetTagsResponse)(nil),                      // 135: yimsg.protocol.GetTagsResponse
+	(*SyncTagsRequest)(nil),                      // 136: yimsg.protocol.SyncTagsRequest
+	(*SyncTagsResponse)(nil),                     // 137: yimsg.protocol.SyncTagsResponse
+	(*CreateOrgTagRequest)(nil),                  // 138: yimsg.protocol.CreateOrgTagRequest
+	(*CreateOrgTagResponse)(nil),                 // 139: yimsg.protocol.CreateOrgTagResponse
+	(*RenameOrgTagRequest)(nil),                  // 140: yimsg.protocol.RenameOrgTagRequest
+	(*RenameOrgTagResponse)(nil),                 // 141: yimsg.protocol.RenameOrgTagResponse
+	(*DeleteOrgTagRequest)(nil),                  // 142: yimsg.protocol.DeleteOrgTagRequest
+	(*DeleteOrgTagResponse)(nil),                 // 143: yimsg.protocol.DeleteOrgTagResponse
+	(*LinkOrgTagRequest)(nil),                    // 144: yimsg.protocol.LinkOrgTagRequest
+	(*LinkOrgTagResponse)(nil),                   // 145: yimsg.protocol.LinkOrgTagResponse
+	(*AddOrgMemberRequest)(nil),                  // 146: yimsg.protocol.AddOrgMemberRequest
+	(*AddOrgMemberResponse)(nil),                 // 147: yimsg.protocol.AddOrgMemberResponse
+	(*RemoveOrgMemberRequest)(nil),               // 148: yimsg.protocol.RemoveOrgMemberRequest
+	(*RemoveOrgMemberResponse)(nil),              // 149: yimsg.protocol.RemoveOrgMemberResponse
+	(*SetOrgItemRankRequest)(nil),                // 150: yimsg.protocol.SetOrgItemRankRequest
+	(*SetOrgItemRankResponse)(nil),               // 151: yimsg.protocol.SetOrgItemRankResponse
+	(*RenameOrgRequest)(nil),                     // 152: yimsg.protocol.RenameOrgRequest
+	(*RenameOrgResponse)(nil),                    // 153: yimsg.protocol.RenameOrgResponse
+	(*GrantOrgAdminRequest)(nil),                 // 154: yimsg.protocol.GrantOrgAdminRequest
+	(*GrantOrgAdminResponse)(nil),                // 155: yimsg.protocol.GrantOrgAdminResponse
+	(*RevokeOrgAdminRequest)(nil),                // 156: yimsg.protocol.RevokeOrgAdminRequest
+	(*RevokeOrgAdminResponse)(nil),               // 157: yimsg.protocol.RevokeOrgAdminResponse
+	(*ListOrgAdminsRequest)(nil),                 // 158: yimsg.protocol.ListOrgAdminsRequest
+	(*ListOrgAdminsResponse)(nil),                // 159: yimsg.protocol.ListOrgAdminsResponse
 }
 var file_yimsg_proto_depIdxs = []int32{
-	26,  // 0: yimsg.protocol.MessagesReceivedNotification.target:type_name -> yimsg.protocol.ConversationTarget
-	26,  // 1: yimsg.protocol.ConversationsClearunreadNotification.target:type_name -> yimsg.protocol.ConversationTarget
-	26,  // 2: yimsg.protocol.ConversationsDeleteNotification.target:type_name -> yimsg.protocol.ConversationTarget
-	26,  // 3: yimsg.protocol.MessagesDeleteNotification.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 0: yimsg.protocol.MessagesReceivedNotification.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 1: yimsg.protocol.ConversationsClearunreadNotification.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 2: yimsg.protocol.ConversationsDeleteNotification.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 3: yimsg.protocol.MessagesDeleteNotification.target:type_name -> yimsg.protocol.ConversationTarget
 	1,   // 4: yimsg.protocol.BaseResponse.code:type_name -> yimsg.protocol.ErrorCode
-	11,  // 5: yimsg.protocol.PageQuery.direction:type_name -> yimsg.protocol.PageDirection
-	27,  // 6: yimsg.protocol.Contact.target:type_name -> yimsg.protocol.ContactTarget
+	10,  // 5: yimsg.protocol.PageQuery.direction:type_name -> yimsg.protocol.PageDirection
+	26,  // 6: yimsg.protocol.Contact.target:type_name -> yimsg.protocol.ContactTarget
 	3,   // 7: yimsg.protocol.Contact.status:type_name -> yimsg.protocol.ContactStatus
 	4,   // 8: yimsg.protocol.BlocklistUser.status:type_name -> yimsg.protocol.BlocklistStatus
-	26,  // 9: yimsg.protocol.MutelistEntry.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 9: yimsg.protocol.MutelistEntry.target:type_name -> yimsg.protocol.ConversationTarget
 	7,   // 10: yimsg.protocol.MutelistEntry.status:type_name -> yimsg.protocol.MutelistStatus
-	26,  // 11: yimsg.protocol.Message.target:type_name -> yimsg.protocol.ConversationTarget
+	25,  // 11: yimsg.protocol.Message.target:type_name -> yimsg.protocol.ConversationTarget
 	2,   // 12: yimsg.protocol.Message.msg_type:type_name -> yimsg.protocol.MessageType
-	32,  // 13: yimsg.protocol.Message.body:type_name -> yimsg.protocol.MessageBody
+	31,  // 13: yimsg.protocol.Message.body:type_name -> yimsg.protocol.MessageBody
 	5,   // 14: yimsg.protocol.Message.status:type_name -> yimsg.protocol.MessageStatus
-	33,  // 15: yimsg.protocol.MessageBody.text:type_name -> yimsg.protocol.TextBody
-	35,  // 16: yimsg.protocol.MessageBody.image:type_name -> yimsg.protocol.ImageBody
-	37,  // 17: yimsg.protocol.MessageBody.system:type_name -> yimsg.protocol.SystemBody
-	36,  // 18: yimsg.protocol.MessageBody.file:type_name -> yimsg.protocol.FileBody
-	38,  // 19: yimsg.protocol.MessageBody.recall:type_name -> yimsg.protocol.RecallBody
-	39,  // 20: yimsg.protocol.MessageBody.quote:type_name -> yimsg.protocol.QuoteBody
-	40,  // 21: yimsg.protocol.MessageBody.forward:type_name -> yimsg.protocol.ForwardBody
-	34,  // 22: yimsg.protocol.MessageBody.markdown:type_name -> yimsg.protocol.MarkdownBody
-	33,  // 23: yimsg.protocol.QuoteBody.text:type_name -> yimsg.protocol.TextBody
-	26,  // 24: yimsg.protocol.ConversationEntry.target:type_name -> yimsg.protocol.ConversationTarget
-	31,  // 25: yimsg.protocol.ConversationEntry.last_msg:type_name -> yimsg.protocol.Message
+	32,  // 15: yimsg.protocol.MessageBody.text:type_name -> yimsg.protocol.TextBody
+	34,  // 16: yimsg.protocol.MessageBody.image:type_name -> yimsg.protocol.ImageBody
+	36,  // 17: yimsg.protocol.MessageBody.system:type_name -> yimsg.protocol.SystemBody
+	35,  // 18: yimsg.protocol.MessageBody.file:type_name -> yimsg.protocol.FileBody
+	37,  // 19: yimsg.protocol.MessageBody.recall:type_name -> yimsg.protocol.RecallBody
+	38,  // 20: yimsg.protocol.MessageBody.quote:type_name -> yimsg.protocol.QuoteBody
+	39,  // 21: yimsg.protocol.MessageBody.forward:type_name -> yimsg.protocol.ForwardBody
+	33,  // 22: yimsg.protocol.MessageBody.markdown:type_name -> yimsg.protocol.MarkdownBody
+	32,  // 23: yimsg.protocol.QuoteBody.text:type_name -> yimsg.protocol.TextBody
+	25,  // 24: yimsg.protocol.ConversationEntry.target:type_name -> yimsg.protocol.ConversationTarget
+	30,  // 25: yimsg.protocol.ConversationEntry.last_msg:type_name -> yimsg.protocol.Message
 	6,   // 26: yimsg.protocol.ConversationEntry.status:type_name -> yimsg.protocol.ConversationStatus
-	21,  // 27: yimsg.protocol.RegisterResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 28: yimsg.protocol.LoginResponse.base:type_name -> yimsg.protocol.BaseResponse
-	24,  // 29: yimsg.protocol.LoginResponse.client_config:type_name -> yimsg.protocol.ClientConfig
-	21,  // 30: yimsg.protocol.AuthenticateResponse.base:type_name -> yimsg.protocol.BaseResponse
-	24,  // 31: yimsg.protocol.AuthenticateResponse.client_config:type_name -> yimsg.protocol.ClientConfig
-	21,  // 32: yimsg.protocol.LogoutResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 33: yimsg.protocol.PingResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 34: yimsg.protocol.UpdateUserInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 35: yimsg.protocol.UpdatePasswordResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 36: yimsg.protocol.GetUserInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 37: yimsg.protocol.GetUserInfosResponse.profiles:type_name -> yimsg.protocol.UserInfo
-	21,  // 38: yimsg.protocol.SearchUserResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 39: yimsg.protocol.SearchUserResponse.profile:type_name -> yimsg.protocol.UserInfo
-	21,  // 40: yimsg.protocol.AddFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 41: yimsg.protocol.AcceptFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 42: yimsg.protocol.RejectFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 43: yimsg.protocol.DeleteFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	27,  // 44: yimsg.protocol.UpdateRemarkRequest.target:type_name -> yimsg.protocol.ContactTarget
-	21,  // 45: yimsg.protocol.UpdateRemarkResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 27: yimsg.protocol.RegisterResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 28: yimsg.protocol.LoginResponse.base:type_name -> yimsg.protocol.BaseResponse
+	23,  // 29: yimsg.protocol.LoginResponse.client_config:type_name -> yimsg.protocol.ClientConfig
+	20,  // 30: yimsg.protocol.AuthenticateResponse.base:type_name -> yimsg.protocol.BaseResponse
+	23,  // 31: yimsg.protocol.AuthenticateResponse.client_config:type_name -> yimsg.protocol.ClientConfig
+	20,  // 32: yimsg.protocol.LogoutResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 33: yimsg.protocol.PingResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 34: yimsg.protocol.UpdateUserInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 35: yimsg.protocol.UpdatePasswordResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 36: yimsg.protocol.GetUserInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	24,  // 37: yimsg.protocol.GetUserInfosResponse.profiles:type_name -> yimsg.protocol.UserInfo
+	20,  // 38: yimsg.protocol.SearchUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	24,  // 39: yimsg.protocol.SearchUserResponse.profile:type_name -> yimsg.protocol.UserInfo
+	20,  // 40: yimsg.protocol.AddFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 41: yimsg.protocol.AcceptFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 42: yimsg.protocol.RejectFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 43: yimsg.protocol.DeleteFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	26,  // 44: yimsg.protocol.UpdateRemarkRequest.target:type_name -> yimsg.protocol.ContactTarget
+	20,  // 45: yimsg.protocol.UpdateRemarkResponse.base:type_name -> yimsg.protocol.BaseResponse
 	3,   // 46: yimsg.protocol.GetContactsRequest.status:type_name -> yimsg.protocol.ContactStatus
-	27,  // 47: yimsg.protocol.GetContactsRequest.targets:type_name -> yimsg.protocol.ContactTarget
-	22,  // 48: yimsg.protocol.GetContactsRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 49: yimsg.protocol.GetContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	28,  // 50: yimsg.protocol.GetContactsResponse.contacts:type_name -> yimsg.protocol.Contact
-	23,  // 51: yimsg.protocol.GetContactsResponse.page:type_name -> yimsg.protocol.PageInfo
+	26,  // 47: yimsg.protocol.GetContactsRequest.targets:type_name -> yimsg.protocol.ContactTarget
+	21,  // 48: yimsg.protocol.GetContactsRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 49: yimsg.protocol.GetContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	27,  // 50: yimsg.protocol.GetContactsResponse.contacts:type_name -> yimsg.protocol.Contact
+	22,  // 51: yimsg.protocol.GetContactsResponse.page:type_name -> yimsg.protocol.PageInfo
 	3,   // 52: yimsg.protocol.GetContactCountRequest.status:type_name -> yimsg.protocol.ContactStatus
-	21,  // 53: yimsg.protocol.GetContactCountResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 54: yimsg.protocol.SyncContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	28,  // 55: yimsg.protocol.SyncContactsResponse.contacts:type_name -> yimsg.protocol.Contact
-	21,  // 56: yimsg.protocol.FavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 57: yimsg.protocol.UnfavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 58: yimsg.protocol.BlockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 59: yimsg.protocol.UnblockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 53: yimsg.protocol.GetContactCountResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 54: yimsg.protocol.SyncContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	27,  // 55: yimsg.protocol.SyncContactsResponse.contacts:type_name -> yimsg.protocol.Contact
+	20,  // 56: yimsg.protocol.FavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 57: yimsg.protocol.UnfavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 58: yimsg.protocol.BlockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 59: yimsg.protocol.UnblockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
 	4,   // 60: yimsg.protocol.GetBlocklistRequest.status:type_name -> yimsg.protocol.BlocklistStatus
-	22,  // 61: yimsg.protocol.GetBlocklistRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 62: yimsg.protocol.GetBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	29,  // 63: yimsg.protocol.GetBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
-	23,  // 64: yimsg.protocol.GetBlocklistResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 65: yimsg.protocol.SyncBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	29,  // 66: yimsg.protocol.SyncBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
-	26,  // 67: yimsg.protocol.SendMessageRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 61: yimsg.protocol.GetBlocklistRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 62: yimsg.protocol.GetBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	28,  // 63: yimsg.protocol.GetBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
+	22,  // 64: yimsg.protocol.GetBlocklistResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 65: yimsg.protocol.SyncBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	28,  // 66: yimsg.protocol.SyncBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
+	25,  // 67: yimsg.protocol.SendMessageRequest.target:type_name -> yimsg.protocol.ConversationTarget
 	2,   // 68: yimsg.protocol.SendMessageRequest.msg_type:type_name -> yimsg.protocol.MessageType
-	32,  // 69: yimsg.protocol.SendMessageRequest.body:type_name -> yimsg.protocol.MessageBody
-	21,  // 70: yimsg.protocol.SendMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 71: yimsg.protocol.SyncMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
-	31,  // 72: yimsg.protocol.SyncMessagesResponse.messages:type_name -> yimsg.protocol.Message
-	26,  // 73: yimsg.protocol.GetMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	22,  // 74: yimsg.protocol.GetMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 75: yimsg.protocol.GetMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
-	31,  // 76: yimsg.protocol.GetMessagesResponse.messages:type_name -> yimsg.protocol.Message
-	23,  // 77: yimsg.protocol.GetMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 78: yimsg.protocol.DeleteMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
-	22,  // 79: yimsg.protocol.GetConversationsRequest.page:type_name -> yimsg.protocol.PageQuery
-	26,  // 80: yimsg.protocol.GetConversationsRequest.targets:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 81: yimsg.protocol.GetConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	41,  // 82: yimsg.protocol.GetConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
-	23,  // 83: yimsg.protocol.GetConversationsResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 84: yimsg.protocol.SyncConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	41,  // 85: yimsg.protocol.SyncConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
-	21,  // 86: yimsg.protocol.GetUnreadCountResponse.base:type_name -> yimsg.protocol.BaseResponse
-	26,  // 87: yimsg.protocol.ClearUnreadRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 88: yimsg.protocol.ClearUnreadResponse.base:type_name -> yimsg.protocol.BaseResponse
-	26,  // 89: yimsg.protocol.DeleteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 90: yimsg.protocol.DeleteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
-	26,  // 91: yimsg.protocol.MuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 92: yimsg.protocol.MuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
-	26,  // 93: yimsg.protocol.UnmuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 94: yimsg.protocol.UnmuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	31,  // 69: yimsg.protocol.SendMessageRequest.body:type_name -> yimsg.protocol.MessageBody
+	20,  // 70: yimsg.protocol.SendMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 71: yimsg.protocol.SyncMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
+	30,  // 72: yimsg.protocol.SyncMessagesResponse.messages:type_name -> yimsg.protocol.Message
+	25,  // 73: yimsg.protocol.GetMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 74: yimsg.protocol.GetMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 75: yimsg.protocol.GetMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
+	30,  // 76: yimsg.protocol.GetMessagesResponse.messages:type_name -> yimsg.protocol.Message
+	22,  // 77: yimsg.protocol.GetMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 78: yimsg.protocol.DeleteMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
+	21,  // 79: yimsg.protocol.GetConversationsRequest.page:type_name -> yimsg.protocol.PageQuery
+	25,  // 80: yimsg.protocol.GetConversationsRequest.targets:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 81: yimsg.protocol.GetConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	40,  // 82: yimsg.protocol.GetConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
+	22,  // 83: yimsg.protocol.GetConversationsResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 84: yimsg.protocol.SyncConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	40,  // 85: yimsg.protocol.SyncConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
+	20,  // 86: yimsg.protocol.GetUnreadCountResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 87: yimsg.protocol.ClearUnreadRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 88: yimsg.protocol.ClearUnreadResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 89: yimsg.protocol.DeleteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 90: yimsg.protocol.DeleteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 91: yimsg.protocol.MuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 92: yimsg.protocol.MuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 93: yimsg.protocol.UnmuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 94: yimsg.protocol.UnmuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
 	7,   // 95: yimsg.protocol.GetMutelistRequest.status:type_name -> yimsg.protocol.MutelistStatus
-	26,  // 96: yimsg.protocol.GetMutelistRequest.targets:type_name -> yimsg.protocol.ConversationTarget
-	22,  // 97: yimsg.protocol.GetMutelistRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 98: yimsg.protocol.GetMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	30,  // 99: yimsg.protocol.GetMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
-	23,  // 100: yimsg.protocol.GetMutelistResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 101: yimsg.protocol.SyncMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	30,  // 102: yimsg.protocol.SyncMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
-	21,  // 103: yimsg.protocol.CreateGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 104: yimsg.protocol.GetGroupInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	42,  // 105: yimsg.protocol.GetGroupInfosResponse.groups:type_name -> yimsg.protocol.GroupInfo
-	22,  // 106: yimsg.protocol.GetGroupMembersRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 107: yimsg.protocol.GetGroupMembersResponse.base:type_name -> yimsg.protocol.BaseResponse
-	43,  // 108: yimsg.protocol.GetGroupMembersResponse.members:type_name -> yimsg.protocol.GroupMember
-	23,  // 109: yimsg.protocol.GetGroupMembersResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 110: yimsg.protocol.UpdateGroupInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 111: yimsg.protocol.AddGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 112: yimsg.protocol.RemoveGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 96: yimsg.protocol.GetMutelistRequest.targets:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 97: yimsg.protocol.GetMutelistRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 98: yimsg.protocol.GetMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	29,  // 99: yimsg.protocol.GetMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
+	22,  // 100: yimsg.protocol.GetMutelistResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 101: yimsg.protocol.SyncMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	29,  // 102: yimsg.protocol.SyncMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
+	20,  // 103: yimsg.protocol.CreateGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 104: yimsg.protocol.GetGroupInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	41,  // 105: yimsg.protocol.GetGroupInfosResponse.groups:type_name -> yimsg.protocol.GroupInfo
+	21,  // 106: yimsg.protocol.GetGroupMembersRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 107: yimsg.protocol.GetGroupMembersResponse.base:type_name -> yimsg.protocol.BaseResponse
+	42,  // 108: yimsg.protocol.GetGroupMembersResponse.members:type_name -> yimsg.protocol.GroupMember
+	22,  // 109: yimsg.protocol.GetGroupMembersResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 110: yimsg.protocol.UpdateGroupInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 111: yimsg.protocol.AddGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 112: yimsg.protocol.RemoveGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
 	9,   // 113: yimsg.protocol.Tag.child_type:type_name -> yimsg.protocol.TagChildType
-	10,  // 114: yimsg.protocol.Tag.role:type_name -> yimsg.protocol.TagRole
-	8,   // 115: yimsg.protocol.Tag.status:type_name -> yimsg.protocol.TagStatus
-	21,  // 116: yimsg.protocol.GetOrgInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	128, // 117: yimsg.protocol.GetOrgInfosResponse.orgs:type_name -> yimsg.protocol.OrgInfo
-	21,  // 118: yimsg.protocol.GetTagInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	129, // 119: yimsg.protocol.GetTagInfosResponse.tags:type_name -> yimsg.protocol.TagInfo
-	22,  // 120: yimsg.protocol.GetTagsRequest.page:type_name -> yimsg.protocol.PageQuery
-	21,  // 121: yimsg.protocol.GetTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	130, // 122: yimsg.protocol.GetTagsResponse.tags:type_name -> yimsg.protocol.Tag
-	23,  // 123: yimsg.protocol.GetTagsResponse.page:type_name -> yimsg.protocol.PageInfo
-	21,  // 124: yimsg.protocol.SyncTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	130, // 125: yimsg.protocol.SyncTagsResponse.tags:type_name -> yimsg.protocol.Tag
-	126, // [126:126] is the sub-list for method output_type
-	126, // [126:126] is the sub-list for method input_type
-	126, // [126:126] is the sub-list for extension type_name
-	126, // [126:126] is the sub-list for extension extendee
-	0,   // [0:126] is the sub-list for field type_name
+	8,   // 114: yimsg.protocol.Tag.status:type_name -> yimsg.protocol.TagStatus
+	20,  // 115: yimsg.protocol.GetOrgInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	127, // 116: yimsg.protocol.GetOrgInfosResponse.orgs:type_name -> yimsg.protocol.OrgInfo
+	20,  // 117: yimsg.protocol.GetTagInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	128, // 118: yimsg.protocol.GetTagInfosResponse.tags:type_name -> yimsg.protocol.TagInfo
+	21,  // 119: yimsg.protocol.GetTagsRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 120: yimsg.protocol.GetTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	129, // 121: yimsg.protocol.GetTagsResponse.tags:type_name -> yimsg.protocol.Tag
+	22,  // 122: yimsg.protocol.GetTagsResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 123: yimsg.protocol.SyncTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	129, // 124: yimsg.protocol.SyncTagsResponse.tags:type_name -> yimsg.protocol.Tag
+	20,  // 125: yimsg.protocol.CreateOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 126: yimsg.protocol.RenameOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 127: yimsg.protocol.DeleteOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 128: yimsg.protocol.LinkOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 129: yimsg.protocol.AddOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 130: yimsg.protocol.RemoveOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	9,   // 131: yimsg.protocol.SetOrgItemRankRequest.child_type:type_name -> yimsg.protocol.TagChildType
+	20,  // 132: yimsg.protocol.SetOrgItemRankResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 133: yimsg.protocol.RenameOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 134: yimsg.protocol.GrantOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 135: yimsg.protocol.RevokeOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 136: yimsg.protocol.ListOrgAdminsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	137, // [137:137] is the sub-list for method output_type
+	137, // [137:137] is the sub-list for method input_type
+	137, // [137:137] is the sub-list for extension type_name
+	137, // [137:137] is the sub-list for extension extendee
+	0,   // [0:137] is the sub-list for field type_name
 }
 
 func init() { file_yimsg_proto_init() }
@@ -9003,13 +10337,16 @@ func file_yimsg_proto_init() {
 	file_yimsg_proto_msgTypes[60].OneofWrappers = []any{}
 	file_yimsg_proto_msgTypes[74].OneofWrappers = []any{}
 	file_yimsg_proto_msgTypes[100].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[127].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[133].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[135].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_yimsg_proto_rawDesc), len(file_yimsg_proto_rawDesc)),
-			NumEnums:      12,
-			NumMessages:   127,
+			NumEnums:      11,
+			NumMessages:   149,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

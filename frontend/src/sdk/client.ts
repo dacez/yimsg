@@ -1381,6 +1381,272 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  // ---- 组织管理面：以下写方法均要求调用方对目标节点（或其祖先）持有管理员
+  // 授权，否则服务端返回 FORBIDDEN。写成功后不做本地乐观更新，依赖既有
+  // org:updated 轻通知 + sync_tags/get_org_infos/get_tag_infos 重新拉取。----
+
+  /** 在 parentTagId 下新建一个 tag（部门/横向分组），返回新 tag ID。 */
+  async createOrgTag(
+    orgId: string,
+    parentTagId: string,
+    name: string,
+    params?: { avatar?: string; rank?: number },
+  ): Promise<string> {
+    this.requireAuthenticated("createOrgTag");
+    this.assertNonEmpty(orgId, "orgId", "createOrgTag");
+    this.assertNonEmpty(parentTagId, "parentTagId", "createOrgTag");
+    this.assertNonEmpty(name, "name", "createOrgTag");
+    try {
+      const resp = await actions.createOrgTag(this._transport, {
+        org_id: orgId,
+        parent_tag_id: parentTagId,
+        name,
+        avatar: params?.avatar || "",
+        rank: params?.rank === undefined ? undefined : String(params.rank),
+      });
+      return String(resp.tag_id);
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "创建部门失败", {
+          context: "createOrgTag",
+        }),
+      );
+    }
+  }
+
+  /** 重命名一个 tag（部门/横向分组）的展示资料。 */
+  async renameOrgTag(
+    orgId: string,
+    tagId: string,
+    name: string,
+    avatar?: string,
+  ): Promise<void> {
+    this.requireAuthenticated("renameOrgTag");
+    this.assertNonEmpty(orgId, "orgId", "renameOrgTag");
+    this.assertNonEmpty(tagId, "tagId", "renameOrgTag");
+    this.assertNonEmpty(name, "name", "renameOrgTag");
+    try {
+      await actions.renameOrgTag(this._transport, {
+        org_id: orgId,
+        tag_id: tagId,
+        name,
+        avatar: avatar || "",
+      });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "重命名部门失败", {
+          context: "renameOrgTag",
+        }),
+      );
+    }
+  }
+
+  /** 删除一个 tag 及其两个方向的关联边；受影响成员若因此失去全部边则联动离职。 */
+  async deleteOrgTag(orgId: string, tagId: string): Promise<void> {
+    this.requireAuthenticated("deleteOrgTag");
+    this.assertNonEmpty(orgId, "orgId", "deleteOrgTag");
+    this.assertNonEmpty(tagId, "tagId", "deleteOrgTag");
+    try {
+      await actions.deleteOrgTag(this._transport, { org_id: orgId, tag_id: tagId });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "删除部门失败", {
+          context: "deleteOrgTag",
+        }),
+      );
+    }
+  }
+
+  /** 把已存在的 tag 额外挂到另一个父节点下（DAG 多父）；服务端校验防环。 */
+  async linkOrgTag(
+    orgId: string,
+    parentTagId: string,
+    childTagId: string,
+    rank?: number,
+  ): Promise<void> {
+    this.requireAuthenticated("linkOrgTag");
+    this.assertNonEmpty(orgId, "orgId", "linkOrgTag");
+    this.assertNonEmpty(parentTagId, "parentTagId", "linkOrgTag");
+    this.assertNonEmpty(childTagId, "childTagId", "linkOrgTag");
+    try {
+      await actions.linkOrgTag(this._transport, {
+        org_id: orgId,
+        parent_tag_id: parentTagId,
+        child_tag_id: childTagId,
+        rank: rank === undefined ? undefined : String(rank),
+      });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "挂载部门失败", {
+          context: "linkOrgTag",
+        }),
+      );
+    }
+  }
+
+  /** 把人挂进组织节点（组织根传 tagId=orgId）。 */
+  async addOrgMember(
+    orgId: string,
+    tagId: string,
+    uid: string,
+    params?: { title?: string; rank?: number },
+  ): Promise<void> {
+    this.requireAuthenticated("addOrgMember");
+    this.assertNonEmpty(orgId, "orgId", "addOrgMember");
+    this.assertNonEmpty(tagId, "tagId", "addOrgMember");
+    this.assertNonEmpty(uid, "uid", "addOrgMember");
+    try {
+      await actions.addOrgMember(this._transport, {
+        org_id: orgId,
+        tag_id: tagId,
+        uid,
+        title: params?.title || "",
+        rank: params?.rank === undefined ? undefined : String(params.rank),
+      });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "添加组织成员失败", {
+          context: "addOrgMember",
+        }),
+      );
+    }
+  }
+
+  /** 把人从组织节点移除；若因此失去在该组织的全部边则视为离职。 */
+  async removeOrgMember(orgId: string, tagId: string, uid: string): Promise<void> {
+    this.requireAuthenticated("removeOrgMember");
+    this.assertNonEmpty(orgId, "orgId", "removeOrgMember");
+    this.assertNonEmpty(tagId, "tagId", "removeOrgMember");
+    this.assertNonEmpty(uid, "uid", "removeOrgMember");
+    try {
+      await actions.removeOrgMember(this._transport, { org_id: orgId, tag_id: tagId, uid });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "移除组织成员失败", {
+          context: "removeOrgMember",
+        }),
+      );
+    }
+  }
+
+  /**
+   * 调整一条边的排序 / 职务展示：childType=1（PERSON）传 uid，childType=2（TAG）传 tagId。
+   * rank 是必填的显式排序值（与 createOrgTag / addOrgMember 的可选 rank 不同）。
+   */
+  async setOrgItemRank(
+    orgId: string,
+    tagId: string,
+    childId: string,
+    childType: number,
+    rank: number,
+    title?: string,
+  ): Promise<void> {
+    this.requireAuthenticated("setOrgItemRank");
+    this.assertNonEmpty(orgId, "orgId", "setOrgItemRank");
+    this.assertNonEmpty(tagId, "tagId", "setOrgItemRank");
+    this.assertNonEmpty(childId, "childId", "setOrgItemRank");
+    try {
+      await actions.setOrgItemRank(this._transport, {
+        org_id: orgId,
+        tag_id: tagId,
+        child_id: childId,
+        child_type: childType,
+        title: title || "",
+        rank: String(rank),
+      });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "调整排序失败", {
+          context: "setOrgItemRank",
+        }),
+      );
+    }
+  }
+
+  /** 重命名组织展示资料，需对组织根持有管理员授权。 */
+  async renameOrg(orgId: string, name: string, avatar?: string): Promise<void> {
+    this.requireAuthenticated("renameOrg");
+    this.assertNonEmpty(orgId, "orgId", "renameOrg");
+    this.assertNonEmpty(name, "name", "renameOrg");
+    try {
+      await actions.renameOrg(this._transport, { org_id: orgId, name, avatar: avatar || "" });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "重命名组织失败", {
+          context: "renameOrg",
+        }),
+      );
+    }
+  }
+
+  /**
+   * 授予 uid 管理 scopeTagId 为根子树的权限（组织根传 scopeTagId=orgId 即全组织管理员）。
+   * 调用方自己必须已经对 scopeTagId（或其祖先）持有管理权限。
+   */
+  async grantOrgAdmin(orgId: string, scopeTagId: string, uid: string): Promise<void> {
+    this.requireAuthenticated("grantOrgAdmin");
+    this.assertNonEmpty(orgId, "orgId", "grantOrgAdmin");
+    this.assertNonEmpty(scopeTagId, "scopeTagId", "grantOrgAdmin");
+    this.assertNonEmpty(uid, "uid", "grantOrgAdmin");
+    try {
+      await actions.grantOrgAdmin(this._transport, { org_id: orgId, scope_tag_id: scopeTagId, uid });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "授予管理员失败", {
+          context: "grantOrgAdmin",
+        }),
+      );
+    }
+  }
+
+  /** 撤销 uid 对 scopeTagId 为根子树的管理权限。 */
+  async revokeOrgAdmin(orgId: string, scopeTagId: string, uid: string): Promise<void> {
+    this.requireAuthenticated("revokeOrgAdmin");
+    this.assertNonEmpty(orgId, "orgId", "revokeOrgAdmin");
+    this.assertNonEmpty(scopeTagId, "scopeTagId", "revokeOrgAdmin");
+    this.assertNonEmpty(uid, "uid", "revokeOrgAdmin");
+    try {
+      await actions.revokeOrgAdmin(this._transport, { org_id: orgId, scope_tag_id: scopeTagId, uid });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "撤销管理员失败", {
+          context: "revokeOrgAdmin",
+        }),
+      );
+    }
+  }
+
+  /**
+   * 列出直接挂在 scopeTagId 上的管理员 uid（不含挂在祖先节点、递归覆盖到此的管理员）。
+   * 调用方自己必须已对 scopeTagId（或其祖先）持有管理权限，否则 FORBIDDEN。
+   */
+  async listOrgAdmins(orgId: string, scopeTagId: string): Promise<string[]> {
+    this.requireAuthenticated("listOrgAdmins");
+    this.assertNonEmpty(orgId, "orgId", "listOrgAdmins");
+    this.assertNonEmpty(scopeTagId, "scopeTagId", "listOrgAdmins");
+    try {
+      const resp = await actions.listOrgAdmins(this._transport, { org_id: orgId, scope_tag_id: scopeTagId });
+      return (resp.admin_uids || []).map((u) => String(u));
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "读取管理员名单失败", {
+          context: "listOrgAdmins",
+        }),
+      );
+    }
+  }
+
   async blockUser(uid: string): Promise<number> {
     this.requireAuthenticated("blockUser");
     this.assertNonEmpty(uid, "uid", "blockUser");

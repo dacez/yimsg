@@ -40,17 +40,17 @@ function flush(): Promise<void> {
 class MemoryGateway extends BaseDataGateway {}
 
 describe("组织 action 映射", () => {
-  it("sync_tags 响应归一化：child_id/child_type、role、tombstone、游标", () => {
+  it("sync_tags 响应归一化：child_id/child_type、tombstone、游标", () => {
     const mapped = actionMappers.mapSyncTagsResponse({
       tags: [
-        { tag_id: "100", child_id: "200", child_type: TAG_CHILD_TAG, rank: "10", sort_key: "a", role: 1, status: 1, seq: "2" },
-        { tag_id: "200", child_id: "42", child_type: TAG_CHILD_PERSON, title: "组长", rank: "1", sort_key: "n", role: 2, status: 255, seq: "3" },
+        { tag_id: "100", child_id: "200", child_type: TAG_CHILD_TAG, rank: "10", sort_key: "a", status: 1, seq: "2" },
+        { tag_id: "200", child_id: "42", child_type: TAG_CHILD_PERSON, title: "组长", rank: "1", sort_key: "n", status: 255, seq: "3" },
       ],
       has_more: true,
       cursor_seq: "3",
     } as never);
     expect(mapped.tags[0]).toMatchObject({ tag_id: "100", child_id: "200", child_type: TAG_CHILD_TAG, rank: 10, status: 1 });
-    expect(mapped.tags[1]).toMatchObject({ child_id: "42", title: "组长", rank: 1, role: 2, status: 255, seq: 3 });
+    expect(mapped.tags[1]).toMatchObject({ child_id: "42", title: "组长", rank: 1, status: 255, seq: 3 });
     expect(mapped.hasMore).toBe(true);
     expect(mapped.cursorSeq).toBe(3);
   });
@@ -76,8 +76,8 @@ describe("组织 memory 基线", () => {
   it("get_tags 在线展开并透传排序结果", async () => {
     sendMock(transport).mockResolvedValueOnce({
       tags: [
-        { tag_id: "100", child_id: "1", child_type: TAG_CHILD_PERSON, title: "总经理", rank: "10", sort_key: "boss", role: 2, status: 1, seq: "4" },
-        { tag_id: "100", child_id: "2", child_type: TAG_CHILD_PERSON, rank: String(ORG_RANK_UNSET), sort_key: "amy", role: 1, status: 1, seq: "5" },
+        { tag_id: "100", child_id: "1", child_type: TAG_CHILD_PERSON, title: "总经理", rank: "10", sort_key: "boss", status: 1, seq: "4" },
+        { tag_id: "100", child_id: "2", child_type: TAG_CHILD_PERSON, rank: String(ORG_RANK_UNSET), sort_key: "amy", status: 1, seq: "5" },
       ],
       page: undefined,
     });
@@ -126,12 +126,12 @@ describe("组织 persistent 本地副本", () => {
     // 名字字典（org_info/tag_info）不进入这里，走独立的 get_org_infos/get_tag_infos。
     return {
       tags: [
-        { tag_id: "100", child_id: "200", child_type: TAG_CHILD_TAG, rank: "10", sort_key: "公司领导", role: 1, status: 1, seq: "1" },
-        { tag_id: "100", child_id: "300", child_type: TAG_CHILD_TAG, rank: "20", sort_key: "xx部门", role: 1, status: 1, seq: "2" },
-        { tag_id: "200", child_id: "1", child_type: TAG_CHILD_PERSON, title: "总经理", rank: "10", sort_key: "boss", role: 2, status: 1, seq: "3" },
-        { tag_id: "200", child_id: "2", child_type: TAG_CHILD_PERSON, title: "副总", rank: String(ORG_RANK_UNSET), sort_key: "zz-a", role: 1, status: 1, seq: "4" },
-        { tag_id: "300", child_id: "2", child_type: TAG_CHILD_PERSON, title: "部门负责人", rank: "1", sort_key: "zz-a", role: 1, status: 1, seq: "5" },
-        { tag_id: "300", child_id: "3", child_type: TAG_CHILD_PERSON, rank: String(ORG_RANK_UNSET), sort_key: "bob", role: 1, status: 1, seq: "6" },
+        { tag_id: "100", child_id: "200", child_type: TAG_CHILD_TAG, rank: "10", sort_key: "公司领导", status: 1, seq: "1" },
+        { tag_id: "100", child_id: "300", child_type: TAG_CHILD_TAG, rank: "20", sort_key: "xx部门", status: 1, seq: "2" },
+        { tag_id: "200", child_id: "1", child_type: TAG_CHILD_PERSON, title: "总经理", rank: "10", sort_key: "boss", status: 1, seq: "3" },
+        { tag_id: "200", child_id: "2", child_type: TAG_CHILD_PERSON, title: "副总", rank: String(ORG_RANK_UNSET), sort_key: "zz-a", status: 1, seq: "4" },
+        { tag_id: "300", child_id: "2", child_type: TAG_CHILD_PERSON, title: "部门负责人", rank: "1", sort_key: "zz-a", status: 1, seq: "5" },
+        { tag_id: "300", child_id: "3", child_type: TAG_CHILD_PERSON, rank: String(ORG_RANK_UNSET), sort_key: "bob", status: 1, seq: "6" },
       ],
       has_more: false,
       cursor_seq: "6",
@@ -166,7 +166,7 @@ describe("组织 persistent 本地副本", () => {
     // 第二次通知：摘掉 A 的部门边（tombstone）。
     sendMock(transport).mockResolvedValueOnce({
       tags: [
-        { tag_id: "300", child_id: "2", child_type: TAG_CHILD_PERSON, rank: "1", sort_key: "zz-a", role: 1, status: 255, seq: "7" },
+        { tag_id: "300", child_id: "2", child_type: TAG_CHILD_PERSON, rank: "1", sort_key: "zz-a", status: 255, seq: "7" },
       ],
       has_more: false,
       cursor_seq: "7",
@@ -185,7 +185,7 @@ describe("组织 persistent 本地副本", () => {
   it("副本未就绪时在线展开 fallback 并触发后台同步", async () => {
     sendMock(transport)
       .mockResolvedValueOnce({
-        tags: [{ tag_id: "100", child_id: "1", child_type: TAG_CHILD_PERSON, rank: "1", sort_key: "b", role: 1, status: 1, seq: "1" }],
+        tags: [{ tag_id: "100", child_id: "1", child_type: TAG_CHILD_PERSON, rank: "1", sort_key: "b", status: 1, seq: "1" }],
         page: undefined,
       })
       .mockResolvedValueOnce(orgGraphPage());

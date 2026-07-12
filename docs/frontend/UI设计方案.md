@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
-> 最后复核：2026-07-11。
+> 最后复核：2026-07-12。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -665,7 +665,7 @@ renderFriends():
     触底且 hasMoreAfter → loadAfter → loadFriendPage({ mode:'forward' })
 ```
 
-组织条目打开后右侧进入组织架构浏览器：根 tag 名称来自 `getOrgInfos()`；直接子项来自 `getOrgTagItems()`。子 tag 行使用响应里的 `name` / `avatar`；成员行只拿到 `uid` 和职务，昵称 / 头像必须通过 `getUserInfos()` 的显示资料缓存补齐。成员资料冷缓存未命中时显示加载态，不得把 UID 当作成员名长期展示；后续 `display:updated` 会触发 `refreshContactsDisplay()`，打开中的组织详情面板随之重新渲染为真实昵称。
+组织条目打开后右侧进入组织架构浏览器：根 tag 名称来自 `getOrgInfos()`；直接子项来自 `getTags()`。子 tag 行使用响应里的 `name` / `avatar`；成员行只拿到 `uid` 和职务，昵称 / 头像必须通过 `getUserInfos()` 的显示资料缓存补齐。成员资料冷缓存未命中时显示加载态，不得把 UID 当作成员名长期展示；后续 `display:updated` 会触发 `refreshContactsDisplay()`，打开中的组织详情面板随之重新渲染为真实昵称。面包屑栏右侧的"管理"按钮打开 `views/org-admin.ts` 弹层（对当前节点无管理权限时，写操作提交后由服务端拒绝、UI 用 toast 提示，浏览器本身不做权限预判）。
 
 #### 搜索用户
 
@@ -854,7 +854,7 @@ closeModal()   // 添加 .hidden 类
 ```
 
 - 点击遮罩关闭（除非设置了 `data-preventClose`）
-- 用途：模式选择、建群
+- 用途：模式选择、建群、转发、确认 / 文本输入通用弹窗（`app.showConfirmModal` / `app.showTextInputModal`）、组织管理（`views/org-admin.ts`，`.modal-content-wide` 修饰类加宽到 640px 以容纳部门树 + 成员列表 + 管理员区块）
 
 ### 7.5 未读角标
 

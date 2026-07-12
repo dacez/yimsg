@@ -13,6 +13,8 @@ import {
   AddFriendResponse,
   AddGroupMemberRequest,
   AddGroupMemberResponse,
+  AddOrgMemberRequest,
+  AddOrgMemberResponse,
   AuthenticateRequest,
   AuthenticateResponse,
   BlockUserRequest,
@@ -21,12 +23,16 @@ import {
   ClearUnreadResponse,
   CreateGroupRequest,
   CreateGroupResponse,
+  CreateOrgTagRequest,
+  CreateOrgTagResponse,
   DeleteConversationRequest,
   DeleteConversationResponse,
   DeleteFriendRequest,
   DeleteFriendResponse,
   DeleteMessageRequest,
   DeleteMessageResponse,
+  DeleteOrgTagRequest,
+  DeleteOrgTagResponse,
   FavoriteGroupRequest,
   FavoriteGroupResponse,
   GetBlocklistRequest,
@@ -55,6 +61,12 @@ import {
   GetUnreadCountResponse,
   GetUserInfosRequest,
   GetUserInfosResponse,
+  GrantOrgAdminRequest,
+  GrantOrgAdminResponse,
+  LinkOrgTagRequest,
+  LinkOrgTagResponse,
+  ListOrgAdminsRequest,
+  ListOrgAdminsResponse,
   LoginRequest,
   LoginResponse,
   LogoutRequest,
@@ -69,10 +81,20 @@ import {
   RejectFriendResponse,
   RemoveGroupMemberRequest,
   RemoveGroupMemberResponse,
+  RemoveOrgMemberRequest,
+  RemoveOrgMemberResponse,
+  RenameOrgRequest,
+  RenameOrgResponse,
+  RenameOrgTagRequest,
+  RenameOrgTagResponse,
+  RevokeOrgAdminRequest,
+  RevokeOrgAdminResponse,
   SearchUserRequest,
   SearchUserResponse,
   SendMessageRequest,
   SendMessageResponse,
+  SetOrgItemRankRequest,
+  SetOrgItemRankResponse,
   SyncBlocklistRequest,
   SyncBlocklistResponse,
   SyncContactsRequest,
@@ -697,6 +719,149 @@ export function getTagInfos(
     GetTagInfosRequest,
     req,
     GetTagInfosResponse,
+  );
+}
+
+export function createOrgTag(
+  transport: ClientTransport,
+  req: CreateOrgTagRequest,
+): Promise<CreateOrgTagResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_CREATE_ORG_TAG,
+    CreateOrgTagRequest,
+    req,
+    CreateOrgTagResponse,
+  );
+}
+
+export function renameOrgTag(
+  transport: ClientTransport,
+  req: RenameOrgTagRequest,
+): Promise<RenameOrgTagResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_RENAME_ORG_TAG,
+    RenameOrgTagRequest,
+    req,
+    RenameOrgTagResponse,
+  );
+}
+
+export function deleteOrgTag(
+  transport: ClientTransport,
+  req: DeleteOrgTagRequest,
+): Promise<DeleteOrgTagResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_DELETE_ORG_TAG,
+    DeleteOrgTagRequest,
+    req,
+    DeleteOrgTagResponse,
+  );
+}
+
+export function linkOrgTag(
+  transport: ClientTransport,
+  req: LinkOrgTagRequest,
+): Promise<LinkOrgTagResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_LINK_ORG_TAG,
+    LinkOrgTagRequest,
+    req,
+    LinkOrgTagResponse,
+  );
+}
+
+export function addOrgMember(
+  transport: ClientTransport,
+  req: AddOrgMemberRequest,
+): Promise<AddOrgMemberResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_ADD_ORG_MEMBER,
+    AddOrgMemberRequest,
+    req,
+    AddOrgMemberResponse,
+  );
+}
+
+export function removeOrgMember(
+  transport: ClientTransport,
+  req: RemoveOrgMemberRequest,
+): Promise<RemoveOrgMemberResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_REMOVE_ORG_MEMBER,
+    RemoveOrgMemberRequest,
+    req,
+    RemoveOrgMemberResponse,
+  );
+}
+
+export function setOrgItemRank(
+  transport: ClientTransport,
+  req: SetOrgItemRankRequest,
+): Promise<SetOrgItemRankResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_SET_ORG_ITEM_RANK,
+    SetOrgItemRankRequest,
+    req,
+    SetOrgItemRankResponse,
+  );
+}
+
+export function renameOrg(
+  transport: ClientTransport,
+  req: RenameOrgRequest,
+): Promise<RenameOrgResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_RENAME_ORG,
+    RenameOrgRequest,
+    req,
+    RenameOrgResponse,
+  );
+}
+
+export function grantOrgAdmin(
+  transport: ClientTransport,
+  req: GrantOrgAdminRequest,
+): Promise<GrantOrgAdminResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_GRANT_ORG_ADMIN,
+    GrantOrgAdminRequest,
+    req,
+    GrantOrgAdminResponse,
+  );
+}
+
+export function revokeOrgAdmin(
+  transport: ClientTransport,
+  req: RevokeOrgAdminRequest,
+): Promise<RevokeOrgAdminResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_REVOKE_ORG_ADMIN,
+    RevokeOrgAdminRequest,
+    req,
+    RevokeOrgAdminResponse,
+  );
+}
+
+export function listOrgAdmins(
+  transport: ClientTransport,
+  req: ListOrgAdminsRequest,
+): Promise<ListOrgAdminsResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_LIST_ORG_ADMINS,
+    ListOrgAdminsRequest,
+    req,
+    ListOrgAdminsResponse,
   );
 }
 

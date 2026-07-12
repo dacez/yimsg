@@ -190,7 +190,6 @@ func tagToProto(t appmsg.Tag) *pb.Tag {
 		Title:     t.Title,
 		Rank:      t.Rank,
 		SortKey:   t.SortKey,
-		Role:      pb.TagRole(t.Role),
 		Status:    pb.TagStatus(t.Status),
 		Seq:       t.Seq,
 	}
@@ -556,6 +555,52 @@ func toSyncTagsResponse(resp *appmsg.Response) *pb.SyncTagsResponse {
 		}
 		if resp.CursorSeq != nil {
 			out.CursorSeq = *resp.CursorSeq
+		}
+	}
+	return out
+}
+
+// ---- 组织管理面响应映射 ----
+
+func toCreateOrgTagResponse(resp *appmsg.Response) *pb.CreateOrgTagResponse {
+	out := &pb.CreateOrgTagResponse{Base: baseFromApp(resp)}
+	if resp != nil && resp.OrgTagID != nil {
+		out.TagId = int64(*resp.OrgTagID)
+	}
+	return out
+}
+func toRenameOrgTagResponse(resp *appmsg.Response) *pb.RenameOrgTagResponse {
+	return &pb.RenameOrgTagResponse{Base: baseFromApp(resp)}
+}
+func toDeleteOrgTagResponse(resp *appmsg.Response) *pb.DeleteOrgTagResponse {
+	return &pb.DeleteOrgTagResponse{Base: baseFromApp(resp)}
+}
+func toLinkOrgTagResponse(resp *appmsg.Response) *pb.LinkOrgTagResponse {
+	return &pb.LinkOrgTagResponse{Base: baseFromApp(resp)}
+}
+func toAddOrgMemberResponse(resp *appmsg.Response) *pb.AddOrgMemberResponse {
+	return &pb.AddOrgMemberResponse{Base: baseFromApp(resp)}
+}
+func toRemoveOrgMemberResponse(resp *appmsg.Response) *pb.RemoveOrgMemberResponse {
+	return &pb.RemoveOrgMemberResponse{Base: baseFromApp(resp)}
+}
+func toSetOrgItemRankResponse(resp *appmsg.Response) *pb.SetOrgItemRankResponse {
+	return &pb.SetOrgItemRankResponse{Base: baseFromApp(resp)}
+}
+func toRenameOrgResponse(resp *appmsg.Response) *pb.RenameOrgResponse {
+	return &pb.RenameOrgResponse{Base: baseFromApp(resp)}
+}
+func toGrantOrgAdminResponse(resp *appmsg.Response) *pb.GrantOrgAdminResponse {
+	return &pb.GrantOrgAdminResponse{Base: baseFromApp(resp)}
+}
+func toRevokeOrgAdminResponse(resp *appmsg.Response) *pb.RevokeOrgAdminResponse {
+	return &pb.RevokeOrgAdminResponse{Base: baseFromApp(resp)}
+}
+func toListOrgAdminsResponse(resp *appmsg.Response) *pb.ListOrgAdminsResponse {
+	out := &pb.ListOrgAdminsResponse{Base: baseFromApp(resp)}
+	if resp != nil {
+		for _, u := range resp.OrgAdminUIDs {
+			out.AdminUids = append(out.AdminUids, int64(u))
 		}
 	}
 	return out

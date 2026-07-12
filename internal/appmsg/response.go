@@ -73,10 +73,12 @@ type Response struct {
 	Profiles []dal.User      `json:"profiles,omitempty"`
 	Groups   []dal.GroupInfo `json:"groups,omitempty"`
 
-	// Org（组织/tag 展示资料字典 + tags 展开与同步）
-	Orgs     []OrgInfo `json:"orgs,omitempty"`
-	TagInfos []TagInfo `json:"tag_infos,omitempty"`
-	Tags     []Tag     `json:"tags,omitempty"`
+	// Org（组织/tag 展示资料字典 + tags 展开与同步 + 管理面）
+	Orgs         []OrgInfo   `json:"orgs,omitempty"`
+	TagInfos     []TagInfo   `json:"tag_infos,omitempty"`
+	Tags         []Tag       `json:"tags,omitempty"`
+	OrgTagID     *JSONInt64  `json:"tag_id,omitempty"`
+	OrgAdminUIDs []JSONInt64 `json:"admin_uids,omitempty"`
 
 	// Upload
 	URL  string `json:"url,omitempty"`
@@ -314,7 +316,6 @@ type Tag struct {
 	Title     string    `json:"title,omitempty"`
 	Rank      int64     `json:"rank"`
 	SortKey   string    `json:"sort_key"`
-	Role      uint8     `json:"role"`
 	Status    uint8     `json:"status"`
 	Seq       int64     `json:"seq"`
 }
@@ -459,6 +460,18 @@ func OKSyncTags(requestID uint64, tags []Tag) *Response {
 		tags = []Tag{}
 	}
 	return &Response{RequestID: requestID, OK: true, Tags: tags}
+}
+
+func OKOrgTagCreated(requestID uint64, tagID int64) *Response {
+	return &Response{RequestID: requestID, OK: true, OrgTagID: NewJSONInt64(tagID)}
+}
+
+func OKOrgAdmins(requestID uint64, uids []int64) *Response {
+	out := make([]JSONInt64, len(uids))
+	for i, u := range uids {
+		out[i] = JSONInt64(u)
+	}
+	return &Response{RequestID: requestID, OK: true, OrgAdminUIDs: out}
 }
 
 func OKSearch(requestID uint64, profile *dal.User) *Response {

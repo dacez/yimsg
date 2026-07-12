@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-10。
+> 最后复核：2026-07-12。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -324,7 +324,7 @@ interface Contact {
 | `muteConversation` | `(target) => Promise<number>` |
 | `unmuteConversation` | `(target) => Promise<number>` |
 | `getMutelist` | `(params?) => Promise<MutelistEntryPage>` | 按分页读取免打扰，支持 `toUid` / `groupId` / `toUids` / `groupIds` 过滤，SDK 会裁剪单次 `limit` |
-| `getTags` | `({ orgId, tagId, cursor?, backward?, limit? }) => Promise<TagsPage>` | 展开 tags（组织关系表）某节点的直接子项（tag 与人按绝对排序混合，子项不内嵌名字）；展开组织根传 `tagId=orgId`；persistent 模式优先读本地副本，memory 模式在线展开；子项展示名另调 `getTagInfos`/`getUserInfos` |
+| `getTags` | `({ orgId, tagId, cursor?, backward?, limit? }) => Promise<TagsPage>` | 展开 tags（组织关系表）某节点的直接子项（tag 与人按绝对排序混合，子项不内嵌名字；管理员授权与组织架构位置解耦，不出现在结果里）；展开组织根传 `tagId=orgId`；persistent 模式优先读本地副本，memory 模式在线展开；子项展示名另调 `getTagInfos`/`getUserInfos` |
 
 ## 4.4 群组
 
@@ -344,6 +344,24 @@ interface Contact {
 | `updateUserInfo` | `(params) => Promise<void>` |
 | `updatePassword` | `(oldPassword, newPassword) => Promise<void>` |
 | `uploadFile` | `(file, category) => Promise<UploadResult>` |
+
+## 4.6 组织管理
+
+以下写方法均要求调用方对目标节点（或其祖先）持有管理员授权，否则服务端返回 `FORBIDDEN`（`RequestError`）；SDK 不做本地乐观更新，写成功后依赖既有 `org:updated` 轻通知 + 重新拉取刷新展示，详见 [`../server/组织架构方案.md`](../server/组织架构方案.md) 第 10 节。
+
+| 方法 | 签名 |
+|------|------|
+| `createOrgTag` | `(orgId, parentTagId, name, { avatar?, rank? }?) => Promise<string>`；返回新建 tag ID |
+| `renameOrgTag` | `(orgId, tagId, name, avatar?) => Promise<void>` |
+| `deleteOrgTag` | `(orgId, tagId) => Promise<void>` |
+| `linkOrgTag` | `(orgId, parentTagId, childTagId, rank?) => Promise<void>`；把已存在的 tag 额外挂到另一个父节点下（DAG 多父） |
+| `addOrgMember` | `(orgId, tagId, uid, { title?, rank? }?) => Promise<void>` |
+| `removeOrgMember` | `(orgId, tagId, uid) => Promise<void>` |
+| `setOrgItemRank` | `(orgId, tagId, childId, childType, rank, title?) => Promise<void>`；`rank` 为必填的显式排序值 |
+| `renameOrg` | `(orgId, name, avatar?) => Promise<void>`；需对组织根有管理权限 |
+| `grantOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；授予 `uid` 管理 `scopeTagId` 为根子树的权限，组织根传 `scopeTagId=orgId` 即全组织管理员 |
+| `revokeOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>` |
+| `listOrgAdmins` | `(orgId, scopeTagId) => Promise<string[]>`；只返回直接挂在该节点上的管理员，不含挂在祖先节点、递归覆盖到此的管理员 |
 
 ---
 

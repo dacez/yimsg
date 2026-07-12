@@ -9,14 +9,14 @@ import (
 )
 
 // buildTestOrg 建一个最小组织：根 + 公司领导 tag + xx 部门 tag，A 一人多岗。
-// boss 在公司领导下是管理员（role=ADMIN），其余是普通成员。
+// boss 是组织根的初始管理员（GRANT 边，CreateOrg 建组织时自举写入）。
 //
-//	根（腾讯科技有限公司广州研发中心）
-//	├── 公司领导：boss(rank=10, ADMIN)、A(未显式排序 → 名字沉底)
+//	根（腾讯科技有限公司广州研发中心，boss 持有 GRANT）
+//	├── 公司领导：boss(rank=10)、A(未显式排序 → 名字沉底)
 //	└── xx 部门：A(rank=1 排第一)、员工按名字
 func buildTestOrg(t *testing.T, s *AppState, bossUID, aUID, staffUID int64) (orgID, leadersTag, deptTag int64) {
 	t.Helper()
-	orgID, err := s.CreateOrg("腾讯科技有限公司广州研发中心", "")
+	orgID, err := s.CreateOrg("腾讯科技有限公司广州研发中心", "", bossUID)
 	if err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -28,16 +28,16 @@ func buildTestOrg(t *testing.T, s *AppState, bossUID, aUID, staffUID int64) (org
 	if err != nil {
 		t.Fatalf("AddOrgTag dept: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, leadersTag, bossUID, "总经理", 10, dal.TagRoleAdmin); err != nil {
+	if err := s.AddOrgMemberDirect(orgID, leadersTag, bossUID, "总经理", 10); err != nil {
 		t.Fatalf("AddOrgMember boss: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, leadersTag, aUID, "副总", dal.TagRankUnset, dal.TagRoleMember); err != nil {
+	if err := s.AddOrgMemberDirect(orgID, leadersTag, aUID, "副总", dal.TagRankUnset); err != nil {
 		t.Fatalf("AddOrgMember A leaders: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, deptTag, aUID, "部门负责人", 1, dal.TagRoleMember); err != nil {
+	if err := s.AddOrgMemberDirect(orgID, deptTag, aUID, "部门负责人", 1); err != nil {
 		t.Fatalf("AddOrgMember A dept: %v", err)
 	}
-	if err := s.AddOrgMember(orgID, deptTag, staffUID, "", dal.TagRankUnset, dal.TagRoleMember); err != nil {
+	if err := s.AddOrgMemberDirect(orgID, deptTag, staffUID, "", dal.TagRankUnset); err != nil {
 		t.Fatalf("AddOrgMember staff: %v", err)
 	}
 	return orgID, leadersTag, deptTag
@@ -79,14 +79,14 @@ func TestOrgMembershipContactRow(t *testing.T) {
 	}
 
 	// A 还挂在 xx 部门：摘掉公司领导边不离职；摘掉最后一条边才 tombstone。
-	if err := s.RemoveOrgMember(orgID, leadersTag, a); err != nil {
+	if err := s.RemoveOrgMemberDirect(orgID, leadersTag, a); err != nil {
 		t.Fatal(err)
 	}
 	row, _ = s.ContactStore(a).GetByKey(a, 0, 0, orgID)
 	if row == nil || row.Status != dal.ContactFriend {
 		t.Fatalf("A should still be a member: %+v", row)
 	}
-	if err := s.RemoveOrgMember(orgID, deptTag, a); err != nil {
+	if err := s.RemoveOrgMemberDirect(orgID, deptTag, a); err != nil {
 		t.Fatal(err)
 	}
 	row, _ = s.ContactStore(a).GetByKey(a, 0, 0, orgID)
@@ -119,7 +119,7 @@ func TestOrgPermission(t *testing.T) {
 }
 
 // TestOrgExpandOrderAndTagInfos 验证展开根/子 tag 的绝对排序、get_tag_infos 名字字典、
-// 一人多岗两处可见且顺序不同，以及 role 字段透传。
+// 一人多岗两处可见且顺序不同。
 func TestOrgExpandOrderAndTagInfos(t *testing.T) {
 	s := testState(t)
 	boss := registerUser(t, s, "boss", "p", "Boss")
@@ -152,19 +152,13 @@ func TestOrgExpandOrderAndTagInfos(t *testing.T) {
 		t.Errorf("tag names wrong: %+v", names)
 	}
 
-	// 公司领导：boss(rank=10, ADMIN) 第一，A 未显式排序按名字沉底最后。
+	// 公司领导：boss(rank=10) 第一，A 未显式排序按名字沉底最后。
 	leaders := s.GetTags(testInfo(staff), &pb.GetTagsRequest{OrgId: orgID, TagId: leadersTag})
 	if len(leaders.Tags) != 2 || leaders.Tags[0].ChildId != boss || leaders.Tags[1].ChildId != a {
 		t.Fatalf("leaders order wrong: %+v", leaders.Tags)
 	}
 	if leaders.Tags[0].Title != "总经理" {
 		t.Errorf("boss title = %q", leaders.Tags[0].Title)
-	}
-	if leaders.Tags[0].Role != pb.TagRole_TAG_ROLE_ADMIN {
-		t.Errorf("boss role = %v, want ADMIN", leaders.Tags[0].Role)
-	}
-	if leaders.Tags[1].Role != pb.TagRole_TAG_ROLE_MEMBER {
-		t.Errorf("A role = %v, want MEMBER", leaders.Tags[1].Role)
 	}
 
 	// xx 部门：A rank=1 排第一。
@@ -214,7 +208,7 @@ func TestOrgSyncAndSeqTooOld(t *testing.T) {
 	}
 
 	// 增量：摘掉 A 的部门边 → 一条 tombstone。
-	if err := s.RemoveOrgMember(orgID, deptTag, a); err != nil {
+	if err := s.RemoveOrgMemberDirect(orgID, deptTag, a); err != nil {
 		t.Fatal(err)
 	}
 	resp := s.SyncTags(testInfo(staff), &pb.SyncTagsRequest{OrgId: orgID, LastSeq: lastSeq})
@@ -253,7 +247,7 @@ func TestOrgUpdatedFanout(t *testing.T) {
 	conn := s.Online().Register(staff, "")
 	defer s.Online().Unregister(staff, conn)
 
-	if err := s.SetOrgItemRank(orgID, deptTag, staff, dal.TagChildPerson, "新职务", 5, dal.TagRoleMember); err != nil {
+	if err := s.SetOrgItemRankDirect(orgID, deptTag, staff, dal.TagChildPerson, "新职务", 5); err != nil {
 		t.Fatal(err)
 	}
 	drainTasks(s)
@@ -291,7 +285,7 @@ func TestOrgGetOrgInfosAndProjectionRefresh(t *testing.T) {
 	}
 
 	// 组织改名 → 下次 get_org_infos 刷新调用方组织行投影。
-	if err := s.RenameOrg(orgID, "新研发中心", ""); err != nil {
+	if err := s.RenameOrgDirect(orgID, "新研发中心", ""); err != nil {
 		t.Fatal(err)
 	}
 	resp = s.GetOrgInfos(testInfo(staff), &pb.GetOrgInfosRequest{OrgIds: []int64{orgID}})
@@ -312,7 +306,7 @@ func TestOrgCycleAndRootGuards(t *testing.T) {
 	staff := registerUser(t, s, "staff", "p", "S")
 	orgID, leadersTag, deptTag := buildTestOrg(t, s, boss, a, staff)
 
-	if err := s.LinkOrgTag(orgID, deptTag, orgID, 1); err != errOrgRootAsChild {
+	if err := s.LinkOrgTagDirect(orgID, deptTag, orgID, 1); err != errOrgRootAsChild {
 		t.Errorf("linking root as child should fail, got %v", err)
 	}
 	// deptTag 下建一个孙 tag，再试图把 deptTag 挂到孙下 → 成环。
@@ -320,11 +314,11 @@ func TestOrgCycleAndRootGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.LinkOrgTag(orgID, teamTag, deptTag, 1); err != errOrgCycle {
+	if err := s.LinkOrgTagDirect(orgID, teamTag, deptTag, 1); err != errOrgCycle {
 		t.Errorf("cycle link should fail, got %v", err)
 	}
 	// 合法多父：leadersTag 下也挂后台组。
-	if err := s.LinkOrgTag(orgID, leadersTag, teamTag, 999); err != nil {
+	if err := s.LinkOrgTagDirect(orgID, leadersTag, teamTag, 999); err != nil {
 		t.Errorf("multi-parent link should succeed: %v", err)
 	}
 }
@@ -347,5 +341,97 @@ func TestOrgNicknameRefreshEdges(t *testing.T) {
 		if item.ChildId == staff && item.SortKey != "zzz" {
 			t.Errorf("edge sort_key not refreshed: %+v", item)
 		}
+	}
+}
+
+// TestOrgManageWriteActionsRequireGrant 验证管理面写 action 统一要求调用方对目标
+// 节点（或祖先）持有 GRANT：非管理员被拒，root GRANT 全组织通杀。
+func TestOrgManageWriteActionsRequireGrant(t *testing.T) {
+	s := testState(t)
+	boss := registerUser(t, s, "boss", "p", "Boss")
+	a := registerUser(t, s, "usera", "p", "A")
+	staff := registerUser(t, s, "staff", "p", "S")
+	orgID, _, deptTag := buildTestOrg(t, s, boss, a, staff)
+
+	// 普通成员 staff 没有任何 GRANT：建部门、加成员、改组织名均被拒。
+	createResp := s.CreateOrgTag(testInfo(staff), &pb.CreateOrgTagRequest{OrgId: orgID, ParentTagId: orgID, Name: "新部门"})
+	if createResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin create_org_tag should be forbidden, got %v", createResp.Base.Code)
+	}
+	addResp := s.AddOrgMember(testInfo(staff), &pb.AddOrgMemberRequest{OrgId: orgID, TagId: deptTag, Uid: a})
+	if addResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin add_org_member should be forbidden, got %v", addResp.Base.Code)
+	}
+	renameResp := s.RenameOrg(testInfo(staff), &pb.RenameOrgRequest{OrgId: orgID, Name: "改名"})
+	if renameResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin rename_org should be forbidden, got %v", renameResp.Base.Code)
+	}
+
+	// boss 持有组织根 GRANT：能建部门、能加成员、能改组织名。
+	createResp = s.CreateOrgTag(testInfo(boss), &pb.CreateOrgTagRequest{OrgId: orgID, ParentTagId: orgID, Name: "新部门"})
+	if createResp.Base.Code != pb.ErrorCode_ERROR_OK || createResp.TagId == 0 {
+		t.Fatalf("root admin create_org_tag: %v tag_id=%d", createResp.Base.Code, createResp.TagId)
+	}
+	addResp = s.AddOrgMember(testInfo(boss), &pb.AddOrgMemberRequest{OrgId: orgID, TagId: createResp.TagId, Uid: staff, Title: "新成员"})
+	if addResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("root admin add_org_member: %v", addResp.Base.Code)
+	}
+	renameResp = s.RenameOrg(testInfo(boss), &pb.RenameOrgRequest{OrgId: orgID, Name: "改名后的组织"})
+	if renameResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("root admin rename_org: %v", renameResp.Base.Code)
+	}
+	infos := s.GetOrgInfos(testInfo(boss), &pb.GetOrgInfosRequest{OrgIds: []int64{orgID}})
+	if len(infos.Orgs) != 1 || infos.Orgs[0].Name != "改名后的组织" {
+		t.Errorf("org name not renamed: %+v", infos.Orgs)
+	}
+}
+
+// TestOrgGrantRevokeListAdminsProtocol 验证 grant/revoke/list_org_admins 三个协议 action：
+// 部门级 GRANT 只能管自己子树、管不到兄弟部门；撤权后立刻失去权限；管理员名单只对有权限者可见。
+func TestOrgGrantRevokeListAdminsProtocol(t *testing.T) {
+	s := testState(t)
+	boss := registerUser(t, s, "boss", "p", "Boss")
+	a := registerUser(t, s, "usera", "p", "A")
+	staff := registerUser(t, s, "staff", "p", "S")
+	orgID, leadersTag, deptTag := buildTestOrg(t, s, boss, a, staff)
+
+	// boss 把 staff 授权为 deptTag 的管理员。
+	grantResp := s.GrantOrgAdmin(testInfo(boss), &pb.GrantOrgAdminRequest{OrgId: orgID, ScopeTagId: deptTag, Uid: staff})
+	if grantResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("grant_org_admin: %v", grantResp.Base.Code)
+	}
+
+	// staff 现在能管 deptTag（加成员），但管不了 leadersTag（兄弟部门）或组织根。
+	addResp := s.AddOrgMember(testInfo(staff), &pb.AddOrgMemberRequest{OrgId: orgID, TagId: deptTag, Uid: a, Title: "新职务"})
+	if addResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Errorf("dept admin should manage own dept, got %v", addResp.Base.Code)
+	}
+	renameLeadersResp := s.RenameOrgTag(testInfo(staff), &pb.RenameOrgTagRequest{OrgId: orgID, TagId: leadersTag, Name: "改名"})
+	if renameLeadersResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("dept admin should not manage sibling tag, got %v", renameLeadersResp.Base.Code)
+	}
+	renameOrgResp := s.RenameOrg(testInfo(staff), &pb.RenameOrgRequest{OrgId: orgID, Name: "改名"})
+	if renameOrgResp.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("dept admin should not manage org root, got %v", renameOrgResp.Base.Code)
+	}
+
+	// 普通成员看不到 deptTag 的管理员名单；boss、staff（有管理权）可以看到。
+	listByOutsider := s.ListOrgAdmins(testInfo(a), &pb.ListOrgAdminsRequest{OrgId: orgID, ScopeTagId: deptTag})
+	if listByOutsider.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin list_org_admins should be forbidden, got %v", listByOutsider.Base.Code)
+	}
+	listByStaff := s.ListOrgAdmins(testInfo(staff), &pb.ListOrgAdminsRequest{OrgId: orgID, ScopeTagId: deptTag})
+	if listByStaff.Base.Code != pb.ErrorCode_ERROR_OK || len(listByStaff.AdminUids) != 1 || listByStaff.AdminUids[0] != staff {
+		t.Errorf("list_org_admins wrong: %v uids=%v", listByStaff.Base.Code, listByStaff.AdminUids)
+	}
+
+	// 撤权后 staff 立刻失去 deptTag 管理权。
+	revokeResp := s.RevokeOrgAdmin(testInfo(boss), &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: deptTag, Uid: staff})
+	if revokeResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("revoke_org_admin: %v", revokeResp.Base.Code)
+	}
+	addAfterRevoke := s.AddOrgMember(testInfo(staff), &pb.AddOrgMemberRequest{OrgId: orgID, TagId: deptTag, Uid: a})
+	if addAfterRevoke.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("revoked admin should lose access, got %v", addAfterRevoke.Base.Code)
 	}
 }

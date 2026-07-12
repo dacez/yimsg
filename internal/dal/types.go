@@ -187,16 +187,14 @@ const (
 	TagDeleted uint8 = 0xff
 )
 
-// Constants for tags child_type：区分一行挂载的子项是人还是 tag。
+// Constants for tags child_type：区分一行挂载的子项是人、tag 还是管理员授权。
+// GRANT 行（child_id=uid）与组织架构位置解耦：表示该用户被授权管理 tag_id 为根
+// 的整棵子树，不代表他在这个节点下有职位，不出现在展开/同步结果里，只通过
+// CanManage 与 ListGrantedAdmins 读取。
 const (
 	TagChildPerson uint8 = 1
 	TagChildTag    uint8 = 2
-)
-
-// Constants for tags role：标识子项在其挂载节点下是否为管理员。
-const (
-	TagRoleMember uint8 = 1
-	TagRoleAdmin  uint8 = 2
+	TagChildGrant  uint8 = 3
 )
 
 // TagRankUnset 表示边未显式排序：自然沉到所有显式排序之后，落到 sort_key 字典序。
@@ -223,8 +221,9 @@ type TagInfo struct {
 
 // Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
 // （TagID，组织根传 OrgID）下挂一个子项"，ChildType 区分子项是人
-// （TagChildPerson，ChildID=uid）还是 tag（TagChildTag，ChildID=tag_id）。
-// Rank / Title / SortKey / Role 都是这条边的属性，一人多岗即多条边、各边独立。
+// （TagChildPerson，ChildID=uid）、tag（TagChildTag，ChildID=tag_id）还是
+// 管理员授权（TagChildGrant，ChildID=uid，与组织架构位置解耦）。
+// Rank / Title / SortKey 都是这条边的属性，一人多岗即多条边、各边独立。
 type Tag struct {
 	OrgID     int64  `json:"org_id,string"`
 	TagID     int64  `json:"tag_id,string"`
@@ -233,7 +232,6 @@ type Tag struct {
 	Title     string `json:"title"`
 	Rank      int64  `json:"rank"`
 	SortKey   string `json:"sort_key"`
-	Role      uint8  `json:"role"`
 	Status    uint8  `json:"status"`
 	Seq       int64  `json:"seq"`
 	CreatedAt int64  `json:"created_at"`

@@ -221,7 +221,8 @@ const orgFillerCount = 75
 //	│   └── 测试组（rank30）：10 人
 //	└── 市场部（rank40）：8 人
 func seedOrgDemo(state *service.AppState, aliceUID int64) (orgID int64, memberCount int) {
-	orgID, err := state.CreateOrg("某某科技有限公司", "")
+	// demo_alice（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
+	orgID, err := state.CreateOrg("某某科技有限公司", "", aliceUID)
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
@@ -233,7 +234,7 @@ func seedOrgDemo(state *service.AppState, aliceUID int64) (orgID int64, memberCo
 		return tagID
 	}
 	mustMember := func(tagID, uid int64, title string, rank int64) {
-		if err := state.AddOrgMember(orgID, tagID, uid, title, rank, dal.TagRoleMember); err != nil {
+		if err := state.AddOrgMemberDirect(orgID, tagID, uid, title, rank); err != nil {
 			log.Fatalf("添加成员 uid=%d 到 tag=%d 失败: %v", uid, tagID, err)
 		}
 	}

@@ -80,6 +80,32 @@ func requireOrgMember(s *AppState, reqID uint64, uid, orgID int64) *appmsg.Respo
 	return nil
 }
 
+// requireOrgManage 校验调用方对 tagID 为根的子树有管理权限（GRANT 边覆盖
+// tagID 或其祖先，见 OrgStore.CanManage）。组织管理面写 action 的统一入口；
+// 身份取自帧头解析后的 BaseInfo.uid，不信任 body。
+func requireOrgManage(s *AppState, reqID uint64, uid, orgID, tagID int64) *appmsg.Response {
+	if orgID == 0 || tagID == 0 {
+		return appmsg.ErrInvalidArgument(reqID, "org_id/tag_id required")
+	}
+	ok, err := s.OrgStore(orgID).CanManage(orgID, tagID, uid)
+	if err != nil {
+		return appmsg.ErrInternal(reqID, err.Error())
+	}
+	if !ok {
+		return appmsg.ErrForbidden(reqID, "not authorized to manage this org node")
+	}
+	return nil
+}
+
+// orgWriteErr 把组织写路径的业务错误（防环、根不为子）映射为 ERROR_INVALID_ARGUMENT；
+// 其余未识别错误按内部错误处理。
+func orgWriteErr(reqID uint64, err error) *appmsg.Response {
+	if errors.Is(err, errOrgCycle) || errors.Is(err, errOrgRootAsChild) {
+		return appmsg.ErrInvalidArgument(reqID, err.Error())
+	}
+	return appmsg.ErrInternal(reqID, err.Error())
+}
+
 // ---- 只读 action ----
 
 func (s *AppState) GetOrgInfos(info *BaseInfo, req *pb.GetOrgInfosRequest) *pb.GetOrgInfosResponse {
@@ -257,25 +283,31 @@ func tagFromDAL(r dal.Tag) appmsg.Tag {
 		Title:     r.Title,
 		Rank:      r.Rank,
 		SortKey:   r.SortKey,
-		Role:      r.Role,
 		Status:    r.Status,
 		Seq:       r.Seq,
 	}
 }
 
-// ---- 组织建制写路径（管理工具 / seed / 测试装配使用，不上协议）----
+// ---- 组织建制写路径（Direct 后缀：不做权限校验的底层写原语，供协议层
+// requireOrgManage 校验通过后调用，也供管理工具 / seed / 测试装配直接调用）----
 //
 // org 分片内 org_relation 行变更逐行 bump seq；每次操作提交后投递一条
 // org:updated 扇出任务。org_relation 与 contacts 组织行跨分片双写、无事务，
 // 沿用好友双写的容忍规则，兜底方向是"以 contacts 为门"。
 
-// CreateOrg 建组织：写 org_info 字典行。返回新组织 ID。
-func (s *AppState) CreateOrg(name, avatar string) (int64, error) {
+// CreateOrg 建组织：写 org_info 字典行，并把 initialAdminUID 设为组织根的
+// 初始管理员（GRANT 边，挂在 tag_id=org_id 上）。这是权限链条唯一的自举点：
+// 之后任何管理操作都要求调用方已经对目标节点（或祖先）持有 GRANT，起点必须
+// 由建组织时显式指定，不上协议，只能由管理工具调用。返回新组织 ID。
+func (s *AppState) CreateOrg(name, avatar string, initialAdminUID int64) (int64, error) {
 	orgID := s.IDGen().NextID()
-	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, auth.NowMs()); err != nil {
+	now := auth.NowMs()
+	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, now); err != nil {
 		return 0, err
 	}
-	s.submitOrgUpdated(orgID)
+	if err := s.GrantOrgAdminDirect(orgID, orgID, initialAdminUID); err != nil {
+		return 0, err
+	}
 	return orgID, nil
 }
 
@@ -316,12 +348,12 @@ func (s *AppState) linkOrgTag(orgID, parentTagID, childTagID, rank int64, now in
 		childName = child.Name
 	}
 	_, _, err = store.UpsertTag(orgID, parentTagID, childTagID, dal.TagChildTag, "", rank,
-		dal.ContactSortKey("", childName), dal.TagRoleMember, now)
+		dal.ContactSortKey("", childName), now)
 	return err
 }
 
-// LinkOrgTag 把已存在的 tag 额外挂到另一个父 tag 下（DAG 多父）。
-func (s *AppState) LinkOrgTag(orgID, parentTagID, childTagID, rank int64) error {
+// LinkOrgTagDirect 把已存在的 tag 额外挂到另一个父 tag 下（DAG 多父）。
+func (s *AppState) LinkOrgTagDirect(orgID, parentTagID, childTagID, rank int64) error {
 	if err := s.linkOrgTag(orgID, parentTagID, childTagID, rank, auth.NowMs()); err != nil {
 		return err
 	}
@@ -329,14 +361,13 @@ func (s *AppState) LinkOrgTag(orgID, parentTagID, childTagID, rank int64) error 
 	return nil
 }
 
-// AddOrgMember 把人挂进 tag：写边 + 首边时联动通讯录组织行并推送 contacts:updated。
-// role 标识该成员在这个 tag 下是否为管理员。
-func (s *AppState) AddOrgMember(orgID, tagID, uid int64, title string, rank int64, role uint8) error {
+// AddOrgMemberDirect 把人挂进 tag：写边 + 首边时联动通讯录组织行并推送 contacts:updated。
+func (s *AppState) AddOrgMemberDirect(orgID, tagID, uid int64, title string, rank int64) error {
 	now := auth.NowMs()
 	nickname := userNickname(s, uid)
 	store := s.OrgStore(orgID)
 	_, hadActive, err := store.UpsertTag(orgID, tagID, uid, dal.TagChildPerson, title, rank,
-		dal.ContactSortKey("", nickname), role, now)
+		dal.ContactSortKey("", nickname), now)
 	if err != nil {
 		return err
 	}
@@ -354,8 +385,8 @@ func (s *AppState) AddOrgMember(orgID, tagID, uid int64, title string, rank int6
 	return nil
 }
 
-// RemoveOrgMember 把人摘出 tag：墓碑边 + 末边时软删除通讯录组织行（离职）。
-func (s *AppState) RemoveOrgMember(orgID, tagID, uid int64) error {
+// RemoveOrgMemberDirect 把人摘出 tag：墓碑边 + 末边时软删除通讯录组织行（离职）。
+func (s *AppState) RemoveOrgMemberDirect(orgID, tagID, uid int64) error {
 	removed, stillActive, err := s.OrgStore(orgID).RemoveTag(orgID, tagID, uid, dal.TagChildPerson, auth.NowMs())
 	if err != nil {
 		return err
@@ -374,8 +405,8 @@ func (s *AppState) RemoveOrgMember(orgID, tagID, uid int64) error {
 	return nil
 }
 
-// RenameOrg 改组织展示名/头像（组织字典，无级联；无边引用组织根，不涉及 sort_key 刷新）。
-func (s *AppState) RenameOrg(orgID int64, name, avatar string) error {
+// RenameOrgDirect 改组织展示名/头像（组织字典，无级联；无边引用组织根，不涉及 sort_key 刷新）。
+func (s *AppState) RenameOrgDirect(orgID int64, name, avatar string) error {
 	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, auth.NowMs()); err != nil {
 		return err
 	}
@@ -383,8 +414,8 @@ func (s *AppState) RenameOrg(orgID int64, name, avatar string) error {
 	return nil
 }
 
-// RenameOrgTag 改 tag 名；被挂边的 sort_key 级联在 DAL 同事务内完成。
-func (s *AppState) RenameOrgTag(orgID, tagID int64, name, avatar string) error {
+// RenameOrgTagDirect 改 tag 名；被挂边的 sort_key 级联在 DAL 同事务内完成。
+func (s *AppState) RenameOrgTagDirect(orgID, tagID int64, name, avatar string) error {
 	if err := s.OrgStore(orgID).RenameTagInfo(orgID, tagID, name, avatar, auth.NowMs()); err != nil {
 		return err
 	}
@@ -392,8 +423,9 @@ func (s *AppState) RenameOrgTag(orgID, tagID int64, name, avatar string) error {
 	return nil
 }
 
-// DeleteOrgTag 墓碑 tag 及其两个方向的关联边；受影响成员若因此失去全部边则联动离职。
-func (s *AppState) DeleteOrgTag(orgID, tagID int64) error {
+// DeleteOrgTagDirect 墓碑 tag 及其两个方向的关联边（含挂在其上的管理员授权）；
+// 受影响成员若因此失去全部边则联动离职。
+func (s *AppState) DeleteOrgTagDirect(orgID, tagID int64) error {
 	store := s.OrgStore(orgID)
 	// 先取直属成员，删除后一次性比对剩余在职成员，差集即离职。
 	direct, err := store.ListDirectMemberUIDs(orgID, tagID)
@@ -425,9 +457,9 @@ func (s *AppState) DeleteOrgTag(orgID, tagID int64) error {
 	return nil
 }
 
-// SetOrgItemRank 调整一条边的排序/职务/角色（人条目传 uid+TagChildPerson、
+// SetOrgItemRankDirect 调整一条边的排序/职务（人条目传 uid+TagChildPerson、
 // tag 条目传 childTagID+TagChildTag）。
-func (s *AppState) SetOrgItemRank(orgID, tagID, childID int64, childType uint8, title string, rank int64, role uint8) error {
+func (s *AppState) SetOrgItemRankDirect(orgID, tagID, childID int64, childType uint8, title string, rank int64) error {
 	store := s.OrgStore(orgID)
 	var sortKey string
 	if childType == dal.TagChildPerson {
@@ -441,11 +473,181 @@ func (s *AppState) SetOrgItemRank(orgID, tagID, childID int64, childType uint8, 
 			sortKey = dal.ContactSortKey("", child.Name)
 		}
 	}
-	if _, _, err := store.UpsertTag(orgID, tagID, childID, childType, title, rank, sortKey, role, auth.NowMs()); err != nil {
+	if _, _, err := store.UpsertTag(orgID, tagID, childID, childType, title, rank, sortKey, auth.NowMs()); err != nil {
 		return err
 	}
 	s.submitOrgUpdated(orgID)
 	return nil
+}
+
+// GrantOrgAdminDirect 授予 uid 管理 scopeTagID 为根子树的权限（写一条 GRANT 边）。
+// GRANT 边不进入 get_tags/sync_tags 的展示与同步域，因此不投递 org:updated，
+// 避免向全体成员扇出一次对他们不可见的空变更。
+func (s *AppState) GrantOrgAdminDirect(orgID, scopeTagID, uid int64) error {
+	_, _, err := s.OrgStore(orgID).UpsertTag(orgID, scopeTagID, uid, dal.TagChildGrant, "",
+		dal.TagRankUnset, "", auth.NowMs())
+	return err
+}
+
+// RevokeOrgAdminDirect 撤销 uid 对 scopeTagID 为根子树的管理权限。
+func (s *AppState) RevokeOrgAdminDirect(orgID, scopeTagID, uid int64) error {
+	_, _, err := s.OrgStore(orgID).RemoveTag(orgID, scopeTagID, uid, dal.TagChildGrant, auth.NowMs())
+	return err
+}
+
+// ---- 组织管理面协议 action：统一先 requireOrgManage 校验调用方对目标节点
+// （或其祖先）持有管理员授权，再调用对应 Direct 写原语。----
+
+// rankOrUnset 把可选 rank 指针转换为落库值：未传（nil）落 TagRankUnset（未显式
+// 排序，按名字沉底），显式传 0 也是合法排序值，不能与"未传"混淆，因此这三个
+// 写 action 的 rank 字段在协议里用 proto3 optional 声明为指针，不能用 GetRank()
+// （nil 时同样返回 0，无法区分）。
+func rankOrUnset(p *int64) int64 {
+	if p == nil {
+		return dal.TagRankUnset
+	}
+	return *p
+}
+
+func (s *AppState) CreateOrgTag(info *BaseInfo, req *pb.CreateOrgTagRequest) *pb.CreateOrgTagResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, parentTagID := req.GetOrgId(), req.GetParentTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, parentTagID); resp != nil {
+		return toCreateOrgTagResponse(resp)
+	}
+	tagID, err := s.AddOrgTag(orgID, parentTagID, req.GetName(), req.GetAvatar(), rankOrUnset(req.Rank))
+	if err != nil {
+		return toCreateOrgTagResponse(orgWriteErr(reqID, err))
+	}
+	return toCreateOrgTagResponse(appmsg.OKOrgTagCreated(reqID, tagID))
+}
+
+func (s *AppState) RenameOrgTag(info *BaseInfo, req *pb.RenameOrgTagRequest) *pb.RenameOrgTagResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, tagID := req.GetOrgId(), req.GetTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, tagID); resp != nil {
+		return toRenameOrgTagResponse(resp)
+	}
+	if err := s.RenameOrgTagDirect(orgID, tagID, req.GetName(), req.GetAvatar()); err != nil {
+		return toRenameOrgTagResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toRenameOrgTagResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) DeleteOrgTag(info *BaseInfo, req *pb.DeleteOrgTagRequest) *pb.DeleteOrgTagResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, tagID := req.GetOrgId(), req.GetTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, tagID); resp != nil {
+		return toDeleteOrgTagResponse(resp)
+	}
+	if err := s.DeleteOrgTagDirect(orgID, tagID); err != nil {
+		return toDeleteOrgTagResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toDeleteOrgTagResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) LinkOrgTag(info *BaseInfo, req *pb.LinkOrgTagRequest) *pb.LinkOrgTagResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, parentTagID := req.GetOrgId(), req.GetParentTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, parentTagID); resp != nil {
+		return toLinkOrgTagResponse(resp)
+	}
+	if err := s.LinkOrgTagDirect(orgID, parentTagID, req.GetChildTagId(), rankOrUnset(req.Rank)); err != nil {
+		return toLinkOrgTagResponse(orgWriteErr(reqID, err))
+	}
+	return toLinkOrgTagResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) AddOrgMember(info *BaseInfo, req *pb.AddOrgMemberRequest) *pb.AddOrgMemberResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, tagID := req.GetOrgId(), req.GetTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, tagID); resp != nil {
+		return toAddOrgMemberResponse(resp)
+	}
+	if err := s.AddOrgMemberDirect(orgID, tagID, req.GetUid(), req.GetTitle(), rankOrUnset(req.Rank)); err != nil {
+		return toAddOrgMemberResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toAddOrgMemberResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) RemoveOrgMember(info *BaseInfo, req *pb.RemoveOrgMemberRequest) *pb.RemoveOrgMemberResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, tagID := req.GetOrgId(), req.GetTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, tagID); resp != nil {
+		return toRemoveOrgMemberResponse(resp)
+	}
+	if err := s.RemoveOrgMemberDirect(orgID, tagID, req.GetUid()); err != nil {
+		return toRemoveOrgMemberResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toRemoveOrgMemberResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) SetOrgItemRank(info *BaseInfo, req *pb.SetOrgItemRankRequest) *pb.SetOrgItemRankResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, tagID := req.GetOrgId(), req.GetTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, tagID); resp != nil {
+		return toSetOrgItemRankResponse(resp)
+	}
+	childType := uint8(req.GetChildType())
+	if childType != dal.TagChildPerson && childType != dal.TagChildTag {
+		return toSetOrgItemRankResponse(appmsg.ErrInvalidArgument(reqID, "child_type must be PERSON or TAG"))
+	}
+	if err := s.SetOrgItemRankDirect(orgID, tagID, req.GetChildId(), childType, req.GetTitle(), req.GetRank()); err != nil {
+		return toSetOrgItemRankResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toSetOrgItemRankResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) RenameOrg(info *BaseInfo, req *pb.RenameOrgRequest) *pb.RenameOrgResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID := req.GetOrgId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, orgID); resp != nil {
+		return toRenameOrgResponse(resp)
+	}
+	if err := s.RenameOrgDirect(orgID, req.GetName(), req.GetAvatar()); err != nil {
+		return toRenameOrgResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toRenameOrgResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) GrantOrgAdmin(info *BaseInfo, req *pb.GrantOrgAdminRequest) *pb.GrantOrgAdminResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, scopeTagID := req.GetOrgId(), req.GetScopeTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, scopeTagID); resp != nil {
+		return toGrantOrgAdminResponse(resp)
+	}
+	if err := s.GrantOrgAdminDirect(orgID, scopeTagID, req.GetUid()); err != nil {
+		return toGrantOrgAdminResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toGrantOrgAdminResponse(appmsg.OKEmpty(reqID))
+}
+
+func (s *AppState) RevokeOrgAdmin(info *BaseInfo, req *pb.RevokeOrgAdminRequest) *pb.RevokeOrgAdminResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, scopeTagID := req.GetOrgId(), req.GetScopeTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, scopeTagID); resp != nil {
+		return toRevokeOrgAdminResponse(resp)
+	}
+	if err := s.RevokeOrgAdminDirect(orgID, scopeTagID, req.GetUid()); err != nil {
+		return toRevokeOrgAdminResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toRevokeOrgAdminResponse(appmsg.OKEmpty(reqID))
+}
+
+// ListOrgAdmins 列出直接挂在 scopeTagID 上的管理员（不含挂在祖先节点、递归覆盖到此的管理员）。
+// 权限校验复用 requireOrgManage：只有对这个节点本就有管理权限的人才能看到管理员名单，
+// 避免向普通成员泄露组织的管理结构。
+func (s *AppState) ListOrgAdmins(info *BaseInfo, req *pb.ListOrgAdminsRequest) *pb.ListOrgAdminsResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, scopeTagID := req.GetOrgId(), req.GetScopeTagId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, scopeTagID); resp != nil {
+		return toListOrgAdminsResponse(resp)
+	}
+	uids, err := s.OrgStore(orgID).ListGrantedAdmins(orgID, scopeTagID)
+	if err != nil {
+		return toListOrgAdminsResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toListOrgAdminsResponse(appmsg.OKOrgAdmins(reqID, uids))
 }
 
 // refreshOrgMemberProjections 在用户昵称变化后重算其所有组织内边的 sort_key 并扇出通知。

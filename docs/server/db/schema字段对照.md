@@ -1,7 +1,7 @@
 # Schema 字段对照
 
 > 主要对照：`internal/dal/schema.go`。
-> 最后复核：2026-07-06。
+> 最后复核：2026-07-12。
 > 触发更新：任一 `CREATE TABLE`、索引、字段默认值或路由键说明变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 `internal/dal/schema.go` 字段、主键和索引的字段级对照入口。
 > 维护口径：本文只描述当前 DDL 字段、主键、索引和路由键；字段业务语义、读写流程和 GC 规则见同目录领域文档及上级专题文档。
@@ -301,13 +301,12 @@
 | 字段 | 类型 / 约束 | 说明 |
 |---|---|---|
 | `org_id` | `INTEGER NOT NULL` | 所属组织 |
-| `tag_id` | `INTEGER NOT NULL` | 父节点 ID；展开/挂载组织根传 `org_id` |
-| `child_id` | `INTEGER NOT NULL` | 子项 ID：`child_type=PERSON` 时为 uid，`=TAG` 时为 tag_id |
-| `child_type` | `INTEGER NOT NULL CHECK (child_type <> 0)` | 1=PERSON，2=TAG |
+| `tag_id` | `INTEGER NOT NULL` | 父节点 ID；展开/挂载组织根传 `org_id`；`child_type=GRANT` 时表示被授权管理的子树根 |
+| `child_id` | `INTEGER NOT NULL` | 子项 ID：`child_type=PERSON`/`GRANT` 时为 uid，`=TAG` 时为 tag_id |
+| `child_type` | `INTEGER NOT NULL CHECK (child_type <> 0)` | 1=PERSON，2=TAG，3=GRANT（管理员授权，与组织架构位置解耦，不进入展开/同步结果） |
 | `title` | `TEXT NOT NULL DEFAULT ''` | 本节点下的职务展示（仅人条目常用） |
-| `rank` | `INTEGER NOT NULL DEFAULT 2147483647` | 边的排序值，越小越靠前；默认表示未显式排序 |
-| `sort_key` | `TEXT NOT NULL DEFAULT ''` | 名字归一化排序键（人取昵称、tag 取 tag 名） |
-| `role` | `INTEGER NOT NULL DEFAULT 1 CHECK (role <> 0)` | 1=MEMBER，2=ADMIN；标识该子项在这个父节点下是否为管理员 |
+| `rank` | `INTEGER NOT NULL DEFAULT 2147483647` | 边的排序值，越小越靠前；默认表示未显式排序；GRANT 行不使用 |
+| `sort_key` | `TEXT NOT NULL DEFAULT ''` | 名字归一化排序键（人取昵称、tag 取 tag 名）；GRANT 行不使用 |
 | `status` | `INTEGER NOT NULL CHECK (status <> 0)` | 1=ACTIVE，0xff=DELETED tombstone |
 | `seq` | `INTEGER NOT NULL DEFAULT 0` | 同步序号 |
 | `created_at` | `INTEGER NOT NULL` | 创建时间，毫秒时间戳 |

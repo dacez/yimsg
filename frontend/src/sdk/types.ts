@@ -292,9 +292,9 @@ export interface TagDisplayInfo {
 
 /**
  * tags（组织关系表）条目：组织架构唯一的同步域。childType 区分 childId 是人还是 tag
- * （子项展示名走 getUserInfos / getTagInfos，不在此内嵌）。
+ * （子项展示名走 getUserInfos / getTagInfos，不在此内嵌）。GRANT 类型的管理员授权
+ * 与组织架构位置解耦，不出现在这个展开/同步结果里，管理员名单走 listOrgAdmins。
  * rank 越小越靠前；未显式排序为 2147483647，按 sortKey（名字）字典序沉底。
- * role 标识该子项在这个节点下是否为管理员。
  */
 export interface Tag {
   readonly tagId: string;
@@ -304,7 +304,6 @@ export interface Tag {
   readonly title: string;
   readonly rank: number;
   readonly sortKey: string;
-  readonly role: number;
   readonly seq: number;
 }
 

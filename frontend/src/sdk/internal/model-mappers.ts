@@ -110,7 +110,6 @@ export function mapTag(item: RawTag): Tag {
     title: String(item.title || ''),
     rank: Number(item.rank || 0),
     sortKey: String(item.sort_key || ''),
-    role: Number(item.role || 0),
     seq: Number(item.seq || 0),
   });
 }
