@@ -224,8 +224,9 @@ export interface TagInfo {
 
 /**
  * 组织关系表条目（在线展开与同步共用）：组织架构唯一的同步域。
- * child_type 区分 child_id 是人（uid）还是 tag（tag_id）；
- * rank / title / sort_key / role 是这条边的属性，一人多岗即多条边、各边独立排序。
+ * child_type 区分 child_id 是人（uid）还是 tag（tag_id）；GRANT 类型的管理员授权
+ * 与组织架构位置解耦，不出现在展开/同步结果里。
+ * rank / title / sort_key 是这条边的属性，一人多岗即多条边、各边独立排序。
  */
 export interface Tag {
   tag_id: string;
@@ -234,7 +235,6 @@ export interface Tag {
   title?: string;
   rank: number;
   sort_key: string;
-  role: number;
   status: number;
   seq: number;
 }

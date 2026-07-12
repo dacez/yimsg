@@ -405,6 +405,30 @@ body[data-layout="mobile"] .mode-options{grid-template-columns:1fr}
   border: 1px solid var(--border, #e5e7eb); border-radius: 4px;
   padding: 0 4px; margin-left: 6px; vertical-align: middle;
 }
+.org-manage-btn { margin-left: auto; flex-shrink: 0; }
+
+/* 通讯录管理弹层（org-admin.ts）：比普通弹层更宽，容纳树 + 列表 + 管理员区块。 */
+.modal-content-wide { width: 640px; }
+.org-admin-header {
+  display: flex; align-items: center; gap: var(--space-sm);
+  padding: 8px 0; border-bottom: 1px solid var(--border, #e5e7eb);
+  margin-bottom: var(--space-sm);
+}
+.org-admin-section { margin-bottom: var(--space-lg); }
+.org-admin-section-title {
+  display: flex; align-items: center; gap: var(--space-sm);
+  font-size: var(--font-size-caption); color: var(--text-secondary);
+  font-weight: 500; margin-bottom: var(--space-sm);
+}
+.org-admin-section-title .btn { margin-left: auto; }
+.org-admin-row {
+  display: flex; align-items: center; gap: var(--space-sm);
+  padding: 6px 0; border-bottom: 1px solid var(--border, #f3f4f6);
+}
+.org-admin-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-admin-inline-form { margin-top: var(--space-sm); margin-bottom: 0; }
+.org-admin-inline-row { display: flex; gap: var(--space-sm); }
+.org-admin-inline-row .input { flex: 1; min-width: 0; }
 
 /* 全局焦点环（键盘 Tab 可见，鼠标点击不显示） */
 .btn:focus-visible,

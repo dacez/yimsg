@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"testing"
-	"yimsg/internal/appmsg"
 	"yimsg/internal/config"
 	"yimsg/internal/dal"
 	"yimsg/internal/online"
@@ -14,7 +13,6 @@ import (
 type mockPlugin struct {
 	name              string
 	schemas           map[string]string
-	actions           map[string]Handler
 	onDisconnectCalls []int64
 	onStartCalled     bool
 }
@@ -25,10 +23,6 @@ func (m *mockPlugin) Name() string {
 
 func (m *mockPlugin) Schemas() map[string]string {
 	return m.schemas
-}
-
-func (m *mockPlugin) Actions() map[string]Handler {
-	return m.actions
 }
 
 func (m *mockPlugin) OnDisconnect(host Host, uid int64) {
@@ -58,69 +52,17 @@ func (h *mockHost) SessionStore(token string) dal.SessionStoreAPI          { ret
 func (h *mockHost) UserLookupStore(username string) dal.UserLookupStoreAPI { return nil }
 func (h *mockHost) IsEitherWayBlocked(a, b int64) (bool, error)            { return false, nil }
 
-// TestRegisterAndDispatch 测试插件注册和 action 分发
-func TestRegisterAndDispatch(t *testing.T) {
-	registry := NewRegistry()
-	host := &mockHost{}
-
-	// 注册插件
-	p1 := &mockPlugin{
-		name:    "plugin1",
-		schemas: map[string]string{"uid": "CREATE TABLE t1 (id INT);"},
-		actions: map[string]Handler{
-			"action1": func(host Host, reqID uint64, uid int64, req *appmsg.Request) *appmsg.Response {
-				return appmsg.OKEmpty(reqID)
-			},
-		},
-	}
-	registry.Register(p1)
-
-	// 测试分发
-	req := &appmsg.Request{Action: "action1", RequestID: 1}
-	resp, handled := registry.Dispatch(host, 1, 123, req)
-	if !handled {
-		t.Errorf("expected action1 to be handled")
-	}
-	if resp == nil || resp.RequestID != 1 || !resp.OK {
-		t.Errorf("expected OK response, got %+v", resp)
-	}
-
-	// 测试未知 action
-	req2 := &appmsg.Request{Action: "unknown", RequestID: 2}
-	_, handled2 := registry.Dispatch(host, 2, 123, req2)
-	if handled2 {
-		t.Errorf("expected unknown action to not be handled")
-	}
-}
-
-// TestActionConflict 测试 action 冲突检测
-func TestActionConflict(t *testing.T) {
+// TestRegisterAndNameConflict 测试插件注册与重名冲突检测。
+func TestRegisterAndNameConflict(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
-			t.Errorf("expected panic on action conflict")
+			t.Errorf("expected panic on duplicate plugin name")
 		}
 	}()
 
 	registry := NewRegistry()
-	p1 := &mockPlugin{
-		name: "plugin1",
-		actions: map[string]Handler{
-			"conflicting_action": func(host Host, reqID uint64, uid int64, req *appmsg.Request) *appmsg.Response {
-				return nil
-			},
-		},
-	}
-	p2 := &mockPlugin{
-		name: "plugin2",
-		actions: map[string]Handler{
-			"conflicting_action": func(host Host, reqID uint64, uid int64, req *appmsg.Request) *appmsg.Response {
-				return nil
-			},
-		},
-	}
-
-	registry.Register(p1)
-	registry.Register(p2) // 应该 panic
+	registry.Register(&mockPlugin{name: "plugin1"})
+	registry.Register(&mockPlugin{name: "plugin1"}) // 同名重复注册应该 panic
 }
 
 // TestMergeSchemas 测试 schema 合并

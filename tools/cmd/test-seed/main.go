@@ -172,7 +172,8 @@ func main() {
 	// Step 6: 组织架构样例（组织即根 tag；一人多岗：Test2 领导沉底、部门排第一）
 	orgName := fmt.Sprintf("%s_测试组织", prefix)
 	fmt.Printf("创建组织 %q...\n", orgName)
-	orgID, err := state.CreateOrg(orgName, "")
+	// Test1（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
+	orgID, err := state.CreateOrgDirect(orgName, "", uids[0])
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
@@ -202,7 +203,7 @@ func main() {
 		{remoteTag, uids[200], "", dal.TagRankUnset},
 		{remoteTag, uids[201], "", dal.TagRankUnset},
 	} {
-		if err := state.AddOrgMember(orgID, m.tag, m.uid, m.title, m.rank, dal.TagRoleMember); err != nil {
+		if err := state.AddOrgMemberDirect(orgID, m.tag, m.uid, m.title, m.rank); err != nil {
 			log.Fatalf("添加组织成员 uid=%d 失败: %v", m.uid, err)
 		}
 	}
@@ -241,4 +242,3 @@ func sendDM(state *service.AppState, uids []int64, usernames []string, idx1, idx
 		}
 	}
 }
-

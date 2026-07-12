@@ -71,11 +71,14 @@ type wsResponse struct {
 	URL  string `json:"url,omitempty"`
 	Size *int64 `json:"size,omitempty"`
 
-	// 组织域：展示资料字典（org/tag）/ tags（组织关系表）展开与同步。
+	// 组织域：展示资料字典（org/tag）/ tags（组织关系表）展开与同步 / 管理面。
 	// get_tag_infos 与 get_tags/sync_tags 的响应字段在 wire 上都叫 "tags"，
 	// 用同一个 tagJSON（两种形状的并集）承接，靠调用方读取各自用到的子集字段。
-	Orgs []orgInfoJSON `json:"orgs,omitempty"`
-	Tags []tagJSON     `json:"tags,omitempty"`
+	Orgs  []orgInfoJSON `json:"orgs,omitempty"`
+	Tags  []tagJSON     `json:"tags,omitempty"`
+	OrgID string        `json:"org_id,omitempty"`     // create_org 返回的新组织 ID
+	TagID string        `json:"tag_id,omitempty"`     // create_org_tag 返回的新 tag ID
+	Uids  []string      `json:"admin_uids,omitempty"` // list_org_admins 返回的管理员 uid 列表
 }
 
 // 组织域响应条目。int64 ID 在 wire→JSON 映射中输出为字符串；proto3 零值字段缺省。
@@ -96,7 +99,6 @@ type tagJSON struct {
 	Title     string `json:"title,omitempty"`
 	Rank      int64  `json:"rank,omitempty"`
 	SortKey   string `json:"sort_key,omitempty"`
-	Role      int    `json:"role,omitempty"`
 	Status    int    `json:"status,omitempty"`
 	Seq       int64  `json:"seq,omitempty"`
 }

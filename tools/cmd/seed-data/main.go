@@ -238,7 +238,8 @@ const (
 //	│   └── 前端组 (rank=20)：User15-User24 按名字
 //	└── 行政部   (rank=30)：User25-User34 按名字
 func seedOrg(state *service.AppState, uids []int64) int64 {
-	orgID, err := state.CreateOrg("腾讯科技有限公司广州研发中心", "")
+	// User1（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
+	orgID, err := state.CreateOrgDirect("腾讯科技有限公司广州研发中心", "", uids[0])
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
@@ -250,7 +251,7 @@ func seedOrg(state *service.AppState, uids []int64) int64 {
 		return tagID
 	}
 	mustMember := func(tagID, uid int64, title string, rank int64) {
-		if err := state.AddOrgMember(orgID, tagID, uid, title, rank, dal.TagRoleMember); err != nil {
+		if err := state.AddOrgMemberDirect(orgID, tagID, uid, title, rank); err != nil {
 			log.Fatalf("添加成员 uid=%d 到 tag=%d 失败: %v", uid, tagID, err)
 		}
 	}
@@ -469,4 +470,3 @@ func stopServer(port int) {
 	// 等待端口释放
 	time.Sleep(500 * time.Millisecond)
 }
-

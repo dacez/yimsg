@@ -12,18 +12,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Response is the unified server response envelope.
-//
-// 插件自定义返回值放在 Data（json.RawMessage），序列化时会被展平到顶层对象，
-// 与核心字段合并，保持前端/测试读到的是扁平 JSON 格式。
+// Response is the unified server response envelope：业务方法构造它之后，
+// internal/service/protobuf_methods.go 的 toXxxResponse 会把它转成真正上线
+// 的 pb.XxxResponse 类型发出去；json tag 只服务于测试辅助（把 pb 响应转成
+// 这个结构体做字段级断言，见 internal/service/protobuf_service_test_helpers_test.go
+// 的 responseFromProto），不是真实的对外协议，线上协议是 internal/protocol/yimsg.proto
+// 定义的二进制 protobuf 帧。
 type Response struct {
 	RequestID uint64 `json:"request_id"`
 	OK        bool   `json:"ok"`
 	Error     string `json:"error,omitempty"`
 	ErrorCode string `json:"error_code,omitempty"`
-
-	// 插件自定义返回值（MarshalJSON 时展平到顶层）
-	Data json.RawMessage `json:"-"`
 
 	// Flattened data fields — only the relevant ones are set per response type.
 	// Omitted fields are not included in JSON output.
@@ -73,49 +72,17 @@ type Response struct {
 	Profiles []dal.User      `json:"profiles,omitempty"`
 	Groups   []dal.GroupInfo `json:"groups,omitempty"`
 
-	// Org（组织/tag 展示资料字典 + tags 展开与同步）
-	Orgs     []OrgInfo `json:"orgs,omitempty"`
-	TagInfos []TagInfo `json:"tag_infos,omitempty"`
-	Tags     []Tag     `json:"tags,omitempty"`
+	// Org（组织/tag 展示资料字典 + tags 展开与同步 + 管理面）
+	Orgs         []OrgInfo   `json:"orgs,omitempty"`
+	TagInfos     []TagInfo   `json:"tag_infos,omitempty"`
+	Tags         []Tag       `json:"tags,omitempty"`
+	OrgTagID     *JSONInt64  `json:"tag_id,omitempty"`
+	OrgAdminUIDs []JSONInt64 `json:"admin_uids,omitempty"`
+	OrgIDResp    *JSONInt64  `json:"org_id,omitempty"`
 
 	// Upload
 	URL  string `json:"url,omitempty"`
 	Size *int64 `json:"size,omitempty"`
-}
-
-// MarshalJSON 把 Data 字段合并到响应顶层，使得插件返回值与核心字段一样扁平。
-func (r *Response) MarshalJSON() ([]byte, error) {
-	type alias Response
-	base, err := json.Marshal((*alias)(r))
-	if err != nil {
-		return nil, err
-	}
-	return mergeJSONObjects(base, r.Data), nil
-}
-
-// mergeJSONObjects 把两个 JSON 对象合并为一个。若 extra 为空或非对象，直接返回 base。
-func mergeJSONObjects(base, extra []byte) []byte {
-	if len(extra) == 0 {
-		return base
-	}
-	var extraMap map[string]json.RawMessage
-	if err := json.Unmarshal(extra, &extraMap); err != nil || len(extraMap) == 0 {
-		return base
-	}
-	var baseMap map[string]json.RawMessage
-	if err := json.Unmarshal(base, &baseMap); err != nil {
-		return base
-	}
-	for k, v := range extraMap {
-		if _, exists := baseMap[k]; !exists {
-			baseMap[k] = v
-		}
-	}
-	merged, err := json.Marshal(baseMap)
-	if err != nil {
-		return base
-	}
-	return merged
 }
 
 // PageInfo 是展示通道统一分页响应片段，桥接到 pb.PageInfo。
@@ -314,7 +281,6 @@ type Tag struct {
 	Title     string    `json:"title,omitempty"`
 	Rank      int64     `json:"rank"`
 	SortKey   string    `json:"sort_key"`
-	Role      uint8     `json:"role"`
 	Status    uint8     `json:"status"`
 	Seq       int64     `json:"seq"`
 }
@@ -459,6 +425,22 @@ func OKSyncTags(requestID uint64, tags []Tag) *Response {
 		tags = []Tag{}
 	}
 	return &Response{RequestID: requestID, OK: true, Tags: tags}
+}
+
+func OKOrgTagCreated(requestID uint64, tagID int64) *Response {
+	return &Response{RequestID: requestID, OK: true, OrgTagID: NewJSONInt64(tagID)}
+}
+
+func OKOrgCreated(requestID uint64, orgID int64) *Response {
+	return &Response{RequestID: requestID, OK: true, OrgIDResp: NewJSONInt64(orgID)}
+}
+
+func OKOrgAdmins(requestID uint64, uids []int64) *Response {
+	out := make([]JSONInt64, len(uids))
+	for i, u := range uids {
+		out[i] = JSONInt64(u)
+	}
+	return &Response{RequestID: requestID, OK: true, OrgAdminUIDs: out}
 }
 
 func OKSearch(requestID uint64, profile *dal.User) *Response {

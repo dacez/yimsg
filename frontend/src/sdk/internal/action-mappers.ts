@@ -392,7 +392,6 @@ function normalizeTag(item: {
   title?: string;
   rank?: string | number;
   sort_key?: string;
-  role?: number;
   status?: number;
   seq?: string | number;
 }): Tag {
@@ -403,7 +402,6 @@ function normalizeTag(item: {
     title: String(item.title || ''),
     rank: Number(item.rank || 0),
     sort_key: String(item.sort_key || ''),
-    role: Number(item.role || 0),
     status: Number(item.status || 0),
     seq: Number(item.seq || 0),
   };

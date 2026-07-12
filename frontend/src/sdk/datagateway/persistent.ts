@@ -1164,14 +1164,14 @@ export class PersistentDataGateway extends BaseDataGateway {
       stmts.push({
         sql: deleted
           ? "DELETE FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?"
-          : `INSERT INTO tags (org_id, tag_id, child_id, child_type, title, rank, sort_key, role, seq)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          : `INSERT INTO tags (org_id, tag_id, child_id, child_type, title, rank, sort_key, seq)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(org_id, tag_id, child_id, child_type) DO UPDATE SET
                 title = excluded.title, rank = excluded.rank,
-                sort_key = excluded.sort_key, role = excluded.role, seq = excluded.seq`,
+                sort_key = excluded.sort_key, seq = excluded.seq`,
         params: deleted
           ? [orgId, t.tag_id, t.child_id, t.child_type]
-          : [orgId, t.tag_id, t.child_id, t.child_type, t.title || "", t.rank, t.sort_key || "", t.role, t.seq],
+          : [orgId, t.tag_id, t.child_id, t.child_type, t.title || "", t.rank, t.sort_key || "", t.seq],
       });
     }
     if (stmts.length > 0) await this.db.execBatch(stmts);
@@ -1279,7 +1279,6 @@ export class PersistentDataGateway extends BaseDataGateway {
       title: String(r.title || ""),
       rank: Number(r.rank || 0),
       sort_key: String(r.sort_key || ""),
-      role: Number(r.role || 0),
       status: 1,
       seq: Number(r.seq || 0),
     }));

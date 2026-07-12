@@ -56,6 +56,19 @@ type ActionService interface {
 	GetTags(info *service.BaseInfo, req *pb.GetTagsRequest) *pb.GetTagsResponse
 	SyncTags(info *service.BaseInfo, req *pb.SyncTagsRequest) *pb.SyncTagsResponse
 	GetTagInfos(info *service.BaseInfo, req *pb.GetTagInfosRequest) *pb.GetTagInfosResponse
+	CreateOrgTag(info *service.BaseInfo, req *pb.CreateOrgTagRequest) *pb.CreateOrgTagResponse
+	RenameOrgTag(info *service.BaseInfo, req *pb.RenameOrgTagRequest) *pb.RenameOrgTagResponse
+	DeleteOrgTag(info *service.BaseInfo, req *pb.DeleteOrgTagRequest) *pb.DeleteOrgTagResponse
+	LinkOrgTag(info *service.BaseInfo, req *pb.LinkOrgTagRequest) *pb.LinkOrgTagResponse
+	AddOrgMember(info *service.BaseInfo, req *pb.AddOrgMemberRequest) *pb.AddOrgMemberResponse
+	RemoveOrgMember(info *service.BaseInfo, req *pb.RemoveOrgMemberRequest) *pb.RemoveOrgMemberResponse
+	SetOrgItemRank(info *service.BaseInfo, req *pb.SetOrgItemRankRequest) *pb.SetOrgItemRankResponse
+	RenameOrg(info *service.BaseInfo, req *pb.RenameOrgRequest) *pb.RenameOrgResponse
+	GrantOrgAdmin(info *service.BaseInfo, req *pb.GrantOrgAdminRequest) *pb.GrantOrgAdminResponse
+	RevokeOrgAdmin(info *service.BaseInfo, req *pb.RevokeOrgAdminRequest) *pb.RevokeOrgAdminResponse
+	ListOrgAdmins(info *service.BaseInfo, req *pb.ListOrgAdminsRequest) *pb.ListOrgAdminsResponse
+	CreateOrg(info *service.BaseInfo, req *pb.CreateOrgRequest) *pb.CreateOrgResponse
+	DeleteOrg(info *service.BaseInfo, req *pb.DeleteOrgRequest) *pb.DeleteOrgResponse
 }
 
 // 编译期断言：AppState 必须实现全部 action。

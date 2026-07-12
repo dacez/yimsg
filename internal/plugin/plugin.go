@@ -2,7 +2,6 @@
 package plugin
 
 import (
-	"yimsg/internal/appmsg"
 	"yimsg/internal/config"
 	"yimsg/internal/dal"
 	"yimsg/internal/online"
@@ -10,7 +9,13 @@ import (
 	"yimsg/internal/snowflake"
 )
 
-// Plugin 定义插件必须实现的接口
+// Plugin 定义插件必须实现的接口。
+//
+// 插件只贡献 schema 与生命周期钩子；不提供按请求分发的 action 扩展点——核心
+// WebSocket 通道是强类型 protobuf（内部路由按 internal/protocol/yimsg.proto
+// 生成的数值 type 做 switch），插件如需暴露新的对外 action，必须像核心 action
+// 一样先在 yimsg.proto 里定义明确的 message 并跑 protocolgen，不存在通用的
+// JSON 按请求分发层，详见 docs/插件架构方案.md。
 type Plugin interface {
 	// Name 返回插件唯一标识符
 	Name() string
@@ -20,19 +25,12 @@ type Plugin interface {
 	// value: DDL 字符串（CREATE TABLE ... 等）
 	Schemas() map[string]string
 
-	// Actions 返回插件注册的 action 名称 → handler 映射
-	Actions() map[string]Handler
-
 	// OnDisconnect 在用户 WebSocket 断连时被调用（可选钩子）
 	OnDisconnect(host Host, uid int64)
 
 	// OnStart 在服务器启动完成后调用，用于启动后台任务（GC、定时器等，可选）
 	OnStart(host Host)
 }
-
-// Handler 是插件 action 处理函数签名
-// 返回 Response（必须设置 RequestID），若返回 nil 则视为"未处理"
-type Handler func(host Host, reqID uint64, uid int64, req *appmsg.Request) *appmsg.Response
 
 // Host 定义插件可访问的宿主能力，避免循环依赖（plugin ↔ service）
 type Host interface {

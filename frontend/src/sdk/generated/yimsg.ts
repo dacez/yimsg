@@ -104,6 +104,32 @@ export enum Type {
   TYPE_ACTION_SYNC_TAGS = 46,
   /** TYPE_ACTION_GET_TAG_INFOS - action=get_tag_infos auth=true domain=组织 desc=批量读取 tag（部门/横向分组）展示资料 */
   TYPE_ACTION_GET_TAG_INFOS = 47,
+  /** TYPE_ACTION_CREATE_ORG_TAG - action=create_org_tag auth=true domain=组织 desc=创建 tag（部门/横向分组）并挂到父节点下，需对父节点有管理权限 */
+  TYPE_ACTION_CREATE_ORG_TAG = 48,
+  /** TYPE_ACTION_RENAME_ORG_TAG - action=rename_org_tag auth=true domain=组织 desc=重命名 tag 展示资料，需对该 tag 有管理权限 */
+  TYPE_ACTION_RENAME_ORG_TAG = 49,
+  /** TYPE_ACTION_DELETE_ORG_TAG - action=delete_org_tag auth=true domain=组织 desc=删除 tag 及其两个方向的关联边，需对该 tag 有管理权限 */
+  TYPE_ACTION_DELETE_ORG_TAG = 50,
+  /** TYPE_ACTION_LINK_ORG_TAG - action=link_org_tag auth=true domain=组织 desc=把已存在的 tag 额外挂到另一个父节点下（DAG 多父），需对目标父节点有管理权限 */
+  TYPE_ACTION_LINK_ORG_TAG = 51,
+  /** TYPE_ACTION_ADD_ORG_MEMBER - action=add_org_member auth=true domain=组织 desc=把人挂进某个组织节点，需对该节点有管理权限 */
+  TYPE_ACTION_ADD_ORG_MEMBER = 52,
+  /** TYPE_ACTION_REMOVE_ORG_MEMBER - action=remove_org_member auth=true domain=组织 desc=把人从某个组织节点移除，需对该节点有管理权限 */
+  TYPE_ACTION_REMOVE_ORG_MEMBER = 53,
+  /** TYPE_ACTION_SET_ORG_ITEM_RANK - action=set_org_item_rank auth=true domain=组织 desc=调整某条边的排序与职务展示，需对该边所属父节点有管理权限 */
+  TYPE_ACTION_SET_ORG_ITEM_RANK = 54,
+  /** TYPE_ACTION_RENAME_ORG - action=rename_org auth=true domain=组织 desc=重命名组织展示资料，需对组织根有管理权限 */
+  TYPE_ACTION_RENAME_ORG = 55,
+  /** TYPE_ACTION_GRANT_ORG_ADMIN - action=grant_org_admin auth=true domain=组织 desc=授予某人管理某节点为根子树的权限，需调用方自己已对该节点有管理权限 */
+  TYPE_ACTION_GRANT_ORG_ADMIN = 56,
+  /** TYPE_ACTION_REVOKE_ORG_ADMIN - action=revoke_org_admin auth=true domain=组织 desc=撤销某人对某节点为根子树的管理权限，需调用方自己已对该节点有管理权限 */
+  TYPE_ACTION_REVOKE_ORG_ADMIN = 57,
+  /** TYPE_ACTION_LIST_ORG_ADMINS - action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限 */
+  TYPE_ACTION_LIST_ORG_ADMINS = 58,
+  /** TYPE_ACTION_CREATE_ORG - action=create_org auth=true domain=组织 desc=创建组织，调用方自动成为组织根管理员，任意登录用户可调用 */
+  TYPE_ACTION_CREATE_ORG = 59,
+  /** TYPE_ACTION_DELETE_ORG - action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理 */
+  TYPE_ACTION_DELETE_ORG = 60,
   /** TYPE_NOTIFY_MESSAGES_RECEIVED - notification=messages:received desc=消息域发生变化 */
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001,
   /** TYPE_NOTIFY_CONTACTS_UPDATED - notification=contacts:updated desc=通讯录发生变化 */
@@ -267,6 +293,45 @@ export function typeFromJSON(object: any): Type {
     case 47:
     case "TYPE_ACTION_GET_TAG_INFOS":
       return Type.TYPE_ACTION_GET_TAG_INFOS;
+    case 48:
+    case "TYPE_ACTION_CREATE_ORG_TAG":
+      return Type.TYPE_ACTION_CREATE_ORG_TAG;
+    case 49:
+    case "TYPE_ACTION_RENAME_ORG_TAG":
+      return Type.TYPE_ACTION_RENAME_ORG_TAG;
+    case 50:
+    case "TYPE_ACTION_DELETE_ORG_TAG":
+      return Type.TYPE_ACTION_DELETE_ORG_TAG;
+    case 51:
+    case "TYPE_ACTION_LINK_ORG_TAG":
+      return Type.TYPE_ACTION_LINK_ORG_TAG;
+    case 52:
+    case "TYPE_ACTION_ADD_ORG_MEMBER":
+      return Type.TYPE_ACTION_ADD_ORG_MEMBER;
+    case 53:
+    case "TYPE_ACTION_REMOVE_ORG_MEMBER":
+      return Type.TYPE_ACTION_REMOVE_ORG_MEMBER;
+    case 54:
+    case "TYPE_ACTION_SET_ORG_ITEM_RANK":
+      return Type.TYPE_ACTION_SET_ORG_ITEM_RANK;
+    case 55:
+    case "TYPE_ACTION_RENAME_ORG":
+      return Type.TYPE_ACTION_RENAME_ORG;
+    case 56:
+    case "TYPE_ACTION_GRANT_ORG_ADMIN":
+      return Type.TYPE_ACTION_GRANT_ORG_ADMIN;
+    case 57:
+    case "TYPE_ACTION_REVOKE_ORG_ADMIN":
+      return Type.TYPE_ACTION_REVOKE_ORG_ADMIN;
+    case 58:
+    case "TYPE_ACTION_LIST_ORG_ADMINS":
+      return Type.TYPE_ACTION_LIST_ORG_ADMINS;
+    case 59:
+    case "TYPE_ACTION_CREATE_ORG":
+      return Type.TYPE_ACTION_CREATE_ORG;
+    case 60:
+    case "TYPE_ACTION_DELETE_ORG":
+      return Type.TYPE_ACTION_DELETE_ORG;
     case 10001:
     case "TYPE_NOTIFY_MESSAGES_RECEIVED":
       return Type.TYPE_NOTIFY_MESSAGES_RECEIVED;
@@ -395,6 +460,32 @@ export function typeToJSON(object: Type): string {
       return "TYPE_ACTION_SYNC_TAGS";
     case Type.TYPE_ACTION_GET_TAG_INFOS:
       return "TYPE_ACTION_GET_TAG_INFOS";
+    case Type.TYPE_ACTION_CREATE_ORG_TAG:
+      return "TYPE_ACTION_CREATE_ORG_TAG";
+    case Type.TYPE_ACTION_RENAME_ORG_TAG:
+      return "TYPE_ACTION_RENAME_ORG_TAG";
+    case Type.TYPE_ACTION_DELETE_ORG_TAG:
+      return "TYPE_ACTION_DELETE_ORG_TAG";
+    case Type.TYPE_ACTION_LINK_ORG_TAG:
+      return "TYPE_ACTION_LINK_ORG_TAG";
+    case Type.TYPE_ACTION_ADD_ORG_MEMBER:
+      return "TYPE_ACTION_ADD_ORG_MEMBER";
+    case Type.TYPE_ACTION_REMOVE_ORG_MEMBER:
+      return "TYPE_ACTION_REMOVE_ORG_MEMBER";
+    case Type.TYPE_ACTION_SET_ORG_ITEM_RANK:
+      return "TYPE_ACTION_SET_ORG_ITEM_RANK";
+    case Type.TYPE_ACTION_RENAME_ORG:
+      return "TYPE_ACTION_RENAME_ORG";
+    case Type.TYPE_ACTION_GRANT_ORG_ADMIN:
+      return "TYPE_ACTION_GRANT_ORG_ADMIN";
+    case Type.TYPE_ACTION_REVOKE_ORG_ADMIN:
+      return "TYPE_ACTION_REVOKE_ORG_ADMIN";
+    case Type.TYPE_ACTION_LIST_ORG_ADMINS:
+      return "TYPE_ACTION_LIST_ORG_ADMINS";
+    case Type.TYPE_ACTION_CREATE_ORG:
+      return "TYPE_ACTION_CREATE_ORG";
+    case Type.TYPE_ACTION_DELETE_ORG:
+      return "TYPE_ACTION_DELETE_ORG";
     case Type.TYPE_NOTIFY_MESSAGES_RECEIVED:
       return "TYPE_NOTIFY_MESSAGES_RECEIVED";
     case Type.TYPE_NOTIFY_CONTACTS_UPDATED:
@@ -872,14 +963,21 @@ export function tagStatusToJSON(object: TagStatus): string {
   }
 }
 
-/** TagChildType 区分 tags 一行挂载的子项是人还是 tag；0 保留为非法值。 */
+/**
+ * TagChildType 区分 tags 一行挂载的子项是人、tag 还是管理员授权；0 保留为非法值。
+ * GRANT 行与组织架构位置（PERSON/TAG 行）完全解耦：child_id=uid 表示该用户被
+ * 授权管理 tag_id 为根的整棵子树，与此人在组织架构里的职位无关（他可能同时
+ * 是别的部门的普通成员），不占用职位展示，不出现在 get_tags/sync_tags 的展开结果里。
+ */
 export enum TagChildType {
   /** TAG_CHILD_TYPE_INVALID - reserved=invalid meaning=无效类型 */
   TAG_CHILD_TYPE_INVALID = 0,
-  /** TAG_CHILD_TYPE_PERSON - meaning=子项是人，child_id 为 uid */
+  /** TAG_CHILD_TYPE_PERSON - meaning=子项是人，child_id 为 uid，代表组织架构中的真实职位 */
   TAG_CHILD_TYPE_PERSON = 1,
   /** TAG_CHILD_TYPE_TAG - meaning=子项是 tag，child_id 为 tag_id */
   TAG_CHILD_TYPE_TAG = 2,
+  /** TAG_CHILD_TYPE_GRANT - meaning=管理员授权，child_id 为 uid，代表被授权管理 tag_id 为根的子树 */
+  TAG_CHILD_TYPE_GRANT = 3,
 }
 
 export function tagChildTypeFromJSON(object: any): TagChildType {
@@ -893,6 +991,9 @@ export function tagChildTypeFromJSON(object: any): TagChildType {
     case 2:
     case "TAG_CHILD_TYPE_TAG":
       return TagChildType.TAG_CHILD_TYPE_TAG;
+    case 3:
+    case "TAG_CHILD_TYPE_GRANT":
+      return TagChildType.TAG_CHILD_TYPE_GRANT;
     default:
       throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagChildType");
   }
@@ -906,47 +1007,10 @@ export function tagChildTypeToJSON(object: TagChildType): string {
       return "TAG_CHILD_TYPE_PERSON";
     case TagChildType.TAG_CHILD_TYPE_TAG:
       return "TAG_CHILD_TYPE_TAG";
+    case TagChildType.TAG_CHILD_TYPE_GRANT:
+      return "TAG_CHILD_TYPE_GRANT";
     default:
       throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagChildType");
-  }
-}
-
-/** TagRole 标识某子项在其挂载节点下是否为管理员；0 保留为非法值。 */
-export enum TagRole {
-  /** TAG_ROLE_INVALID - reserved=invalid meaning=无效角色 */
-  TAG_ROLE_INVALID = 0,
-  /** TAG_ROLE_MEMBER - meaning=普通成员 */
-  TAG_ROLE_MEMBER = 1,
-  /** TAG_ROLE_ADMIN - meaning=管理员 */
-  TAG_ROLE_ADMIN = 2,
-}
-
-export function tagRoleFromJSON(object: any): TagRole {
-  switch (object) {
-    case 0:
-    case "TAG_ROLE_INVALID":
-      return TagRole.TAG_ROLE_INVALID;
-    case 1:
-    case "TAG_ROLE_MEMBER":
-      return TagRole.TAG_ROLE_MEMBER;
-    case 2:
-    case "TAG_ROLE_ADMIN":
-      return TagRole.TAG_ROLE_ADMIN;
-    default:
-      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagRole");
-  }
-}
-
-export function tagRoleToJSON(object: TagRole): string {
-  switch (object) {
-    case TagRole.TAG_ROLE_INVALID:
-      return "TAG_ROLE_INVALID";
-    case TagRole.TAG_ROLE_MEMBER:
-      return "TAG_ROLE_MEMBER";
-    case TagRole.TAG_ROLE_ADMIN:
-      return "TAG_ROLE_ADMIN";
-    default:
-      throw new globalThis.Error("Unrecognized enum value " + object + " for enum TagRole");
   }
 }
 
@@ -2026,13 +2090,14 @@ export interface TagInfo {
 /**
  * Tag 是 tags（组织关系表）条目：组织架构唯一的同步域。一行表示"某父节点
  * （组织根传 org_id，部门传 tag_id）下挂一个子项"；child_type 区分子项是
- * 人（PERSON，child_id=uid）还是 tag（TAG，child_id=tag_id）；role 标识
- * 该子项在这个父节点下是否为管理员。
+ * 人（PERSON，child_id=uid）、tag（TAG，child_id=tag_id）还是管理员授权
+ * （GRANT，child_id=uid，与组织架构位置解耦，get_tags/sync_tags 的展开结果
+ * 不含 GRANT 行，仅通过 list_org_admins 读取）。
  */
 export interface Tag {
   /** required 父节点 ID；在线展开时恒等于请求的 tag_id，展开组织根传 org_id */
   tag_id: string;
-  /** required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id */
+  /** required 子项 ID：child_type=PERSON/GRANT 时为 uid，child_type=TAG 时为 tag_id */
   child_id: string;
   /** required 子项类型 */
   child_type: TagChildType;
@@ -2042,8 +2107,6 @@ export interface Tag {
   rank: string;
   /** required 名字归一化排序键（人取昵称、tag 取 tag 名） */
   sort_key: string;
-  /** required 子项在本节点下的角色，标识是否为管理员 */
-  role: TagRole;
   /** required 在线展开恒为 ACTIVE；同步含 DELETED tombstone */
   status: TagStatus;
   /** required 同步序号 */
@@ -2122,6 +2185,207 @@ export interface SyncTagsResponse {
   has_more: boolean;
   /** required 下一次增量同步应使用的 last_seq 游标，等于本批最大 seq；本批为空时为 0 */
   cursor_seq: string;
+}
+
+export interface CreateOrgTagRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 挂载的父节点；组织根传 org_id */
+  parent_tag_id: string;
+  /** required tag 名称 */
+  name: string;
+  /** optional tag 头像 URL */
+  avatar: string;
+  /** optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值 */
+  rank?: string | undefined;
+}
+
+export interface CreateOrgTagResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** required 新建 tag ID */
+  tag_id: string;
+}
+
+export interface RenameOrgTagRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 目标 tag ID */
+  tag_id: string;
+  /** required 新名称 */
+  name: string;
+  /** optional 新头像 URL */
+  avatar: string;
+}
+
+export interface RenameOrgTagResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface DeleteOrgTagRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 目标 tag ID */
+  tag_id: string;
+}
+
+export interface DeleteOrgTagResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface LinkOrgTagRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 挂载的父节点 */
+  parent_tag_id: string;
+  /** required 已存在的子 tag ID（DAG 多父，防环由服务端校验） */
+  child_tag_id: string;
+  /** optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值 */
+  rank?: string | undefined;
+}
+
+export interface LinkOrgTagResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface AddOrgMemberRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 挂载的节点；组织根传 org_id */
+  tag_id: string;
+  /** required 新成员用户 ID */
+  uid: string;
+  /** optional 本节点下的职务展示文本 */
+  title: string;
+  /** optional 在父节点下的排序值；不传（而非传 0）为未显式排序，0 是合法的显式排序值 */
+  rank?: string | undefined;
+}
+
+export interface AddOrgMemberResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface RemoveOrgMemberRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 挂载的节点 */
+  tag_id: string;
+  /** required 移除成员用户 ID */
+  uid: string;
+}
+
+export interface RemoveOrgMemberResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface SetOrgItemRankRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 该边所属父节点 */
+  tag_id: string;
+  /** required 子项 ID：child_type=PERSON 时为 uid，child_type=TAG 时为 tag_id */
+  child_id: string;
+  /** required 子项类型，仅支持 PERSON / TAG */
+  child_type: TagChildType;
+  /** optional 本节点下的职务展示文本（仅人条目常用） */
+  title: string;
+  /** required 新排序值 */
+  rank: string;
+}
+
+export interface SetOrgItemRankResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface RenameOrgRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 新组织名称 */
+  name: string;
+  /** optional 新组织头像 URL */
+  avatar: string;
+}
+
+export interface RenameOrgResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface GrantOrgAdminRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 被授权管理的子树根；组织根传 org_id */
+  scope_tag_id: string;
+  /** required 被授权人；不要求其本身是该子树的成员 */
+  uid: string;
+}
+
+export interface GrantOrgAdminResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface RevokeOrgAdminRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 被撤权的子树根 */
+  scope_tag_id: string;
+  /** required 被撤权人 */
+  uid: string;
+}
+
+export interface RevokeOrgAdminResponse {
+  base: BaseResponse | undefined;
+}
+
+export interface ListOrgAdminsRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+  /** required 目标节点；组织根传 org_id */
+  scope_tag_id: string;
+}
+
+export interface ListOrgAdminsResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** optional 直接挂在该节点上的管理员 uid 列表（不含挂在祖先节点、递归覆盖到此的管理员） */
+  admin_uids: string[];
+}
+
+/**
+ * CreateOrgRequest 任意登录用户可调用；调用方自动成为组织根管理员（GRANT 边），
+ * 是整条管理权限链条的自举点。
+ */
+export interface CreateOrgRequest {
+  /** required 组织名称 */
+  name: string;
+  /** optional 组织头像 URL */
+  avatar: string;
+}
+
+export interface CreateOrgResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** required 新建组织 ID */
+  org_id: string;
+}
+
+/**
+ * DeleteOrgRequest 需对组织根有管理权限。结构（tags 全部边、tag_info、org_info、
+ * org_version）在事务内同步清空；每个成员自己 uid 分片下的通讯录组织行经
+ * taskqueue 异步 tombstone 并推送 contacts:updated，避免大组织阻塞请求。
+ */
+export interface DeleteOrgRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+}
+
+export interface DeleteOrgResponse {
+  base: BaseResponse | undefined;
 }
 
 function createBaseMessagesReceivedNotification(): MessagesReceivedNotification {
@@ -12196,17 +12460,7 @@ export const TagInfo: MessageFns<TagInfo> = {
 };
 
 function createBaseTag(): Tag {
-  return {
-    tag_id: "0",
-    child_id: "0",
-    child_type: 0,
-    title: "",
-    rank: "0",
-    sort_key: "",
-    role: 0,
-    status: 0,
-    seq: "0",
-  };
+  return { tag_id: "0", child_id: "0", child_type: 0, title: "", rank: "0", sort_key: "", status: 0, seq: "0" };
 }
 
 export const Tag: MessageFns<Tag> = {
@@ -12228,9 +12482,6 @@ export const Tag: MessageFns<Tag> = {
     }
     if (message.sort_key !== "") {
       writer.uint32(50).string(message.sort_key);
-    }
-    if (message.role !== 0) {
-      writer.uint32(56).int32(message.role);
     }
     if (message.status !== 0) {
       writer.uint32(64).int32(message.status);
@@ -12296,14 +12547,6 @@ export const Tag: MessageFns<Tag> = {
           message.sort_key = reader.string();
           continue;
         }
-        case 7: {
-          if (tag !== 56) {
-            break;
-          }
-
-          message.role = reader.int32() as any;
-          continue;
-        }
         case 8: {
           if (tag !== 64) {
             break;
@@ -12353,7 +12596,6 @@ export const Tag: MessageFns<Tag> = {
         : isSet(object.sort_key)
         ? globalThis.String(object.sort_key)
         : "",
-      role: isSet(object.role) ? tagRoleFromJSON(object.role) : 0,
       status: isSet(object.status) ? tagStatusFromJSON(object.status) : 0,
       seq: isSet(object.seq) ? globalThis.String(object.seq) : "0",
     };
@@ -12379,9 +12621,6 @@ export const Tag: MessageFns<Tag> = {
     if (message.sort_key !== "") {
       obj.sortKey = message.sort_key;
     }
-    if (message.role !== 0) {
-      obj.role = tagRoleToJSON(message.role);
-    }
     if (message.status !== 0) {
       obj.status = tagStatusToJSON(message.status);
     }
@@ -12402,7 +12641,6 @@ export const Tag: MessageFns<Tag> = {
     message.title = object.title ?? "";
     message.rank = object.rank ?? "0";
     message.sort_key = object.sort_key ?? "";
-    message.role = object.role ?? 0;
     message.status = object.status ?? 0;
     message.seq = object.seq ?? "0";
     return message;
@@ -13161,6 +13399,2224 @@ export const SyncTagsResponse: MessageFns<SyncTagsResponse> = {
     message.tags = object.tags?.map((e) => Tag.fromPartial(e)) || [];
     message.has_more = object.has_more ?? false;
     message.cursor_seq = object.cursor_seq ?? "0";
+    return message;
+  },
+};
+
+function createBaseCreateOrgTagRequest(): CreateOrgTagRequest {
+  return { org_id: "0", parent_tag_id: "0", name: "", avatar: "", rank: undefined };
+}
+
+export const CreateOrgTagRequest: MessageFns<CreateOrgTagRequest> = {
+  encode(message: CreateOrgTagRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.parent_tag_id !== "0") {
+      writer.uint32(88).int64(message.parent_tag_id);
+    }
+    if (message.name !== "") {
+      writer.uint32(98).string(message.name);
+    }
+    if (message.avatar !== "") {
+      writer.uint32(106).string(message.avatar);
+    }
+    if (message.rank !== undefined) {
+      writer.uint32(112).int64(message.rank);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgTagRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgTagRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.parent_tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.avatar = reader.string();
+          continue;
+        }
+        case 14: {
+          if (tag !== 112) {
+            break;
+          }
+
+          message.rank = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgTagRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      parent_tag_id: isSet(object.parentTagId)
+        ? globalThis.String(object.parentTagId)
+        : isSet(object.parent_tag_id)
+        ? globalThis.String(object.parent_tag_id)
+        : "0",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+      rank: isSet(object.rank) ? globalThis.String(object.rank) : undefined,
+    };
+  },
+
+  toJSON(message: CreateOrgTagRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.parent_tag_id !== "0") {
+      obj.parentTagId = message.parent_tag_id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.avatar !== "") {
+      obj.avatar = message.avatar;
+    }
+    if (message.rank !== undefined) {
+      obj.rank = message.rank;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgTagRequest>): CreateOrgTagRequest {
+    return CreateOrgTagRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgTagRequest>): CreateOrgTagRequest {
+    const message = createBaseCreateOrgTagRequest();
+    message.org_id = object.org_id ?? "0";
+    message.parent_tag_id = object.parent_tag_id ?? "0";
+    message.name = object.name ?? "";
+    message.avatar = object.avatar ?? "";
+    message.rank = object.rank ?? undefined;
+    return message;
+  },
+};
+
+function createBaseCreateOrgTagResponse(): CreateOrgTagResponse {
+  return { base: undefined, tag_id: "0" };
+}
+
+export const CreateOrgTagResponse: MessageFns<CreateOrgTagResponse> = {
+  encode(message: CreateOrgTagResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(80).int64(message.tag_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgTagResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgTagResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgTagResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: CreateOrgTagResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgTagResponse>): CreateOrgTagResponse {
+    return CreateOrgTagResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgTagResponse>): CreateOrgTagResponse {
+    const message = createBaseCreateOrgTagResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.tag_id = object.tag_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseRenameOrgTagRequest(): RenameOrgTagRequest {
+  return { org_id: "0", tag_id: "0", name: "", avatar: "" };
+}
+
+export const RenameOrgTagRequest: MessageFns<RenameOrgTagRequest> = {
+  encode(message: RenameOrgTagRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(88).int64(message.tag_id);
+    }
+    if (message.name !== "") {
+      writer.uint32(98).string(message.name);
+    }
+    if (message.avatar !== "") {
+      writer.uint32(106).string(message.avatar);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenameOrgTagRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenameOrgTagRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.avatar = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenameOrgTagRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+    };
+  },
+
+  toJSON(message: RenameOrgTagRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.avatar !== "") {
+      obj.avatar = message.avatar;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RenameOrgTagRequest>): RenameOrgTagRequest {
+    return RenameOrgTagRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RenameOrgTagRequest>): RenameOrgTagRequest {
+    const message = createBaseRenameOrgTagRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_id = object.tag_id ?? "0";
+    message.name = object.name ?? "";
+    message.avatar = object.avatar ?? "";
+    return message;
+  },
+};
+
+function createBaseRenameOrgTagResponse(): RenameOrgTagResponse {
+  return { base: undefined };
+}
+
+export const RenameOrgTagResponse: MessageFns<RenameOrgTagResponse> = {
+  encode(message: RenameOrgTagResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenameOrgTagResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenameOrgTagResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenameOrgTagResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: RenameOrgTagResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RenameOrgTagResponse>): RenameOrgTagResponse {
+    return RenameOrgTagResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RenameOrgTagResponse>): RenameOrgTagResponse {
+    const message = createBaseRenameOrgTagResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseDeleteOrgTagRequest(): DeleteOrgTagRequest {
+  return { org_id: "0", tag_id: "0" };
+}
+
+export const DeleteOrgTagRequest: MessageFns<DeleteOrgTagRequest> = {
+  encode(message: DeleteOrgTagRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(88).int64(message.tag_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgTagRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgTagRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgTagRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: DeleteOrgTagRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgTagRequest>): DeleteOrgTagRequest {
+    return DeleteOrgTagRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgTagRequest>): DeleteOrgTagRequest {
+    const message = createBaseDeleteOrgTagRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_id = object.tag_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseDeleteOrgTagResponse(): DeleteOrgTagResponse {
+  return { base: undefined };
+}
+
+export const DeleteOrgTagResponse: MessageFns<DeleteOrgTagResponse> = {
+  encode(message: DeleteOrgTagResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgTagResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgTagResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgTagResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: DeleteOrgTagResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgTagResponse>): DeleteOrgTagResponse {
+    return DeleteOrgTagResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgTagResponse>): DeleteOrgTagResponse {
+    const message = createBaseDeleteOrgTagResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseLinkOrgTagRequest(): LinkOrgTagRequest {
+  return { org_id: "0", parent_tag_id: "0", child_tag_id: "0", rank: undefined };
+}
+
+export const LinkOrgTagRequest: MessageFns<LinkOrgTagRequest> = {
+  encode(message: LinkOrgTagRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.parent_tag_id !== "0") {
+      writer.uint32(88).int64(message.parent_tag_id);
+    }
+    if (message.child_tag_id !== "0") {
+      writer.uint32(96).int64(message.child_tag_id);
+    }
+    if (message.rank !== undefined) {
+      writer.uint32(104).int64(message.rank);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LinkOrgTagRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseLinkOrgTagRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.parent_tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.child_tag_id = reader.int64().toString();
+          continue;
+        }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.rank = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): LinkOrgTagRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      parent_tag_id: isSet(object.parentTagId)
+        ? globalThis.String(object.parentTagId)
+        : isSet(object.parent_tag_id)
+        ? globalThis.String(object.parent_tag_id)
+        : "0",
+      child_tag_id: isSet(object.childTagId)
+        ? globalThis.String(object.childTagId)
+        : isSet(object.child_tag_id)
+        ? globalThis.String(object.child_tag_id)
+        : "0",
+      rank: isSet(object.rank) ? globalThis.String(object.rank) : undefined,
+    };
+  },
+
+  toJSON(message: LinkOrgTagRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.parent_tag_id !== "0") {
+      obj.parentTagId = message.parent_tag_id;
+    }
+    if (message.child_tag_id !== "0") {
+      obj.childTagId = message.child_tag_id;
+    }
+    if (message.rank !== undefined) {
+      obj.rank = message.rank;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<LinkOrgTagRequest>): LinkOrgTagRequest {
+    return LinkOrgTagRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<LinkOrgTagRequest>): LinkOrgTagRequest {
+    const message = createBaseLinkOrgTagRequest();
+    message.org_id = object.org_id ?? "0";
+    message.parent_tag_id = object.parent_tag_id ?? "0";
+    message.child_tag_id = object.child_tag_id ?? "0";
+    message.rank = object.rank ?? undefined;
+    return message;
+  },
+};
+
+function createBaseLinkOrgTagResponse(): LinkOrgTagResponse {
+  return { base: undefined };
+}
+
+export const LinkOrgTagResponse: MessageFns<LinkOrgTagResponse> = {
+  encode(message: LinkOrgTagResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LinkOrgTagResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseLinkOrgTagResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): LinkOrgTagResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: LinkOrgTagResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<LinkOrgTagResponse>): LinkOrgTagResponse {
+    return LinkOrgTagResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<LinkOrgTagResponse>): LinkOrgTagResponse {
+    const message = createBaseLinkOrgTagResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseAddOrgMemberRequest(): AddOrgMemberRequest {
+  return { org_id: "0", tag_id: "0", uid: "0", title: "", rank: undefined };
+}
+
+export const AddOrgMemberRequest: MessageFns<AddOrgMemberRequest> = {
+  encode(message: AddOrgMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(88).int64(message.tag_id);
+    }
+    if (message.uid !== "0") {
+      writer.uint32(96).int64(message.uid);
+    }
+    if (message.title !== "") {
+      writer.uint32(106).string(message.title);
+    }
+    if (message.rank !== undefined) {
+      writer.uint32(112).int64(message.rank);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddOrgMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAddOrgMemberRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.uid = reader.int64().toString();
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.title = reader.string();
+          continue;
+        }
+        case 14: {
+          if (tag !== 112) {
+            break;
+          }
+
+          message.rank = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AddOrgMemberRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+      uid: isSet(object.uid) ? globalThis.String(object.uid) : "0",
+      title: isSet(object.title) ? globalThis.String(object.title) : "",
+      rank: isSet(object.rank) ? globalThis.String(object.rank) : undefined,
+    };
+  },
+
+  toJSON(message: AddOrgMemberRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    if (message.uid !== "0") {
+      obj.uid = message.uid;
+    }
+    if (message.title !== "") {
+      obj.title = message.title;
+    }
+    if (message.rank !== undefined) {
+      obj.rank = message.rank;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AddOrgMemberRequest>): AddOrgMemberRequest {
+    return AddOrgMemberRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AddOrgMemberRequest>): AddOrgMemberRequest {
+    const message = createBaseAddOrgMemberRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_id = object.tag_id ?? "0";
+    message.uid = object.uid ?? "0";
+    message.title = object.title ?? "";
+    message.rank = object.rank ?? undefined;
+    return message;
+  },
+};
+
+function createBaseAddOrgMemberResponse(): AddOrgMemberResponse {
+  return { base: undefined };
+}
+
+export const AddOrgMemberResponse: MessageFns<AddOrgMemberResponse> = {
+  encode(message: AddOrgMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddOrgMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAddOrgMemberResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AddOrgMemberResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: AddOrgMemberResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AddOrgMemberResponse>): AddOrgMemberResponse {
+    return AddOrgMemberResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AddOrgMemberResponse>): AddOrgMemberResponse {
+    const message = createBaseAddOrgMemberResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRemoveOrgMemberRequest(): RemoveOrgMemberRequest {
+  return { org_id: "0", tag_id: "0", uid: "0" };
+}
+
+export const RemoveOrgMemberRequest: MessageFns<RemoveOrgMemberRequest> = {
+  encode(message: RemoveOrgMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(88).int64(message.tag_id);
+    }
+    if (message.uid !== "0") {
+      writer.uint32(96).int64(message.uid);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveOrgMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRemoveOrgMemberRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.uid = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RemoveOrgMemberRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+      uid: isSet(object.uid) ? globalThis.String(object.uid) : "0",
+    };
+  },
+
+  toJSON(message: RemoveOrgMemberRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    if (message.uid !== "0") {
+      obj.uid = message.uid;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RemoveOrgMemberRequest>): RemoveOrgMemberRequest {
+    return RemoveOrgMemberRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RemoveOrgMemberRequest>): RemoveOrgMemberRequest {
+    const message = createBaseRemoveOrgMemberRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_id = object.tag_id ?? "0";
+    message.uid = object.uid ?? "0";
+    return message;
+  },
+};
+
+function createBaseRemoveOrgMemberResponse(): RemoveOrgMemberResponse {
+  return { base: undefined };
+}
+
+export const RemoveOrgMemberResponse: MessageFns<RemoveOrgMemberResponse> = {
+  encode(message: RemoveOrgMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveOrgMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRemoveOrgMemberResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RemoveOrgMemberResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: RemoveOrgMemberResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RemoveOrgMemberResponse>): RemoveOrgMemberResponse {
+    return RemoveOrgMemberResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RemoveOrgMemberResponse>): RemoveOrgMemberResponse {
+    const message = createBaseRemoveOrgMemberResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseSetOrgItemRankRequest(): SetOrgItemRankRequest {
+  return { org_id: "0", tag_id: "0", child_id: "0", child_type: 0, title: "", rank: "0" };
+}
+
+export const SetOrgItemRankRequest: MessageFns<SetOrgItemRankRequest> = {
+  encode(message: SetOrgItemRankRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.tag_id !== "0") {
+      writer.uint32(88).int64(message.tag_id);
+    }
+    if (message.child_id !== "0") {
+      writer.uint32(96).int64(message.child_id);
+    }
+    if (message.child_type !== 0) {
+      writer.uint32(104).int32(message.child_type);
+    }
+    if (message.title !== "") {
+      writer.uint32(114).string(message.title);
+    }
+    if (message.rank !== "0") {
+      writer.uint32(120).int64(message.rank);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetOrgItemRankRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSetOrgItemRankRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.child_id = reader.int64().toString();
+          continue;
+        }
+        case 13: {
+          if (tag !== 104) {
+            break;
+          }
+
+          message.child_type = reader.int32() as any;
+          continue;
+        }
+        case 14: {
+          if (tag !== 114) {
+            break;
+          }
+
+          message.title = reader.string();
+          continue;
+        }
+        case 15: {
+          if (tag !== 120) {
+            break;
+          }
+
+          message.rank = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SetOrgItemRankRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      tag_id: isSet(object.tagId)
+        ? globalThis.String(object.tagId)
+        : isSet(object.tag_id)
+        ? globalThis.String(object.tag_id)
+        : "0",
+      child_id: isSet(object.childId)
+        ? globalThis.String(object.childId)
+        : isSet(object.child_id)
+        ? globalThis.String(object.child_id)
+        : "0",
+      child_type: isSet(object.childType)
+        ? tagChildTypeFromJSON(object.childType)
+        : isSet(object.child_type)
+        ? tagChildTypeFromJSON(object.child_type)
+        : 0,
+      title: isSet(object.title) ? globalThis.String(object.title) : "",
+      rank: isSet(object.rank) ? globalThis.String(object.rank) : "0",
+    };
+  },
+
+  toJSON(message: SetOrgItemRankRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.tag_id !== "0") {
+      obj.tagId = message.tag_id;
+    }
+    if (message.child_id !== "0") {
+      obj.childId = message.child_id;
+    }
+    if (message.child_type !== 0) {
+      obj.childType = tagChildTypeToJSON(message.child_type);
+    }
+    if (message.title !== "") {
+      obj.title = message.title;
+    }
+    if (message.rank !== "0") {
+      obj.rank = message.rank;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SetOrgItemRankRequest>): SetOrgItemRankRequest {
+    return SetOrgItemRankRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SetOrgItemRankRequest>): SetOrgItemRankRequest {
+    const message = createBaseSetOrgItemRankRequest();
+    message.org_id = object.org_id ?? "0";
+    message.tag_id = object.tag_id ?? "0";
+    message.child_id = object.child_id ?? "0";
+    message.child_type = object.child_type ?? 0;
+    message.title = object.title ?? "";
+    message.rank = object.rank ?? "0";
+    return message;
+  },
+};
+
+function createBaseSetOrgItemRankResponse(): SetOrgItemRankResponse {
+  return { base: undefined };
+}
+
+export const SetOrgItemRankResponse: MessageFns<SetOrgItemRankResponse> = {
+  encode(message: SetOrgItemRankResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetOrgItemRankResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSetOrgItemRankResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SetOrgItemRankResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: SetOrgItemRankResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SetOrgItemRankResponse>): SetOrgItemRankResponse {
+    return SetOrgItemRankResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SetOrgItemRankResponse>): SetOrgItemRankResponse {
+    const message = createBaseSetOrgItemRankResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRenameOrgRequest(): RenameOrgRequest {
+  return { org_id: "0", name: "", avatar: "" };
+}
+
+export const RenameOrgRequest: MessageFns<RenameOrgRequest> = {
+  encode(message: RenameOrgRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.name !== "") {
+      writer.uint32(90).string(message.name);
+    }
+    if (message.avatar !== "") {
+      writer.uint32(98).string(message.avatar);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenameOrgRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenameOrgRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.avatar = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenameOrgRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+    };
+  },
+
+  toJSON(message: RenameOrgRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.avatar !== "") {
+      obj.avatar = message.avatar;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RenameOrgRequest>): RenameOrgRequest {
+    return RenameOrgRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RenameOrgRequest>): RenameOrgRequest {
+    const message = createBaseRenameOrgRequest();
+    message.org_id = object.org_id ?? "0";
+    message.name = object.name ?? "";
+    message.avatar = object.avatar ?? "";
+    return message;
+  },
+};
+
+function createBaseRenameOrgResponse(): RenameOrgResponse {
+  return { base: undefined };
+}
+
+export const RenameOrgResponse: MessageFns<RenameOrgResponse> = {
+  encode(message: RenameOrgResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenameOrgResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenameOrgResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenameOrgResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: RenameOrgResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RenameOrgResponse>): RenameOrgResponse {
+    return RenameOrgResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RenameOrgResponse>): RenameOrgResponse {
+    const message = createBaseRenameOrgResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseGrantOrgAdminRequest(): GrantOrgAdminRequest {
+  return { org_id: "0", scope_tag_id: "0", uid: "0" };
+}
+
+export const GrantOrgAdminRequest: MessageFns<GrantOrgAdminRequest> = {
+  encode(message: GrantOrgAdminRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.scope_tag_id !== "0") {
+      writer.uint32(88).int64(message.scope_tag_id);
+    }
+    if (message.uid !== "0") {
+      writer.uint32(96).int64(message.uid);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GrantOrgAdminRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGrantOrgAdminRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.scope_tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.uid = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GrantOrgAdminRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      scope_tag_id: isSet(object.scopeTagId)
+        ? globalThis.String(object.scopeTagId)
+        : isSet(object.scope_tag_id)
+        ? globalThis.String(object.scope_tag_id)
+        : "0",
+      uid: isSet(object.uid) ? globalThis.String(object.uid) : "0",
+    };
+  },
+
+  toJSON(message: GrantOrgAdminRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.scope_tag_id !== "0") {
+      obj.scopeTagId = message.scope_tag_id;
+    }
+    if (message.uid !== "0") {
+      obj.uid = message.uid;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<GrantOrgAdminRequest>): GrantOrgAdminRequest {
+    return GrantOrgAdminRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<GrantOrgAdminRequest>): GrantOrgAdminRequest {
+    const message = createBaseGrantOrgAdminRequest();
+    message.org_id = object.org_id ?? "0";
+    message.scope_tag_id = object.scope_tag_id ?? "0";
+    message.uid = object.uid ?? "0";
+    return message;
+  },
+};
+
+function createBaseGrantOrgAdminResponse(): GrantOrgAdminResponse {
+  return { base: undefined };
+}
+
+export const GrantOrgAdminResponse: MessageFns<GrantOrgAdminResponse> = {
+  encode(message: GrantOrgAdminResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GrantOrgAdminResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGrantOrgAdminResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GrantOrgAdminResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: GrantOrgAdminResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<GrantOrgAdminResponse>): GrantOrgAdminResponse {
+    return GrantOrgAdminResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<GrantOrgAdminResponse>): GrantOrgAdminResponse {
+    const message = createBaseGrantOrgAdminResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRevokeOrgAdminRequest(): RevokeOrgAdminRequest {
+  return { org_id: "0", scope_tag_id: "0", uid: "0" };
+}
+
+export const RevokeOrgAdminRequest: MessageFns<RevokeOrgAdminRequest> = {
+  encode(message: RevokeOrgAdminRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.scope_tag_id !== "0") {
+      writer.uint32(88).int64(message.scope_tag_id);
+    }
+    if (message.uid !== "0") {
+      writer.uint32(96).int64(message.uid);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RevokeOrgAdminRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRevokeOrgAdminRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.scope_tag_id = reader.int64().toString();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.uid = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RevokeOrgAdminRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      scope_tag_id: isSet(object.scopeTagId)
+        ? globalThis.String(object.scopeTagId)
+        : isSet(object.scope_tag_id)
+        ? globalThis.String(object.scope_tag_id)
+        : "0",
+      uid: isSet(object.uid) ? globalThis.String(object.uid) : "0",
+    };
+  },
+
+  toJSON(message: RevokeOrgAdminRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.scope_tag_id !== "0") {
+      obj.scopeTagId = message.scope_tag_id;
+    }
+    if (message.uid !== "0") {
+      obj.uid = message.uid;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RevokeOrgAdminRequest>): RevokeOrgAdminRequest {
+    return RevokeOrgAdminRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RevokeOrgAdminRequest>): RevokeOrgAdminRequest {
+    const message = createBaseRevokeOrgAdminRequest();
+    message.org_id = object.org_id ?? "0";
+    message.scope_tag_id = object.scope_tag_id ?? "0";
+    message.uid = object.uid ?? "0";
+    return message;
+  },
+};
+
+function createBaseRevokeOrgAdminResponse(): RevokeOrgAdminResponse {
+  return { base: undefined };
+}
+
+export const RevokeOrgAdminResponse: MessageFns<RevokeOrgAdminResponse> = {
+  encode(message: RevokeOrgAdminResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RevokeOrgAdminResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRevokeOrgAdminResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RevokeOrgAdminResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: RevokeOrgAdminResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<RevokeOrgAdminResponse>): RevokeOrgAdminResponse {
+    return RevokeOrgAdminResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<RevokeOrgAdminResponse>): RevokeOrgAdminResponse {
+    const message = createBaseRevokeOrgAdminResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseListOrgAdminsRequest(): ListOrgAdminsRequest {
+  return { org_id: "0", scope_tag_id: "0" };
+}
+
+export const ListOrgAdminsRequest: MessageFns<ListOrgAdminsRequest> = {
+  encode(message: ListOrgAdminsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    if (message.scope_tag_id !== "0") {
+      writer.uint32(88).int64(message.scope_tag_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListOrgAdminsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListOrgAdminsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.scope_tag_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListOrgAdminsRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+      scope_tag_id: isSet(object.scopeTagId)
+        ? globalThis.String(object.scopeTagId)
+        : isSet(object.scope_tag_id)
+        ? globalThis.String(object.scope_tag_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: ListOrgAdminsRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    if (message.scope_tag_id !== "0") {
+      obj.scopeTagId = message.scope_tag_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ListOrgAdminsRequest>): ListOrgAdminsRequest {
+    return ListOrgAdminsRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ListOrgAdminsRequest>): ListOrgAdminsRequest {
+    const message = createBaseListOrgAdminsRequest();
+    message.org_id = object.org_id ?? "0";
+    message.scope_tag_id = object.scope_tag_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseListOrgAdminsResponse(): ListOrgAdminsResponse {
+  return { base: undefined, admin_uids: [] };
+}
+
+export const ListOrgAdminsResponse: MessageFns<ListOrgAdminsResponse> = {
+  encode(message: ListOrgAdminsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    writer.uint32(82).fork();
+    for (const v of message.admin_uids) {
+      writer.int64(v);
+    }
+    writer.join();
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListOrgAdminsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListOrgAdminsResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag === 80) {
+            message.admin_uids.push(reader.int64().toString());
+
+            continue;
+          }
+
+          if (tag === 82) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.admin_uids.push(reader.int64().toString());
+            }
+
+            continue;
+          }
+
+          break;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListOrgAdminsResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      admin_uids: globalThis.Array.isArray(object?.adminUids)
+        ? object.adminUids.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.admin_uids)
+        ? object.admin_uids.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ListOrgAdminsResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.admin_uids?.length) {
+      obj.adminUids = message.admin_uids;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ListOrgAdminsResponse>): ListOrgAdminsResponse {
+    return ListOrgAdminsResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ListOrgAdminsResponse>): ListOrgAdminsResponse {
+    const message = createBaseListOrgAdminsResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.admin_uids = object.admin_uids?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseCreateOrgRequest(): CreateOrgRequest {
+  return { name: "", avatar: "" };
+}
+
+export const CreateOrgRequest: MessageFns<CreateOrgRequest> = {
+  encode(message: CreateOrgRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(82).string(message.name);
+    }
+    if (message.avatar !== "") {
+      writer.uint32(90).string(message.avatar);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.avatar = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgRequest {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+    };
+  },
+
+  toJSON(message: CreateOrgRequest): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.avatar !== "") {
+      obj.avatar = message.avatar;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgRequest>): CreateOrgRequest {
+    return CreateOrgRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgRequest>): CreateOrgRequest {
+    const message = createBaseCreateOrgRequest();
+    message.name = object.name ?? "";
+    message.avatar = object.avatar ?? "";
+    return message;
+  },
+};
+
+function createBaseCreateOrgResponse(): CreateOrgResponse {
+  return { base: undefined, org_id: "0" };
+}
+
+export const CreateOrgResponse: MessageFns<CreateOrgResponse> = {
+  encode(message: CreateOrgResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: CreateOrgResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgResponse>): CreateOrgResponse {
+    return CreateOrgResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgResponse>): CreateOrgResponse {
+    const message = createBaseCreateOrgResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.org_id = object.org_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseDeleteOrgRequest(): DeleteOrgRequest {
+  return { org_id: "0" };
+}
+
+export const DeleteOrgRequest: MessageFns<DeleteOrgRequest> = {
+  encode(message: DeleteOrgRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: DeleteOrgRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgRequest>): DeleteOrgRequest {
+    return DeleteOrgRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgRequest>): DeleteOrgRequest {
+    const message = createBaseDeleteOrgRequest();
+    message.org_id = object.org_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseDeleteOrgResponse(): DeleteOrgResponse {
+  return { base: undefined };
+}
+
+export const DeleteOrgResponse: MessageFns<DeleteOrgResponse> = {
+  encode(message: DeleteOrgResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: DeleteOrgResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgResponse>): DeleteOrgResponse {
+    return DeleteOrgResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgResponse>): DeleteOrgResponse {
+    const message = createBaseDeleteOrgResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
     return message;
   },
 };

@@ -184,9 +184,11 @@ CREATE TABLE IF NOT EXISTS tag_info (
 );
 
 -- tags：唯一的同步域（组织关系表）。一行是"某父节点（组织根传 org_id、
--- 部门传 tag_id）下挂一个子项"，child_type 区分子项是人（PERSON, child_id=uid）
--- 还是 tag（TAG, child_id=tag_id）；role 标识该子项在这个父节点下是否为
--- 管理员；rank/title/sort_key 是边的属性。
+-- 部门传 tag_id）下挂一个子项"，child_type 区分子项是人（PERSON, child_id=uid）、
+-- tag（TAG, child_id=tag_id）还是管理员授权（GRANT, child_id=uid）；GRANT 行
+-- 表示该用户被授权管理 tag_id 为根的整棵子树，与组织架构位置（PERSON 行）
+-- 完全解耦，不进入展开/同步的展示结果；rank/title/sort_key 是边的属性，
+-- GRANT 行不使用，取默认值。
 CREATE TABLE IF NOT EXISTS tags (
     org_id     INTEGER NOT NULL,
     tag_id     INTEGER NOT NULL,
@@ -195,7 +197,6 @@ CREATE TABLE IF NOT EXISTS tags (
     title      TEXT    NOT NULL DEFAULT '',
     rank       INTEGER NOT NULL DEFAULT 2147483647,
     sort_key   TEXT    NOT NULL DEFAULT '',
-    role       INTEGER NOT NULL DEFAULT 1 CHECK (role <> 0),
     status     INTEGER NOT NULL CHECK (status <> 0),
     seq        INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,

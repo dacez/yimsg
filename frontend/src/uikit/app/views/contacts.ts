@@ -7,6 +7,7 @@ import { BoundedStreamWindow } from '../bounded-stream-window';
 import { BoundedPageWindow, type PageLoadResult } from '../bounded-page-window';
 import { contactIdentity } from '../list-identity';
 import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_TRASH } from './panel-action-btn';
+import { openOrgAdmin } from './org-admin';
 
 const FRIEND_PAGE_SIZE = APP_CONFIG.list.pageSize;
 const REQUEST_PAGE_SIZE = APP_CONFIG.list.pageSize;
@@ -653,10 +654,16 @@ export function createContactsView(app: AppInstance) {
     panel.innerHTML = `
       <button class="contacts-detail-back" id="contacts-detail-back">← ${app.escapeHtml(app.t('contacts.friends'))}</button>
       <div class="org-panel">
-        <div class="org-crumbs">${crumbsHtml}</div>
+        <div class="org-crumbs">
+          ${crumbsHtml}
+          <button class="btn btn-sm btn-secondary org-manage-btn" id="contacts-org-manage">${app.escapeHtml(app.t('orgAdmin.manageBtn'))}</button>
+        </div>
         <div class="org-items">${rowsHtml || `<div class="contacts-detail-empty">${app.escapeHtml(app.t('contacts.orgEmpty'))}</div>`}</div>
       </div>
     `;
+    app.$('contacts-org-manage')?.addEventListener('click', () => {
+      void openOrgAdmin(app, orgId, currentTagId);
+    });
     app.$('contacts-detail-back')?.addEventListener('click', () => {
       orgPanelOrgId = null;
       orgPanelStack = [];

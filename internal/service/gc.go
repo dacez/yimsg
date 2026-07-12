@@ -118,6 +118,7 @@ func StartGC(s *AppState) {
 	go messageGCLoop(s)
 	go conversationGCLoop(s)
 	go contactGCLoop(s)
+	go orgContactGCLoop(s)
 	go blocklistGCLoop(s)
 	go muteGCLoop(s)
 	go orgGCLoop(s)
@@ -181,6 +182,71 @@ func conversationGCLoop(s *AppState) {
 func contactGCLoop(s *AppState) {
 	runUIDShardGC(s, s.Config().GC.ContactGCIntervalSecs, "contact",
 		func(sh *shard.DB) uidPurger { return dal.NewContactStore(sh) })
+}
+
+// orgContactGCLoop 兜底清理孤儿组织通讯录行：delete_org 已经在写路径同步清空
+// 组织结构、异步扇出成员通讯录清理任务（见 internal/service/org.go 的
+// submitOrgDeleted），但异步任务可能因为进程崩溃、载荷损坏等原因丢失；这里
+// 周期性核对每条 ACTIVE 组织通讯录行对应的组织是否仍然存在，不存在则补墓碑
+// （Delete，先软删），最终物理清理仍走既有 contactGCLoop 的 Purge，保证
+// 组织与其成员通讯录行的最终一致。
+func orgContactGCLoop(s *AppState) {
+	ticker := gcTicker(s.Config().GC.ContactGCIntervalSecs, 300)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		total, err := s.sweepOrgContactGC()
+		if err != nil {
+			log.Printf("org contact gc err: %v", err)
+		}
+		if total > 0 {
+			log.Printf("org contact gc: tombstoned %d orphan org contacts", total)
+		}
+	}
+}
+
+// sweepOrgContactGC 跑一整轮孤儿组织通讯录行清理，返回本轮补墓碑的行数。
+// 拆成独立方法便于单测直接调用一次扫描，不必等待 ticker。
+func (s *AppState) sweepOrgContactGC() (int64, error) {
+	total := int64(0)
+	for _, sh := range s.DB().UIDShards.AllShards() {
+		cs := dal.NewContactStore(sh)
+		var afterUID int64
+		for {
+			uids, err := cs.ListDistinctOrgContactUIDs(gcBatchSize, afterUID)
+			if err != nil {
+				return total, err
+			}
+			if len(uids) == 0 {
+				break
+			}
+			for _, uid := range uids {
+				orgIDs, err := cs.ListOrgIDs(uid)
+				if err != nil {
+					log.Printf("org contact gc list org ids uid=%d err: %v", uid, err)
+					continue
+				}
+				for _, orgID := range orgIDs {
+					info, err := s.OrgStore(orgID).GetOrgInfo(orgID)
+					if err != nil {
+						log.Printf("org contact gc get org info uid=%d org=%d err: %v", uid, orgID, err)
+						continue
+					}
+					if info != nil {
+						continue // 组织仍然存在
+					}
+					if _, _, err := cs.Delete(uid, 0, 0, orgID); err != nil {
+						log.Printf("org contact gc tombstone uid=%d org=%d err: %v", uid, orgID, err)
+						continue
+					}
+					total++
+					notifyContactsUpdated(s, uid)
+				}
+			}
+			afterUID = uids[len(uids)-1]
+		}
+	}
+	return total, nil
 }
 
 func blocklistGCLoop(s *AppState) {

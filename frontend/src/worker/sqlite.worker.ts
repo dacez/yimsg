@@ -54,7 +54,6 @@ CREATE TABLE IF NOT EXISTS tags (
   title TEXT NOT NULL DEFAULT '',
   rank INTEGER NOT NULL DEFAULT 2147483647,
   sort_key TEXT NOT NULL DEFAULT '',
-  role INTEGER NOT NULL DEFAULT 0,
   seq INTEGER,
   PRIMARY KEY (org_id, tag_id, child_id, child_type)
 );

@@ -107,6 +107,32 @@ func ActionType(action string) (uint16, bool) {
 		return uint16(pb.Type_TYPE_ACTION_SYNC_TAGS), true
 	case "get_tag_infos":
 		return uint16(pb.Type_TYPE_ACTION_GET_TAG_INFOS), true
+	case "create_org_tag":
+		return uint16(pb.Type_TYPE_ACTION_CREATE_ORG_TAG), true
+	case "rename_org_tag":
+		return uint16(pb.Type_TYPE_ACTION_RENAME_ORG_TAG), true
+	case "delete_org_tag":
+		return uint16(pb.Type_TYPE_ACTION_DELETE_ORG_TAG), true
+	case "link_org_tag":
+		return uint16(pb.Type_TYPE_ACTION_LINK_ORG_TAG), true
+	case "add_org_member":
+		return uint16(pb.Type_TYPE_ACTION_ADD_ORG_MEMBER), true
+	case "remove_org_member":
+		return uint16(pb.Type_TYPE_ACTION_REMOVE_ORG_MEMBER), true
+	case "set_org_item_rank":
+		return uint16(pb.Type_TYPE_ACTION_SET_ORG_ITEM_RANK), true
+	case "rename_org":
+		return uint16(pb.Type_TYPE_ACTION_RENAME_ORG), true
+	case "grant_org_admin":
+		return uint16(pb.Type_TYPE_ACTION_GRANT_ORG_ADMIN), true
+	case "revoke_org_admin":
+		return uint16(pb.Type_TYPE_ACTION_REVOKE_ORG_ADMIN), true
+	case "list_org_admins":
+		return uint16(pb.Type_TYPE_ACTION_LIST_ORG_ADMINS), true
+	case "create_org":
+		return uint16(pb.Type_TYPE_ACTION_CREATE_ORG), true
+	case "delete_org":
+		return uint16(pb.Type_TYPE_ACTION_DELETE_ORG), true
 	default:
 		return 0, false
 	}
@@ -207,6 +233,32 @@ func NewRequestMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.SyncTagsRequest{}, true
 	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
 		return &pb.GetTagInfosRequest{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG_TAG:
+		return &pb.CreateOrgTagRequest{}, true
+	case pb.Type_TYPE_ACTION_RENAME_ORG_TAG:
+		return &pb.RenameOrgTagRequest{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG_TAG:
+		return &pb.DeleteOrgTagRequest{}, true
+	case pb.Type_TYPE_ACTION_LINK_ORG_TAG:
+		return &pb.LinkOrgTagRequest{}, true
+	case pb.Type_TYPE_ACTION_ADD_ORG_MEMBER:
+		return &pb.AddOrgMemberRequest{}, true
+	case pb.Type_TYPE_ACTION_REMOVE_ORG_MEMBER:
+		return &pb.RemoveOrgMemberRequest{}, true
+	case pb.Type_TYPE_ACTION_SET_ORG_ITEM_RANK:
+		return &pb.SetOrgItemRankRequest{}, true
+	case pb.Type_TYPE_ACTION_RENAME_ORG:
+		return &pb.RenameOrgRequest{}, true
+	case pb.Type_TYPE_ACTION_GRANT_ORG_ADMIN:
+		return &pb.GrantOrgAdminRequest{}, true
+	case pb.Type_TYPE_ACTION_REVOKE_ORG_ADMIN:
+		return &pb.RevokeOrgAdminRequest{}, true
+	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
+		return &pb.ListOrgAdminsRequest{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		return &pb.CreateOrgRequest{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		return &pb.DeleteOrgRequest{}, true
 	default:
 		return nil, false
 	}
@@ -307,6 +359,32 @@ func NewResponseMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.SyncTagsResponse{}, true
 	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
 		return &pb.GetTagInfosResponse{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG_TAG:
+		return &pb.CreateOrgTagResponse{}, true
+	case pb.Type_TYPE_ACTION_RENAME_ORG_TAG:
+		return &pb.RenameOrgTagResponse{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG_TAG:
+		return &pb.DeleteOrgTagResponse{}, true
+	case pb.Type_TYPE_ACTION_LINK_ORG_TAG:
+		return &pb.LinkOrgTagResponse{}, true
+	case pb.Type_TYPE_ACTION_ADD_ORG_MEMBER:
+		return &pb.AddOrgMemberResponse{}, true
+	case pb.Type_TYPE_ACTION_REMOVE_ORG_MEMBER:
+		return &pb.RemoveOrgMemberResponse{}, true
+	case pb.Type_TYPE_ACTION_SET_ORG_ITEM_RANK:
+		return &pb.SetOrgItemRankResponse{}, true
+	case pb.Type_TYPE_ACTION_RENAME_ORG:
+		return &pb.RenameOrgResponse{}, true
+	case pb.Type_TYPE_ACTION_GRANT_ORG_ADMIN:
+		return &pb.GrantOrgAdminResponse{}, true
+	case pb.Type_TYPE_ACTION_REVOKE_ORG_ADMIN:
+		return &pb.RevokeOrgAdminResponse{}, true
+	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
+		return &pb.ListOrgAdminsResponse{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		return &pb.CreateOrgResponse{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		return &pb.DeleteOrgResponse{}, true
 	default:
 		return nil, false
 	}
@@ -431,6 +509,32 @@ func DispatchActionFrame(svc ActionService, info *service.BaseInfo, frame Frame)
 		resp = svc.SyncTags(info, req.(*pb.SyncTagsRequest))
 	case pb.Type_TYPE_ACTION_GET_TAG_INFOS:
 		resp = svc.GetTagInfos(info, req.(*pb.GetTagInfosRequest))
+	case pb.Type_TYPE_ACTION_CREATE_ORG_TAG:
+		resp = svc.CreateOrgTag(info, req.(*pb.CreateOrgTagRequest))
+	case pb.Type_TYPE_ACTION_RENAME_ORG_TAG:
+		resp = svc.RenameOrgTag(info, req.(*pb.RenameOrgTagRequest))
+	case pb.Type_TYPE_ACTION_DELETE_ORG_TAG:
+		resp = svc.DeleteOrgTag(info, req.(*pb.DeleteOrgTagRequest))
+	case pb.Type_TYPE_ACTION_LINK_ORG_TAG:
+		resp = svc.LinkOrgTag(info, req.(*pb.LinkOrgTagRequest))
+	case pb.Type_TYPE_ACTION_ADD_ORG_MEMBER:
+		resp = svc.AddOrgMember(info, req.(*pb.AddOrgMemberRequest))
+	case pb.Type_TYPE_ACTION_REMOVE_ORG_MEMBER:
+		resp = svc.RemoveOrgMember(info, req.(*pb.RemoveOrgMemberRequest))
+	case pb.Type_TYPE_ACTION_SET_ORG_ITEM_RANK:
+		resp = svc.SetOrgItemRank(info, req.(*pb.SetOrgItemRankRequest))
+	case pb.Type_TYPE_ACTION_RENAME_ORG:
+		resp = svc.RenameOrg(info, req.(*pb.RenameOrgRequest))
+	case pb.Type_TYPE_ACTION_GRANT_ORG_ADMIN:
+		resp = svc.GrantOrgAdmin(info, req.(*pb.GrantOrgAdminRequest))
+	case pb.Type_TYPE_ACTION_REVOKE_ORG_ADMIN:
+		resp = svc.RevokeOrgAdmin(info, req.(*pb.RevokeOrgAdminRequest))
+	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
+		resp = svc.ListOrgAdmins(info, req.(*pb.ListOrgAdminsRequest))
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		resp = svc.CreateOrg(info, req.(*pb.CreateOrgRequest))
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		resp = svc.DeleteOrg(info, req.(*pb.DeleteOrgRequest))
 	default:
 		resp = errorResponseByType(frame.Type, appmsg.ErrorCodeUnknownAction, fmt.Sprintf("unknown type: %d", frame.Type))
 	}

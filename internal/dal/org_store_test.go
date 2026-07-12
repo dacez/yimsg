@@ -15,7 +15,7 @@ func orgStore(t *testing.T) *OrgStore {
 // addMember 是测试辅助：按昵称算好 sort_key 后把人挂进 tag。
 func addMember(t *testing.T, s *OrgStore, orgID, tagID, uid int64, nickname, title string, rank int64) (int64, bool) {
 	t.Helper()
-	seq, hadActive, err := s.UpsertTag(orgID, tagID, uid, TagChildPerson, title, rank, ContactSortKey("", nickname), TagRoleMember, 1000)
+	seq, hadActive, err := s.UpsertTag(orgID, tagID, uid, TagChildPerson, title, rank, ContactSortKey("", nickname), 1000)
 	if err != nil {
 		t.Fatalf("UpsertTag uid=%d: %v", uid, err)
 	}
@@ -25,8 +25,16 @@ func addMember(t *testing.T, s *OrgStore, orgID, tagID, uid int64, nickname, tit
 // linkTag 是测试辅助：按 tag 名算好 sort_key 后把子 tag 挂进父节点（父节点可以是组织根）。
 func linkTag(t *testing.T, s *OrgStore, orgID, parentTagID, childTagID int64, name string, rank int64) {
 	t.Helper()
-	if _, _, err := s.UpsertTag(orgID, parentTagID, childTagID, TagChildTag, "", rank, ContactSortKey("", name), TagRoleMember, 1000); err != nil {
+	if _, _, err := s.UpsertTag(orgID, parentTagID, childTagID, TagChildTag, "", rank, ContactSortKey("", name), 1000); err != nil {
 		t.Fatalf("UpsertTag child=%d: %v", childTagID, err)
+	}
+}
+
+// grantAdmin 是测试辅助：给 uid 挂一条 GRANT 边，授权其管理 scopeTagID 为根的子树。
+func grantAdmin(t *testing.T, s *OrgStore, orgID, scopeTagID, uid int64) {
+	t.Helper()
+	if _, _, err := s.UpsertTag(orgID, scopeTagID, uid, TagChildGrant, "", TagRankUnset, "", 1000); err != nil {
+		t.Fatalf("grant admin scope=%d uid=%d: %v", scopeTagID, uid, err)
 	}
 }
 
@@ -368,5 +376,205 @@ func TestOrgPurgeAndWaterline(t *testing.T) {
 	gcSafe2, _, _ := s.GetVersion(orgID)
 	if gcSafe2 != gcSafe {
 		t.Errorf("waterline should not move: %d -> %d", gcSafe, gcSafe2)
+	}
+}
+
+// TestOrgCanManageRootGrantCoversWholeOrg 验证组织根 GRANT 递归覆盖任意深度节点。
+func TestOrgCanManageRootGrantCoversWholeOrg(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const dept, team = 901, 902
+	const rootAdmin, outsider int64 = 11, 12
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ id int64 }{{dept}, {team}} {
+		if err := s.UpsertTagInfo(orgID, tc.id, "t", "", 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkTag(t, s, orgID, orgID, dept, "dept", 1)
+	linkTag(t, s, orgID, dept, team, "team", 1)
+	grantAdmin(t, s, orgID, orgID, rootAdmin)
+
+	for _, tagID := range []int64{orgID, dept, team} {
+		ok, err := s.CanManage(orgID, tagID, rootAdmin)
+		if err != nil || !ok {
+			t.Errorf("root admin should manage tag=%d: ok=%v err=%v", tagID, ok, err)
+		}
+	}
+	ok, err := s.CanManage(orgID, team, outsider)
+	if err != nil || ok {
+		t.Errorf("outsider should not manage team: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestOrgCanManageSubtreeGrantScoped 验证挂在部门节点的 GRANT 只递归覆盖自己的子树，
+// 管不到兄弟部门，也管不到组织根本身。
+func TestOrgCanManageSubtreeGrantScoped(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const deptA, teamA1, deptB int64 = 911, 912, 913
+	const deptAAdmin int64 = 21
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{deptA, teamA1, deptB} {
+		if err := s.UpsertTagInfo(orgID, id, "t", "", 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkTag(t, s, orgID, orgID, deptA, "A", 1)
+	linkTag(t, s, orgID, deptA, teamA1, "A1", 1)
+	linkTag(t, s, orgID, orgID, deptB, "B", 2)
+	grantAdmin(t, s, orgID, deptA, deptAAdmin)
+
+	if ok, err := s.CanManage(orgID, deptA, deptAAdmin); err != nil || !ok {
+		t.Errorf("deptA admin should manage deptA itself: ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.CanManage(orgID, teamA1, deptAAdmin); err != nil || !ok {
+		t.Errorf("deptA admin should manage its child teamA1: ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.CanManage(orgID, deptB, deptAAdmin); err != nil || ok {
+		t.Errorf("deptA admin should not manage sibling deptB: ok=%v err=%v", ok, err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, deptAAdmin); err != nil || ok {
+		t.Errorf("deptA admin should not manage org root: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestOrgGrantRevokeAndListAdmins 验证 GRANT/撤权与 ListGrantedAdmins，
+// 且 GRANT 行不出现在展开（ListTagsPage）与同步（SyncPage）结果里。
+func TestOrgGrantRevokeAndListAdmins(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const admin1, admin2 int64 = 31, 32
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	grantAdmin(t, s, orgID, orgID, admin1)
+	grantAdmin(t, s, orgID, orgID, admin2)
+
+	admins, err := s.ListGrantedAdmins(orgID, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(admins) != 2 {
+		t.Fatalf("want 2 admins, got %+v", admins)
+	}
+
+	// GRANT 行不进入展开结果（根下无 PERSON/TAG 子项，展开应为空）。
+	rootItems, err := s.ListTagsPage(orgID, orgID, nil, false, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rootItems) != 0 {
+		t.Errorf("GRANT rows should not appear in expand: %+v", rootItems)
+	}
+	// GRANT 行不进入同步结果。
+	syncRows, hasMore, err := s.SyncPage(orgID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(syncRows) != 0 || hasMore {
+		t.Errorf("GRANT rows should not appear in sync: rows=%+v hasMore=%v", syncRows, hasMore)
+	}
+
+	// 撤销 admin1 后仅剩 admin2。
+	removed, _, err := s.RemoveTag(orgID, orgID, admin1, TagChildGrant, 2000)
+	if err != nil || !removed {
+		t.Fatalf("revoke admin1: removed=%v err=%v", removed, err)
+	}
+	admins, err = s.ListGrantedAdmins(orgID, orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(admins) != 1 || admins[0] != admin2 {
+		t.Errorf("want only admin2 left, got %+v", admins)
+	}
+	if ok, err := s.CanManage(orgID, orgID, admin1); err != nil || ok {
+		t.Errorf("revoked admin1 should no longer manage: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestOrgRevokeOrgAdminLastRootGuard 验证 RevokeOrgAdmin 的原子校验：
+// 唯一根管理员不能撤销自己（或被撤销），有第二人时可以正常撤销其一；
+// 子树级（非组织根）GRANT 没有这个约束。
+func TestOrgRevokeOrgAdminLastRootGuard(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const dept int64 = 901
+	const admin1, admin2 int64 = 41, 42
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTagInfo(orgID, dept, "dept", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	linkTag(t, s, orgID, orgID, dept, "dept", 1)
+	grantAdmin(t, s, orgID, orgID, admin1)
+
+	// 唯一根管理员：撤销应被拒绝，且没有真的删掉这条边。
+	if _, err := s.RevokeOrgAdmin(orgID, orgID, admin1, 2000); err != ErrOrgLastRootAdmin {
+		t.Fatalf("sole root admin revoke should be rejected, got %v", err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, admin1); err != nil || !ok {
+		t.Errorf("rejected revoke should not actually remove the grant: ok=%v err=%v", ok, err)
+	}
+
+	// 子树级 GRANT 无此约束：唯一部门管理员可以正常撤销。
+	grantAdmin(t, s, orgID, dept, admin2)
+	removed, err := s.RevokeOrgAdmin(orgID, dept, admin2, 2000)
+	if err != nil || !removed {
+		t.Fatalf("sole dept admin revoke should succeed: removed=%v err=%v", removed, err)
+	}
+
+	// 有第二个根管理员时，撤销其一应该成功。
+	grantAdmin(t, s, orgID, orgID, admin2)
+	removed, err = s.RevokeOrgAdmin(orgID, orgID, admin1, 3000)
+	if err != nil || !removed {
+		t.Fatalf("revoke with a second root admin present should succeed: removed=%v err=%v", removed, err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, admin2); err != nil || !ok {
+		t.Errorf("admin2 should remain the sole root admin: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestOrgDeleteOrgWipesStructure 验证 DeleteOrg 物理清空 org_info/tag_info/
+// tags/org_version 四张表，删后 GetVersion 与展开结果均是"未曾存在"的状态。
+func TestOrgDeleteOrgWipesStructure(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const dept int64 = 901
+	const member int64 = 51
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTagInfo(orgID, dept, "dept", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	linkTag(t, s, orgID, orgID, dept, "dept", 1)
+	addMember(t, s, orgID, dept, member, "M", "", TagRankUnset)
+	grantAdmin(t, s, orgID, orgID, member)
+
+	if err := s.DeleteOrg(orgID); err != nil {
+		t.Fatalf("DeleteOrg: %v", err)
+	}
+
+	if info, err := s.GetOrgInfo(orgID); err != nil || info != nil {
+		t.Errorf("org_info should be gone: info=%+v err=%v", info, err)
+	}
+	if info, err := s.GetTagInfo(orgID, dept); err != nil || info != nil {
+		t.Errorf("tag_info should be gone: info=%+v err=%v", info, err)
+	}
+	gcSafeSeq, maxSeq, err := s.GetVersion(orgID)
+	if err != nil || gcSafeSeq != 0 || maxSeq != 0 {
+		t.Errorf("org_version should be gone: gcSafeSeq=%d maxSeq=%d err=%v", gcSafeSeq, maxSeq, err)
+	}
+	if uids, err := s.ActiveMemberUIDs(orgID); err != nil || len(uids) != 0 {
+		t.Errorf("no active members should remain: uids=%+v err=%v", uids, err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, member); err != nil || ok {
+		t.Errorf("GRANT edges should be gone too: ok=%v err=%v", ok, err)
 	}
 }

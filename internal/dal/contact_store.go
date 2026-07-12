@@ -387,6 +387,30 @@ func (s *ContactStore) ListPurgeable(limit, afterUID int64) ([]int64, error) {
 	return scanInt64Rows(rows)
 }
 
+// ListDistinctOrgContactUIDs 分页返回本分片内拥有至少一条 ACTIVE 组织通讯录行的
+// uid（游标 afterUID），供组织 GC 逐一核对其组织是否仍然存在（组织被删后兜底
+// 补墓碑，防止 delete_org 的异步清理任务丢失导致孤儿行永久残留）。
+func (s *ContactStore) ListDistinctOrgContactUIDs(limit, afterUID int64) ([]int64, error) {
+	var rows *sql.Rows
+	var err error
+	if afterUID > 0 {
+		rows, err = s.db.Reader.Query(
+			"SELECT DISTINCT uid FROM contacts WHERE type = ? AND status = ? AND uid > ? LIMIT ?",
+			ContactTypeOrg, ContactFriend, afterUID, limit,
+		)
+	} else {
+		rows, err = s.db.Reader.Query(
+			"SELECT DISTINCT uid FROM contacts WHERE type = ? AND status = ? LIMIT ?",
+			ContactTypeOrg, ContactFriend, limit,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list org contact uids: %w", err)
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
 // Get returns a single friend contact record, or nil if not found.
 func (s *ContactStore) Get(uid, friendUID int64) (*Contact, error) {
 	return s.GetByKey(uid, friendUID, 0, 0)
