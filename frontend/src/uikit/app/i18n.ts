@@ -207,6 +207,13 @@ export const translations = {
     'settings.uid': 'UID: ',
     'settings.failed': 'Failed: ',
     'settings.language': 'Language',
+    'settings.storage': 'Storage',
+    'settings.storageDesc': 'Persistent local storage keeps a synced copy on this device for faster loads.',
+    'settings.clearData': 'Clear Data',
+    'settings.clearDataConfirmTitle': 'Clear local data?',
+    'settings.clearDataConfirmDesc': 'This wipes the local copy on this device and re-syncs everything from the server. Data on the server is not affected.',
+    'settings.clearDataSuccess': 'Local data cleared',
+    'settings.clearDataFailed': 'Failed to clear local data: ',
 
     // Nav
     'nav.chat': 'Chat',
@@ -413,6 +420,13 @@ export const translations = {
     'settings.uid': 'UID：',
     'settings.failed': '失败：',
     'settings.language': '语言',
+    'settings.storage': '存储',
+    'settings.storageDesc': '持久存储会在本设备保留一份同步副本，下次打开加载更快。',
+    'settings.clearData': '清除数据',
+    'settings.clearDataConfirmTitle': '确认清除本地数据？',
+    'settings.clearDataConfirmDesc': '将清空本设备上的本地副本并从服务端重新全量同步，不影响服务端数据。',
+    'settings.clearDataSuccess': '本地数据已清除',
+    'settings.clearDataFailed': '清除本地数据失败：',
 
     // Nav
     'nav.chat': '聊天',

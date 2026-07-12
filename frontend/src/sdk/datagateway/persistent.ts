@@ -90,24 +90,6 @@ type SyncCursorKey =
   | "blocklist_seq"
   | "mutelist_seq";
 
-const SYNC_CURSOR_KEYS: readonly SyncCursorKey[] = [
-  "msg_seq",
-  "contact_seq",
-  "conversation_seq",
-  "blocklist_seq",
-  "mutelist_seq",
-];
-
-function emptySyncCursors(): Record<SyncCursorKey, number> {
-  return {
-    msg_seq: 0,
-    contact_seq: 0,
-    conversation_seq: 0,
-    blocklist_seq: 0,
-    mutelist_seq: 0,
-  };
-}
-
 function emptyRebuilding(): Record<SyncCursorKey, boolean> {
   return {
     msg_seq: false,
@@ -194,7 +176,6 @@ export class PersistentDataGateway extends BaseDataGateway {
   private uid = "";
   private contactDeletedStatus: number;
   private readonly instanceId: string;
-  private syncCursors = emptySyncCursors();
   /** 各域是否处于 rebuild（last_seq=0, rebuild=true）追平过程，跨多批 syncDomainPage 调用保持。 */
   private readonly rebuilding = emptyRebuilding();
   private backgroundSyncRun = 0;
@@ -313,22 +294,19 @@ export class PersistentDataGateway extends BaseDataGateway {
 
     await this.runSyncStage("storage", async () => {
       await this.db.open(buildPersistentDbName(uid, this.instanceId));
-
-      await this.loadSyncCursors();
     });
 
     this.startBackgroundSync();
 
     return {
-      lastMsgSeq: this.cursor("msg_seq"),
-      lastContactSeq: this.cursor("contact_seq"),
+      lastMsgSeq: await this.cursor("msg_seq"),
+      lastContactSeq: await this.cursor("contact_seq"),
     };
   }
 
   clear(): void {
     this.backgroundSyncRun += 1;
     super.clear();
-    this.resetSyncCursors();
     this.db
       .close()
       .catch((e) => this.reportError(e, "db close error"))
@@ -1263,7 +1241,7 @@ export class PersistentDataGateway extends BaseDataGateway {
     return this.runSyncStage(
       "orgs",
       () => this.syncOrgGraph(orgId),
-      () => 0,
+      () => Promise.resolve(0),
     ).catch((error) => this.reportError(error, "org sync failed"));
   }
 
@@ -1374,12 +1352,12 @@ export class PersistentDataGateway extends BaseDataGateway {
   private async runSyncStage(
     domain: SyncDomain,
     fn: () => Promise<void>,
-    cursor?: () => number,
+    cursor?: () => Promise<number>,
   ): Promise<void> {
-    this.emitSync({ domain, status: "started", cursor: cursor?.() });
+    this.emitSync({ domain, status: "started", cursor: await cursor?.() });
     try {
       await fn();
-      this.emitSync({ domain, status: "success", cursor: cursor?.() });
+      this.emitSync({ domain, status: "success", cursor: await cursor?.() });
     } catch (error) {
       const normalized =
         error instanceof Error
@@ -1388,7 +1366,7 @@ export class PersistentDataGateway extends BaseDataGateway {
       this.emitSync({
         domain,
         status: "failed",
-        cursor: cursor?.(),
+        cursor: await cursor?.(),
         error: normalized,
       });
       throw normalized;
@@ -1397,7 +1375,7 @@ export class PersistentDataGateway extends BaseDataGateway {
 
   private async fullSyncConversationsInternal(): Promise<void> {
     await runIncrementalSync<ConversationEntry>({
-      initialCursor: this.cursor("conversation_seq"),
+      initialCursor: await this.cursor("conversation_seq"),
       pageSize: DEFAULT_SYNC_BATCH_SIZE,
       getBatch: async (cursor, limit) =>
         this.syncConversations({ last_seq: cursor, limit }),
@@ -1507,7 +1485,7 @@ export class PersistentDataGateway extends BaseDataGateway {
     let emittedBatch = false;
     let reset = false;
     await runPersistentTableSync<TItem>({
-      initialCursor: this.cursor(spec.cursorKey),
+      initialCursor: await this.cursor(spec.cursorKey),
       pageSize: DEFAULT_SYNC_BATCH_SIZE,
       getBatch: async (cursor, limit, rebuild) => {
         const { items, hasMore, cursorSeq, error } = await this.syncDomainPage(spec, {
@@ -1536,41 +1514,22 @@ export class PersistentDataGateway extends BaseDataGateway {
   ): Promise<void> {
     await this.db.exec(`DELETE FROM ${spec.table}`);
     await this.db.exec("DELETE FROM meta WHERE key = ?", [spec.cursorKey]);
-    this.resetCursor(spec.cursorKey);
     this.rebuilding[spec.cursorKey] = true;
     this.emitSync({ domain: spec.domain, status: "reset", cursor: 0 });
   }
 
-  private async loadSyncCursors(): Promise<void> {
-    this.resetSyncCursors();
-    const placeholders = SYNC_CURSOR_KEYS.map(() => "?").join(", ");
-    const metaRows = await this.db.query(
-      `SELECT key, value FROM meta WHERE key IN (${placeholders})`,
-      [...SYNC_CURSOR_KEYS],
-    );
-    for (const row of metaRows) {
-      const key = String(row.key) as SyncCursorKey;
-      if (!SYNC_CURSOR_KEYS.includes(key)) continue;
-      this.syncCursors[key] = Number(row.value) || 0;
-    }
-  }
-
-  private resetSyncCursors(): void {
-    this.syncCursors = emptySyncCursors();
-  }
-
-  private cursor(key: SyncCursorKey): number {
-    return this.syncCursors[key];
+  /** 游标不在 JS 堆维护镜像缓存，每次都直接查 meta 表当前值（与 orgCursor 同一模式）。 */
+  private async cursor(key: SyncCursorKey): Promise<number> {
+    const rows = await this.db.query("SELECT value FROM meta WHERE key = ?", [
+      key,
+    ]);
+    return Number(rows[0]?.value || 0);
   }
 
   private async saveCursor(key: SyncCursorKey, seq: number): Promise<void> {
-    const next = Math.max(this.syncCursors[key], Number(seq) || 0);
-    this.syncCursors[key] = next;
+    const current = await this.cursor(key);
+    const next = Math.max(current, Number(seq) || 0);
     await this.writeMeta(key, next);
-  }
-
-  private resetCursor(key: SyncCursorKey): void {
-    this.syncCursors[key] = 0;
   }
 
   private async writeMeta(key: SyncCursorKey, seq: number): Promise<void> {

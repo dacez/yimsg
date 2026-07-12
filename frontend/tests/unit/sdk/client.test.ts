@@ -15,6 +15,8 @@ import {
 } from "../../../src/constants";
 import { WsTransport } from "../../../src/sdk/transport/connection";
 import { actionByType, requestCodec } from "./protocol-test-helpers";
+import { LocalSqliteApi } from "../../../src/sdk/datagateway/sqlite-local-api";
+import { buildPersistentDbName } from "../../../src/sdk/datagateway/persistent";
 
 function decodeBinaryRequest(call: unknown[]): Record<string, unknown> {
   const [typeId, body] = call as [number, Uint8Array];
@@ -795,6 +797,30 @@ describe("YimsgClient", () => {
       degraded: false,
       persistentStorageAvailable: true,
     });
+  });
+
+  it("startSession resetLocalData=current-user 只删除当前用户当前实例的本地库", async () => {
+    const { client } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    const runtime = (
+      client as unknown as {
+        runtime: { initializeSession: ReturnType<typeof vi.fn> };
+      }
+    ).runtime;
+    runtime.initializeSession = vi.fn().mockResolvedValue(undefined);
+    const deleteDbSpy = vi
+      .spyOn(LocalSqliteApi.prototype, "deleteDb")
+      .mockResolvedValue(undefined);
+
+    const result = await client.startSession({
+      storage: "persistent",
+      fileSystem: "local",
+      resetLocalData: "current-user",
+    });
+
+    expect(deleteDbSpy).toHaveBeenCalledWith(buildPersistentDbName("100"));
+    expect(result.resetLocalData).toBe("current-user");
+    expect(result.resetLocalDataError).toBeNull();
   });
 
   it("startSession fileSystem 参数非法时抛出校验错误", async () => {

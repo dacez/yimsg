@@ -223,6 +223,26 @@ describe("SDK PersistentDataGateway", () => {
     ]);
   });
 
+  // 游标不在 JS 堆维护镜像缓存：直接改 meta 表（模拟外部/清除数据后的写入），
+  // 下一次同步必须立即按 meta 表最新值请求 last_seq，而不是沿用某个进程内缓存的旧值。
+  it("游标不缓存在 JS 堆：直接改 meta 表后下一次同步立即按新值请求 last_seq", async () => {
+    await db.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('contact_seq', '77')",
+    );
+    (transport.send as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      contacts: [],
+    });
+
+    ds.handleNotification({ type: "contacts:updated" } as never);
+    await flushSyncQueue();
+
+    const call = (transport.send as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].action === "syncContacts",
+    );
+    expect(call?.[0].last_seq).toBe(77);
+  });
+
   // ---- get_messages ----
 
   describe("getMessages", () => {

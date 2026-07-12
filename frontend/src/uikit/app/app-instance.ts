@@ -347,6 +347,35 @@ export class AppInstance {
     });
   }
 
+  async showConfirmModal(options: {
+    title: string;
+    desc?: string;
+    confirmText: string;
+    cancelText: string;
+    danger?: boolean;
+  }): Promise<boolean> {
+    return new Promise((resolve) => {
+      const modal = this.$('modal-content');
+      modal.innerHTML = `
+        <div class="modal-title">${this.escapeHtml(options.title)}</div>
+        ${options.desc ? `<p class="modal-desc">${this.escapeHtml(options.desc)}</p>` : ''}
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="modal-cancel-btn">${this.escapeHtml(options.cancelText)}</button>
+          <button class="btn ${options.danger ? 'btn-danger' : 'btn-primary'}" id="modal-confirm-btn">${this.escapeHtml(options.confirmText)}</button>
+        </div>
+      `;
+      this.$('modal-overlay').classList.remove('hidden');
+
+      const finish = (value: boolean) => {
+        this.closeModal();
+        resolve(value);
+      };
+
+      this.$('modal-cancel-btn').addEventListener('click', () => finish(false));
+      this.$('modal-confirm-btn').addEventListener('click', () => finish(true));
+    });
+  }
+
   avatarInnerHtml(display: { avatar?: string; nickname: string }): string {
     const avatar = normalizeTrustedResourceUrl(display.avatar);
     if (avatar) {
@@ -454,6 +483,12 @@ export class AppInstance {
     if (settingsPasswordTitle) settingsPasswordTitle.textContent = this.t('settings.password');
     const settingsLanguageTitle = this.dom.getElementById('settings-language-title');
     if (settingsLanguageTitle) settingsLanguageTitle.textContent = this.t('settings.language');
+    const settingsStorageTitle = this.dom.getElementById('settings-storage-title');
+    if (settingsStorageTitle) settingsStorageTitle.textContent = this.t('settings.storage');
+    const settingsStorageDesc = this.dom.getElementById('settings-storage-desc');
+    if (settingsStorageDesc) settingsStorageDesc.textContent = this.t('settings.storageDesc');
+    const clearDataBtn = this.dom.getElementById('clear-data-btn');
+    if (clearDataBtn) clearDataBtn.textContent = this.t('settings.clearData');
     const editNickname = this.dom.getElementById<HTMLInputElement>('edit-nickname');
     if (editNickname) editNickname.placeholder = this.t('settings.nickname');
     const saveProfileBtn = this.dom.getElementById('save-profile-btn');

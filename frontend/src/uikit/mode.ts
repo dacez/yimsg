@@ -20,11 +20,10 @@ interface StartSessionByModeOptions {
  * 根据 `mode` 解析并调用 `client.startSession`。
  *
  * 行为矩阵：
- * | mode               | startSession 参数                                                     |
- * |--------------------|------------------------------------------------------------------------|
- * | `memory`           | `{ storage: 'memory' }`                                                |
- * | `persistent`              | `{ storage: 'persistent' }`                                            |
- * | `persistent-cleardata`    | `{ storage: 'persistent', resetLocalData: 'current-user' }`            |
+ * | mode        | startSession 参数              |
+ * |-------------|---------------------------------|
+ * | `memory`    | `{ storage: 'memory' }`         |
+ * | `persistent`| `{ storage: 'persistent' }`     |
  */
 export async function startSessionByMode(
   client: Pick<YimsgClient, 'startSession'>,
@@ -35,14 +34,10 @@ export async function startSessionByMode(
   const { mode, instanceId } = resolved;
   const result = await client.startSession({
     storage: mode === 'memory' ? 'memory' : 'persistent',
-    resetLocalData: mode === 'persistent-cleardata' ? 'current-user' : 'none',
     instanceId,
   });
 
   if (result.degraded) {
     onError(new Error('持久化会话不可用，已降级为 memory 模式'), 'mode:persistent-fallback');
-  }
-  if (result.resetLocalDataError) {
-    onError(result.resetLocalDataError, 'mode:reset-local-data');
   }
 }

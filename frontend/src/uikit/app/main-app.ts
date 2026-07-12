@@ -12,11 +12,11 @@ import {
 } from './view-refresh';
 
 export async function initAfterAuth(app: AppInstance, options: {
-  requestedMode?: 'memory' | 'persistent' | 'persistent-cleardata';
+  requestedMode?: 'memory' | 'persistent';
   startSession?: () => Promise<void>;
 } = {}) {
   const mode = app.storage.getStoredMode();
-  const effectiveMode = options.requestedMode === 'persistent-cleardata' ? 'persistent' : (options.requestedMode ?? mode);
+  const effectiveMode = options.requestedMode ?? mode;
   if (!effectiveMode && !options.startSession) {
     throw new Error('mode is required before initAfterAuth');
   }

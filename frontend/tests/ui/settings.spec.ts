@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { uniqueUser, register, login } from './helpers';
+import { uniqueUser, register, login, ensureModeSelected, addFriend } from './helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -158,5 +158,54 @@ test.describe('Settings', () => {
     await expect(avatarImg).toBeVisible({ timeout: 5000 });
     const src = await avatarImg.getAttribute('src');
     expect(src).toContain('/media/');
+  });
+
+  test('clear data button only shows in persistent mode', async ({ page }) => {
+    await register(page, uniqueUser('cdmem'), password, 'MemoryUser');
+    await page.click('[data-view="settings"]');
+    await expect(page.locator('#settings-mode')).toHaveText('Memory');
+    await expect(page.locator('#clear-data-btn')).toBeHidden();
+  });
+
+  test('clear data 清空本地库后从服务端重新全量追平好友数据', async ({ browser }) => {
+    const u1 = uniqueUser('cd1');
+    const u2 = uniqueUser('cd2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await page1.goto('/app/');
+    await ensureModeSelected(page1, 'persistent');
+    await page1.click('[data-tab="register"]');
+    await page1.fill('#reg-username', u1);
+    await page1.fill('#reg-password', password);
+    await page1.fill('#reg-nickname', 'ClearDataUser1');
+    await page1.click('#register-form button[type="submit"]');
+    await expect(page1.locator('#app')).toBeVisible({ timeout: 20_000 });
+
+    await register(page2, u2, password, 'ClearDataUser2');
+    await addFriend(page1, page2, u2);
+
+    await page1.click('[data-view="contacts"]');
+    await page1.click('[data-ctab="friends"]');
+    await expect(page1.locator('.contact-item', { hasText: 'ClearDataUser2' })).toBeVisible({ timeout: 10_000 });
+
+    await page1.click('[data-view="settings"]');
+    await expect(page1.locator('#settings-mode')).toHaveText('持久存储');
+    await expect(page1.locator('#clear-data-btn')).toBeVisible();
+    await page1.click('#clear-data-btn');
+    await expect(page1.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+    await page1.click('#modal-confirm-btn');
+    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 10_000 });
+
+    // 仍处于持久存储模式且未登出；本地库被清空后应从服务端重新全量追平好友数据。
+    await expect(page1.locator('#settings-mode')).toHaveText('持久存储');
+    await page1.click('[data-view="contacts"]');
+    await page1.click('[data-ctab="friends"]');
+    await expect(page1.locator('.contact-item', { hasText: 'ClearDataUser2' })).toBeVisible({ timeout: 15_000 });
+
+    await ctx1.close();
+    await ctx2.close();
   });
 });

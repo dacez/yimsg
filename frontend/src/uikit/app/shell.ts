@@ -161,6 +161,11 @@ export const APP_SHELL_HTML = `
               <button class="btn btn-secondary" id="lang-en-btn">English</button>
             </div>
           </div>
+          <div class="settings-card hidden" id="settings-storage-card">
+            <h3 id="settings-storage-title">存储</h3>
+            <p id="settings-storage-desc" class="settings-card-desc"></p>
+            <button class="btn btn-secondary btn-block" id="clear-data-btn">清除数据</button>
+          </div>
           <button class="btn btn-danger btn-block" id="logout-btn">退出登录</button>
         </div>
       </section>

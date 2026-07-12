@@ -25,11 +25,10 @@ export type MountTarget = HTMLElement | string;
 /**
  * UIKit 存储模式。
  * - `memory`：纯内存 DataGateway，不落盘，刷新即丢失；所有环境都可用。
- * - `persistent`：请求持久化会话，具体本地存储实现由 SDK 内部决定。
- * - `persistent-cleardata`：先请求重置当前用户本地会话数据，再按持久化会话启动。
- *   用户切换账号或希望从干净状态启动时使用；若当前环境不可持久化会自动降级为 `memory`。
+ * - `persistent`：请求持久化会话，具体本地存储实现由 SDK 内部决定；
+ *   本地数据可在设置页通过「清除数据」按钮随时清空并重新追平，无需切换模式。
  */
-export type UIKitMode = 'memory' | 'persistent' | 'persistent-cleardata';
+export type UIKitMode = 'memory' | 'persistent';
 
 /**
  * UIKit 显示范围。
@@ -57,8 +56,7 @@ export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' 
   * 存储模式，默认 `memory`。
    *
   * - `memory`：内存 DataGateway，始终可用；
-  * - `persistent`：请求持久化会话；不可用时自动降级为 `memory` 并通过 `onError` 通知宿主；
-  * - `persistent-cleardata`：先重置当前用户本地会话数据，再按持久化会话启动；不可用时降级为 `memory`。
+  * - `persistent`：请求持久化会话；不可用时自动降级为 `memory` 并通过 `onError` 通知宿主。
    *
    * 当宿主通过 `client` 传入已经 ready 的实例时，UIKit 不会再次初始化，此参数不生效。
    */
