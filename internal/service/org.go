@@ -22,6 +22,9 @@ import (
 // taskKindOrgUpdated 是组织架构变更通知扇出任务 kind。
 const taskKindOrgUpdated = "org_updated"
 
+// taskKindOrgDeleted 是整个组织删除后、成员通讯录组织行异步清理任务 kind。
+const taskKindOrgDeleted = "org_deleted"
+
 var (
 	errOrgCycle       = errors.New("org tag link would create a cycle")
 	errOrgRootAsChild = errors.New("org root tag cannot be linked as a child")
@@ -53,6 +56,36 @@ func (s *AppState) handleOrgUpdatedTask(payload []byte) error {
 // submitOrgUpdated 投递一条 org:updated 扇出任务（一次管理操作只投一条，天然合并成批变更）。
 func (s *AppState) submitOrgUpdated(orgID int64) {
 	s.submitTask(taskKindOrgUpdated, orgUpdatedTask{OrgID: orgID})
+}
+
+// orgDeletedTask 是组织删除后、成员通讯录组织行异步清理任务载荷（JSON 持久化）。
+// MemberUIDs 在组织结构物理删除前快照——事后组织分片已经查不到"谁曾是成员"。
+type orgDeletedTask struct {
+	OrgID      int64   `json:"org_id"`
+	MemberUIDs []int64 `json:"member_uids"`
+}
+
+// handleOrgDeletedTask 是 org_deleted 任务执行体：逐个成员软删除其通讯录组织行
+// 并推送 contacts:updated（离职语义，与 RemoveOrgMemberDirect 的末边分支一致）。
+func (s *AppState) handleOrgDeletedTask(payload []byte) error {
+	var task orgDeletedTask
+	if err := json.Unmarshal(payload, &task); err != nil {
+		log.Printf("org deleted task unmarshal err=%v", err)
+		return nil // 丢弃损坏载荷，避免每次启动无限重放
+	}
+	for _, uid := range task.MemberUIDs {
+		if _, _, err := s.ContactStore(uid).Delete(uid, 0, 0, task.OrgID); err != nil {
+			log.Printf("org deleted contact delete uid=%d org=%d err=%v", uid, task.OrgID, err)
+			continue
+		}
+		notifyContactsUpdated(s, uid)
+	}
+	return nil
+}
+
+// submitOrgDeleted 投递一条组织删除后的成员通讯录清理任务。
+func (s *AppState) submitOrgDeleted(orgID int64, memberUIDs []int64) {
+	s.submitTask(taskKindOrgDeleted, orgDeletedTask{OrgID: orgID, MemberUIDs: memberUIDs})
 }
 
 // orgName 读取组织展示名。
@@ -295,11 +328,11 @@ func tagFromDAL(r dal.Tag) appmsg.Tag {
 // org:updated 扇出任务。org_relation 与 contacts 组织行跨分片双写、无事务，
 // 沿用好友双写的容忍规则，兜底方向是"以 contacts 为门"。
 
-// CreateOrg 建组织：写 org_info 字典行，并把 initialAdminUID 设为组织根的
-// 初始管理员（GRANT 边，挂在 tag_id=org_id 上）。这是权限链条唯一的自举点：
-// 之后任何管理操作都要求调用方已经对目标节点（或祖先）持有 GRANT，起点必须
-// 由建组织时显式指定，不上协议，只能由管理工具调用。返回新组织 ID。
-func (s *AppState) CreateOrg(name, avatar string, initialAdminUID int64) (int64, error) {
+// CreateOrgDirect 建组织：写 org_info 字典行，并把 initialAdminUID 设为组织根的
+// 初始管理员（GRANT 边，挂在 tag_id=org_id 上）。这是权限链条唯一的自举点，
+// 任何登录用户都可以调用（见协议层 CreateOrg），调用方自动成为根管理员。
+// 返回新组织 ID。
+func (s *AppState) CreateOrgDirect(name, avatar string, initialAdminUID int64) (int64, error) {
 	orgID := s.IDGen().NextID()
 	now := auth.NowMs()
 	if err := s.OrgStore(orgID).UpsertOrgInfo(orgID, name, avatar, now); err != nil {
@@ -309,6 +342,28 @@ func (s *AppState) CreateOrg(name, avatar string, initialAdminUID int64) (int64,
 		return 0, err
 	}
 	return orgID, nil
+}
+
+// DeleteOrgDirect 删除整个组织：先快照全体在职成员（结构删除后组织分片查不到
+// "谁曾是成员"，必须先取），物理清空组织结构（tags/tag_info/org_info/
+// org_version 同事务）。用快照直接通知在线成员——不走 submitOrgUpdated，因为
+// 那条异步任务执行时会再查一次 ActiveMemberUIDs，届时组织结构已经删空，查不到
+// 任何人。成员通讯录组织行清理（跨分片、容忍延迟）仍走异步任务，与既有群消息
+// 扇出同构。
+func (s *AppState) DeleteOrgDirect(orgID int64) error {
+	memberUIDs, err := s.OrgStore(orgID).ActiveMemberUIDs(orgID)
+	if err != nil {
+		return err
+	}
+	if err := s.OrgStore(orgID).DeleteOrg(orgID); err != nil {
+		return err
+	}
+	notif := appmsg.OrgUpdatedNotif(orgID)()
+	for _, uid := range memberUIDs {
+		s.Online().Notify(uid, notif)
+	}
+	s.submitOrgDeleted(orgID, memberUIDs)
+	return nil
 }
 
 // AddOrgTag 建 tag 字典行并挂到 parentTagID 下（防环 + 根不为子在此校验）。返回新 tag ID。
@@ -489,9 +544,10 @@ func (s *AppState) GrantOrgAdminDirect(orgID, scopeTagID, uid int64) error {
 	return err
 }
 
-// RevokeOrgAdminDirect 撤销 uid 对 scopeTagID 为根子树的管理权限。
+// RevokeOrgAdminDirect 撤销 uid 对 scopeTagID 为根子树的管理权限；scopeTagID
+// 为组织根时校验并保证组织至少保留一个根管理员（见 dal.ErrOrgLastRootAdmin）。
 func (s *AppState) RevokeOrgAdminDirect(orgID, scopeTagID, uid int64) error {
-	_, _, err := s.OrgStore(orgID).RemoveTag(orgID, scopeTagID, uid, dal.TagChildGrant, auth.NowMs())
+	_, err := s.OrgStore(orgID).RevokeOrgAdmin(orgID, scopeTagID, uid, auth.NowMs())
 	return err
 }
 
@@ -507,6 +563,32 @@ func rankOrUnset(p *int64) int64 {
 		return dal.TagRankUnset
 	}
 	return *p
+}
+
+// CreateOrg 建组织：任意登录用户都可以调用，是权限链条唯一的自举点，
+// 不走 requireOrgManage（调用时组织还不存在，无节点可校验）。调用方
+// 自动成为新组织根的初始管理员。
+func (s *AppState) CreateOrg(info *BaseInfo, req *pb.CreateOrgRequest) *pb.CreateOrgResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID, err := s.CreateOrgDirect(req.GetName(), req.GetAvatar(), uid)
+	if err != nil {
+		return toCreateOrgResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toCreateOrgResponse(appmsg.OKOrgCreated(reqID, orgID))
+}
+
+// DeleteOrg 删除整个组织：需对组织根持有管理权限。结构（tags/tag_info/
+// org_info/org_version）同步清空；成员通讯录组织行异步清理（见 DeleteOrgDirect）。
+func (s *AppState) DeleteOrg(info *BaseInfo, req *pb.DeleteOrgRequest) *pb.DeleteOrgResponse {
+	reqID, uid := info.RequestID, info.UID
+	orgID := req.GetOrgId()
+	if resp := requireOrgManage(s, reqID, uid, orgID, orgID); resp != nil {
+		return toDeleteOrgResponse(resp)
+	}
+	if err := s.DeleteOrgDirect(orgID); err != nil {
+		return toDeleteOrgResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	return toDeleteOrgResponse(appmsg.OKEmpty(reqID))
 }
 
 func (s *AppState) CreateOrgTag(info *BaseInfo, req *pb.CreateOrgTagRequest) *pb.CreateOrgTagResponse {
@@ -629,6 +711,9 @@ func (s *AppState) RevokeOrgAdmin(info *BaseInfo, req *pb.RevokeOrgAdminRequest)
 		return toRevokeOrgAdminResponse(resp)
 	}
 	if err := s.RevokeOrgAdminDirect(orgID, scopeTagID, req.GetUid()); err != nil {
+		if errors.Is(err, dal.ErrOrgLastRootAdmin) {
+			return toRevokeOrgAdminResponse(appmsg.ErrConflict(reqID, err.Error()))
+		}
 		return toRevokeOrgAdminResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	return toRevokeOrgAdminResponse(appmsg.OKEmpty(reqID))

@@ -1,5 +1,7 @@
 package dal
 
+import "errors"
+
 // User is the full user record. PasswordHash is excluded from JSON via json:"-".
 type User struct {
 	UID          int64  `json:"uid,string"`
@@ -199,6 +201,11 @@ const (
 
 // TagRankUnset 表示边未显式排序：自然沉到所有显式排序之后，落到 sort_key 字典序。
 const TagRankUnset int64 = 2147483647
+
+// ErrOrgLastRootAdmin 表示撤销这条 GRANT 边会让组织根失去最后一个管理员，
+// 拒绝执行。校验与删除在同一事务内完成（见 OrgStore.RevokeOrgAdmin），
+// 避免并发撤权绕过"组织至少一个根管理员"的约束。
+var ErrOrgLastRootAdmin = errors.New("org root would lose its last admin")
 
 // OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。
 type OrgInfo struct {

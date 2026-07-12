@@ -239,7 +239,7 @@ const (
 //	└── 行政部   (rank=30)：User25-User34 按名字
 func seedOrg(state *service.AppState, uids []int64) int64 {
 	// User1（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
-	orgID, err := state.CreateOrg("腾讯科技有限公司广州研发中心", "", uids[0])
+	orgID, err := state.CreateOrgDirect("腾讯科技有限公司广州研发中心", "", uids[0])
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
@@ -470,4 +470,3 @@ func stopServer(port int) {
 	// 等待端口释放
 	time.Sleep(500 * time.Millisecond)
 }
-

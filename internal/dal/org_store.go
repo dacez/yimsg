@@ -2,6 +2,7 @@ package dal
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -374,6 +375,84 @@ func (s *OrgStore) RemoveTag(orgID, tagID, childID int64, childType uint8, now i
 		return false, false, fmt.Errorf("remove tag: %w", err)
 	}
 	return found, stillActive, nil
+}
+
+// RevokeOrgAdmin 墓碑一条 GRANT 边；scopeTagID 为组织根（scopeTagID == orgID）
+// 时，在同一事务内原子校验剩余根管理员数量，删空前拒绝（返回 ErrOrgLastRootAdmin）
+// ——"一个组织至少一个根管理员"的校验与删除必须同事务，否则并发撤权可能
+// 竞态穿透，永久锁死组织的管理入口。子树管理员（scopeTagID != orgID）无此约束。
+func (s *OrgStore) RevokeOrgAdmin(orgID, scopeTagID, uid int64, now int64) (bool, error) {
+	var found bool
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRow(
+			"SELECT 1 FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ? AND status = ?",
+			orgID, scopeTagID, uid, TagChildGrant, TagActive,
+		).Scan(&exists); err != nil {
+			if isNoRows(err) {
+				return nil
+			}
+			return err
+		}
+		found = true
+
+		if scopeTagID == orgID {
+			var count int64
+			if err := tx.QueryRow(
+				"SELECT COUNT(*) FROM tags WHERE org_id = ? AND tag_id = ? AND child_type = ? AND status = ?",
+				orgID, orgID, TagChildGrant, TagActive,
+			).Scan(&count); err != nil {
+				return err
+			}
+			if count <= 1 {
+				return ErrOrgLastRootAdmin
+			}
+		}
+
+		seq, err := bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(
+			`UPDATE tags SET status = ?, seq = ?, updated_at = ?
+			 WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?`,
+			TagDeleted, seq, now, orgID, scopeTagID, uid, TagChildGrant,
+		)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, ErrOrgLastRootAdmin) {
+			return false, ErrOrgLastRootAdmin
+		}
+		return false, fmt.Errorf("revoke org admin: %w", err)
+	}
+	return found, nil
+}
+
+// DeleteOrg 删除整个组织：同事务内物理删除 tags/tag_info/org_info/org_version
+// 全部四张表的行。组织本身连同 org_version 一起消失，没有留 tombstone 的意义
+// （同步域随组织一起没了）；成员通讯录组织行不在这个事务里（跨分片），由
+// 调用方在事务外异步清理。
+func (s *OrgStore) DeleteOrg(orgID int64) error {
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM tags WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM tag_info WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM org_info WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM org_version WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete org: %w", err)
+	}
+	return nil
 }
 
 // ListTagsPage 是展开的展示通道 keyset 分页：仅 ACTIVE 行，

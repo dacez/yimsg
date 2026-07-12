@@ -129,6 +129,10 @@ func ActionType(action string) (uint16, bool) {
 		return uint16(pb.Type_TYPE_ACTION_REVOKE_ORG_ADMIN), true
 	case "list_org_admins":
 		return uint16(pb.Type_TYPE_ACTION_LIST_ORG_ADMINS), true
+	case "create_org":
+		return uint16(pb.Type_TYPE_ACTION_CREATE_ORG), true
+	case "delete_org":
+		return uint16(pb.Type_TYPE_ACTION_DELETE_ORG), true
 	default:
 		return 0, false
 	}
@@ -251,6 +255,10 @@ func NewRequestMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.RevokeOrgAdminRequest{}, true
 	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
 		return &pb.ListOrgAdminsRequest{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		return &pb.CreateOrgRequest{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		return &pb.DeleteOrgRequest{}, true
 	default:
 		return nil, false
 	}
@@ -373,6 +381,10 @@ func NewResponseMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.RevokeOrgAdminResponse{}, true
 	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
 		return &pb.ListOrgAdminsResponse{}, true
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		return &pb.CreateOrgResponse{}, true
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		return &pb.DeleteOrgResponse{}, true
 	default:
 		return nil, false
 	}
@@ -519,6 +531,10 @@ func DispatchActionFrame(svc ActionService, info *service.BaseInfo, frame Frame)
 		resp = svc.RevokeOrgAdmin(info, req.(*pb.RevokeOrgAdminRequest))
 	case pb.Type_TYPE_ACTION_LIST_ORG_ADMINS:
 		resp = svc.ListOrgAdmins(info, req.(*pb.ListOrgAdminsRequest))
+	case pb.Type_TYPE_ACTION_CREATE_ORG:
+		resp = svc.CreateOrg(info, req.(*pb.CreateOrgRequest))
+	case pb.Type_TYPE_ACTION_DELETE_ORG:
+		resp = svc.DeleteOrg(info, req.(*pb.DeleteOrgRequest))
 	default:
 		resp = errorResponseByType(frame.Type, appmsg.ErrorCodeUnknownAction, fmt.Sprintf("unknown type: %d", frame.Type))
 	}

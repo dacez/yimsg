@@ -496,3 +496,85 @@ func TestOrgGrantRevokeAndListAdmins(t *testing.T) {
 		t.Errorf("revoked admin1 should no longer manage: ok=%v err=%v", ok, err)
 	}
 }
+
+// TestOrgRevokeOrgAdminLastRootGuard 验证 RevokeOrgAdmin 的原子校验：
+// 唯一根管理员不能撤销自己（或被撤销），有第二人时可以正常撤销其一；
+// 子树级（非组织根）GRANT 没有这个约束。
+func TestOrgRevokeOrgAdminLastRootGuard(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const dept int64 = 901
+	const admin1, admin2 int64 = 41, 42
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTagInfo(orgID, dept, "dept", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	linkTag(t, s, orgID, orgID, dept, "dept", 1)
+	grantAdmin(t, s, orgID, orgID, admin1)
+
+	// 唯一根管理员：撤销应被拒绝，且没有真的删掉这条边。
+	if _, err := s.RevokeOrgAdmin(orgID, orgID, admin1, 2000); err != ErrOrgLastRootAdmin {
+		t.Fatalf("sole root admin revoke should be rejected, got %v", err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, admin1); err != nil || !ok {
+		t.Errorf("rejected revoke should not actually remove the grant: ok=%v err=%v", ok, err)
+	}
+
+	// 子树级 GRANT 无此约束：唯一部门管理员可以正常撤销。
+	grantAdmin(t, s, orgID, dept, admin2)
+	removed, err := s.RevokeOrgAdmin(orgID, dept, admin2, 2000)
+	if err != nil || !removed {
+		t.Fatalf("sole dept admin revoke should succeed: removed=%v err=%v", removed, err)
+	}
+
+	// 有第二个根管理员时，撤销其一应该成功。
+	grantAdmin(t, s, orgID, orgID, admin2)
+	removed, err = s.RevokeOrgAdmin(orgID, orgID, admin1, 3000)
+	if err != nil || !removed {
+		t.Fatalf("revoke with a second root admin present should succeed: removed=%v err=%v", removed, err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, admin2); err != nil || !ok {
+		t.Errorf("admin2 should remain the sole root admin: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestOrgDeleteOrgWipesStructure 验证 DeleteOrg 物理清空 org_info/tag_info/
+// tags/org_version 四张表，删后 GetVersion 与展开结果均是"未曾存在"的状态。
+func TestOrgDeleteOrgWipesStructure(t *testing.T) {
+	s := orgStore(t)
+	const orgID = 100
+	const dept int64 = 901
+	const member int64 = 51
+	if err := s.UpsertOrgInfo(orgID, "org", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertTagInfo(orgID, dept, "dept", "", 1000); err != nil {
+		t.Fatal(err)
+	}
+	linkTag(t, s, orgID, orgID, dept, "dept", 1)
+	addMember(t, s, orgID, dept, member, "M", "", TagRankUnset)
+	grantAdmin(t, s, orgID, orgID, member)
+
+	if err := s.DeleteOrg(orgID); err != nil {
+		t.Fatalf("DeleteOrg: %v", err)
+	}
+
+	if info, err := s.GetOrgInfo(orgID); err != nil || info != nil {
+		t.Errorf("org_info should be gone: info=%+v err=%v", info, err)
+	}
+	if info, err := s.GetTagInfo(orgID, dept); err != nil || info != nil {
+		t.Errorf("tag_info should be gone: info=%+v err=%v", info, err)
+	}
+	gcSafeSeq, maxSeq, err := s.GetVersion(orgID)
+	if err != nil || gcSafeSeq != 0 || maxSeq != 0 {
+		t.Errorf("org_version should be gone: gcSafeSeq=%d maxSeq=%d err=%v", gcSafeSeq, maxSeq, err)
+	}
+	if uids, err := s.ActiveMemberUIDs(orgID); err != nil || len(uids) != 0 {
+		t.Errorf("no active members should remain: uids=%+v err=%v", uids, err)
+	}
+	if ok, err := s.CanManage(orgID, orgID, member); err != nil || ok {
+		t.Errorf("GRANT edges should be gone too: ok=%v err=%v", ok, err)
+	}
+}

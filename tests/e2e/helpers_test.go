@@ -76,7 +76,8 @@ type wsResponse struct {
 	// 用同一个 tagJSON（两种形状的并集）承接，靠调用方读取各自用到的子集字段。
 	Orgs  []orgInfoJSON `json:"orgs,omitempty"`
 	Tags  []tagJSON     `json:"tags,omitempty"`
-	TagID string        `json:"tag_id,omitempty"` // create_org_tag 返回的新 tag ID
+	OrgID string        `json:"org_id,omitempty"`     // create_org 返回的新组织 ID
+	TagID string        `json:"tag_id,omitempty"`     // create_org_tag 返回的新 tag ID
 	Uids  []string      `json:"admin_uids,omitempty"` // list_org_admins 返回的管理员 uid 列表
 }
 

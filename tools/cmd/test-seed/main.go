@@ -173,7 +173,7 @@ func main() {
 	orgName := fmt.Sprintf("%s_测试组织", prefix)
 	fmt.Printf("创建组织 %q...\n", orgName)
 	// Test1（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
-	orgID, err := state.CreateOrg(orgName, "", uids[0])
+	orgID, err := state.CreateOrgDirect(orgName, "", uids[0])
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
@@ -242,4 +242,3 @@ func sendDM(state *service.AppState, uids []int64, usernames []string, idx1, idx
 		}
 	}
 }
-

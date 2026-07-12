@@ -23,6 +23,8 @@ import {
   ClearUnreadResponse,
   CreateGroupRequest,
   CreateGroupResponse,
+  CreateOrgRequest,
+  CreateOrgResponse,
   CreateOrgTagRequest,
   CreateOrgTagResponse,
   DeleteConversationRequest,
@@ -31,6 +33,8 @@ import {
   DeleteFriendResponse,
   DeleteMessageRequest,
   DeleteMessageResponse,
+  DeleteOrgRequest,
+  DeleteOrgResponse,
   DeleteOrgTagRequest,
   DeleteOrgTagResponse,
   FavoriteGroupRequest,
@@ -862,6 +866,32 @@ export function listOrgAdmins(
     ListOrgAdminsRequest,
     req,
     ListOrgAdminsResponse,
+  );
+}
+
+export function createOrg(
+  transport: ClientTransport,
+  req: CreateOrgRequest,
+): Promise<CreateOrgResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_CREATE_ORG,
+    CreateOrgRequest,
+    req,
+    CreateOrgResponse,
+  );
+}
+
+export function deleteOrg(
+  transport: ClientTransport,
+  req: DeleteOrgRequest,
+): Promise<DeleteOrgResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_DELETE_ORG,
+    DeleteOrgRequest,
+    req,
+    DeleteOrgResponse,
   );
 }
 

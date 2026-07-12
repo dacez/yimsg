@@ -16,7 +16,7 @@ import (
 //	└── xx 部门：A(rank=1 排第一)、员工按名字
 func buildTestOrg(t *testing.T, s *AppState, bossUID, aUID, staffUID int64) (orgID, leadersTag, deptTag int64) {
 	t.Helper()
-	orgID, err := s.CreateOrg("腾讯科技有限公司广州研发中心", "", bossUID)
+	orgID, err := s.CreateOrgDirect("腾讯科技有限公司广州研发中心", "", bossUID)
 	if err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -433,5 +433,110 @@ func TestOrgGrantRevokeListAdminsProtocol(t *testing.T) {
 	addAfterRevoke := s.AddOrgMember(testInfo(staff), &pb.AddOrgMemberRequest{OrgId: orgID, TagId: deptTag, Uid: a})
 	if addAfterRevoke.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
 		t.Errorf("revoked admin should lose access, got %v", addAfterRevoke.Base.Code)
+	}
+}
+
+// TestOrgCreateProtocol 验证 create_org 对任意登录用户开放，调用方自动成为
+// 组织根的初始管理员（能立刻管理，无需额外授权）。
+func TestOrgCreateProtocol(t *testing.T) {
+	s := testState(t)
+	alice := registerUser(t, s, "alice", "p", "Alice")
+
+	resp := s.CreateOrg(testInfo(alice), &pb.CreateOrgRequest{Name: "新公司"})
+	if resp.Base.Code != pb.ErrorCode_ERROR_OK || resp.OrgId == 0 {
+		t.Fatalf("create_org: %v org_id=%d", resp.Base.Code, resp.OrgId)
+	}
+
+	// 创建者自动成为根管理员：能直接建部门。
+	createTag := s.CreateOrgTag(testInfo(alice), &pb.CreateOrgTagRequest{OrgId: resp.OrgId, ParentTagId: resp.OrgId, Name: "部门"})
+	if createTag.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Errorf("creator should manage new org, got %v", createTag.Base.Code)
+	}
+
+	// 无关用户没有权限。
+	bob := registerUser(t, s, "bob", "p", "Bob")
+	forbidden := s.RenameOrg(testInfo(bob), &pb.RenameOrgRequest{OrgId: resp.OrgId, Name: "改名"})
+	if forbidden.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin should be forbidden, got %v", forbidden.Base.Code)
+	}
+}
+
+// TestOrgLastRootAdminGuard 验证"组织至少保留一个根管理员"：唯一根管理员撤销
+// 自己（或被撤销）会被拒绝；有第二个根管理员时可以正常撤销其一。
+func TestOrgLastRootAdminGuard(t *testing.T) {
+	s := testState(t)
+	boss := registerUser(t, s, "boss", "p", "Boss")
+	a := registerUser(t, s, "usera", "p", "A")
+	staff := registerUser(t, s, "staff", "p", "S")
+	orgID, _, deptTag := buildTestOrg(t, s, boss, a, staff)
+
+	// boss 是唯一根管理员：自己撤销自己应被拒绝（CONFLICT），不是内部错误。
+	selfRevoke := s.RevokeOrgAdmin(testInfo(boss), &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: orgID, Uid: boss})
+	if selfRevoke.Base.Code != pb.ErrorCode_ERROR_CONFLICT {
+		t.Fatalf("last root admin self-revoke should conflict, got %v", selfRevoke.Base.Code)
+	}
+	// 仍然是根管理员：能继续管理。
+	stillAdmin := s.RenameOrg(testInfo(boss), &pb.RenameOrgRequest{OrgId: orgID, Name: "仍然管理"})
+	if stillAdmin.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Errorf("boss should still be root admin after rejected self-revoke, got %v", stillAdmin.Base.Code)
+	}
+
+	// 授权 staff 为第二个根管理员后，撤销 boss 应该成功。
+	grantResp := s.GrantOrgAdmin(testInfo(boss), &pb.GrantOrgAdminRequest{OrgId: orgID, ScopeTagId: orgID, Uid: staff})
+	if grantResp.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("grant second root admin: %v", grantResp.Base.Code)
+	}
+	revokeBoss := s.RevokeOrgAdmin(testInfo(staff), &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: orgID, Uid: boss})
+	if revokeBoss.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("revoke boss with a second admin present should succeed, got %v", revokeBoss.Base.Code)
+	}
+	// 现在 staff 是唯一根管理员，撤销 staff 自己应再次被拒绝。
+	selfRevoke2 := s.RevokeOrgAdmin(testInfo(staff), &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: orgID, Uid: staff})
+	if selfRevoke2.Base.Code != pb.ErrorCode_ERROR_CONFLICT {
+		t.Errorf("new last root admin self-revoke should conflict, got %v", selfRevoke2.Base.Code)
+	}
+
+	// 子树级 GRANT（非组织根）没有这个约束：唯一部门管理员可以正常撤销。
+	deptGrant := s.GrantOrgAdmin(testInfo(staff), &pb.GrantOrgAdminRequest{OrgId: orgID, ScopeTagId: deptTag, Uid: a})
+	if deptGrant.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("grant dept admin: %v", deptGrant.Base.Code)
+	}
+	deptRevoke := s.RevokeOrgAdmin(testInfo(staff), &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: deptTag, Uid: a})
+	if deptRevoke.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Errorf("sole dept admin revoke should succeed (no last-root-admin constraint on subtree), got %v", deptRevoke.Base.Code)
+	}
+}
+
+// TestOrgDeleteProtocol 验证 delete_org：非根管理员被拒；根管理员删除后结构
+// 清空，成员通讯录组织行经异步任务清理（离职语义）。
+func TestOrgDeleteProtocol(t *testing.T) {
+	s := testState(t)
+	boss := registerUser(t, s, "boss", "p", "Boss")
+	a := registerUser(t, s, "usera", "p", "A")
+	staff := registerUser(t, s, "staff", "p", "S")
+	orgID, _, _ := buildTestOrg(t, s, boss, a, staff)
+	drainTasks(s) // 清空建制期间的扇出
+
+	forbidden := s.DeleteOrg(testInfo(staff), &pb.DeleteOrgRequest{OrgId: orgID})
+	if forbidden.Base.Code != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Fatalf("non-admin delete_org should be forbidden, got %v", forbidden.Base.Code)
+	}
+
+	del := s.DeleteOrg(testInfo(boss), &pb.DeleteOrgRequest{OrgId: orgID})
+	if del.Base.Code != pb.ErrorCode_ERROR_OK {
+		t.Fatalf("delete_org: %v", del.Base.Code)
+	}
+
+	// 结构清空：组织展示资料不再存在。
+	infos := s.GetOrgInfos(testInfo(boss), &pb.GetOrgInfosRequest{OrgIds: []int64{orgID}})
+	if len(infos.Orgs) != 0 {
+		t.Errorf("org info should be gone after delete, got %+v", infos.Orgs)
+	}
+
+	// 异步任务清理成员通讯录组织行（离职语义）。
+	drainTasks(s)
+	row, _ := s.ContactStore(staff).GetByKey(staff, 0, 0, orgID)
+	if row == nil || row.Status != dal.ContactDeleted {
+		t.Errorf("member contact row should be tombstoned after org delete: %+v", row)
 	}
 }

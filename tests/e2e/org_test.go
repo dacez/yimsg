@@ -73,7 +73,7 @@ type orgFixture struct {
 func buildOrgFixture(t *testing.T, state *service.AppState, bossUID, aUID, staffUID int64) orgFixture {
 	t.Helper()
 	// bossUID 是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
-	orgID, err := state.CreateOrg(uniqueName("腾讯科技广州研发中心"), "", bossUID)
+	orgID, err := state.CreateOrgDirect(uniqueName("腾讯科技广州研发中心"), "", bossUID)
 	if err != nil {
 		t.Fatalf("CreateOrg: %v", err)
 	}
@@ -382,4 +382,49 @@ func TestOrgE2EManageWriteActions(t *testing.T) {
 	if len(orgInfo.Orgs) != 1 || orgInfo.Orgs[0].Name != "改名后的组织" {
 		t.Errorf("rename_org not applied: %+v", orgInfo.Orgs)
 	}
+}
+
+// TestOrgE2ECreateDeleteAndLastRootAdminGuard 端到端验证 create_org 对任意登录
+// 用户开放（调用方自动成为根管理员）、"组织至少一个根管理员"的撤权保护、以及
+// delete_org 需要根管理权限且删除后结构立即不可读。
+func TestOrgE2ECreateDeleteAndLastRootAdminGuard(t *testing.T) {
+	alice := dial(t)
+	aliceResp := alice.registerAndLogin(uniqueName("alice"), "pw123456", "创建者")
+	bob := dial(t)
+	bobResp := bob.registerAndLogin(uniqueName("bob"), "pw123456", "路人")
+
+	// 任意登录用户可以 create_org，创建者自动成为根管理员。
+	created := alice.sendOK(wsRequest{"action": "create_org", "name": "阿尔法公司"})
+	if created.OrgID == "" {
+		t.Fatalf("create_org should return org_id: %+v", created)
+	}
+	orgIDStr := created.OrgID
+
+	// 创建者能直接建部门，无关用户不能。
+	newTag := alice.sendOK(wsRequest{"action": "create_org_tag", "org_id": orgIDStr, "parent_tag_id": orgIDStr, "name": "部门"})
+	if newTag.TagID == "" {
+		t.Fatalf("creator should manage new org: %+v", newTag)
+	}
+	forbidden := bob.sendErr(wsRequest{"action": "rename_org", "org_id": orgIDStr, "name": "改名"})
+	if forbidden.ErrorCode != "FORBIDDEN" {
+		t.Errorf("non-admin rename_org error_code = %s, want FORBIDDEN", forbidden.ErrorCode)
+	}
+
+	// 唯一根管理员撤销自己应被拒绝（CONFLICT），组织至少保留一个根管理员。
+	selfRevoke := alice.sendErr(wsRequest{"action": "revoke_org_admin", "org_id": orgIDStr, "scope_tag_id": orgIDStr, "uid": aliceResp.UID})
+	if selfRevoke.ErrorCode != "CONFLICT" {
+		t.Errorf("last root admin self-revoke error_code = %s, want CONFLICT", selfRevoke.ErrorCode)
+	}
+
+	// 非根管理员不能删除组织；根管理员删除后组织展示资料立即消失。
+	forbiddenDelete := bob.sendErr(wsRequest{"action": "delete_org", "org_id": orgIDStr})
+	if forbiddenDelete.ErrorCode != "FORBIDDEN" {
+		t.Errorf("non-admin delete_org error_code = %s, want FORBIDDEN", forbiddenDelete.ErrorCode)
+	}
+	alice.sendOK(wsRequest{"action": "delete_org", "org_id": orgIDStr})
+	afterDelete := alice.sendOK(wsRequest{"action": "get_org_infos", "org_ids": []string{orgIDStr}})
+	if len(afterDelete.Orgs) != 0 {
+		t.Errorf("org should be gone after delete_org: %+v", afterDelete.Orgs)
+	}
+	_ = bobResp
 }

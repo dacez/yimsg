@@ -1381,6 +1381,26 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  /**
+   * 创建组织，任意登录用户都可以调用——这是权限链条唯一的自举点，调用方
+   * 自动成为新组织根的初始管理员。返回新组织 ID。
+   */
+  async createOrg(name: string, avatar?: string): Promise<string> {
+    this.requireAuthenticated("createOrg");
+    this.assertNonEmpty(name, "name", "createOrg");
+    try {
+      const resp = await actions.createOrg(this._transport, { name, avatar: avatar || "" });
+      return String(resp.org_id);
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "创建组织失败", {
+          context: "createOrg",
+        }),
+      );
+    }
+  }
+
   // ---- 组织管理面：以下写方法均要求调用方对目标节点（或其祖先）持有管理员
   // 授权，否则服务端返回 FORBIDDEN。写成功后不做本地乐观更新，依赖既有
   // org:updated 轻通知 + sync_tags/get_org_infos/get_tag_infos 重新拉取。----
@@ -1621,6 +1641,25 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         error,
         new RequestError("REQUEST_FAILED", "撤销管理员失败", {
           context: "revokeOrgAdmin",
+        }),
+      );
+    }
+  }
+
+  /**
+   * 删除整个组织，需对组织根持有管理权限。结构（部门/成员/管理员授权）立即
+   * 清空；成员通讯录组织行异步清理，不可撤销。
+   */
+  async deleteOrg(orgId: string): Promise<void> {
+    this.requireAuthenticated("deleteOrg");
+    this.assertNonEmpty(orgId, "orgId", "deleteOrg");
+    try {
+      await actions.deleteOrg(this._transport, { org_id: orgId });
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "删除组织失败", {
+          context: "deleteOrg",
         }),
       );
     }

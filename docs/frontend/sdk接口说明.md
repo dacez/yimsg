@@ -347,10 +347,11 @@ interface Contact {
 
 ## 4.6 组织管理
 
-以下写方法均要求调用方对目标节点（或其祖先）持有管理员授权，否则服务端返回 `FORBIDDEN`（`RequestError`）；SDK 不做本地乐观更新，写成功后依赖既有 `org:updated` 轻通知 + 重新拉取刷新展示，详见 [`../server/组织架构方案.md`](../server/组织架构方案.md) 第 10 节。
+`createOrg` 是权限链条唯一的自举点，任意登录用户都可以调用，调用方自动成为新组织根的初始管理员，不需要预先持有任何授权。除此之外，以下写方法均要求调用方对目标节点（或其祖先）持有管理员授权，否则服务端返回 `FORBIDDEN`（`RequestError`）；SDK 不做本地乐观更新，写成功后依赖既有 `org:updated` 轻通知 + 重新拉取刷新展示，详见 [`../server/组织架构方案.md`](../server/组织架构方案.md) 第 10 节。
 
 | 方法 | 签名 |
 |------|------|
+| `createOrg` | `(name, avatar?) => Promise<string>`；任意登录用户可调用，返回新组织 ID |
 | `createOrgTag` | `(orgId, parentTagId, name, { avatar?, rank? }?) => Promise<string>`；返回新建 tag ID |
 | `renameOrgTag` | `(orgId, tagId, name, avatar?) => Promise<void>` |
 | `deleteOrgTag` | `(orgId, tagId) => Promise<void>` |
@@ -359,8 +360,9 @@ interface Contact {
 | `removeOrgMember` | `(orgId, tagId, uid) => Promise<void>` |
 | `setOrgItemRank` | `(orgId, tagId, childId, childType, rank, title?) => Promise<void>`；`rank` 为必填的显式排序值 |
 | `renameOrg` | `(orgId, name, avatar?) => Promise<void>`；需对组织根有管理权限 |
+| `deleteOrg` | `(orgId) => Promise<void>`；需对组织根有管理权限，删除整个组织，不可撤销 |
 | `grantOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；授予 `uid` 管理 `scopeTagId` 为根子树的权限，组织根传 `scopeTagId=orgId` 即全组织管理员 |
-| `revokeOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>` |
+| `revokeOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；组织根（`scopeTagId=orgId`）撤权时服务端原子校验剩余根管理员数量，删空前拒绝（`ERROR_CONFLICT`），保证组织至少保留一个根管理员 |
 | `listOrgAdmins` | `(orgId, scopeTagId) => Promise<string[]>`；只返回直接挂在该节点上的管理员，不含挂在祖先节点、递归覆盖到此的管理员 |
 
 ---

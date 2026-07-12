@@ -66,6 +66,8 @@ enum Type {
   TYPE_ACTION_GRANT_ORG_ADMIN = 56; // action=grant_org_admin auth=true domain=组织 desc=授予某人管理某节点为根子树的权限，需调用方自己已对该节点有管理权限
   TYPE_ACTION_REVOKE_ORG_ADMIN = 57; // action=revoke_org_admin auth=true domain=组织 desc=撤销某人对某节点为根子树的管理权限，需调用方自己已对该节点有管理权限
   TYPE_ACTION_LIST_ORG_ADMINS = 58; // action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限
+  TYPE_ACTION_CREATE_ORG = 59; // action=create_org auth=true domain=组织 desc=创建组织，调用方自动成为组织根管理员，任意登录用户可调用
+  TYPE_ACTION_DELETE_ORG = 60; // action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001; // notification=messages:received desc=消息域发生变化
   TYPE_NOTIFY_CONTACTS_UPDATED = 10002; // notification=contacts:updated desc=通讯录发生变化
   TYPE_NOTIFY_SESSION_KICKED = 10003; // notification=session:kicked desc=当前登录态被踢下线
@@ -902,3 +904,22 @@ message ListOrgAdminsResponse {
   BaseResponse base = 1; // required 通用响应状态
   repeated int64 admin_uids = 10; // optional 直接挂在该节点上的管理员 uid 列表（不含挂在祖先节点、递归覆盖到此的管理员）
 }
+
+// CreateOrgRequest 任意登录用户可调用；调用方自动成为组织根管理员（GRANT 边），
+// 是整条管理权限链条的自举点。
+message CreateOrgRequest {
+  string name = 10; // required 组织名称
+  string avatar = 11; // optional 组织头像 URL
+}
+message CreateOrgResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  int64 org_id = 10; // required 新建组织 ID
+}
+
+// DeleteOrgRequest 需对组织根有管理权限。结构（tags 全部边、tag_info、org_info、
+// org_version）在事务内同步清空；每个成员自己 uid 分片下的通讯录组织行经
+// taskqueue 异步 tombstone 并推送 contacts:updated，避免大组织阻塞请求。
+message DeleteOrgRequest {
+  int64 org_id = 10; // required 组织 ID（分片路由键）
+}
+message DeleteOrgResponse { BaseResponse base = 1; }

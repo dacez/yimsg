@@ -268,6 +268,87 @@ func TestContactGC_ListPurgeable(t *testing.T) {
 	}
 }
 
+// TestOrgContactGC_TombstonesOrphanRow 验证组织通讯录行的兜底 GC：组织存在时
+// 不动；组织被物理删除（模拟 delete_org 异步清理任务丢失）后，扫一轮应补墓碑
+// 该行，组织仍存在的正常行不受影响。
+func TestOrgContactGC_TombstonesOrphanRow(t *testing.T) {
+	s := testState(t)
+	staff := registerUser(t, s, "staff", "p", "S")
+	other := registerUser(t, s, "other", "p", "O")
+
+	orgID, err := s.CreateOrgDirect("孤儿测试公司", "", staff)
+	if err != nil {
+		t.Fatalf("CreateOrgDirect: %v", err)
+	}
+	tagID, err := s.AddOrgTag(orgID, orgID, "部门", "", dal.TagRankUnset)
+	if err != nil {
+		t.Fatalf("AddOrgTag: %v", err)
+	}
+	if err := s.AddOrgMemberDirect(orgID, tagID, staff, "", dal.TagRankUnset); err != nil {
+		t.Fatalf("AddOrgMemberDirect: %v", err)
+	}
+
+	// 另建一个正常组织并挂一个成员，确认 GC 不会误伤仍然存在的组织行。
+	// CreateOrgDirect 本身只写 GRANT 边（管理员授权），不产生通讯录组织行，
+	// 需要 AddOrgMemberDirect 才会有 PERSON 边联动写入 contacts。
+	orgID2, err := s.CreateOrgDirect("正常公司", "", other)
+	if err != nil {
+		t.Fatalf("CreateOrgDirect: %v", err)
+	}
+	tagID2, err := s.AddOrgTag(orgID2, orgID2, "部门", "", dal.TagRankUnset)
+	if err != nil {
+		t.Fatalf("AddOrgTag: %v", err)
+	}
+	if err := s.AddOrgMemberDirect(orgID2, tagID2, other, "", dal.TagRankUnset); err != nil {
+		t.Fatalf("AddOrgMemberDirect: %v", err)
+	}
+
+	// 组织仍存在：扫一轮应无操作。
+	n, err := s.sweepOrgContactGC()
+	if err != nil {
+		t.Fatalf("sweepOrgContactGC: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("sweep with live orgs tombstoned = %d, want 0", n)
+	}
+	row, _ := s.ContactStore(staff).GetByKey(staff, 0, 0, orgID)
+	if row == nil || row.Status != dal.ContactFriend {
+		t.Fatalf("staff org row should still be active: %+v", row)
+	}
+
+	// 直接物理删除组织结构（不经 DeleteOrgDirect），模拟异步清理任务丢失后的孤儿行。
+	if err := s.OrgStore(orgID).DeleteOrg(orgID); err != nil {
+		t.Fatalf("DeleteOrg: %v", err)
+	}
+
+	n, err = s.sweepOrgContactGC()
+	if err != nil {
+		t.Fatalf("sweepOrgContactGC: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("sweep tombstoned = %d, want 1", n)
+	}
+	row, _ = s.ContactStore(staff).GetByKey(staff, 0, 0, orgID)
+	if row == nil || row.Status != dal.ContactDeleted {
+		t.Errorf("orphan org row should be tombstoned: %+v", row)
+	}
+
+	// 正常组织的行不受影响。
+	row2, _ := s.ContactStore(other).GetByKey(other, 0, 0, orgID2)
+	if row2 == nil || row2.Status != dal.ContactFriend {
+		t.Errorf("unrelated live org row should be untouched: %+v", row2)
+	}
+
+	// 再扫一轮应无新增（幂等）。
+	n, err = s.sweepOrgContactGC()
+	if err != nil {
+		t.Fatalf("sweepOrgContactGC: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("second sweep tombstoned = %d, want 0 (idempotent)", n)
+	}
+}
+
 // --- Blocklist GC ---
 
 func TestBlocklistGC_PurgesDeletedEntries(t *testing.T) {

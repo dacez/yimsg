@@ -10,8 +10,11 @@ type BaseRequest struct {
 	RequestID uint64
 }
 
-// Request is a raw incoming WebSocket request decoded from the protobuf source
-// schema. Action and RequestID are derived from the binary frame header.
+// Request 不是线上协议类型——真实请求是 internal/protocol/yimsg.proto 定义的
+// 二进制 protobuf 帧，按 action 解到各自的 pb.XxxRequest，不经过这个结构体。
+// Request 现在只是较早期测试文件（internal/service/*_test.go，如
+// message_test.go）用来构造调用参数的便捷字面量类型，json tag 不服务于任何
+// 真实的序列化路径，仅为字段命名习惯保留。
 type Request struct {
 	Action    string `json:"action"`
 	RequestID uint64 `json:"request_id"`
@@ -59,10 +62,6 @@ type Request struct {
 	GroupIDs []json.Number `json:"group_ids,omitempty"`
 	UIDs     []json.Number `json:"uids,omitempty"` // get_user_infos
 	ToUIDs   []json.Number `json:"to_uids,omitempty"`
-
-	// Raw 原始 JSON 字节。由 WS 层在 Unmarshal 后回填，供插件 handler
-	// 反序列化自己的参数结构体。核心 action 不使用此字段。
-	Raw json.RawMessage `json:"-"`
 }
 
 // Base returns the framework-owned request context.

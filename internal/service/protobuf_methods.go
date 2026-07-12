@@ -605,6 +605,16 @@ func toListOrgAdminsResponse(resp *appmsg.Response) *pb.ListOrgAdminsResponse {
 	}
 	return out
 }
+func toCreateOrgResponse(resp *appmsg.Response) *pb.CreateOrgResponse {
+	out := &pb.CreateOrgResponse{Base: baseFromApp(resp)}
+	if resp != nil && resp.OrgIDResp != nil {
+		out.OrgId = int64(*resp.OrgIDResp)
+	}
+	return out
+}
+func toDeleteOrgResponse(resp *appmsg.Response) *pb.DeleteOrgResponse {
+	return &pb.DeleteOrgResponse{Base: baseFromApp(resp)}
+}
 
 func (s *AppState) Ping(info *BaseInfo, req *pb.PingRequest) *pb.PingResponse {
 	return toPingResponse(appmsg.OKEmpty(info.RequestID))

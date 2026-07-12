@@ -73,6 +73,7 @@ func (s *AppState) UseTaskQueue(q *taskqueue.Queue) {
 	q.Register(taskKindGroupMessage, s.handleGroupMessageTask)
 	q.Register(taskKindGroupSystem, s.handleGroupSystemTask)
 	q.Register(taskKindOrgUpdated, s.handleOrgUpdatedTask)
+	q.Register(taskKindOrgDeleted, s.handleOrgDeletedTask)
 }
 
 // ---- Store shortcuts: route key → dal.Store in one call ----

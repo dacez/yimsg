@@ -67,6 +67,8 @@ type ActionService interface {
 	GrantOrgAdmin(info *service.BaseInfo, req *pb.GrantOrgAdminRequest) *pb.GrantOrgAdminResponse
 	RevokeOrgAdmin(info *service.BaseInfo, req *pb.RevokeOrgAdminRequest) *pb.RevokeOrgAdminResponse
 	ListOrgAdmins(info *service.BaseInfo, req *pb.ListOrgAdminsRequest) *pb.ListOrgAdminsResponse
+	CreateOrg(info *service.BaseInfo, req *pb.CreateOrgRequest) *pb.CreateOrgResponse
+	DeleteOrg(info *service.BaseInfo, req *pb.DeleteOrgRequest) *pb.DeleteOrgResponse
 }
 
 // 编译期断言：AppState 必须实现全部 action。

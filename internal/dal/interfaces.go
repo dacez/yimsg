@@ -59,6 +59,7 @@ type ContactStoreAPI interface {
 	UpdateGroupProjections(uid int64, names map[int64]string, now int64) (int64, error)
 	UpdateOrgProjections(uid int64, names map[int64]string, now int64) (int64, error)
 	ListOrgIDs(uid int64) ([]int64, error)
+	ListDistinctOrgContactUIDs(limit, afterUID int64) ([]int64, error)
 }
 
 // MessageStoreAPI defines message inbox operations.
@@ -141,6 +142,7 @@ type OrgStoreAPI interface {
 	DeleteTagInfo(orgID, tagID int64, now int64) (bool, error)
 	UpsertTag(orgID, tagID, childID int64, childType uint8, title string, rank int64, sortKey string, now int64) (seq int64, hadActive bool, err error)
 	RemoveTag(orgID, tagID, childID int64, childType uint8, now int64) (removed bool, stillActive bool, err error)
+	RevokeOrgAdmin(orgID, scopeTagID, uid int64, now int64) (removed bool, err error)
 	ListTagsPage(orgID, tagID int64, cursorParts []string, backward bool, limit int64) ([]Tag, error)
 	SyncPage(orgID, afterSeq, limit int64) ([]Tag, bool, error)
 	ListDirectMemberUIDs(orgID, tagID int64) ([]int64, error)
@@ -152,6 +154,7 @@ type OrgStoreAPI interface {
 	GetVersion(orgID int64) (gcSafeSeq, maxSeq int64, err error)
 	Purge(orgID int64) (int64, error)
 	ListPurgeable(limit, afterOrgID int64) ([]int64, error)
+	DeleteOrg(orgID int64) error
 }
 
 // GroupStoreAPI defines group metadata/member operations.

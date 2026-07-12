@@ -96,6 +96,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
       <div class="org-admin-header">
         <strong>${app.escapeHtml(currentName)}</strong>
         <button class="btn btn-sm btn-secondary" id="oa-rename">${app.t('orgAdmin.renameBtn')}</button>
+        ${isRoot ? `<button class="btn btn-sm btn-danger" id="oa-delete-org">${app.t('orgAdmin.deleteOrgBtn')}</button>` : ''}
       </div>
       <div class="org-admin-section">
         <div class="org-admin-section-title">
@@ -162,6 +163,30 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
       }
       void render();
     });
+
+    // ---- 组织根：删除整个组织（不可撤销，删后直接关闭弹层） ----
+    if (isRoot) {
+      app.$('oa-delete-org').addEventListener('click', async () => {
+        const ok = await app.showConfirmModal({
+          title: app.t('orgAdmin.deleteOrgConfirmTitle'),
+          desc: app.t('orgAdmin.deleteOrgConfirmDesc'),
+          confirmText: app.t('orgAdmin.confirmBtn'),
+          cancelText: app.t('orgAdmin.cancelBtn'),
+          danger: true,
+        });
+        if (!ok) return;
+        try {
+          await app.client.deleteOrg(orgId);
+          app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
+        } catch (e) {
+          app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+          void render();
+          return;
+        }
+        modal.classList.remove('modal-content-wide');
+        app.closeModal();
+      });
+    }
 
     // ---- 子部门：新建 / 进入已在上面处理 / 改名 / 删除 ----
     app.$('oa-create-tag').addEventListener('click', async () => {

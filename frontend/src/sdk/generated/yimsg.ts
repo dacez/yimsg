@@ -126,6 +126,10 @@ export enum Type {
   TYPE_ACTION_REVOKE_ORG_ADMIN = 57,
   /** TYPE_ACTION_LIST_ORG_ADMINS - action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限 */
   TYPE_ACTION_LIST_ORG_ADMINS = 58,
+  /** TYPE_ACTION_CREATE_ORG - action=create_org auth=true domain=组织 desc=创建组织，调用方自动成为组织根管理员，任意登录用户可调用 */
+  TYPE_ACTION_CREATE_ORG = 59,
+  /** TYPE_ACTION_DELETE_ORG - action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理 */
+  TYPE_ACTION_DELETE_ORG = 60,
   /** TYPE_NOTIFY_MESSAGES_RECEIVED - notification=messages:received desc=消息域发生变化 */
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001,
   /** TYPE_NOTIFY_CONTACTS_UPDATED - notification=contacts:updated desc=通讯录发生变化 */
@@ -322,6 +326,12 @@ export function typeFromJSON(object: any): Type {
     case 58:
     case "TYPE_ACTION_LIST_ORG_ADMINS":
       return Type.TYPE_ACTION_LIST_ORG_ADMINS;
+    case 59:
+    case "TYPE_ACTION_CREATE_ORG":
+      return Type.TYPE_ACTION_CREATE_ORG;
+    case 60:
+    case "TYPE_ACTION_DELETE_ORG":
+      return Type.TYPE_ACTION_DELETE_ORG;
     case 10001:
     case "TYPE_NOTIFY_MESSAGES_RECEIVED":
       return Type.TYPE_NOTIFY_MESSAGES_RECEIVED;
@@ -472,6 +482,10 @@ export function typeToJSON(object: Type): string {
       return "TYPE_ACTION_REVOKE_ORG_ADMIN";
     case Type.TYPE_ACTION_LIST_ORG_ADMINS:
       return "TYPE_ACTION_LIST_ORG_ADMINS";
+    case Type.TYPE_ACTION_CREATE_ORG:
+      return "TYPE_ACTION_CREATE_ORG";
+    case Type.TYPE_ACTION_DELETE_ORG:
+      return "TYPE_ACTION_DELETE_ORG";
     case Type.TYPE_NOTIFY_MESSAGES_RECEIVED:
       return "TYPE_NOTIFY_MESSAGES_RECEIVED";
     case Type.TYPE_NOTIFY_CONTACTS_UPDATED:
@@ -2338,6 +2352,40 @@ export interface ListOrgAdminsResponse {
     | undefined;
   /** optional 直接挂在该节点上的管理员 uid 列表（不含挂在祖先节点、递归覆盖到此的管理员） */
   admin_uids: string[];
+}
+
+/**
+ * CreateOrgRequest 任意登录用户可调用；调用方自动成为组织根管理员（GRANT 边），
+ * 是整条管理权限链条的自举点。
+ */
+export interface CreateOrgRequest {
+  /** required 组织名称 */
+  name: string;
+  /** optional 组织头像 URL */
+  avatar: string;
+}
+
+export interface CreateOrgResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** required 新建组织 ID */
+  org_id: string;
+}
+
+/**
+ * DeleteOrgRequest 需对组织根有管理权限。结构（tags 全部边、tag_info、org_info、
+ * org_version）在事务内同步清空；每个成员自己 uid 分片下的通讯录组织行经
+ * taskqueue 异步 tombstone 并推送 contacts:updated，避免大组织阻塞请求。
+ */
+export interface DeleteOrgRequest {
+  /** required 组织 ID（分片路由键） */
+  org_id: string;
+}
+
+export interface DeleteOrgResponse {
+  base: BaseResponse | undefined;
 }
 
 function createBaseMessagesReceivedNotification(): MessagesReceivedNotification {
@@ -15287,6 +15335,288 @@ export const ListOrgAdminsResponse: MessageFns<ListOrgAdminsResponse> = {
       ? BaseResponse.fromPartial(object.base)
       : undefined;
     message.admin_uids = object.admin_uids?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseCreateOrgRequest(): CreateOrgRequest {
+  return { name: "", avatar: "" };
+}
+
+export const CreateOrgRequest: MessageFns<CreateOrgRequest> = {
+  encode(message: CreateOrgRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(82).string(message.name);
+    }
+    if (message.avatar !== "") {
+      writer.uint32(90).string(message.avatar);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.avatar = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgRequest {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      avatar: isSet(object.avatar) ? globalThis.String(object.avatar) : "",
+    };
+  },
+
+  toJSON(message: CreateOrgRequest): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.avatar !== "") {
+      obj.avatar = message.avatar;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgRequest>): CreateOrgRequest {
+    return CreateOrgRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgRequest>): CreateOrgRequest {
+    const message = createBaseCreateOrgRequest();
+    message.name = object.name ?? "";
+    message.avatar = object.avatar ?? "";
+    return message;
+  },
+};
+
+function createBaseCreateOrgResponse(): CreateOrgResponse {
+  return { base: undefined, org_id: "0" };
+}
+
+export const CreateOrgResponse: MessageFns<CreateOrgResponse> = {
+  encode(message: CreateOrgResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateOrgResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateOrgResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateOrgResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: CreateOrgResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<CreateOrgResponse>): CreateOrgResponse {
+    return CreateOrgResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<CreateOrgResponse>): CreateOrgResponse {
+    const message = createBaseCreateOrgResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.org_id = object.org_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseDeleteOrgRequest(): DeleteOrgRequest {
+  return { org_id: "0" };
+}
+
+export const DeleteOrgRequest: MessageFns<DeleteOrgRequest> = {
+  encode(message: DeleteOrgRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.org_id !== "0") {
+      writer.uint32(80).int64(message.org_id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.org_id = reader.int64().toString();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgRequest {
+    return {
+      org_id: isSet(object.orgId)
+        ? globalThis.String(object.orgId)
+        : isSet(object.org_id)
+        ? globalThis.String(object.org_id)
+        : "0",
+    };
+  },
+
+  toJSON(message: DeleteOrgRequest): unknown {
+    const obj: any = {};
+    if (message.org_id !== "0") {
+      obj.orgId = message.org_id;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgRequest>): DeleteOrgRequest {
+    return DeleteOrgRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgRequest>): DeleteOrgRequest {
+    const message = createBaseDeleteOrgRequest();
+    message.org_id = object.org_id ?? "0";
+    return message;
+  },
+};
+
+function createBaseDeleteOrgResponse(): DeleteOrgResponse {
+  return { base: undefined };
+}
+
+export const DeleteOrgResponse: MessageFns<DeleteOrgResponse> = {
+  encode(message: DeleteOrgResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteOrgResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteOrgResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteOrgResponse {
+    return { base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined };
+  },
+
+  toJSON(message: DeleteOrgResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<DeleteOrgResponse>): DeleteOrgResponse {
+    return DeleteOrgResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<DeleteOrgResponse>): DeleteOrgResponse {
+    const message = createBaseDeleteOrgResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
     return message;
   },
 };

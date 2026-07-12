@@ -83,6 +83,8 @@ const (
 	Type_TYPE_ACTION_GRANT_ORG_ADMIN           Type = 56    // action=grant_org_admin auth=true domain=组织 desc=授予某人管理某节点为根子树的权限，需调用方自己已对该节点有管理权限
 	Type_TYPE_ACTION_REVOKE_ORG_ADMIN          Type = 57    // action=revoke_org_admin auth=true domain=组织 desc=撤销某人对某节点为根子树的管理权限，需调用方自己已对该节点有管理权限
 	Type_TYPE_ACTION_LIST_ORG_ADMINS           Type = 58    // action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限
+	Type_TYPE_ACTION_CREATE_ORG                Type = 59    // action=create_org auth=true domain=组织 desc=创建组织，调用方自动成为组织根管理员，任意登录用户可调用
+	Type_TYPE_ACTION_DELETE_ORG                Type = 60    // action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理
 	Type_TYPE_NOTIFY_MESSAGES_RECEIVED         Type = 10001 // notification=messages:received desc=消息域发生变化
 	Type_TYPE_NOTIFY_CONTACTS_UPDATED          Type = 10002 // notification=contacts:updated desc=通讯录发生变化
 	Type_TYPE_NOTIFY_SESSION_KICKED            Type = 10003 // notification=session:kicked desc=当前登录态被踢下线
@@ -155,6 +157,8 @@ var (
 		56:    "TYPE_ACTION_GRANT_ORG_ADMIN",
 		57:    "TYPE_ACTION_REVOKE_ORG_ADMIN",
 		58:    "TYPE_ACTION_LIST_ORG_ADMINS",
+		59:    "TYPE_ACTION_CREATE_ORG",
+		60:    "TYPE_ACTION_DELETE_ORG",
 		10001: "TYPE_NOTIFY_MESSAGES_RECEIVED",
 		10002: "TYPE_NOTIFY_CONTACTS_UPDATED",
 		10003: "TYPE_NOTIFY_SESSION_KICKED",
@@ -224,6 +228,8 @@ var (
 		"TYPE_ACTION_GRANT_ORG_ADMIN":           56,
 		"TYPE_ACTION_REVOKE_ORG_ADMIN":          57,
 		"TYPE_ACTION_LIST_ORG_ADMINS":           58,
+		"TYPE_ACTION_CREATE_ORG":                59,
+		"TYPE_ACTION_DELETE_ORG":                60,
 		"TYPE_NOTIFY_MESSAGES_RECEIVED":         10001,
 		"TYPE_NOTIFY_CONTACTS_UPDATED":          10002,
 		"TYPE_NOTIFY_SESSION_KICKED":            10003,
@@ -9207,6 +9213,203 @@ func (x *ListOrgAdminsResponse) GetAdminUids() []int64 {
 	return nil
 }
 
+// CreateOrgRequest 任意登录用户可调用；调用方自动成为组织根管理员（GRANT 边），
+// 是整条管理权限链条的自举点。
+type CreateOrgRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,10,opt,name=name,proto3" json:"name,omitempty"`     // required 组织名称
+	Avatar        string                 `protobuf:"bytes,11,opt,name=avatar,proto3" json:"avatar,omitempty"` // optional 组织头像 URL
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateOrgRequest) Reset() {
+	*x = CreateOrgRequest{}
+	mi := &file_yimsg_proto_msgTypes[149]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateOrgRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateOrgRequest) ProtoMessage() {}
+
+func (x *CreateOrgRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[149]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateOrgRequest.ProtoReflect.Descriptor instead.
+func (*CreateOrgRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{149}
+}
+
+func (x *CreateOrgRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateOrgRequest) GetAvatar() string {
+	if x != nil {
+		return x.Avatar
+	}
+	return ""
+}
+
+type CreateOrgResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`                  // required 通用响应状态
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 新建组织 ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateOrgResponse) Reset() {
+	*x = CreateOrgResponse{}
+	mi := &file_yimsg_proto_msgTypes[150]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateOrgResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateOrgResponse) ProtoMessage() {}
+
+func (x *CreateOrgResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[150]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateOrgResponse.ProtoReflect.Descriptor instead.
+func (*CreateOrgResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{150}
+}
+
+func (x *CreateOrgResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+func (x *CreateOrgResponse) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+// DeleteOrgRequest 需对组织根有管理权限。结构（tags 全部边、tag_info、org_info、
+// org_version）在事务内同步清空；每个成员自己 uid 分片下的通讯录组织行经
+// taskqueue 异步 tombstone 并推送 contacts:updated，避免大组织阻塞请求。
+type DeleteOrgRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrgId         int64                  `protobuf:"varint,10,opt,name=org_id,json=orgId,proto3" json:"org_id,omitempty"` // required 组织 ID（分片路由键）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteOrgRequest) Reset() {
+	*x = DeleteOrgRequest{}
+	mi := &file_yimsg_proto_msgTypes[151]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteOrgRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrgRequest) ProtoMessage() {}
+
+func (x *DeleteOrgRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[151]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrgRequest.ProtoReflect.Descriptor instead.
+func (*DeleteOrgRequest) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{151}
+}
+
+func (x *DeleteOrgRequest) GetOrgId() int64 {
+	if x != nil {
+		return x.OrgId
+	}
+	return 0
+}
+
+type DeleteOrgResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Base          *BaseResponse          `protobuf:"bytes,1,opt,name=base,proto3" json:"base,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteOrgResponse) Reset() {
+	*x = DeleteOrgResponse{}
+	mi := &file_yimsg_proto_msgTypes[152]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteOrgResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrgResponse) ProtoMessage() {}
+
+func (x *DeleteOrgResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[152]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrgResponse.ProtoReflect.Descriptor instead.
+func (*DeleteOrgResponse) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{152}
+}
+
+func (x *DeleteOrgResponse) GetBase() *BaseResponse {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
 var File_yimsg_proto protoreflect.FileDescriptor
 
 const file_yimsg_proto_rawDesc = "" +
@@ -9852,7 +10055,20 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\x12\x1d\n" +
 	"\n" +
 	"admin_uids\x18\n" +
-	" \x03(\x03R\tadminUids*\xd9\x10\n" +
+	" \x03(\x03R\tadminUids\">\n" +
+	"\x10CreateOrgRequest\x12\x12\n" +
+	"\x04name\x18\n" +
+	" \x01(\tR\x04name\x12\x16\n" +
+	"\x06avatar\x18\v \x01(\tR\x06avatar\"\\\n" +
+	"\x11CreateOrgResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\")\n" +
+	"\x10DeleteOrgRequest\x12\x15\n" +
+	"\x06org_id\x18\n" +
+	" \x01(\x03R\x05orgId\"E\n" +
+	"\x11DeleteOrgResponse\x120\n" +
+	"\x04base\x18\x01 \x01(\v2\x1c.yimsg.protocol.BaseResponseR\x04base*\x91\x11\n" +
 	"\x04Type\x12\x10\n" +
 	"\fTYPE_INVALID\x10\x00\x12\x18\n" +
 	"\x14TYPE_ACTION_REGISTER\x10\x01\x12\x15\n" +
@@ -9912,7 +10128,9 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x16TYPE_ACTION_RENAME_ORG\x107\x12\x1f\n" +
 	"\x1bTYPE_ACTION_GRANT_ORG_ADMIN\x108\x12 \n" +
 	"\x1cTYPE_ACTION_REVOKE_ORG_ADMIN\x109\x12\x1f\n" +
-	"\x1bTYPE_ACTION_LIST_ORG_ADMINS\x10:\x12\"\n" +
+	"\x1bTYPE_ACTION_LIST_ORG_ADMINS\x10:\x12\x1a\n" +
+	"\x16TYPE_ACTION_CREATE_ORG\x10;\x12\x1a\n" +
+	"\x16TYPE_ACTION_DELETE_ORG\x10<\x12\"\n" +
 	"\x1dTYPE_NOTIFY_MESSAGES_RECEIVED\x10\x91N\x12!\n" +
 	"\x1cTYPE_NOTIFY_CONTACTS_UPDATED\x10\x92N\x12\x1f\n" +
 	"\x1aTYPE_NOTIFY_SESSION_KICKED\x10\x93N\x12\"\n" +
@@ -10002,7 +10220,7 @@ func file_yimsg_proto_rawDescGZIP() []byte {
 }
 
 var file_yimsg_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
-var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 149)
+var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 153)
 var file_yimsg_proto_goTypes = []any{
 	(Type)(0),                                    // 0: yimsg.protocol.Type
 	(ErrorCode)(0),                               // 1: yimsg.protocol.ErrorCode
@@ -10164,6 +10382,10 @@ var file_yimsg_proto_goTypes = []any{
 	(*RevokeOrgAdminResponse)(nil),               // 157: yimsg.protocol.RevokeOrgAdminResponse
 	(*ListOrgAdminsRequest)(nil),                 // 158: yimsg.protocol.ListOrgAdminsRequest
 	(*ListOrgAdminsResponse)(nil),                // 159: yimsg.protocol.ListOrgAdminsResponse
+	(*CreateOrgRequest)(nil),                     // 160: yimsg.protocol.CreateOrgRequest
+	(*CreateOrgResponse)(nil),                    // 161: yimsg.protocol.CreateOrgResponse
+	(*DeleteOrgRequest)(nil),                     // 162: yimsg.protocol.DeleteOrgRequest
+	(*DeleteOrgResponse)(nil),                    // 163: yimsg.protocol.DeleteOrgResponse
 }
 var file_yimsg_proto_depIdxs = []int32{
 	25,  // 0: yimsg.protocol.MessagesReceivedNotification.target:type_name -> yimsg.protocol.ConversationTarget
@@ -10303,11 +10525,13 @@ var file_yimsg_proto_depIdxs = []int32{
 	20,  // 134: yimsg.protocol.GrantOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
 	20,  // 135: yimsg.protocol.RevokeOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
 	20,  // 136: yimsg.protocol.ListOrgAdminsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	137, // [137:137] is the sub-list for method output_type
-	137, // [137:137] is the sub-list for method input_type
-	137, // [137:137] is the sub-list for extension type_name
-	137, // [137:137] is the sub-list for extension extendee
-	0,   // [0:137] is the sub-list for field type_name
+	20,  // 137: yimsg.protocol.CreateOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 138: yimsg.protocol.DeleteOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	139, // [139:139] is the sub-list for method output_type
+	139, // [139:139] is the sub-list for method input_type
+	139, // [139:139] is the sub-list for extension type_name
+	139, // [139:139] is the sub-list for extension extendee
+	0,   // [0:139] is the sub-list for field type_name
 }
 
 func init() { file_yimsg_proto_init() }
@@ -10346,7 +10570,7 @@ func file_yimsg_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_yimsg_proto_rawDesc), len(file_yimsg_proto_rawDesc)),
 			NumEnums:      11,
-			NumMessages:   149,
+			NumMessages:   153,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

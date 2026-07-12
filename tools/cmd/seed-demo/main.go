@@ -222,7 +222,7 @@ const orgFillerCount = 75
 //	└── 市场部（rank40）：8 人
 func seedOrgDemo(state *service.AppState, aliceUID int64) (orgID int64, memberCount int) {
 	// demo_alice（总经理）是组织根的初始管理员（GRANT 边），管理面权限自举唯一起点。
-	orgID, err := state.CreateOrg("某某科技有限公司", "", aliceUID)
+	orgID, err := state.CreateOrgDirect("某某科技有限公司", "", aliceUID)
 	if err != nil {
 		log.Fatalf("创建组织失败: %v", err)
 	}
