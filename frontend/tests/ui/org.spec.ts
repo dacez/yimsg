@@ -97,4 +97,43 @@ test.describe('Org directory', () => {
     await panel.locator('#contacts-org-manage').click();
     await expect(page.locator('#modal-content #oa-delete-org')).toBeVisible({ timeout: 10_000 });
   });
+
+  // 通讯录管理弹层新建部门：刚建的 tag 展示名走 getTagInfos 缓存，创建瞬间大概率冷缓存
+  // 未命中，先按 tag_id 兜底展示；缓存异步补齐后必须通过 display:updated 把弹层里的
+  // 名字换成真实值，不能停留在纯数字 tag_id。曾经这里因为弹层内 showTextInputModal
+  // 复用同一个 #modal-overlay/#modal-content、resolve 时也会短暂触发 hidden，导致
+  // display:updated 订阅被过早解绑而无法回归此测试要覆盖的场景。
+  test('org-admin panel refreshes a newly created department name off cold cache', async ({ page }) => {
+    await register(page, uniqueUser('createdept'), '123456', 'DeptCreator');
+    await page.click('[data-view="contacts"]');
+    await page.click('#create-org-btn');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+
+    const orgName = `部门测试组织_${Date.now()}`;
+    await page.fill('#modal-text-input', orgName);
+    await page.click('#modal-confirm-btn');
+
+    const orgRow = page.locator('#friends-tab .contact-item', { hasText: orgName });
+    await expect(orgRow).toBeVisible({ timeout: 15_000 });
+    await orgRow.click();
+
+    const panel = page.locator('#contacts-detail-panel');
+    await expect(panel.locator('.org-crumb-current')).toContainText(orgName, { timeout: 10_000 });
+    await panel.locator('#contacts-org-manage').click();
+    await expect(page.locator('#modal-content #oa-create-tag')).toBeVisible({ timeout: 10_000 });
+
+    const deptName = '财务部';
+    await page.click('#oa-create-tag');
+    await page.fill('#modal-text-input', deptName);
+    await page.click('#modal-confirm-btn');
+
+    const deptRow = page.locator('#modal-content .org-admin-row', { hasText: deptName });
+    await expect(deptRow).toBeVisible({ timeout: 10_000 });
+    const rowNames = await page.locator('#modal-content .org-admin-row .org-admin-row-name').allTextContents();
+    expect(rowNames.some(text => /^\d+$/.test(text.trim()))).toBe(false);
+
+    // 弹层的"关闭"按钮仍要正常工作，确认 display:updated 订阅没有连带破坏正常关闭路径。
+    await page.click('#oa-close');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toHaveCount(0);
+  });
 });

@@ -19,18 +19,27 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
 
   // 新建/进入部门等操作 render() 时，刚变化的 tag/org/user 展示信息（名称、头像）
   // 往往还未入缓存，会先按 id 兜底展示；缓存异步补齐后通过 display:updated 通知，
-  // 这里订阅它以便弹层还开着时把兜底的 id 换成真实名称。弹层关闭（含点击遮罩关闭）
-  // 时通过监听 modal-overlay 的 hidden class 变化解绑，避免残留监听。
-  const onDisplayUpdated = (): void => { void render(); };
+  // 这里订阅它以便弹层还开着时把兜底的 id 换成真实名称。
+  // onDisplayUpdated 触发时先确认 modal-content 里当前显示的确实是本弹层自己的列表
+  // 视图（#oa-close 只在这里渲染）：期间可能叠了 showTextInputModal/showConfirmModal
+  // 等嵌套提示框（复用同一个 #modal-overlay/#modal-content），此时贸然 render() 会
+  // 用列表内容盖掉用户正在操作的嵌套提示框；弹层整体已关闭时同理不该重新弹出来。
+  // 解绑不能靠监听 modal-overlay 的 hidden class：嵌套提示框 resolve 时也会先把 hidden
+  // 加回去，而此时 render() 通常还在等 getTags 的网络往返、尚未把 hidden 摘掉，会被
+  // 误判为"弹层已关闭"提前解绑。改为监听 modal-content 的 modal-content-wide class：
+  // 这个类只在本弹层 render() 时加上，只在 #oa-close / #oa-delete-org 成功后的两个
+  // 真正关闭路径里摘掉，嵌套提示框不会碰它。
+  const modalContent = app.$('modal-content');
+  const isShowingOwnView = (): boolean => modalContent.querySelector('#oa-close') !== null;
+  const onDisplayUpdated = (): void => { if (isShowingOwnView()) void render(); };
   app.client.on('display:updated', onDisplayUpdated);
-  const overlay = app.$('modal-overlay');
   const stopWatchingClose = new MutationObserver(() => {
-    if (overlay.classList.contains('hidden')) {
+    if (!modalContent.classList.contains('modal-content-wide')) {
       app.client.off('display:updated', onDisplayUpdated);
       stopWatchingClose.disconnect();
     }
   });
-  stopWatchingClose.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+  stopWatchingClose.observe(modalContent, { attributes: true, attributeFilter: ['class'] });
 
   async function render(): Promise<void> {
     const reqId = ++requestId;
