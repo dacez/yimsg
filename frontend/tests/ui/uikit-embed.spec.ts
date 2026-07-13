@@ -42,6 +42,41 @@ test.describe('uikit embed', () => {
     expect(shadowChildCount).toBe(0);
   });
 
+  test('modal stays contained inside the host container instead of covering the viewport', async ({ page }) => {
+    // 回归：.modal-overlay 用 position:fixed，Shadow DOM 边界本身不限制 fixed 定位的
+    // 包含块，若宿主容器（这里是 min(860px,100%) x min(640px,80vh) 的 .embed）小于浏览器
+    // 视口，弹层会挣脱宿主铺满整个页面（“窗口跳出去了”）。style.css 用
+    // .mc-app-shell[data-embedded]{position:relative;contain:layout} 给弹层建立新的包含块。
+    const username = uniqueUser('uikitmodal');
+    await page.goto('/demo/embed.html');
+
+    await page.locator('.tab[data-tab="register"]').click();
+    await page.locator('#reg-username').fill(username);
+    await page.locator('#reg-password').fill('123456');
+    await page.locator('#reg-nickname').fill('ModalScopeUser');
+    await page.locator('#register-form button[type="submit"]').click();
+    await expect(page.locator('#conversation-list')).toBeVisible({ timeout: 15_000 });
+
+    await page.click('[data-view="contacts"]');
+    await page.click('#create-group-btn');
+    const overlay = page.locator('#modal-overlay:not(.hidden)');
+    await expect(overlay).toBeVisible();
+
+    const hostBox = await page.locator('#chat-host').boundingBox();
+    const overlayBox = await overlay.boundingBox();
+    expect(hostBox).not.toBeNull();
+    expect(overlayBox).not.toBeNull();
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+
+    // 弹层应贴合宿主容器的尺寸和位置（允许 1px 误差），而不是铺满整个浏览器视口。
+    expect(Math.abs(overlayBox!.x - hostBox!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(overlayBox!.y - hostBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(overlayBox!.width - hostBox!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(overlayBox!.height - hostBox!.height)).toBeLessThanOrEqual(1);
+    expect(overlayBox!.width).toBeLessThan(viewport!.width);
+  });
+
   test('host body styles stay isolated from widget (Shadow DOM scoping)', async ({ page }) => {
     await page.goto('/demo/embed.html');
     // 宿主 body 背景来自 demo HTML 自身 CSS (#f5f6fa)，widget 内 .mc-root 用的是 #ffffff。

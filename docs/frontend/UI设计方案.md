@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
-> 最后复核：2026-07-12。
+> 最后复核：2026-07-13。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -192,7 +192,7 @@ sequenceDiagram
         UI->>UI: selectModeAndInit → initAfterAuth
     else 无 token
         alt localStorage.mode 为空
-            UI->>UI: 显示认证页 + 模式选择弹窗（memory / 持久存储 / 持久存储清空数据）
+            UI->>UI: 显示认证页 + 模式选择弹窗（memory / 持久存储）
         else localStorage.mode 已存在
             UI->>UI: 仅显示认证页
         end
@@ -291,8 +291,8 @@ export function render*()       — 渲染/重绘函数，可被 main-app.ts 或
 | `login(username, password)` | `client.login()` → `initSelectedModeAfterAuth()` |
 | `register(username, password, nickname)` | `client.register()` → 自动调用 `login()` |
 | `initSelectedModeAfterAuth()` | 认证成功后直接使用已保存模式启动会话；切换 持久存储用户时把“重置本地会话数据”的业务意图交给 SDK |
-| `promptModeSelection(options)` | 根据上下文显示模式选择 Modal，并负责保存 mode / 可选重置本地会话数据 / 可选初始化会话 |
-| `showModeSelectionModal(includeResetOption)` | 渲染 memory/持久存储/持久存储清空数据选择 Modal，返回 Promise |
+| `promptModeSelection(options)` | 显示模式选择 Modal，保存 mode / layout，并按需初始化会话 |
+| `showModeSelectionModal()` | 渲染 memory/持久存储选择 Modal，返回 Promise |
 
 #### 交互流程
 
@@ -304,13 +304,10 @@ sequenceDiagram
     participant Modal as Modal
 
     alt 首次进入且 localStorage.token 为空
-        Auth->>Modal: showModeSelectionModal(true)
-        U->>Modal: 选择 memory / 持久存储 / 持久存储清空数据
+        Auth->>Modal: showModeSelectionModal()
+        U->>Modal: 选择 memory / 持久存储
         Modal-->>Auth: mode
         Auth->>Auth: localStorage.setItem('mode', mode)
-        opt 选择 持久存储清空数据
-          Auth->>Auth: 记录下次 startSession(resetLocalData='all')
-        end
     end
 
     U->>Auth: 提交登录表单
@@ -343,7 +340,7 @@ sequenceDiagram
 
 - **认证错误**使用 `#auth-error` 元素显示（非 Toast），避免遮挡表单
 - **模式选择 Modal** 用 `Promise` 等待用户点击，协调异步流程
-- 只要没有 token，就会先要求选择模式；此时可额外提供 `持久存储清空数据` 调试入口
+- 只要没有 token，就会先要求选择模式（memory / 持久存储）
 - token 无效时会清空 token 并回到登录页；模式在下一次登录前重新选择
 - 登录成功后不再二次弹出模式选择，而是直接按已保存模式初始化；若已保存 `persistent` 且当前环境支持，则继续使用 `persistent`
 
@@ -626,6 +623,7 @@ showGroupDetail(groupId):
 | `rejectFriend(friendUid)` | 拒绝好友请求；只有接收方能调用成功，UI 只在 `#requests-incoming` 渲染按钮 |
 | `deleteFriend(friendUid)` | 删除好友 |
 | `showCreateGroupModal()` | 显示建群 Modal |
+| `showCreateOrgModal()` | 显示创建组织 Modal |
 
 #### 三个 Tab
 
@@ -643,6 +641,7 @@ showGroupDetail(groupId):
 │   │   │   └── #requests-incoming    待我处理的请求（Accept / Reject 按钮）
 │   │   └── #search-tab               搜索 + 结果 + Add 按钮
 │   └── .contacts-footer
+│       ├── #create-org-btn           Create Organization 按钮
 │       └── #create-group-btn         Create Group 按钮
 ├── #contacts-resizer（桌面鼠标拖拽分隔条；移动布局隐藏）
 └── #contacts-detail-panel.contacts-right
@@ -702,6 +701,21 @@ showCreateGroupModal():
     showToast success
     // conversations:sent 事件会自动触发会话列表重绘
 ```
+
+#### 创建组织 Modal
+
+```
+showCreateOrgModal():
+  name = await showTextInputModal({ title, label })  // 复用通用文本输入 Modal，仅需组织名称
+  if !name: return
+
+  orgId = await client.createOrg(name)               // 调用方自动成为组织根管理员（GRANT 边），任意登录用户可调用
+  await client.addOrgMember(orgId, orgId, 当前用户 UID) // 再把自己挂为组织根的普通成员，使其出现在自己的通讯录里
+  showToast success
+  // add_org_member 触发的 contacts:updated 通知会驱动通讯录列表自动刷新
+```
+
+`create_org` 只写组织字典行和管理员 GRANT 边，不产生通讯录条目；`add_org_member` 才会把调用方 upsert 进 uid 分片的通讯录组织行并推送 `contacts:updated`，两步都做才能让新建组织出现在创建者自己的"好友"列表里。
 
 ---
 

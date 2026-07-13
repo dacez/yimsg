@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginSeedUser, seedPrefix } from './helpers';
+import { loginSeedUser, seedPrefix, register, uniqueUser } from './helpers';
 
 // 组织通讯录：组织条目出现在通讯录列表（带"组织"徽标），点开进入组织架构浏览器，
 // 面包屑逐级下钻，绝对排序（总经理 rank=10 排第一）、一人多岗（Test2 部门排第一）、
@@ -72,5 +72,29 @@ test.describe('Org directory', () => {
     ], { timeout: 10_000 });
     const remoteTexts = await remoteNames.allTextContents();
     expect(remoteTexts.some(text => /^\d+$/.test(text.trim()))).toBe(false);
+  });
+
+  // 通讯录左下角"创建组织"入口：create_org 只授予创建者管理员 GRANT 边，不产生通讯录
+  // 条目；UI 随后必须调用 add_org_member 把创建者挂为组织根成员，新组织才会出现在
+  // 自己的好友列表里，且创建者应能直接进入管理面板（删除组织按钮只有根管理员可见）。
+  test('create organization via contacts entry point', async ({ page }) => {
+    await register(page, uniqueUser('createorg'), '123456', 'OrgCreator');
+    await page.click('[data-view="contacts"]');
+    await page.click('#create-org-btn');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+
+    const orgName = `我的组织_${Date.now()}`;
+    await page.fill('#modal-text-input', orgName);
+    await page.click('#modal-confirm-btn');
+
+    const orgRow = page.locator('#friends-tab .contact-item', { hasText: orgName });
+    await expect(orgRow).toBeVisible({ timeout: 15_000 });
+    await expect(orgRow.locator('.contact-org-badge')).toBeVisible();
+
+    await orgRow.click();
+    const panel = page.locator('#contacts-detail-panel');
+    await expect(panel.locator('.org-crumb-current')).toContainText(orgName, { timeout: 10_000 });
+    await panel.locator('#contacts-org-manage').click();
+    await expect(page.locator('#modal-content #oa-delete-org')).toBeVisible({ timeout: 10_000 });
   });
 });

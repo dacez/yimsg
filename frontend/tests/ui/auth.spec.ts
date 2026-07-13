@@ -2,11 +2,11 @@ import { test, expect } from '@playwright/test';
 import { ensureModeSelected, uniqueUser, register } from './helpers';
 
 test.describe('Auth', () => {
-  test('first launch prompts for lite, persistent and persistent-reset options', async ({ page }) => {
+  test('first launch prompts for lite and persistent options', async ({ page }) => {
     await page.goto('/app/');
     await expect(page.locator('#mode-opt-memory')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#mode-opt-persistent')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('#mode-opt-persistent-reset')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#mode-opt-persistent-reset')).toHaveCount(0);
 
     await ensureModeSelected(page, 'memory');
     await expect(page.locator('#login-form')).toBeVisible();

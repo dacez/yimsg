@@ -965,6 +965,25 @@ export function createContactsView(app: AppInstance) {
     await loadMoreMembers({ mode: 'reset' });
   }
 
+  /** 创建组织：创建方自动成为组织根管理员，随后把自己挂为组织根的普通成员，使其出现在自己的通讯录里。 */
+  async function showCreateOrgModal() {
+    const name = await app.showTextInputModal({
+      title: app.t('orgAdmin.createOrgPromptTitle'),
+      label: app.t('orgAdmin.createOrgPromptLabel'),
+      confirmText: app.t('orgAdmin.createBtn'),
+      cancelText: app.t('orgAdmin.cancelBtn'),
+    });
+    if (!name) return;
+    try {
+      const orgId = await app.client.createOrg(name);
+      const myUid = app.client.getSessionSnapshot().currentUid;
+      await app.client.addOrgMember(orgId, orgId, myUid);
+      app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
+    } catch (e) {
+      app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+    }
+  }
+
   function setupContacts() {
     // 初始化右侧详情面板空状态
     const panel = app.$('contacts-detail-panel');
@@ -998,6 +1017,7 @@ export function createContactsView(app: AppInstance) {
     });
 
     app.$('create-group-btn').addEventListener('click', () => void showCreateGroupModal());
+    app.$('create-org-btn').addEventListener('click', () => void showCreateOrgModal());
     setupContactsResizer();
   }
 

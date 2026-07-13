@@ -7,7 +7,6 @@ import { initAfterAuth } from '../main-app';
 
 type ModeChoice = {
   mode: 'memory' | 'persistent';
-  clearPersistentData: boolean;
   layout: LayoutChoice;
 };
 
@@ -17,8 +16,6 @@ type AuthSuccess = {
 };
 
 export function createAuthView(app: AppInstance) {
-  let resetAllPersistentDataOnNextSession = false;
-
   async function login(username: string, password: string) {
     const result = await app.client.login(username, password);
     await finalizeAuthSuccess(result);
@@ -65,8 +62,7 @@ export function createAuthView(app: AppInstance) {
   async function initMode(mode: 'memory' | 'persistent') {
     const snapshot = app.client.getSessionSnapshot();
     const shouldResetStoredPersistentData = shouldResetPersistentStorage(mode, app.storage.getStoredPersistentUid(), snapshot.currentUid);
-    const shouldResetPersistentData = resetAllPersistentDataOnNextSession || shouldResetStoredPersistentData;
-    const resetLocalData = mode === 'persistent' && shouldResetPersistentData
+    const resetLocalData = mode === 'persistent' && shouldResetStoredPersistentData
       ? 'all'
       : 'none';
     const sessionStart = {
@@ -98,12 +94,6 @@ export function createAuthView(app: AppInstance) {
       app.storage.clearStoredPersistentUid();
       app.emitAppError(startResult.resetLocalDataError, 'mode:reset-local-data');
     }
-    if (resetAllPersistentDataOnNextSession && startResult?.resetLocalData === 'all') {
-      resetAllPersistentDataOnNextSession = false;
-      if (!startResult?.resetLocalDataError) {
-        app.showToast(app.t('auth.persistentDataCleared'), 'success');
-      }
-    }
 
     const nextSnapshot = app.client.getSessionSnapshot();
     if (startResult?.mode === 'persistent' && nextSnapshot.currentUid) {
@@ -111,20 +101,11 @@ export function createAuthView(app: AppInstance) {
     }
   }
 
-  function showModeSelectionModal(includeResetOption: boolean): Promise<ModeChoice> {
+  function showModeSelectionModal(): Promise<ModeChoice> {
     return new Promise((resolve) => {
       const overlay = app.$('modal-overlay');
       const content = app.dom.querySelector<HTMLElement>('.modal-content') || overlay;
       content.classList.add('mode-select-modal');
-
-      const persistentClass = 'mode-option mode-option-recommended';
-      const persistentResetClass = 'mode-option';
-      const resetOptionHtml = includeResetOption ? `
-            <div class="${persistentResetClass}" id="mode-opt-persistent-reset">
-              <div class="mode-option-title">${app.t('auth.persistentResetTitle')}</div>
-              <div class="mode-option-desc">${app.t('auth.persistentResetDesc')}</div>
-            </div>
-      ` : '';
 
       const currentLayout = app.storage.getStoredLayout();
 
@@ -136,11 +117,10 @@ export function createAuthView(app: AppInstance) {
               <div class="mode-option-title">${app.t('auth.liteTitle')}</div>
               <div class="mode-option-desc">${app.t('auth.liteDesc')}</div>
             </div>
-            <div class="${persistentClass}" id="mode-opt-persistent">
+            <div class="mode-option mode-option-recommended" id="mode-opt-persistent">
               <div class="mode-option-title">${app.t('auth.persistentTitle')}</div>
               <div class="mode-option-desc">${app.t('auth.persistentDesc')}</div>
             </div>
-            ${resetOptionHtml}
           </div>
           <div class="layout-select-section">
             <div class="layout-select-label">${app.t('auth.chooseLayout')}</div>
@@ -174,26 +154,17 @@ export function createAuthView(app: AppInstance) {
         resolve({ ...choice, layout: selectedLayout });
       };
 
-      app.$('mode-opt-memory').addEventListener('click', () => finish({ mode: 'memory', clearPersistentData: false }));
-      app.$('mode-opt-persistent').addEventListener('click', () => finish({ mode: 'persistent', clearPersistentData: false }));
-      if (includeResetOption) {
-        app.$('mode-opt-persistent-reset').addEventListener('click', () => finish({ mode: 'persistent', clearPersistentData: true }));
-      }
+      app.$('mode-opt-memory').addEventListener('click', () => finish({ mode: 'memory' }));
+      app.$('mode-opt-persistent').addEventListener('click', () => finish({ mode: 'persistent' }));
     });
   }
 
   async function promptModeSelection(options: {
-    includeResetOption: boolean;
     initAfterSelection: boolean;
   }) {
-    const choice = await showModeSelectionModal(options.includeResetOption);
+    const choice = await showModeSelectionModal();
     app.storage.setStoredMode(choice.mode);
     persistAndApplyLayoutForApp(app, choice.layout);
-
-    if (choice.clearPersistentData) {
-      resetAllPersistentDataOnNextSession = true;
-      app.storage.clearStoredPersistentUid();
-    }
 
     if (options.initAfterSelection) {
       await initMode(choice.mode);
@@ -233,7 +204,7 @@ export function createAuthView(app: AppInstance) {
   async function ensureInitialModeSelection() {
     if (!needsInitialModeSelection(app.storage.getStoredToken())) return;
     showAuthView();
-    await promptModeSelection({ includeResetOption: true, initAfterSelection: false });
+    await promptModeSelection({ initAfterSelection: false });
   }
 
   function handleSessionKicked() {

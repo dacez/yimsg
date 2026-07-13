@@ -127,6 +127,7 @@ export const APP_SHELL_HTML = `
             </div>
           </div>
           <div class="contacts-footer">
+            <button class="btn btn-secondary btn-block" id="create-org-btn">创建组织</button>
             <button class="btn btn-primary btn-block" id="create-group-btn">创建群组</button>
           </div>
         </div>

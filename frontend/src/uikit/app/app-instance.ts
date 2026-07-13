@@ -473,6 +473,8 @@ export class AppInstance {
     if (searchBtn) searchBtn.textContent = this.t('contacts.searchBtn');
     const createGroupBtn = this.dom.getElementById('create-group-btn');
     if (createGroupBtn) createGroupBtn.textContent = this.t('contacts.createGroup');
+    const createOrgBtn = this.dom.getElementById('create-org-btn');
+    if (createOrgBtn) createOrgBtn.textContent = this.t('contacts.createOrg');
 
     const settingsProfileTitle = this.dom.getElementById('settings-profile-title');
     if (settingsProfileTitle) settingsProfileTitle.textContent = this.t('settings.profile');
