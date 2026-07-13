@@ -13,15 +13,15 @@ func TestSendDM(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 	makeFriends(t, s, uidA, uidB)
 
-	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hello"}
+	req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hello"}
 	result := sendMessageService(s, "r1", uidA, req)
-	if !result.Response.OK {
-		t.Fatalf("send_message failed: %s", result.Response.Error)
+	if !isOK(result.Response) {
+		t.Fatalf("send_message failed: %s", errMsg(result.Response))
 	}
-	if result.Response.MsgID == nil {
+	if result.Response.GetMsgId() == "" {
 		t.Error("msg_id should not be nil")
 	}
-	if result.Response.Seq == nil || *result.Response.Seq <= 0 {
+	if result.Response.GetSeq() <= 0 {
 		t.Error("sender seq should be positive")
 	}
 
@@ -48,23 +48,23 @@ func TestGetConversationsByTargets(t *testing.T) {
 	uidC := registerUser(t, s, "carol", "p", "Carol")
 	makeFriends(t, s, uidA, uidB)
 	makeFriends(t, s, uidA, uidC)
-	sendMessageService(s, "1", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi b"})
-	sendMessageService(s, "2", uidA, &appmsg.Request{ToUID: i64json(uidC), MsgType: dal.MsgText, Content: "hi c"})
+	sendMessageService(s, "1", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi b"})
+	sendMessageService(s, "2", uidA, &appmsg.Request{ToUID: uidC, MsgType: dal.MsgText, Content: "hi c"})
 
 	// 请求 B 与不存在的群 999 → 只返回 B。
 	resp := getConversationsByTargetsService(s, uidA, testTarget(uidB, 0), testTarget(0, 999))
-	if !resp.OK {
-		t.Fatalf("get by targets failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get by targets failed: %s", errMsg(resp))
 	}
-	if len(resp.Conversations) != 1 || targetUID(resp.Conversations[0].Target) != uidB {
-		t.Fatalf("targets result = %+v, want only B", resp.Conversations)
+	if len(resp.GetConversations()) != 1 || resp.GetConversations()[0].GetTarget().GetUid() != uidB {
+		t.Fatalf("targets result = %+v, want only B", resp.GetConversations())
 	}
 
 	// 删除会话后定向拉取返回空（客户端据此从数据窗口移除）。
 	deleteConversationService(s, "del", uidA, uidB, 0)
 	resp = getConversationsByTargetsService(s, uidA, testTarget(uidB, 0))
-	if !resp.OK || len(resp.Conversations) != 0 {
-		t.Fatalf("deleted conversation should not be returned: %+v", resp.Conversations)
+	if !isOK(resp) || len(resp.GetConversations()) != 0 {
+		t.Fatalf("deleted conversation should not be returned: %+v", resp.GetConversations())
 	}
 }
 
@@ -74,22 +74,22 @@ func TestDeleteMessageWritesTombstoneAndNotifiesSelf(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 	makeFriends(t, s, uidA, uidB)
 
-	sendResp := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hello"})
-	if !sendResp.Response.OK || sendResp.Response.MsgID == nil || sendResp.Response.Seq == nil {
+	sendResp := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hello"})
+	if !isOK(sendResp.Response) || sendResp.Response.GetMsgId() == "" || sendResp.Response.GetSeq() == 0 {
 		t.Fatalf("send failed: %+v", sendResp.Response)
 	}
-	msgID := *sendResp.Response.MsgID
-	oldSeq := *sendResp.Response.Seq
+	msgID := sendResp.Response.GetMsgId()
+	oldSeq := sendResp.Response.GetSeq()
 
 	conn := s.Online().Register(uidA, "")
 	defer s.Online().Unregister(uidA, conn)
 
 	deleteResp := deleteMessageService(s, "delete", uidA, &appmsg.Request{MsgID: msgID})
-	if !deleteResp.OK || deleteResp.Seq == nil {
+	if !isOK(deleteResp) {
 		t.Fatalf("delete_message failed: %+v", deleteResp)
 	}
-	if *deleteResp.Seq <= oldSeq {
-		t.Fatalf("delete seq = %d, want > %d", *deleteResp.Seq, oldSeq)
+	if deleteResp.GetSeq() <= oldSeq {
+		t.Fatalf("delete seq = %d, want > %d", deleteResp.GetSeq(), oldSeq)
 	}
 
 	visible, err := s.MessageStore(uidA).ListByConversation(uidA, uidB, 0, 0, 100)
@@ -124,21 +124,21 @@ func TestDeleteConversationWritesTombstoneAndNotifiesSelf(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 	makeFriends(t, s, uidA, uidB)
 
-	sendResp := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hello"})
-	if !sendResp.Response.OK || sendResp.Response.Seq == nil {
+	sendResp := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hello"})
+	if !isOK(sendResp.Response) || sendResp.Response.GetSeq() == 0 {
 		t.Fatalf("send failed: %+v", sendResp.Response)
 	}
-	oldSeq := *sendResp.Response.Seq
+	oldSeq := sendResp.Response.GetSeq()
 
 	conn := s.Online().Register(uidA, "")
 	defer s.Online().Unregister(uidA, conn)
 
 	deleteResp := deleteConversationService(s, "delete-conv", uidA, uidB, 0)
-	if !deleteResp.OK || deleteResp.Seq == nil {
+	if !isOK(deleteResp) {
 		t.Fatalf("delete_conversation failed: %+v", deleteResp)
 	}
-	if *deleteResp.Seq <= oldSeq {
-		t.Fatalf("delete conversation seq = %d, want > %d", *deleteResp.Seq, oldSeq)
+	if deleteResp.GetSeq() <= oldSeq {
+		t.Fatalf("delete conversation seq = %d, want > %d", deleteResp.GetSeq(), oldSeq)
 	}
 
 	convs, err := s.ConversationStore(uidA).List(uidA, 0, 0, 100)
@@ -176,7 +176,7 @@ func TestSendDMNotifiesReceiver(t *testing.T) {
 	conn := s.Online().Register(uidB, "")
 	defer s.Online().Unregister(uidB, conn)
 
-	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi"}
+	req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi"}
 	sendMessageService(s, "r1", uidA, req)
 
 	select {
@@ -196,12 +196,12 @@ func TestSendGroupMessageFanout(t *testing.T) {
 	uidC := registerUser(t, s, "carol", "p", "Carol")
 
 	groupResp := createGroupService(s, "r1", uidA, "TestGroup", []int64{uidA, uidB, uidC})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "group msg"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "group msg"}
 	result := sendMessageService(s, "r2", uidA, req)
-	if !result.Response.OK {
-		t.Fatalf("send group msg failed: %s", result.Response.Error)
+	if !isOK(result.Response) {
+		t.Fatalf("send group msg failed: %s", errMsg(result.Response))
 	}
 
 	// Execute fanout synchronously for testing
@@ -230,16 +230,16 @@ func TestOwnDMDoesNotClearExistingUnread(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	for i := 0; i < 2; i++ {
-		sendMessageService(s, "bob-send", uidB, &appmsg.Request{ToUID: i64json(uidA), MsgType: dal.MsgText, Content: fmt.Sprintf("from-bob-%d", i)})
+		sendMessageService(s, "bob-send", uidB, &appmsg.Request{ToUID: uidA, MsgType: dal.MsgText, Content: fmt.Sprintf("from-bob-%d", i)})
 	}
-	sendMessageService(s, "alice-reply", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "reply"})
+	sendMessageService(s, "alice-reply", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "reply"})
 
 	resp := getUnreadCountService(s, "unread", uidA)
-	if !resp.OK || resp.UnreadCount == nil {
+	if !isOK(resp) {
 		t.Fatalf("GetUnreadCount failed: %+v", resp)
 	}
-	if *resp.UnreadCount != 2 {
-		t.Fatalf("unread count after own DM = %d, want 2", *resp.UnreadCount)
+	if resp.GetUnreadCount() != 2 {
+		t.Fatalf("unread count after own DM = %d, want 2", resp.GetUnreadCount())
 	}
 }
 
@@ -251,14 +251,14 @@ func TestOwnGroupMessageDoesNotClearExistingUnread(t *testing.T) {
 	uidD := registerUser(t, s, "dave", "p", "Dave")
 
 	groupResp := createGroupService(s, "create", uidA, "G", []int64{uidA, uidB, uidC, uidD})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 	drainTasks(s) // 建群系统消息异步投递，先落地再清未读
 	clearUnreadService(s, "read-created", uidA, 0, groupID)
 	sendGroup := func(label string, fromUID int64, content string) {
 		t.Helper()
-		result := sendMessageService(s, label, fromUID, &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: content})
-		if !result.Response.OK {
-			t.Fatalf("send group %s failed: %s", content, result.Response.Error)
+		result := sendMessageService(s, label, fromUID, &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: content})
+		if !isOK(result.Response) {
+			t.Fatalf("send group %s failed: %s", content, errMsg(result.Response))
 		}
 		drainTasks(s)
 	}
@@ -273,11 +273,11 @@ func TestOwnGroupMessageDoesNotClearExistingUnread(t *testing.T) {
 	sendGroup("d2", uidD, "d2")
 
 	resp := getUnreadCountService(s, "unread", uidA)
-	if !resp.OK || resp.UnreadCount == nil {
+	if !isOK(resp) {
 		t.Fatalf("GetUnreadCount failed: %+v", resp)
 	}
-	if *resp.UnreadCount != 6 {
-		t.Fatalf("unread count after own group messages = %d, want 6", *resp.UnreadCount)
+	if resp.GetUnreadCount() != 6 {
+		t.Fatalf("unread count after own group messages = %d, want 6", resp.GetUnreadCount())
 	}
 }
 
@@ -288,15 +288,15 @@ func TestSendGroupMessageNonMember(t *testing.T) {
 	uidC := registerUser(t, s, "carol", "p", "Carol")
 
 	groupResp := createGroupService(s, "r1", uidA, "G", []int64{uidA, uidB})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "hi"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "hi"}
 	result := sendMessageService(s, "r2", uidC, req)
-	if result.Response.OK {
+	if isOK(result.Response) {
 		t.Error("non-member should not be able to send")
 	}
-	if result.Response.Error != "非群员" {
-		t.Errorf("got error %q", result.Response.Error)
+	if errMsg(result.Response) != "非群员" {
+		t.Errorf("got error %q", errMsg(result.Response))
 	}
 }
 
@@ -306,10 +306,10 @@ func TestSendDMWithoutFriendSucceeds(t *testing.T) {
 	uidA := registerUser(t, s, "alice", "p", "Alice")
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
-	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi"}
+	req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi"}
 	result := sendMessageService(s, "r1", uidA, req)
-	if !result.Response.OK {
-		t.Fatalf("non-friend dm should succeed as temporary session, got error: %s", result.Response.Error)
+	if !isOK(result.Response) {
+		t.Fatalf("non-friend dm should succeed as temporary session, got error: %s", errMsg(result.Response))
 	}
 }
 
@@ -318,13 +318,13 @@ func TestSendDMToSelfRejected(t *testing.T) {
 	s := testState(t)
 	uidA := registerUser(t, s, "alice", "p", "Alice")
 
-	req := &appmsg.Request{ToUID: i64json(uidA), MsgType: dal.MsgText, Content: "note to self"}
+	req := &appmsg.Request{ToUID: uidA, MsgType: dal.MsgText, Content: "note to self"}
 	result := sendMessageService(s, "r1", uidA, req)
-	if result.Response.OK {
+	if isOK(result.Response) {
 		t.Fatal("send dm to self should fail")
 	}
-	if result.Response.Error != "不能给自己发送消息" {
-		t.Fatalf("error = %q, want 不能给自己发送消息", result.Response.Error)
+	if errMsg(result.Response) != "不能给自己发送消息" {
+		t.Fatalf("error = %q, want 不能给自己发送消息", errMsg(result.Response))
 	}
 }
 
@@ -334,7 +334,7 @@ func TestSendGroupMessageNotifiesOthers(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
 	groupResp := createGroupService(s, "r1", uidA, "G", []int64{uidA, uidB})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
 	connB := s.Online().Register(uidB, "")
 	defer s.Online().Unregister(uidB, connB)
@@ -344,7 +344,7 @@ func TestSendGroupMessageNotifiesOthers(t *testing.T) {
 		<-connB.Ch
 	}
 
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "msg"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "msg"}
 	sendMessageService(s, "r2", uidA, req)
 	drainTasks(s)
 
@@ -367,31 +367,31 @@ func TestListConversationsMixed(t *testing.T) {
 	makeFriends(t, s, uidA, uidC)
 
 	// DM from A→B
-	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "dm"}
+	req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "dm"}
 	sendMessageService(s, "r1", uidA, req)
 
 	// Group message
 	groupResp := createGroupService(s, "r2", uidA, "G", []int64{uidA, uidB, uidC})
-	groupID := int64(*groupResp.GroupIDResp)
-	gReq := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "group"}
+	groupID := groupResp.GetGroupId()
+	gReq := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "group"}
 	sendMessageService(s, "r3", uidA, gReq)
 	drainTasks(s)
 
 	resp := listConversationsService(s, "r4", uidA, "", 200)
-	if !resp.OK {
-		t.Fatalf("get_conversations failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_conversations failed: %s", errMsg(resp))
 	}
-	if len(resp.Conversations) < 2 {
-		t.Errorf("expected at least 2 conversations, got %d", len(resp.Conversations))
+	if len(resp.GetConversations()) < 2 {
+		t.Errorf("expected at least 2 conversations, got %d", len(resp.GetConversations()))
 	}
 
 	hasDM := false
 	hasGroup := false
-	for _, c := range resp.Conversations {
-		if targetGroupID(c.Target) == 0 && targetUID(c.Target) == uidB {
+	for _, c := range resp.GetConversations() {
+		if c.GetTarget().GetGroupId() == 0 && c.GetTarget().GetUid() == uidB {
 			hasDM = true
 		}
-		if targetGroupID(c.Target) == groupID {
+		if c.GetTarget().GetGroupId() == groupID {
 			hasGroup = true
 		}
 	}
@@ -412,17 +412,17 @@ func TestListByConversationDMService(t *testing.T) {
 	makeFriends(t, s, uidA, uidC)
 
 	// DM to bob
-	sendMessageService(s, "r1", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "to bob"})
+	sendMessageService(s, "r1", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "to bob"})
 	// DM to carol
-	sendMessageService(s, "r2", uidA, &appmsg.Request{ToUID: i64json(uidC), MsgType: dal.MsgText, Content: "to carol"})
+	sendMessageService(s, "r2", uidA, &appmsg.Request{ToUID: uidC, MsgType: dal.MsgText, Content: "to carol"})
 
 	// Read only bob conversation
-	listReq := &appmsg.Request{ToUID: i64json(uidB)}
+	listReq := &appmsg.Request{ToUID: uidB}
 	resp := listByConversationService(s, "r3", uidA, listReq)
-	if !resp.OK {
-		t.Fatalf("read failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("read failed: %s", errMsg(resp))
 	}
-	for _, m := range resp.Messages {
+	for _, m := range resp.GetMessages() {
 		if bodyText(m) == "to carol" {
 			t.Error("should not include carol's messages")
 		}
@@ -436,19 +436,19 @@ func TestListByConversationAfterSeqService(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	for i := 1; i <= 5; i++ {
-		sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)})
+		sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)})
 	}
 
-	resp := listByConversationService(s, "list", uidA, &appmsg.Request{ToUID: i64json(uidB), AfterSeq: 2, Limit: 2})
-	if !resp.OK {
-		t.Fatalf("read failed: %s", resp.Error)
+	resp := listByConversationService(s, "list", uidA, &appmsg.Request{ToUID: uidB, AfterSeq: 2, Limit: 2})
+	if !isOK(resp) {
+		t.Fatalf("read failed: %s", errMsg(resp))
 	}
-	if len(resp.Messages) != 2 {
-		t.Fatalf("got %d messages, want 2", len(resp.Messages))
+	if len(resp.GetMessages()) != 2 {
+		t.Fatalf("got %d messages, want 2", len(resp.GetMessages()))
 	}
 	// 展示序为旧→新（ascTop）：after_seq=2、limit=2 取最近两条更新消息 seq 3、4，升序返回。
-	if resp.Messages[0].Seq != 3 || resp.Messages[1].Seq != 4 {
-		t.Fatalf("unexpected after_seq page: %+v", resp.Messages)
+	if resp.GetMessages()[0].GetSeq() != 3 || resp.GetMessages()[1].GetSeq() != 4 {
+		t.Fatalf("unexpected after_seq page: %+v", resp.GetMessages())
 	}
 }
 
@@ -463,8 +463,8 @@ func TestSyncConversationsAllowsGapsAfterConversationGC(t *testing.T) {
 	makeFriends(t, s, uidA, uidD)
 
 	for _, uid := range []int64{uidB, uidC, uidD} {
-		result := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: i64json(uid), MsgType: dal.MsgText, Content: "hello"})
-		if !result.Response.OK {
+		result := sendMessageService(s, "send", uidA, &appmsg.Request{ToUID: uid, MsgType: dal.MsgText, Content: "hello"})
+		if !isOK(result.Response) {
 			t.Fatalf("send_message uid=%d failed: %+v", uid, result.Response)
 		}
 	}
@@ -485,14 +485,14 @@ func TestSyncConversationsAllowsGapsAfterConversationGC(t *testing.T) {
 	}
 
 	resp := syncConversationsService(s, "sync-old", uidA, oldest.Seq, 100)
-	if !resp.OK || len(resp.Conversations) != 1 {
+	if !isOK(resp) || len(resp.GetConversations()) != 1 {
 		t.Fatalf("SyncConversations after GC = %+v, want only retained conversations", resp)
 	}
-	if resp.Conversations[0].LastSeq <= oldest.Seq {
-		t.Fatalf("SyncConversations returned purged seq range: %+v", resp.Conversations)
+	if resp.GetConversations()[0].GetLastSeq() <= oldest.Seq {
+		t.Fatalf("SyncConversations returned purged seq range: %+v", resp.GetConversations())
 	}
 	freshResp := syncConversationsService(s, "sync-fresh", uidA, 0, 100)
-	if !freshResp.OK || len(freshResp.Conversations) != 1 {
+	if !isOK(freshResp) || len(freshResp.GetConversations()) != 1 {
 		t.Fatalf("fresh SyncConversations = %+v, want retained active conversations", freshResp)
 	}
 }
@@ -504,19 +504,19 @@ func TestListByConversationGroupService(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	groupResp := createGroupService(s, "r1", uidA, "G", []int64{uidA, uidB})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "group msg"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "group msg"}
 	sendMessageService(s, "r2", uidA, req)
 	drainTasks(s)
 
-	listReq := &appmsg.Request{GroupID: i64json(groupID)}
+	listReq := &appmsg.Request{GroupID: groupID}
 	resp := listByConversationService(s, "r3", uidA, listReq)
-	if !resp.OK {
-		t.Fatalf("read failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("read failed: %s", errMsg(resp))
 	}
 	found := false
-	for _, m := range resp.Messages {
+	for _, m := range resp.GetMessages() {
 		if bodyText(m) == "group msg" {
 			found = true
 		}
@@ -532,15 +532,15 @@ func TestListConversationsDMNormalizedTarget(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 	makeFriends(t, s, uidA, uidB)
 
-	sendMessageService(s, "r1", uidA, &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi"})
+	sendMessageService(s, "r1", uidA, &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi"})
 
 	resp := listConversationsService(s, "r2", uidA, "", 200)
-	if !resp.OK {
-		t.Fatalf("list failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("list failed: %s", errMsg(resp))
 	}
 	found := false
-	for _, c := range resp.Conversations {
-		if targetUID(c.Target) == uidB {
+	for _, c := range resp.GetConversations() {
+		if c.GetTarget().GetUid() == uidB {
 			found = true
 		}
 	}
@@ -555,19 +555,19 @@ func TestListConversationsGroupNormalizedTarget(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
 	groupResp := createGroupService(s, "r1", uidA, "TestGroup", []int64{uidA, uidB})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "msg"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "msg"}
 	sendMessageService(s, "r2", uidA, req)
 	drainTasks(s)
 
 	resp := listConversationsService(s, "r3", uidA, "", 200)
-	if !resp.OK {
-		t.Fatalf("list failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("list failed: %s", errMsg(resp))
 	}
 	found := false
-	for _, c := range resp.Conversations {
-		if targetGroupID(c.Target) == groupID {
+	for _, c := range resp.GetConversations() {
+		if c.GetTarget().GetGroupId() == groupID {
 			found = true
 		}
 	}

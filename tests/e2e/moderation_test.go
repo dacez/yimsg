@@ -1,6 +1,11 @@
 package e2e
 
-import "testing"
+import (
+	"testing"
+	"yimsg/internal/appmsg"
+	"yimsg/internal/msgid"
+	"yimsg/internal/protocol/pb"
+)
 
 func TestBlockFlowAndSync(t *testing.T) {
 	a := dial(t)
@@ -9,70 +14,47 @@ func TestBlockFlowAndSync(t *testing.T) {
 	b.registerAndLogin(uniqueName("block"), "pass1234", "Bob")
 	makeFriends(t, a, b)
 
-	blocklistResp := a.sendOK(wsRequest{
-		"action": "block_user",
-		"uid":    b.uid,
-	})
-	if blocklistResp.Seq == nil || *blocklistResp.Seq <= 0 {
+	blocklistResp := sendOK(a, "block_user", &pb.BlockUserRequest{Uid: b.uid}, &pb.BlockUserResponse{})
+	if blocklistResp.GetSeq() <= 0 {
 		t.Fatal("block_user should return seq")
 	}
-	a.waitNotif(func(n notification) bool { return n.Type == "blocklist:updated" })
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "blocklist:updated" })
 
-	listResp := a.sendOK(wsRequest{"action": "get_blocklist", "uid": b.uid})
-	if len(listResp.Users) != 1 || listResp.Users[0].UID != b.uid {
-		t.Fatalf("get_blocklist mismatch: %+v", listResp.Users)
+	listResp := sendOK(a, "get_blocklist", &pb.GetBlocklistRequest{Uids: []int64{b.uid}}, &pb.GetBlocklistResponse{})
+	if len(listResp.GetUsers()) != 1 || listResp.GetUsers()[0].GetUid() != b.uid {
+		t.Fatalf("get_blocklist mismatch: %+v", listResp.GetUsers())
 	}
-	batchListResp := a.sendOK(wsRequest{"action": "get_blocklist", "uids": []string{b.uid, "999999999"}})
-	if len(batchListResp.Users) != 1 || batchListResp.Users[0].UID != b.uid {
-		t.Fatalf("get_blocklist batch mismatch: users=%+v", batchListResp.Users)
-	}
-
-	syncResp := a.sendOK(wsRequest{
-		"action":   "sync_blocklist",
-		"last_seq": 0,
-	})
-	if len(syncResp.Users) != 1 || syncResp.Users[0].Status != 1 {
-		t.Fatalf("sync_blocklist should return active row, got: %+v", syncResp.Users)
+	batchListResp := sendOK(a, "get_blocklist", &pb.GetBlocklistRequest{Uids: []int64{b.uid, 999999999}}, &pb.GetBlocklistResponse{})
+	if len(batchListResp.GetUsers()) != 1 || batchListResp.GetUsers()[0].GetUid() != b.uid {
+		t.Fatalf("get_blocklist batch mismatch: users=%+v", batchListResp.GetUsers())
 	}
 
-	sendResp := a.send(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "blocklist",
-	})
-	if sendResp.OK {
-		t.Fatal("blocklist DM should fail")
-	}
-	if sendResp.Error != "对方暂不接受私聊" {
-		t.Fatalf("blocked DM error=%q, want 对方暂不接受私聊", sendResp.Error)
+	syncResp := sendOK(a, "sync_blocklist", &pb.SyncBlocklistRequest{LastSeq: 0}, &pb.SyncBlocklistResponse{})
+	if len(syncResp.GetUsers()) != 1 || syncResp.GetUsers()[0].GetStatus() != pb.BlocklistStatus_BLOCKLIST_STATUS_ACTIVE {
+		t.Fatalf("sync_blocklist should return active row, got: %+v", syncResp.GetUsers())
 	}
 
-	a.sendOK(wsRequest{
-		"action": "unblock_user",
-		"uid":    b.uid,
-	})
-	a.waitNotif(func(n notification) bool { return n.Type == "blocklist:updated" })
-
-	afterList := a.sendOK(wsRequest{"action": "get_blocklist"})
-	if len(afterList.Users) != 0 {
-		t.Fatalf("get_blocklist after delete should be empty, got: %+v", afterList.Users)
+	sendResp := sendErr(a, "send_message", &pb.SendMessageRequest{
+		MsgId: msgid.Generate(), Target: userTarget(b.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("blocklist"),
+	}, &pb.SendMessageResponse{})
+	if sendResp.GetBase().GetMsg() != "对方暂不接受私聊" {
+		t.Fatalf("blocked DM error=%q, want 对方暂不接受私聊", sendResp.GetBase().GetMsg())
 	}
 
-	afterSync := a.sendOK(wsRequest{
-		"action":   "sync_blocklist",
-		"last_seq": *blocklistResp.Seq,
-	})
-	if len(afterSync.Users) != 1 || afterSync.Users[0].UID != b.uid || afterSync.Users[0].Status != 0xff {
-		t.Fatalf("sync_blocklist after delete should return tombstone, got: %+v", afterSync.Users)
+	sendOK(a, "unblock_user", &pb.UnblockUserRequest{Uid: b.uid}, &pb.UnblockUserResponse{})
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "blocklist:updated" })
+
+	afterList := sendOK(a, "get_blocklist", &pb.GetBlocklistRequest{}, &pb.GetBlocklistResponse{})
+	if len(afterList.GetUsers()) != 0 {
+		t.Fatalf("get_blocklist after delete should be empty, got: %+v", afterList.GetUsers())
 	}
 
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "allowed again",
-	})
+	afterSync := sendOK(a, "sync_blocklist", &pb.SyncBlocklistRequest{LastSeq: blocklistResp.GetSeq()}, &pb.SyncBlocklistResponse{})
+	if len(afterSync.GetUsers()) != 1 || afterSync.GetUsers()[0].GetUid() != b.uid || afterSync.GetUsers()[0].GetStatus() != pb.BlocklistStatus_BLOCKLIST_STATUS_DELETED {
+		t.Fatalf("sync_blocklist after delete should return tombstone, got: %+v", afterSync.GetUsers())
+	}
+
+	a.sendText(userTarget(b.uid), "allowed again")
 }
 
 func TestMuteConversationFlowAndSync(t *testing.T) {
@@ -81,51 +63,39 @@ func TestMuteConversationFlowAndSync(t *testing.T) {
 	a.registerAndLogin(uniqueName("mutelist"), "pass1234", "Alice")
 	b.registerAndLogin(uniqueName("mutelist"), "pass1234", "Bob")
 
-	muteResp := a.sendOK(wsRequest{
-		"action": "mute_conversation",
-		"to_uid": b.uid,
-	})
-	if muteResp.Seq == nil || *muteResp.Seq <= 0 {
+	muteResp := sendOK(a, "mute_conversation", &pb.MuteConversationRequest{Target: userTarget(b.uid)}, &pb.MuteConversationResponse{})
+	if muteResp.GetSeq() <= 0 {
 		t.Fatal("update_conversation_mute should return seq")
 	}
-	a.waitNotif(func(n notification) bool { return n.Type == "mutelist:updated" })
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "mutelist:updated" })
 
-	listResp := a.sendOK(wsRequest{"action": "get_mutelist", "to_uid": b.uid})
-	if len(listResp.Mutelist) != 1 || listResp.Mutelist[0].ToUID != b.uid || listResp.Mutelist[0].Status != 1 {
-		t.Fatalf("get_conversation_mutes mismatch: %+v", listResp.Mutelist)
+	listResp := sendOK(a, "get_mutelist", &pb.GetMutelistRequest{Targets: []*pb.ConversationTarget{userTarget(b.uid)}}, &pb.GetMutelistResponse{})
+	if len(listResp.GetMutes()) != 1 || listResp.GetMutes()[0].GetTarget().GetUid() != b.uid || listResp.GetMutes()[0].GetStatus() != pb.MutelistStatus_MUTELIST_STATUS_ACTIVE {
+		t.Fatalf("get_conversation_mutes mismatch: %+v", listResp.GetMutes())
 	}
-	batchListResp := a.sendOK(wsRequest{"action": "get_mutelist", "to_uids": []string{b.uid, "999999999"}})
-	if len(batchListResp.Mutelist) != 1 || batchListResp.Mutelist[0].ToUID != b.uid {
-		t.Fatalf("get_mutelist batch mismatch: mutes=%+v", batchListResp.Mutelist)
-	}
-
-	syncResp := a.sendOK(wsRequest{
-		"action":   "sync_mutelist",
-		"last_seq": 0,
-	})
-	if len(syncResp.Mutelist) != 1 || syncResp.Mutelist[0].Status != 1 {
-		t.Fatalf("sync_conversation_mutes should return active row, got: %+v", syncResp.Mutelist)
+	batchListResp := sendOK(a, "get_mutelist", &pb.GetMutelistRequest{Targets: []*pb.ConversationTarget{userTarget(b.uid), userTarget(999999999)}}, &pb.GetMutelistResponse{})
+	if len(batchListResp.GetMutes()) != 1 || batchListResp.GetMutes()[0].GetTarget().GetUid() != b.uid {
+		t.Fatalf("get_mutelist batch mismatch: mutes=%+v", batchListResp.GetMutes())
 	}
 
-	unmuteResp := a.sendOK(wsRequest{
-		"action": "unmute_conversation",
-		"to_uid": b.uid,
-	})
-	if unmuteResp.Seq == nil || *unmuteResp.Seq <= *muteResp.Seq {
+	syncResp := sendOK(a, "sync_mutelist", &pb.SyncMutelistRequest{LastSeq: 0}, &pb.SyncMutelistResponse{})
+	if len(syncResp.GetMutes()) != 1 || syncResp.GetMutes()[0].GetStatus() != pb.MutelistStatus_MUTELIST_STATUS_ACTIVE {
+		t.Fatalf("sync_conversation_mutes should return active row, got: %+v", syncResp.GetMutes())
+	}
+
+	unmuteResp := sendOK(a, "unmute_conversation", &pb.UnmuteConversationRequest{Target: userTarget(b.uid)}, &pb.UnmuteConversationResponse{})
+	if unmuteResp.GetSeq() <= muteResp.GetSeq() {
 		t.Fatal("unmute should return a newer seq")
 	}
-	a.waitNotif(func(n notification) bool { return n.Type == "mutelist:updated" })
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "mutelist:updated" })
 
-	afterList := a.sendOK(wsRequest{"action": "get_mutelist", "to_uid": b.uid})
-	if len(afterList.Mutelist) != 0 {
-		t.Fatalf("get_conversation_mutes after unmute should be empty, got: %+v", afterList.Mutelist)
+	afterList := sendOK(a, "get_mutelist", &pb.GetMutelistRequest{Targets: []*pb.ConversationTarget{userTarget(b.uid)}}, &pb.GetMutelistResponse{})
+	if len(afterList.GetMutes()) != 0 {
+		t.Fatalf("get_conversation_mutes after unmute should be empty, got: %+v", afterList.GetMutes())
 	}
 
-	afterSync := a.sendOK(wsRequest{
-		"action":   "sync_mutelist",
-		"last_seq": *muteResp.Seq,
-	})
-	if len(afterSync.Mutelist) != 1 || afterSync.Mutelist[0].ToUID != b.uid || afterSync.Mutelist[0].Status != statusDeleted {
-		t.Fatalf("sync_conversation_mutes after unmute should return deleted tombstone, got: %+v", afterSync.Mutelist)
+	afterSync := sendOK(a, "sync_mutelist", &pb.SyncMutelistRequest{LastSeq: muteResp.GetSeq()}, &pb.SyncMutelistResponse{})
+	if len(afterSync.GetMutes()) != 1 || afterSync.GetMutes()[0].GetTarget().GetUid() != b.uid || afterSync.GetMutes()[0].GetStatus() != pb.MutelistStatus_MUTELIST_STATUS_DELETED {
+		t.Fatalf("sync_conversation_mutes after unmute should return deleted tombstone, got: %+v", afterSync.GetMutes())
 	}
 }

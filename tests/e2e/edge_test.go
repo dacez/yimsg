@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"yimsg/internal/msgid"
+	"yimsg/internal/protocol/pb"
 )
 
 // TestConcurrentRegistration verifies that 10 goroutines registering different
@@ -20,14 +22,11 @@ func TestConcurrentRegistration(t *testing.T) {
 			defer wg.Done()
 			c := dial(t)
 			username := uniqueName(fmt.Sprintf("concreg%d", idx))
-			resp := c.send(wsRequest{
-				"action":   "register",
-				"username": username,
-				"password": "pass1234",
-				"nickname": fmt.Sprintf("User%d", idx),
-			})
-			if !resp.OK {
-				errs <- fmt.Errorf("goroutine %d: register failed: %s", idx, resp.Error)
+			resp := send(c, "register", &pb.RegisterRequest{
+				Username: username, Password: "pass1234", Nickname: fmt.Sprintf("User%d", idx),
+			}, &pb.RegisterResponse{})
+			if resp.GetBase().GetCode() != pb.ErrorCode_ERROR_OK {
+				errs <- fmt.Errorf("goroutine %d: register failed: %s", idx, resp.GetBase().GetMsg())
 			}
 		}(i)
 	}
@@ -48,8 +47,8 @@ func TestConcurrentMessaging(t *testing.T) {
 	b.registerAndLogin(uniqueName("concmsg"), "pass1234", "Bob")
 
 	// Become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 	time.Sleep(300 * time.Millisecond)
 
 	var wg sync.WaitGroup
@@ -62,14 +61,11 @@ func TestConcurrentMessaging(t *testing.T) {
 			defer wg.Done()
 			ac := dial(t)
 			ac.authenticate(a.token)
-			resp := ac.send(wsRequest{
-				"action":   "send_message",
-				"to_uid":   b.uid,
-				"msg_type": 1,
-				"content":  fmt.Sprintf("from_a_%d", idx),
-			})
-			if !resp.OK {
-				errs <- fmt.Errorf("A->B msg %d failed: %s", idx, resp.Error)
+			resp := send(ac, "send_message", &pb.SendMessageRequest{
+				MsgId: msgid.Generate(), Target: userTarget(b.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody(fmt.Sprintf("from_a_%d", idx)),
+			}, &pb.SendMessageResponse{})
+			if resp.GetBase().GetCode() != pb.ErrorCode_ERROR_OK {
+				errs <- fmt.Errorf("A->B msg %d failed: %s", idx, resp.GetBase().GetMsg())
 			}
 		}(i)
 	}
@@ -81,14 +77,11 @@ func TestConcurrentMessaging(t *testing.T) {
 			defer wg.Done()
 			bc := dial(t)
 			bc.authenticate(b.token)
-			resp := bc.send(wsRequest{
-				"action":   "send_message",
-				"to_uid":   a.uid,
-				"msg_type": 1,
-				"content":  fmt.Sprintf("from_b_%d", idx),
-			})
-			if !resp.OK {
-				errs <- fmt.Errorf("B->A msg %d failed: %s", idx, resp.Error)
+			resp := send(bc, "send_message", &pb.SendMessageRequest{
+				MsgId: msgid.Generate(), Target: userTarget(a.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody(fmt.Sprintf("from_b_%d", idx)),
+			}, &pb.SendMessageResponse{})
+			if resp.GetBase().GetCode() != pb.ErrorCode_ERROR_OK {
+				errs <- fmt.Errorf("B->A msg %d failed: %s", idx, resp.GetBase().GetMsg())
 			}
 		}(i)
 	}
@@ -103,10 +96,10 @@ func TestConcurrentMessaging(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// B syncs messages — should have 10 from A
-	respB := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
+	respB := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
 	fromA := 0
-	for _, m := range respB.Messages {
-		if m.FromUID == a.uid {
+	for _, m := range respB.GetMessages() {
+		if m.GetFromUid() == a.uid {
 			fromA++
 		}
 	}
@@ -115,10 +108,10 @@ func TestConcurrentMessaging(t *testing.T) {
 	}
 
 	// A syncs messages — should have 10 from B
-	respA := a.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
+	respA := sendOK(a, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
 	fromB := 0
-	for _, m := range respA.Messages {
-		if m.FromUID == b.uid {
+	for _, m := range respA.GetMessages() {
+		if m.GetFromUid() == b.uid {
 			fromB++
 		}
 	}
@@ -134,19 +127,14 @@ func TestLargeMessage(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("large"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// 最大 4096 字符内容
 	largeContent := strings.Repeat("A", 4096)
 
-	resp := a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  largeContent,
-	})
-	if resp.MsgID == "" {
+	resp := a.sendText(userTarget(b.uid), largeContent)
+	if resp.GetMsgId() == "" {
 		t.Fatal("send_message should return msg_id")
 	}
 
@@ -154,12 +142,12 @@ func TestLargeMessage(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// B syncs and verifies content
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
 	found := false
-	for _, m := range syncResp.Messages {
-		if m.MsgID == resp.MsgID {
-			if m.text() != largeContent {
-				t.Errorf("content length = %d, want %d", len(m.text()), len(largeContent))
+	for _, m := range syncResp.GetMessages() {
+		if m.GetMsgId() == resp.GetMsgId() {
+			if bodyText(m) != largeContent {
+				t.Errorf("content length = %d, want %d", len(bodyText(m)), len(largeContent))
 			}
 			found = true
 			break
@@ -178,26 +166,21 @@ func TestSpecialCharacters(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("special"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	specialContent := "Hello 🌍🎉! 你好世界\n<b>bold</b> & \"quotes\" 'apos'\ttab"
 
-	resp := a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  specialContent,
-	})
+	resp := a.sendText(userTarget(b.uid), specialContent)
 
 	time.Sleep(300 * time.Millisecond)
 
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
 	found := false
-	for _, m := range syncResp.Messages {
-		if m.MsgID == resp.MsgID {
-			if m.text() != specialContent {
-				t.Errorf("content = %q, want %q", m.text(), specialContent)
+	for _, m := range syncResp.GetMessages() {
+		if m.GetMsgId() == resp.GetMsgId() {
+			if bodyText(m) != specialContent {
+				t.Errorf("content = %q, want %q", bodyText(m), specialContent)
 			}
 			found = true
 			break
@@ -215,21 +198,18 @@ func TestEmptyMessage(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("empty"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// Send message with empty content — server may accept or reject
-	resp := a.send(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "",
-	})
+	resp := send(a, "send_message", &pb.SendMessageRequest{
+		MsgId: msgid.Generate(), Target: userTarget(b.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody(""),
+	}, &pb.SendMessageResponse{})
 	// Just verify we get a definitive response (ok or error), no crash
-	if resp.OK {
+	if resp.GetBase().GetCode() == pb.ErrorCode_ERROR_OK {
 		t.Log("server accepted empty message")
 	} else {
-		t.Logf("server rejected empty message: %s", resp.Error)
+		t.Logf("server rejected empty message: %s", resp.GetBase().GetMsg())
 	}
 }
 
@@ -244,34 +224,25 @@ func TestReconnectAndSync(t *testing.T) {
 	bToken := b.token
 
 	// Become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// B receives a message and notes the seq
-	a.sendOK(wsRequest{
-		"action": "send_message", "to_uid": b.uid,
-		"msg_type": 1, "content": "before disconnect",
-	})
+	a.sendText(userTarget(b.uid), "before disconnect")
 	time.Sleep(300 * time.Millisecond)
 
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
-	if len(syncResp.Messages) == 0 {
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
+	if len(syncResp.GetMessages()) == 0 {
 		t.Fatal("expected at least 1 message before disconnect")
 	}
-	lastSeq := syncResp.Messages[len(syncResp.Messages)-1].Seq
+	lastSeq := syncResp.GetMessages()[len(syncResp.GetMessages())-1].GetSeq()
 
 	// B disconnects
 	b.conn.Close()
 
 	// A sends more messages while B is offline
-	a.sendOK(wsRequest{
-		"action": "send_message", "to_uid": b.uid,
-		"msg_type": 1, "content": "while offline 1",
-	})
-	a.sendOK(wsRequest{
-		"action": "send_message", "to_uid": b.uid,
-		"msg_type": 1, "content": "while offline 2",
-	})
+	a.sendText(userTarget(b.uid), "while offline 1")
+	a.sendText(userTarget(b.uid), "while offline 2")
 
 	time.Sleep(300 * time.Millisecond)
 
@@ -280,9 +251,9 @@ func TestReconnectAndSync(t *testing.T) {
 	b2.authenticate(bToken)
 
 	// B syncs from last known seq
-	syncResp2 := b2.sendOK(wsRequest{"action": "sync_messages", "last_seq": lastSeq})
-	if len(syncResp2.Messages) < 2 {
-		t.Errorf("expected at least 2 new messages after reconnect, got %d", len(syncResp2.Messages))
+	syncResp2 := sendOK(b2, "sync_messages", &pb.SyncMessagesRequest{LastSeq: lastSeq}, &pb.SyncMessagesResponse{})
+	if len(syncResp2.GetMessages()) < 2 {
+		t.Errorf("expected at least 2 new messages after reconnect, got %d", len(syncResp2.GetMessages()))
 	}
 }
 
@@ -294,29 +265,26 @@ func TestMaxSeqMonotonicity(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("mono"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	for i := 0; i < 5; i++ {
-		a.sendOK(wsRequest{
-			"action": "send_message", "to_uid": b.uid,
-			"msg_type": 1, "content": fmt.Sprintf("msg_%d", i),
-		})
+		a.sendText(userTarget(b.uid), fmt.Sprintf("msg_%d", i))
 	}
 
 	time.Sleep(300 * time.Millisecond)
 
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
-	if len(syncResp.Messages) < 5 {
-		t.Fatalf("expected at least 5 messages, got %d", len(syncResp.Messages))
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
+	if len(syncResp.GetMessages()) < 5 {
+		t.Fatalf("expected at least 5 messages, got %d", len(syncResp.GetMessages()))
 	}
 
 	var prevSeq int64
-	for i, m := range syncResp.Messages {
-		if m.Seq <= prevSeq {
-			t.Errorf("seq not increasing at index %d: %d <= %d", i, m.Seq, prevSeq)
+	for i, m := range syncResp.GetMessages() {
+		if m.GetSeq() <= prevSeq {
+			t.Errorf("seq not increasing at index %d: %d <= %d", i, m.GetSeq(), prevSeq)
 		}
-		prevSeq = m.Seq
+		prevSeq = m.GetSeq()
 	}
 }
 
@@ -331,35 +299,29 @@ func TestConversationOrdering(t *testing.T) {
 	c.registerAndLogin(uniqueName("order"), "pass1234", "Charlie")
 
 	// A befriends B and C
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": c.uid})
-	c.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: c.uid}, &pb.AddFriendResponse{})
+	sendOK(c, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// A messages B first, then C
-	a.sendOK(wsRequest{
-		"action": "send_message", "to_uid": b.uid,
-		"msg_type": 1, "content": "hi bob",
-	})
+	a.sendText(userTarget(b.uid), "hi bob")
 	time.Sleep(100 * time.Millisecond)
-	a.sendOK(wsRequest{
-		"action": "send_message", "to_uid": c.uid,
-		"msg_type": 1, "content": "hi charlie",
-	})
+	a.sendText(userTarget(c.uid), "hi charlie")
 
 	time.Sleep(300 * time.Millisecond)
 
-	resp := a.sendOK(wsRequest{"action": "get_conversations"})
-	if len(resp.Conversations) < 2 {
-		t.Fatalf("expected at least 2 conversations, got %d", len(resp.Conversations))
+	resp := sendOK(a, "get_conversations", &pb.GetConversationsRequest{}, &pb.GetConversationsResponse{})
+	if len(resp.GetConversations()) < 2 {
+		t.Fatalf("expected at least 2 conversations, got %d", len(resp.GetConversations()))
 	}
 
 	// Most recent (C) should come first
-	if resp.Conversations[0].FriendUID != c.uid {
-		t.Errorf("first conversation friend_uid = %q, want %q (most recent)", resp.Conversations[0].FriendUID, c.uid)
+	if resp.GetConversations()[0].GetTarget().GetUid() != c.uid {
+		t.Errorf("first conversation friend_uid = %d, want %d (most recent)", resp.GetConversations()[0].GetTarget().GetUid(), c.uid)
 	}
-	if resp.Conversations[1].FriendUID != b.uid {
-		t.Errorf("second conversation friend_uid = %q, want %q", resp.Conversations[1].FriendUID, b.uid)
+	if resp.GetConversations()[1].GetTarget().GetUid() != b.uid {
+		t.Errorf("second conversation friend_uid = %d, want %d", resp.GetConversations()[1].GetTarget().GetUid(), b.uid)
 	}
 }
 
@@ -371,30 +333,27 @@ func TestUnreadCountAccumulates(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("unread"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	for i := 0; i < 3; i++ {
-		a.sendOK(wsRequest{
-			"action": "send_message", "to_uid": b.uid,
-			"msg_type": 1, "content": fmt.Sprintf("unread_%d", i),
-		})
+		a.sendText(userTarget(b.uid), fmt.Sprintf("unread_%d", i))
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
-	resp := b.sendOK(wsRequest{"action": "get_unread_count"})
-	if resp.UnreadCount != 3 {
-		t.Fatalf("unread_count = %d, want 3", resp.UnreadCount)
+	resp := sendOK(b, "get_unread_count", &pb.GetUnreadCountRequest{}, &pb.GetUnreadCountResponse{})
+	if resp.GetUnreadCount() != 3 {
+		t.Fatalf("unread_count = %d, want 3", resp.GetUnreadCount())
 	}
 
-	convs := b.sendOK(wsRequest{"action": "get_conversations"})
+	convs := sendOK(b, "get_conversations", &pb.GetConversationsRequest{}, &pb.GetConversationsResponse{})
 	found := false
-	for _, conv := range convs.Conversations {
-		if conv.FriendUID == a.uid {
+	for _, conv := range convs.GetConversations() {
+		if conv.GetTarget().GetUid() == a.uid {
 			found = true
-			if conv.UnreadCount != 3 {
-				t.Errorf("conversation unread_count = %d, want 3", conv.UnreadCount)
+			if conv.GetUnreadCount() != 3 {
+				t.Errorf("conversation unread_count = %d, want 3", conv.GetUnreadCount())
 			}
 			break
 		}
@@ -411,24 +370,21 @@ func TestClearUnreadClearsUnread(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("markread"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	for i := 0; i < 3; i++ {
-		a.sendOK(wsRequest{
-			"action": "send_message", "to_uid": b.uid,
-			"msg_type": 1, "content": fmt.Sprintf("read_%d", i),
-		})
+		a.sendText(userTarget(b.uid), fmt.Sprintf("read_%d", i))
 	}
 
 	time.Sleep(500 * time.Millisecond)
 
 	// B marks read
-	b.sendOK(wsRequest{"action": "clear_unread", "to_uid": a.uid})
+	sendOK(b, "clear_unread", &pb.ClearUnreadRequest{Target: userTarget(a.uid)}, &pb.ClearUnreadResponse{})
 
-	resp := b.sendOK(wsRequest{"action": "get_unread_count"})
-	if resp.UnreadCount != 0 {
-		t.Errorf("unread_count = %d after clear_unread, want 0", resp.UnreadCount)
+	resp := sendOK(b, "get_unread_count", &pb.GetUnreadCountRequest{}, &pb.GetUnreadCountResponse{})
+	if resp.GetUnreadCount() != 0 {
+		t.Errorf("unread_count = %d after clear_unread, want 0", resp.GetUnreadCount())
 	}
 }
 
@@ -437,17 +393,14 @@ func TestSendMessageToNonexistentUser(t *testing.T) {
 	a := dial(t)
 	a.registerAndLogin(uniqueName("nouser"), "pass1234", "Alice")
 
-	resp := a.send(wsRequest{
-		"action":   "send_message",
-		"to_uid":   "999999999",
-		"msg_type": 1,
-		"content":  "hello nobody",
-	})
+	resp := send(a, "send_message", &pb.SendMessageRequest{
+		MsgId: msgid.Generate(), Target: userTarget(999999999), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("hello nobody"),
+	}, &pb.SendMessageResponse{})
 	// Log behavior — server may or may not validate recipient existence
-	if resp.OK {
+	if resp.GetBase().GetCode() == pb.ErrorCode_ERROR_OK {
 		t.Log("server accepted message to nonexistent user (fanout write pattern)")
 	} else {
-		t.Logf("server rejected message to nonexistent user: %s", resp.Error)
+		t.Logf("server rejected message to nonexistent user: %s", resp.GetBase().GetMsg())
 	}
 }
 
@@ -459,23 +412,20 @@ func TestRapidFireMessages(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("rapid"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	for i := 0; i < 50; i++ {
-		a.sendOK(wsRequest{
-			"action": "send_message", "to_uid": b.uid,
-			"msg_type": 1, "content": fmt.Sprintf("rapid_%d", i),
-		})
+		a.sendText(userTarget(b.uid), fmt.Sprintf("rapid_%d", i))
 	}
 
 	// Give fanout time to complete
 	time.Sleep(1 * time.Second)
 
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0})
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0}, &pb.SyncMessagesResponse{})
 	count := 0
-	for _, m := range syncResp.Messages {
-		if m.FromUID == a.uid {
+	for _, m := range syncResp.GetMessages() {
+		if m.GetFromUid() == a.uid {
 			count++
 		}
 	}

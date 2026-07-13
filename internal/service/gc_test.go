@@ -65,7 +65,7 @@ func TestMessageGC_KeepsRecentMessages(t *testing.T) {
 
 	// Send 20 messages
 	for i := 0; i < 20; i++ {
-		req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)}
+		req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)}
 		sendMessageService(s, "r", uidA, req)
 	}
 
@@ -101,7 +101,7 @@ func TestMessageGC_ListPurgeable(t *testing.T) {
 
 	// Send 15 messages
 	for i := 0; i < 15; i++ {
-		req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: fmt.Sprintf("m-%d", i)}
+		req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: fmt.Sprintf("m-%d", i)}
 		sendMessageService(s, "r", uidA, req)
 	}
 
@@ -142,7 +142,7 @@ func TestMessageGC_NothingToDelete(t *testing.T) {
 
 	// Send 3 messages
 	for i := 0; i < 3; i++ {
-		req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hi"}
+		req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi"}
 		sendMessageService(s, "r", uidA, req)
 	}
 
@@ -166,7 +166,7 @@ func TestConversationGC_KeepsRecent(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		uidX := registerUser(t, s, fmt.Sprintf("user%d", i), "p", fmt.Sprintf("User%d", i))
 		makeFriends(t, s, uidA, uidX)
-		req := &appmsg.Request{ToUID: i64json(uidX), MsgType: dal.MsgText, Content: "hi"}
+		req := &appmsg.Request{ToUID: uidX, MsgType: dal.MsgText, Content: "hi"}
 		sendMessageService(s, "r", uidA, req)
 	}
 

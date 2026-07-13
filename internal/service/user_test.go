@@ -8,10 +8,10 @@ import (
 func TestRegisterSuccess(t *testing.T) {
 	s := testState(t)
 	resp := registerService(s, "r1", "alice", "pass123", "Alice")
-	if !resp.OK {
-		t.Fatalf("expected ok, got error: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("expected ok, got error: %s", errMsg(resp))
 	}
-	if resp.UID == nil || int64(*resp.UID) <= 0 {
+	if resp.GetUid() <= 0 {
 		t.Error("uid should be positive")
 	}
 }
@@ -20,11 +20,11 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	s := testState(t)
 	registerService(s, "r1", "alice", "pass123", "Alice")
 	resp := registerService(s, "r2", "alice", "other", "Alice2")
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("duplicate username should fail")
 	}
-	if resp.Error != "username already exists" {
-		t.Errorf("got error %q", resp.Error)
+	if errMsg(resp) != "username already exists" {
+		t.Errorf("got error %q", errMsg(resp))
 	}
 }
 
@@ -34,8 +34,8 @@ func TestRegisterInitsContactVersion(t *testing.T) {
 
 	// get_contacts should work immediately after registration
 	resp := listContactsService(s, "r1", uid, dal.ContactListFilter{}, "", 200)
-	if !resp.OK {
-		t.Fatalf("get_contacts failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_contacts failed: %s", errMsg(resp))
 	}
 }
 
@@ -44,13 +44,13 @@ func TestLoginSuccess(t *testing.T) {
 	registerUser(t, s, "alice", "pass123", "Alice")
 
 	resp := loginService(s, "r1", "alice", "pass123")
-	if !resp.OK {
-		t.Fatalf("login failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("login failed: %s", errMsg(resp))
 	}
-	if resp.Token == "" {
+	if resp.GetToken() == "" {
 		t.Error("token should not be empty")
 	}
-	if resp.UID == nil || int64(*resp.UID) <= 0 {
+	if resp.GetUid() <= 0 {
 		t.Error("uid should be positive")
 	}
 }
@@ -60,22 +60,22 @@ func TestLoginWrongPassword(t *testing.T) {
 	registerUser(t, s, "alice", "pass123", "Alice")
 
 	resp := loginService(s, "r1", "alice", "wrong")
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("wrong password should fail")
 	}
-	if resp.Error != "wrong password" {
-		t.Errorf("got error %q", resp.Error)
+	if errMsg(resp) != "wrong password" {
+		t.Errorf("got error %q", errMsg(resp))
 	}
 }
 
 func TestLoginUserNotFound(t *testing.T) {
 	s := testState(t)
 	resp := loginService(s, "r1", "nonexistent", "pass")
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("nonexistent user should fail")
 	}
-	if resp.Error != "user not found" {
-		t.Errorf("got error %q", resp.Error)
+	if errMsg(resp) != "user not found" {
+		t.Errorf("got error %q", errMsg(resp))
 	}
 }
 
@@ -84,25 +84,25 @@ func TestGetProfileSuccess(t *testing.T) {
 	uid := registerUser(t, s, "alice", "pass", "Alice")
 
 	resp := getUserInfosService(s, "r1", uid, []int64{uid})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
-	if len(resp.Profiles) == 0 {
+	if len(resp.GetProfiles()) == 0 {
 		t.Fatal("profile should not be empty")
 	}
-	if resp.Profiles[0].Nickname != "Alice" {
-		t.Errorf("nickname = %q, want Alice", resp.Profiles[0].Nickname)
+	if resp.GetProfiles()[0].GetNickname() != "Alice" {
+		t.Errorf("nickname = %q, want Alice", resp.GetProfiles()[0].GetNickname())
 	}
 }
 
 func TestGetUserInfosNotFound(t *testing.T) {
 	s := testState(t)
 	resp := getUserInfosService(s, "r1", 0, []int64{9999})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
-	if len(resp.Profiles) != 0 {
-		t.Errorf("nonexistent user should return empty profiles, got %d", len(resp.Profiles))
+	if len(resp.GetProfiles()) != 0 {
+		t.Errorf("nonexistent user should return empty profiles, got %d", len(resp.GetProfiles()))
 	}
 }
 
@@ -111,13 +111,13 @@ func TestUpdateUserInfoSuccess(t *testing.T) {
 	uid := registerUser(t, s, "alice", "pass", "Alice")
 
 	resp := updateUserInfoService(s, "r1", uid, "NewAlice", "avatar.jpg")
-	if !resp.OK {
-		t.Fatalf("update_user_info failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("update_user_info failed: %s", errMsg(resp))
 	}
 
 	profile := getUserInfosService(s, "r2", uid, []int64{uid})
-	if len(profile.Profiles) == 0 || profile.Profiles[0].Nickname != "NewAlice" || profile.Profiles[0].Avatar != "avatar.jpg" {
-		t.Errorf("profile not updated: %+v", profile.Profiles)
+	if len(profile.GetProfiles()) == 0 || profile.GetProfiles()[0].GetNickname() != "NewAlice" || profile.GetProfiles()[0].GetAvatar() != "avatar.jpg" {
+		t.Errorf("profile not updated: %+v", profile.GetProfiles())
 	}
 }
 
@@ -126,19 +126,19 @@ func TestUpdatePasswordSuccess(t *testing.T) {
 	uid := registerUser(t, s, "alice", "oldpass", "Alice")
 
 	resp := updatePasswordService(s, "r1", uid, "oldpass", "newpass")
-	if !resp.OK {
-		t.Fatalf("update_password failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("update_password failed: %s", errMsg(resp))
 	}
 
 	// New password works
 	loginResp := loginService(s, "r2", "alice", "newpass")
-	if !loginResp.OK {
+	if !isOK(loginResp) {
 		t.Error("login with new password should succeed")
 	}
 
 	// Old password fails
 	loginResp = loginService(s, "r3", "alice", "oldpass")
-	if loginResp.OK {
+	if isOK(loginResp) {
 		t.Error("login with old password should fail")
 	}
 }
@@ -148,11 +148,11 @@ func TestUpdatePasswordWrongOld(t *testing.T) {
 	uid := registerUser(t, s, "alice", "pass", "Alice")
 
 	resp := updatePasswordService(s, "r1", uid, "wrong", "newpass")
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("wrong old password should fail")
 	}
-	if resp.Error != "wrong old password" {
-		t.Errorf("got error %q", resp.Error)
+	if errMsg(resp) != "wrong old password" {
+		t.Errorf("got error %q", errMsg(resp))
 	}
 }
 
@@ -162,7 +162,7 @@ func TestUpdatePasswordKicksSessions(t *testing.T) {
 
 	// Verify token works
 	authResp := authenticateTokenService(s, "r1", token)
-	if !authResp.OK {
+	if !isOK(authResp) {
 		t.Fatal("token should work before password change")
 	}
 
@@ -170,7 +170,7 @@ func TestUpdatePasswordKicksSessions(t *testing.T) {
 
 	// Old token should be invalid
 	authResp = authenticateTokenService(s, "r3", token)
-	if authResp.OK {
+	if isOK(authResp) {
 		t.Error("old token should be invalidated after password change")
 	}
 }
@@ -221,19 +221,18 @@ func TestGetUserInfosDoesNotReturnRemarks(t *testing.T) {
 	makeFriends(t, s, uidA, uidC)
 
 	resp := getUserInfosService(s, "r2", uidA, []int64{uidB, uidC})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
-	if len(resp.Profiles) != 2 {
-		t.Fatalf("profiles count = %d, want 2", len(resp.Profiles))
+	if len(resp.GetProfiles()) != 2 {
+		t.Fatalf("profiles count = %d, want 2", len(resp.GetProfiles()))
 	}
+	// pb.UserInfo 本身不携带 remark 字段（关系态数据不进入用户展示资料），
+	// 由类型系统在编译期保证 get_user_infos 不会泄露备注，这里只需确认 bob 在结果中。
 	found := false
-	for _, p := range resp.Profiles {
-		if p.UID == uidB {
+	for _, p := range resp.GetProfiles() {
+		if p.GetUid() == uidB {
 			found = true
-			if p.Remark != "" {
-				t.Errorf("user profile should not include relationship remark, got %q", p.Remark)
-			}
 		}
 	}
 	if !found {
@@ -254,8 +253,8 @@ func TestGetUserInfosRefreshesUnremarkedContactProjection(t *testing.T) {
 
 	updateUserInfoService(s, "r1", uidB, "Bobby", "")
 	resp := getUserInfosService(s, "r2", uidA, []int64{uidB})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
 	after, _ := s.ContactStore(uidA).Get(uidA, uidB)
 	// search_text 只含昵称 Bobby，不含 username（bob）。
@@ -275,8 +274,8 @@ func TestGetProfileRefreshesUnremarkedContactProjection(t *testing.T) {
 
 	updateUserInfoService(s, "r1", uidB, "Bobby", "")
 	resp := getUserInfosService(s, "r2", uidA, []int64{uidB})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
 	contact, _ := s.ContactStore(uidA).Get(uidA, uidB)
 	if contact.SearchText != "Bobby" {
@@ -291,16 +290,13 @@ func TestGetUserInfosNoRemarkForStranger(t *testing.T) {
 
 	// No friend relationship
 	resp := getUserInfosService(s, "r1", uidA, []int64{uidB})
-	if !resp.OK {
-		t.Fatalf("get_user_infos failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_user_infos failed: %s", errMsg(resp))
 	}
-	if len(resp.Profiles) != 1 {
-		t.Fatalf("profiles count = %d, want 1", len(resp.Profiles))
+	if len(resp.GetProfiles()) != 1 {
+		t.Fatalf("profiles count = %d, want 1", len(resp.GetProfiles()))
 	}
-	// No remark for stranger
-	if resp.Profiles[0].Remark != "" {
-		t.Errorf("remark should be empty for stranger, got %q", resp.Profiles[0].Remark)
-	}
+	// pb.UserInfo 本身不携带 remark 字段，陌生人自然也不会有备注（编译期保证）。
 }
 
 func TestSearchUserFound(t *testing.T) {
@@ -308,24 +304,24 @@ func TestSearchUserFound(t *testing.T) {
 	registerUser(t, s, "alice", "pass", "Alice")
 
 	resp := searchUserService(s, "r1", 0, "alice")
-	if !resp.OK {
-		t.Fatalf("search failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("search failed: %s", errMsg(resp))
 	}
-	if resp.Profile == nil {
+	if resp.GetProfile() == nil {
 		t.Fatal("profile should not be nil")
 	}
-	if resp.Profile.Nickname != "Alice" {
-		t.Errorf("nickname = %q, want Alice", resp.Profile.Nickname)
+	if resp.GetProfile().GetNickname() != "Alice" {
+		t.Errorf("nickname = %q, want Alice", resp.GetProfile().GetNickname())
 	}
 }
 
 func TestSearchUserNotFound(t *testing.T) {
 	s := testState(t)
 	resp := searchUserService(s, "r1", 0, "nonexistent")
-	if !resp.OK {
+	if !isOK(resp) {
 		t.Fatalf("search should return ok even for not found")
 	}
-	if resp.Profile != nil {
+	if resp.GetProfile() != nil {
 		t.Error("profile should be nil for nonexistent user")
 	}
 }

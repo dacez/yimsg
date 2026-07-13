@@ -1,8 +1,6 @@
 package service
 
 import (
-	"encoding/json"
-	"fmt"
 	"testing"
 	"yimsg/internal/config"
 	"yimsg/internal/dal"
@@ -10,10 +8,6 @@ import (
 	"yimsg/internal/shard"
 	"yimsg/internal/taskqueue"
 )
-
-func i64json(id int64) json.Number {
-	return json.Number(fmt.Sprintf("%d", id))
-}
 
 func testState(t *testing.T) *AppState {
 	t.Helper()
@@ -61,19 +55,19 @@ func drainTasks(s *AppState) { s.tasks.RunPending() }
 func registerUser(t *testing.T, s *AppState, username, password, nickname string) int64 {
 	t.Helper()
 	resp := registerService(s, "test", username, password, nickname)
-	if !resp.OK {
-		t.Fatalf("register %s: %s", username, resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("register %s: %s", username, errMsg(resp))
 	}
-	return int64(*resp.UID)
+	return resp.GetUid()
 }
 
 func loginUser(t *testing.T, s *AppState, username, password string) (int64, string) {
 	t.Helper()
 	resp := loginService(s, "test", username, password)
-	if !resp.OK {
-		t.Fatalf("login %s: %s", username, resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("login %s: %s", username, errMsg(resp))
 	}
-	return int64(*resp.UID), resp.Token
+	return resp.GetUid(), resp.GetToken()
 }
 
 func registerAndLogin(t *testing.T, s *AppState, username, password, nickname string) (int64, string) {

@@ -3,15 +3,18 @@ package e2e
 import (
 	"testing"
 	"time"
+	"yimsg/internal/appmsg"
+	"yimsg/internal/msgid"
+	"yimsg/internal/protocol/pb"
 )
 
 // makeFriends establishes a bidirectional friendship between two authenticated clients.
 func makeFriends(t *testing.T, a, b *client) {
 	t.Helper()
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" }, defaultNotifTimeout)
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
-	a.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" }, defaultNotifTimeout)
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	b.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" }, defaultNotifTimeout)
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" }, defaultNotifTimeout)
 	// Small settle time for async processing
 	time.Sleep(200 * time.Millisecond)
 }
@@ -31,7 +34,7 @@ func setupGroupUsers(t *testing.T, n int) []*client {
 	}
 	// Drain any remaining notifications
 	for _, c := range clients {
-		c.drainNotifs(func(n notification) bool { return true })
+		c.drainNotifs(func(n *appmsg.Notification) bool { return true })
 	}
 	return clients
 }
@@ -40,21 +43,19 @@ func TestCreateGroup(t *testing.T) {
 	clients := setupGroupUsers(t, 3)
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
-	resp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "TestGroup",
-		"member_uids": []string{owner.uid, m1.uid, m2.uid},
-	})
-	if resp.GroupID == "" {
+	resp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "TestGroup", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
+	if resp.GetGroupId() <= 0 {
 		t.Fatal("create_group should return group_id")
 	}
 
 	// Members should receive messages:received notification (system message about group creation)
-	m1.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID != ""
+	m1.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) != 0
 	}, 3*time.Second)
-	m2.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID != ""
+	m2.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) != 0
 	}, 3*time.Second)
 }
 
@@ -64,11 +65,9 @@ func TestCreateGroupNoMembers(t *testing.T) {
 
 	// Creating a group with empty member_uids: server adds the owner automatically,
 	// so a single-member group is created. We just verify it doesn't crash.
-	resp := c.send(wsRequest{
-		"action":      "create_group",
-		"name":        "EmptyGroup",
-		"member_uids": []string{},
-	})
+	resp := send(c, "create_group", &pb.CreateGroupRequest{
+		Name: "EmptyGroup", MemberUids: []int64{},
+	}, &pb.CreateGroupResponse{})
 	// Whether this succeeds or fails depends on server validation;
 	// either way it should not panic.
 	_ = resp
@@ -78,29 +77,24 @@ func TestGetGroupInfos(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, m1 := clients[0], clients[1]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "InfoGroup",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "InfoGroup", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 	time.Sleep(200 * time.Millisecond)
 
-	resp := owner.sendOK(wsRequest{
-		"action":    "get_group_infos",
-		"group_ids": []string{groupID},
-	})
-	if len(resp.Groups) != 1 {
-		t.Fatalf("expected 1 group info, got %d", len(resp.Groups))
+	resp := sendOK(owner, "get_group_infos", &pb.GetGroupInfosRequest{GroupIds: []int64{groupID}}, &pb.GetGroupInfosResponse{})
+	if len(resp.GetGroups()) != 1 {
+		t.Fatalf("expected 1 group info, got %d", len(resp.GetGroups()))
 	}
-	if resp.Groups[0].Name != "InfoGroup" {
-		t.Errorf("group name = %q, want %q", resp.Groups[0].Name, "InfoGroup")
+	if resp.GetGroups()[0].GetName() != "InfoGroup" {
+		t.Errorf("group name = %q, want %q", resp.GetGroups()[0].GetName(), "InfoGroup")
 	}
-	if resp.Groups[0].GroupID != groupID {
-		t.Errorf("group_id = %q, want %q", resp.Groups[0].GroupID, groupID)
+	if resp.GetGroups()[0].GetGroupId() != groupID {
+		t.Errorf("group_id = %d, want %d", resp.GetGroups()[0].GetGroupId(), groupID)
 	}
-	if resp.Groups[0].OwnerUID != owner.uid {
-		t.Errorf("owner_uid = %q, want %q", resp.Groups[0].OwnerUID, owner.uid)
+	if resp.GetGroups()[0].GetOwnerUid() != owner.uid {
+		t.Errorf("owner_uid = %d, want %d", resp.GetGroups()[0].GetOwnerUid(), owner.uid)
 	}
 }
 
@@ -108,28 +102,21 @@ func TestGetGroupInfosBatch(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, m1 := clients[0], clients[1]
 
-	r1 := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "BatchGroup1",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
-	r2 := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "BatchGroup2",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
+	r1 := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "BatchGroup1", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
+	r2 := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "BatchGroup2", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
-	resp := owner.sendOK(wsRequest{
-		"action":    "get_group_infos",
-		"group_ids": []string{r1.GroupID, r2.GroupID},
-	})
-	if len(resp.Groups) != 2 {
-		t.Fatalf("expected 2 group infos, got %d", len(resp.Groups))
+	resp := sendOK(owner, "get_group_infos", &pb.GetGroupInfosRequest{GroupIds: []int64{r1.GetGroupId(), r2.GetGroupId()}}, &pb.GetGroupInfosResponse{})
+	if len(resp.GetGroups()) != 2 {
+		t.Fatalf("expected 2 group infos, got %d", len(resp.GetGroups()))
 	}
 	names := map[string]bool{}
-	for _, g := range resp.Groups {
-		names[g.Name] = true
+	for _, g := range resp.GetGroups() {
+		names[g.GetName()] = true
 	}
 	if !names["BatchGroup1"] {
 		t.Error("missing BatchGroup1")
@@ -143,36 +130,31 @@ func TestGetGroupMembers(t *testing.T) {
 	clients := setupGroupUsers(t, 3)
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "MembersGroup",
-		"member_uids": []string{owner.uid, m1.uid, m2.uid},
-	})
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "MembersGroup", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
-	resp := owner.sendOK(wsRequest{
-		"action":   "get_group_members",
-		"group_id": createResp.GroupID,
-	})
-	if len(resp.Members) != 3 {
-		t.Fatalf("expected 3 members, got %d", len(resp.Members))
+	resp := sendOK(owner, "get_group_members", &pb.GetGroupMembersRequest{GroupId: createResp.GetGroupId()}, &pb.GetGroupMembersResponse{})
+	if len(resp.GetMembers()) != 3 {
+		t.Fatalf("expected 3 members, got %d", len(resp.GetMembers()))
 	}
-	uidSet := map[string]bool{}
-	for _, m := range resp.Members {
-		uidSet[m.UID] = true
+	uidSet := map[int64]bool{}
+	for _, m := range resp.GetMembers() {
+		uidSet[m.GetUid()] = true
 	}
 	for _, c := range clients {
 		if !uidSet[c.uid] {
-			t.Errorf("missing member uid %s", c.uid)
+			t.Errorf("missing member uid %d", c.uid)
 		}
 	}
 	// Verify owner role (2 = owner in server schema)
-	for _, m := range resp.Members {
-		if m.UID == owner.uid && m.Role != 2 {
-			t.Errorf("owner role = %d, want 2", m.Role)
+	for _, m := range resp.GetMembers() {
+		if m.GetUid() == owner.uid && m.GetRole() != 2 {
+			t.Errorf("owner role = %d, want 2", m.GetRole())
 		}
-		if m.UID != owner.uid && m.Role != 0 {
-			t.Errorf("member %s role = %d, want 0", m.UID, m.Role)
+		if m.GetUid() != owner.uid && m.GetRole() != 0 {
+			t.Errorf("member %d role = %d, want 0", m.GetUid(), m.GetRole())
 		}
 	}
 }
@@ -181,46 +163,36 @@ func TestGetGroupMembersPagination(t *testing.T) {
 	clients := setupGroupUsers(t, 4)
 	owner := clients[0]
 
-	memberUIDs := make([]string, len(clients))
+	memberUIDs := make([]int64, len(clients))
 	for i, c := range clients {
 		memberUIDs[i] = c.uid
 	}
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "PaginationGroup",
-		"member_uids": memberUIDs,
-	})
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "PaginationGroup", MemberUids: memberUIDs,
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
 	// 首页 limit=2（向下/FORWARD）
-	resp1 := owner.sendOK(wsRequest{
-		"action":   "get_group_members",
-		"group_id": createResp.GroupID,
-		"page":     wsRequest{"limit": 2},
-	})
-	if len(resp1.Members) != 2 {
-		t.Fatalf("page 1: expected 2 members, got %d", len(resp1.Members))
+	resp1 := sendOK(owner, "get_group_members", &pb.GetGroupMembersRequest{GroupId: createResp.GetGroupId(), Page: &pb.PageQuery{Limit: 2}}, &pb.GetGroupMembersResponse{})
+	if len(resp1.GetMembers()) != 2 {
+		t.Fatalf("page 1: expected 2 members, got %d", len(resp1.GetMembers()))
 	}
 
 	// 次页：用上一页 end_cursor 续翻
-	resp2 := owner.sendOK(wsRequest{
-		"action":   "get_group_members",
-		"group_id": createResp.GroupID,
-		"page":     wsRequest{"limit": 2, "cursor": pageOf(&resp1).EndCursor},
-	})
-	if len(resp2.Members) != 2 {
-		t.Fatalf("page 2: expected 2 members, got %d", len(resp2.Members))
+	resp2 := sendOK(owner, "get_group_members", &pb.GetGroupMembersRequest{GroupId: createResp.GetGroupId(), Page: &pb.PageQuery{Limit: 2, Cursor: resp1.GetPage().GetEndCursor()}}, &pb.GetGroupMembersResponse{})
+	if len(resp2.GetMembers()) != 2 {
+		t.Fatalf("page 2: expected 2 members, got %d", len(resp2.GetMembers()))
 	}
 
 	// Verify no overlap
-	page1UIDs := map[string]bool{}
-	for _, m := range resp1.Members {
-		page1UIDs[m.UID] = true
+	page1UIDs := map[int64]bool{}
+	for _, m := range resp1.GetMembers() {
+		page1UIDs[m.GetUid()] = true
 	}
-	for _, m := range resp2.Members {
-		if page1UIDs[m.UID] {
-			t.Errorf("uid %s appears in both pages", m.UID)
+	for _, m := range resp2.GetMembers() {
+		if page1UIDs[m.GetUid()] {
+			t.Errorf("uid %d appears in both pages", m.GetUid())
 		}
 	}
 }
@@ -229,29 +201,20 @@ func TestUpdateGroupInfo(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, m1 := clients[0], clients[1]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "OldName",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "OldName", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 	time.Sleep(200 * time.Millisecond)
 
-	owner.sendOK(wsRequest{
-		"action":   "update_group_info",
-		"group_id": groupID,
-		"name":     "NewName",
-	})
+	sendOK(owner, "update_group_info", &pb.UpdateGroupInfoRequest{GroupId: groupID, Name: "NewName"}, &pb.UpdateGroupInfoResponse{})
 
-	resp := owner.sendOK(wsRequest{
-		"action":    "get_group_infos",
-		"group_ids": []string{groupID},
-	})
-	if len(resp.Groups) != 1 {
-		t.Fatalf("expected 1 group info, got %d", len(resp.Groups))
+	resp := sendOK(owner, "get_group_infos", &pb.GetGroupInfosRequest{GroupIds: []int64{groupID}}, &pb.GetGroupInfosResponse{})
+	if len(resp.GetGroups()) != 1 {
+		t.Fatalf("expected 1 group info, got %d", len(resp.GetGroups()))
 	}
-	if resp.Groups[0].Name != "NewName" {
-		t.Errorf("name = %q, want %q", resp.Groups[0].Name, "NewName")
+	if resp.GetGroups()[0].GetName() != "NewName" {
+		t.Errorf("name = %q, want %q", resp.GetGroups()[0].GetName(), "NewName")
 	}
 }
 
@@ -259,21 +222,12 @@ func TestUpdateGroupInfoNonOwner(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, m1 := clients[0], clients[1]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "OwnerOnly",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "OwnerOnly", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
-	resp := m1.send(wsRequest{
-		"action":   "update_group_info",
-		"group_id": createResp.GroupID,
-		"name":     "HackedName",
-	})
-	if resp.OK {
-		t.Fatal("non-owner should not be able to update group info")
-	}
+	sendErr(m1, "update_group_info", &pb.UpdateGroupInfoRequest{GroupId: createResp.GetGroupId(), Name: "HackedName"}, &pb.UpdateGroupInfoResponse{})
 }
 
 func TestAddGroupMember(t *testing.T) {
@@ -281,41 +235,32 @@ func TestAddGroupMember(t *testing.T) {
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
 	// Create group with owner + m1
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "AddMemberGroup",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "AddMemberGroup", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 	time.Sleep(300 * time.Millisecond)
 
 	// Drain notifications from group creation
-	owner.drainNotifs(func(n notification) bool { return true })
-	m1.drainNotifs(func(n notification) bool { return true })
-	m2.drainNotifs(func(n notification) bool { return true })
+	owner.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m1.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m2.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	// Owner adds m2
-	owner.sendOK(wsRequest{
-		"action":   "add_group_member",
-		"group_id": groupID,
-		"uid":      m2.uid,
-	})
+	sendOK(owner, "add_group_member", &pb.AddGroupMemberRequest{GroupId: groupID, Uid: m2.uid}, &pb.AddGroupMemberResponse{})
 
 	// Existing members and new member should get system message notification
-	m1.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	m1.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	}, 3*time.Second)
-	m2.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	m2.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	}, 3*time.Second)
 
 	// Verify member count is now 3
-	resp := owner.sendOK(wsRequest{
-		"action":   "get_group_members",
-		"group_id": groupID,
-	})
-	if len(resp.Members) != 3 {
-		t.Fatalf("expected 3 members after add, got %d", len(resp.Members))
+	resp := sendOK(owner, "get_group_members", &pb.GetGroupMembersRequest{GroupId: groupID}, &pb.GetGroupMembersResponse{})
+	if len(resp.GetMembers()) != 3 {
+		t.Fatalf("expected 3 members after add, got %d", len(resp.GetMembers()))
 	}
 }
 
@@ -323,60 +268,42 @@ func TestAddGroupMemberDuplicate(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, m1 := clients[0], clients[1]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "DupGroup",
-		"member_uids": []string{owner.uid, m1.uid},
-	})
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "DupGroup", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
 	// Try to add m1 again
-	resp := owner.send(wsRequest{
-		"action":   "add_group_member",
-		"group_id": createResp.GroupID,
-		"uid":      m1.uid,
-	})
-	if resp.OK {
-		t.Fatal("adding duplicate member should fail")
-	}
+	sendErr(owner, "add_group_member", &pb.AddGroupMemberRequest{GroupId: createResp.GetGroupId(), Uid: m1.uid}, &pb.AddGroupMemberResponse{})
 }
 
 func TestRemoveGroupMember(t *testing.T) {
 	clients := setupGroupUsers(t, 3)
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "RemoveGroup",
-		"member_uids": []string{owner.uid, m1.uid, m2.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "RemoveGroup", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 	time.Sleep(300 * time.Millisecond)
 
 	// Drain notifications from group creation
-	owner.drainNotifs(func(n notification) bool { return true })
-	m1.drainNotifs(func(n notification) bool { return true })
-	m2.drainNotifs(func(n notification) bool { return true })
+	owner.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m1.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m2.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	// Owner removes m2
-	owner.sendOK(wsRequest{
-		"action":   "remove_group_member",
-		"group_id": groupID,
-		"uid":      m2.uid,
-	})
+	sendOK(owner, "remove_group_member", &pb.RemoveGroupMemberRequest{GroupId: groupID, Uid: m2.uid}, &pb.RemoveGroupMemberResponse{})
 
 	// Remaining members should get system message
-	m1.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	m1.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	}, 3*time.Second)
 
 	// Verify member count is now 2
-	resp := owner.sendOK(wsRequest{
-		"action":   "get_group_members",
-		"group_id": groupID,
-	})
-	if len(resp.Members) != 2 {
-		t.Fatalf("expected 2 members after removal, got %d", len(resp.Members))
+	resp := sendOK(owner, "get_group_members", &pb.GetGroupMembersRequest{GroupId: groupID}, &pb.GetGroupMembersResponse{})
+	if len(resp.GetMembers()) != 2 {
+		t.Fatalf("expected 2 members after removal, got %d", len(resp.GetMembers()))
 	}
 }
 
@@ -384,19 +311,13 @@ func TestRemoveGroupMemberNonOwner(t *testing.T) {
 	clients := setupGroupUsers(t, 3)
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "NonOwnerRemove",
-		"member_uids": []string{owner.uid, m1.uid, m2.uid},
-	})
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "NonOwnerRemove", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
 	time.Sleep(200 * time.Millisecond)
 
 	// m1 (non-owner) tries to remove m2 — should fail
-	resp := m1.send(wsRequest{
-		"action":   "remove_group_member",
-		"group_id": createResp.GroupID,
-		"uid":      m2.uid,
-	})
+	resp := send(m1, "remove_group_member", &pb.RemoveGroupMemberRequest{GroupId: createResp.GetGroupId(), Uid: m2.uid}, &pb.RemoveGroupMemberResponse{})
 	// The server may not explicitly check owner for remove, but typically only owner can.
 	// If the server allows it, this test documents that behavior.
 	_ = resp
@@ -406,48 +327,37 @@ func TestGroupMessage(t *testing.T) {
 	clients := setupGroupUsers(t, 3)
 	owner, m1, m2 := clients[0], clients[1], clients[2]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "MsgGroup",
-		"member_uids": []string{owner.uid, m1.uid, m2.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "MsgGroup", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 	time.Sleep(300 * time.Millisecond)
 
 	// Drain creation notifications
-	owner.drainNotifs(func(n notification) bool { return true })
-	m1.drainNotifs(func(n notification) bool { return true })
-	m2.drainNotifs(func(n notification) bool { return true })
+	owner.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m1.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	m2.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	// Owner sends a text message to the group
-	sendResp := owner.sendOK(wsRequest{
-		"action":   "send_message",
-		"group_id": groupID,
-		"msg_type": 1,
-		"content":  "hello group",
-	})
-	if sendResp.MsgID == "" {
+	sendResp := owner.sendText(groupTarget(groupID), "hello group")
+	if sendResp.GetMsgId() == "" {
 		t.Fatal("send_message should return msg_id")
 	}
 
 	// Both members should receive messages:received notification
-	m1.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	m1.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	}, 3*time.Second)
-	m2.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	m2.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	}, 3*time.Second)
 
 	// Members can sync the message
 	time.Sleep(200 * time.Millisecond)
-	syncResp := m1.sendOK(wsRequest{
-		"action":   "sync_messages",
-		"last_seq": 0,
-		"limit":    100,
-	})
+	syncResp := sendOK(m1, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0, Limit: 100}, &pb.SyncMessagesResponse{})
 	found := false
-	for _, msg := range syncResp.Messages {
-		if msg.MsgID == sendResp.MsgID && msg.text() == "hello group" && msg.GroupID == groupID {
+	for _, msg := range syncResp.GetMessages() {
+		if msg.GetMsgId() == sendResp.GetMsgId() && bodyText(msg) == "hello group" && msg.GetTarget().GetGroupId() == groupID {
 			found = true
 			break
 		}
@@ -461,26 +371,18 @@ func TestGroupMessageNonMember(t *testing.T) {
 	clients := setupGroupUsers(t, 2)
 	owner, member := clients[0], clients[1]
 
-	createResp := owner.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "GroupNonMember",
-		"member_uids": []string{owner.uid, member.uid},
-	})
-	groupID := createResp.GroupID
+	createResp := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "GroupNonMember", MemberUids: []int64{owner.uid, member.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := createResp.GetGroupId()
 
 	outsider := dial(t)
 	outsider.registerAndLogin(uniqueName("grp"), "pass1234", "Outsider")
 
-	resp := outsider.send(wsRequest{
-		"action":   "send_message",
-		"group_id": groupID,
-		"msg_type": 1,
-		"content":  "i should fail",
-	})
-	if resp.OK {
-		t.Fatal("non-member send group message should fail")
-	}
-	if resp.Error != "非群员" {
-		t.Fatalf("error=%q, want 非群员", resp.Error)
+	resp := sendErr(outsider, "send_message", &pb.SendMessageRequest{
+		MsgId: msgid.Generate(), Target: groupTarget(groupID), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("i should fail"),
+	}, &pb.SendMessageResponse{})
+	if resp.GetBase().GetMsg() != "非群员" {
+		t.Fatalf("error=%q, want 非群员", resp.GetBase().GetMsg())
 	}
 }

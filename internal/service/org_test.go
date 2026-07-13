@@ -65,17 +65,17 @@ func TestOrgMembershipContactRow(t *testing.T) {
 
 	// sync_contacts 增量可见组织行。
 	resp := syncContactsService(s, "r", a, 0, 100, false)
-	if !resp.OK {
-		t.Fatalf("sync_contacts: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("sync_contacts: %s", errMsg(resp))
 	}
 	foundOrg := false
-	for _, c := range resp.Contacts {
-		if c.Target.OrgID != nil && int64(*c.Target.OrgID) == orgID {
+	for _, c := range resp.GetContacts() {
+		if c.GetTarget().GetOrgId() == orgID {
 			foundOrg = true
 		}
 	}
 	if !foundOrg {
-		t.Errorf("org row not in sync_contacts: %+v", resp.Contacts)
+		t.Errorf("org row not in sync_contacts: %+v", resp.GetContacts())
 	}
 
 	// A 还挂在 xx 部门：摘掉公司领导边不离职；摘掉最后一条边才 tombstone。

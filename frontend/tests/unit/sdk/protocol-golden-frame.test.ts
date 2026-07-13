@@ -1,36 +1,56 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { decodeFrame, encodeFrameWithEndian } from '../../../src/sdk/transport/frame';
 import { LoginRequest, Type } from '../../../src/sdk/generated/yimsg';
 
-interface GoldenFrameFixture {
-  protobuf: {
-    message: string;
-    username: string;
-    password: string;
-    body_hex: string;
-  };
-  frames: Array<{
-    name: string;
-    little_endian: boolean;
-    magic: number;
-    codec: number;
-    reserved: number;
-    checksum: number;
-    size: number;
-    request_id: string;
-    type: number;
-    body_hex: string;
-    frame_hex: string;
-  }>;
+// 以下常量是 Go / TypeScript 共享的 protobuf frame 字节样例（golden vector）。
+// 两侧分别硬编码同一组数据（见 internal/ws/golden_frame_test.go），不再通过
+// 共享 JSON fixture 文件中转；修改帧格式时需要同步更新两侧常量。
+const GOLDEN_USERNAME = 'alice';
+const GOLDEN_PASSWORD = 'pass';
+const GOLDEN_BODY_HEX = '5205616c6963655a0470617373';
+
+interface GoldenFrameCase {
+  name: string;
+  littleEndian: boolean;
+  magic: number;
+  codec: number;
+  reserved: number;
+  checksum: number;
+  size: number;
+  requestId: string;
+  type: number;
+  bodyHex: string;
+  frameHex: string;
 }
 
-function readFixture(): GoldenFrameFixture {
-  const path = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../tests/fixtures/protocol/golden_frames.json');
-  return JSON.parse(readFileSync(path, 'utf8')) as GoldenFrameFixture;
-}
+const GOLDEN_FRAME_CASES: GoldenFrameCase[] = [
+  {
+    name: 'login_request_big_endian',
+    littleEndian: false,
+    magic: 77,
+    codec: 2,
+    reserved: 0,
+    checksum: 227,
+    size: 13,
+    requestId: '72623859790382856',
+    type: 2,
+    bodyHex: GOLDEN_BODY_HEX,
+    frameHex: '4d0200e3000d010203040506070800025205616c6963655a0470617373',
+  },
+  {
+    name: 'login_request_little_endian',
+    littleEndian: true,
+    magic: 77,
+    codec: 3,
+    reserved: 0,
+    checksum: 48,
+    size: 13,
+    requestId: '72623859790382856',
+    type: 2,
+    bodyHex: GOLDEN_BODY_HEX,
+    frameHex: '4d0300300d00080706050403020102005205616c6963655a0470617373',
+  },
+];
 
 function fromHex(hex: string): Uint8Array {
   return Uint8Array.from(Buffer.from(hex, 'hex'));
@@ -42,35 +62,33 @@ function toHex(bytes: Uint8Array): string {
 
 describe('protocol golden frames', () => {
   it('Go / TypeScript 共享 LoginRequest frame 字节样例', () => {
-    const fixture = readFixture();
     const body = LoginRequest.encode(LoginRequest.create({
-      username: fixture.protobuf.username,
-      password: fixture.protobuf.password,
+      username: GOLDEN_USERNAME,
+      password: GOLDEN_PASSWORD,
     })).finish();
 
-    expect(fixture.protobuf.message).toBe('LoginRequest');
-    expect(toHex(body)).toBe(fixture.protobuf.body_hex);
+    expect(toHex(body)).toBe(GOLDEN_BODY_HEX);
 
-    for (const sample of fixture.frames) {
-      const frameBytes = fromHex(sample.frame_hex);
+    for (const sample of GOLDEN_FRAME_CASES) {
+      const frameBytes = fromHex(sample.frameHex);
       expect(frameBytes[0]).toBe(sample.magic);
       expect(frameBytes[1]).toBe(sample.codec);
       expect(frameBytes[2]).toBe(sample.reserved);
       expect(frameBytes[3]).toBe(sample.checksum);
 
-      const encoded = encodeFrameWithEndian('b', sample.little_endian, sample.request_id, Type.TYPE_ACTION_LOGIN, body);
-      expect(toHex(encoded)).toBe(sample.frame_hex);
+      const encoded = encodeFrameWithEndian('b', sample.littleEndian, sample.requestId, Type.TYPE_ACTION_LOGIN, body);
+      expect(toHex(encoded)).toBe(sample.frameHex);
 
       const frame = decodeFrame(frameBytes);
-      expect(frame.littleEndian).toBe(sample.little_endian);
-      expect(frame.requestId).toBe(sample.request_id);
+      expect(frame.littleEndian).toBe(sample.littleEndian);
+      expect(frame.requestId).toBe(sample.requestId);
       expect(frame.typeId).toBe(sample.type);
       expect(frame.body.byteLength).toBe(sample.size);
-      expect(toHex(frame.body)).toBe(sample.body_hex);
+      expect(toHex(frame.body)).toBe(sample.bodyHex);
 
       const decoded = LoginRequest.decode(frame.body);
-      expect(decoded.username).toBe(fixture.protobuf.username);
-      expect(decoded.password).toBe(fixture.protobuf.password);
+      expect(decoded.username).toBe(GOLDEN_USERNAME);
+      expect(decoded.password).toBe(GOLDEN_PASSWORD);
     }
   });
 });

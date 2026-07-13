@@ -17,37 +17,37 @@ func TestDMFullFlow(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	// Send DM
-	req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: "hello bob"}
+	req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hello bob"}
 	result := sendMessageService(s, "r1", uidA, req)
-	if !result.Response.OK {
-		t.Fatalf("send DM failed: %s", result.Response.Error)
+	if !isOK(result.Response) {
+		t.Fatalf("send DM failed: %s", errMsg(result.Response))
 	}
-	msgID := *result.Response.MsgID
+	msgID := result.Response.GetMsgId()
 	if err := msgid.Validate(msgID); err != nil {
 		t.Errorf("msg_id should be a valid msgid, got %q: %v", msgID, err)
 	}
 
 	// Read sender's messages
-	resp := listByConversationService(s, "r2", uidA, &appmsg.Request{ToUID: i64json(uidB), Limit: 100})
-	if len(resp.Messages) == 0 {
+	resp := listByConversationService(s, "r2", uidA, &appmsg.Request{ToUID: uidB, Limit: 100})
+	if len(resp.GetMessages()) == 0 {
 		t.Error("sender should have messages")
 	}
 
 	// Read receiver's messages
-	resp = listByConversationService(s, "r3", uidB, &appmsg.Request{ToUID: i64json(uidA), Limit: 100})
-	if len(resp.Messages) == 0 {
+	resp = listByConversationService(s, "r3", uidB, &appmsg.Request{ToUID: uidA, Limit: 100})
+	if len(resp.GetMessages()) == 0 {
 		t.Error("receiver should have messages")
 	}
 
 	// List conversations
 	convResp := listConversationsService(s, "r4", uidA, "", 200)
-	if len(convResp.Conversations) == 0 {
+	if len(convResp.GetConversations()) == 0 {
 		t.Error("should have conversations")
 	}
 
 	// Auth token still works
 	authResp := authenticateTokenService(s, "r5", tokenA)
-	if !authResp.OK {
+	if !isOK(authResp) {
 		t.Error("token should still work")
 	}
 }
@@ -62,13 +62,13 @@ func TestGroupChatFullFlow(t *testing.T) {
 
 	// Create group
 	groupResp := createGroupService(s, "r1", uidA, "TestGroup", []int64{uidA, uidB, uidC})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
 	// Send group message
-	req := &appmsg.Request{GroupID: i64json(groupID), MsgType: dal.MsgText, Content: "hi all"}
+	req := &appmsg.Request{GroupID: groupID, MsgType: dal.MsgText, Content: "hi all"}
 	result := sendMessageService(s, "r2", uidA, req)
-	if !result.Response.OK {
-		t.Fatalf("send failed: %s", result.Response.Error)
+	if !isOK(result.Response) {
+		t.Fatalf("send failed: %s", errMsg(result.Response))
 	}
 	drainTasks(s)
 
@@ -89,12 +89,12 @@ func TestGroupChatFullFlow(t *testing.T) {
 
 	// Group detail
 	detail := getGroupInfosService(s, "r3", uidA, []int64{groupID})
-	if len(detail.Groups) != 1 {
+	if len(detail.GetGroups()) != 1 {
 		t.Fatal("groups should have 1 entry")
 	}
 	members := getGroupMembersService(s, "r4", groupID, "", 200)
-	if len(members.Members) != 3 {
-		t.Errorf("members = %d, want 3", len(members.Members))
+	if len(members.GetMembers()) != 3 {
+		t.Errorf("members = %d, want 3", len(members.GetMembers()))
 	}
 }
 
@@ -106,7 +106,7 @@ func TestContactLifecycle(t *testing.T) {
 
 	// List: empty
 	resp := listContactsService(s, "r1", uidA, dal.ContactListFilter{}, "", 200)
-	if len(resp.Contacts) != 0 {
+	if len(resp.GetContacts()) != 0 {
 		t.Error("should start empty")
 	}
 
@@ -116,8 +116,8 @@ func TestContactLifecycle(t *testing.T) {
 
 	// List: should have Bob
 	resp = listContactsService(s, "r4", uidA, dal.ContactListFilter{}, "", 200)
-	if len(resp.Contacts) != 1 {
-		t.Fatalf("contacts = %d, want 1", len(resp.Contacts))
+	if len(resp.GetContacts()) != 1 {
+		t.Fatalf("contacts = %d, want 1", len(resp.GetContacts()))
 	}
 
 	// Update remark
@@ -125,8 +125,8 @@ func TestContactLifecycle(t *testing.T) {
 
 	// List: remark should be updated
 	resp = listContactsService(s, "r6", uidA, dal.ContactListFilter{}, "", 200)
-	if resp.Contacts[0].RemarkName != "Bobby" {
-		t.Errorf("remark = %q, want Bobby", resp.Contacts[0].RemarkName)
+	if resp.GetContacts()[0].GetRemarkName() != "Bobby" {
+		t.Errorf("remark = %q, want Bobby", resp.GetContacts()[0].GetRemarkName())
 	}
 
 	// Delete contact
@@ -134,8 +134,8 @@ func TestContactLifecycle(t *testing.T) {
 
 	// List: should be empty again
 	resp = listContactsService(s, "r8", uidA, dal.ContactListFilter{}, "", 200)
-	if len(resp.Contacts) != 0 {
-		t.Errorf("contacts = %d, want 0 after delete", len(resp.Contacts))
+	if len(resp.GetContacts()) != 0 {
+		t.Errorf("contacts = %d, want 0 after delete", len(resp.GetContacts()))
 	}
 }
 
@@ -155,13 +155,13 @@ func TestConcurrentDM(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			req := &appmsg.Request{
-				ToUID:   i64json(uidB),
+				ToUID:   uidB,
 				MsgType: dal.MsgText,
 				Content: fmt.Sprintf("msg-%d", idx),
 			}
 			result := sendMessageService(s, fmt.Sprintf("r%d", idx), uidA, req)
-			if !result.Response.OK {
-				errors <- result.Response.Error
+			if !isOK(result.Response) {
+				errors <- errMsg(result.Response)
 			}
 		}(i)
 	}
@@ -188,7 +188,7 @@ func TestConcurrentGroupFanout(t *testing.T) {
 	uidC := registerUser(t, s, "carol", "p", "Carol")
 
 	groupResp := createGroupService(s, "r1", uidA, "G", []int64{uidA, uidB, uidC})
-	groupID := int64(*groupResp.GroupIDResp)
+	groupID := groupResp.GetGroupId()
 
 	const count = 10
 	var wg sync.WaitGroup
@@ -198,7 +198,7 @@ func TestConcurrentGroupFanout(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			req := &appmsg.Request{
-				GroupID: i64json(groupID),
+				GroupID: groupID,
 				MsgType: dal.MsgText,
 				Content: fmt.Sprintf("gmsg-%d", idx),
 			}
@@ -237,7 +237,7 @@ func TestConcurrentRegisterSameName(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			resp := registerService(s, fmt.Sprintf("r%d", idx), "contested", "pass", "Name")
-			successes <- resp.OK
+			successes <- isOK(resp)
 		}(i)
 	}
 	wg.Wait()
@@ -261,7 +261,7 @@ func TestSessionLifecycle(t *testing.T) {
 
 	// Authenticate works
 	resp := authenticateTokenService(s, "r1", token)
-	if !resp.OK {
+	if !isOK(resp) {
 		t.Fatal("auth should work")
 	}
 
@@ -270,14 +270,14 @@ func TestSessionLifecycle(t *testing.T) {
 
 	// Authenticate fails
 	resp = authenticateTokenService(s, "r3", token)
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("auth should fail after logout")
 	}
 
 	// Re-login creates new session
 	_, newToken := loginUser(t, s, "alice", "pass")
 	resp = authenticateTokenService(s, "r4", newToken)
-	if !resp.OK {
+	if !isOK(resp) {
 		t.Error("new token should work")
 	}
 }
@@ -291,7 +291,7 @@ func TestMessageGCVerification(t *testing.T) {
 
 	// Send 10 messages
 	for i := 0; i < 10; i++ {
-		req := &appmsg.Request{ToUID: i64json(uidB), MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)}
+		req := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: fmt.Sprintf("msg-%d", i)}
 		sendMessageService(s, "r", uidA, req)
 	}
 

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -10,6 +9,9 @@ import (
 	"yimsg/internal/dal"
 	"yimsg/internal/msgid"
 	"yimsg/internal/protocol/pb"
+	"yimsg/internal/service/taskpb"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // 异步任务 kind：群消息 fanout 与群系统消息 fanout。
@@ -18,38 +20,9 @@ const (
 	taskKindGroupSystem  = "group_system"
 )
 
-// groupMessageTask 是一条群消息（普通或撤回）向其余成员 fanout 的任务载荷（JSON 持久化）。
-// Recalled 为 true 时携带撤回相关字段：把原消息覆盖为撤回占位，并写入一条撤回事件消息。
-type groupMessageTask struct {
-	MsgID            string  `json:"msg_id"`
-	FromUID          int64   `json:"from_uid"`
-	GroupID          int64   `json:"group_id"`
-	Recalled         bool    `json:"recalled,omitempty"`
-	MsgType          int8    `json:"msg_type"`
-	Body             []byte  `json:"body"`
-	SearchText       string  `json:"search_text"`
-	SendTime         int64   `json:"send_time"`
-	TargetUIDs       []int64 `json:"target_uids"`
-	RecallMsgID      string  `json:"recall_msg_id,omitempty"`
-	RecallMsgType    int8    `json:"recall_msg_type,omitempty"`
-	RecallBody       []byte  `json:"recall_body,omitempty"`
-	RecallSearchText string  `json:"recall_search_text,omitempty"`
-	RecallTime       int64   `json:"recall_time,omitempty"`
-}
-
-// groupSystemTask 是一条群系统消息向全体成员 fanout 的任务载荷（JSON 持久化）。
-type groupSystemTask struct {
-	MsgID      string  `json:"msg_id"`
-	GroupID    int64   `json:"group_id"`
-	Body       []byte  `json:"body"`
-	SearchText string  `json:"search_text"`
-	SendTime   int64   `json:"send_time"`
-	UIDs       []int64 `json:"uids"`
-}
-
-// submitTask 把任务序列化为 JSON 并投递到异步队列；handler 须幂等，重放 / 并发安全。
-func (s *AppState) submitTask(kind string, task any) {
-	payload, err := json.Marshal(task)
+// submitTask 把任务序列化为 protobuf 并投递到异步队列；handler 须幂等，重放 / 并发安全。
+func (s *AppState) submitTask(kind string, task proto.Message) {
+	payload, err := proto.Marshal(task)
 	if err != nil {
 		log.Printf("task queue marshal kind=%s err=%v", kind, err)
 		return
@@ -61,15 +34,15 @@ func (s *AppState) submitTask(kind string, task any) {
 
 // handleGroupMessageTask 是 group_message 任务的执行体：向各成员收件箱写入并通知。
 func (s *AppState) handleGroupMessageTask(payload []byte) error {
-	var task groupMessageTask
-	if err := json.Unmarshal(payload, &task); err != nil {
+	var task taskpb.GroupMessageTask
+	if err := proto.Unmarshal(payload, &task); err != nil {
 		log.Printf("group message task unmarshal err=%v", err)
 		return nil // 丢弃损坏载荷，避免每次启动无限重放
 	}
 
 	// 按分片批量并行写入，提升 fanout 吞吐。
 	shardBatches := make(map[int][]int64)
-	for _, uid := range task.TargetUIDs {
+	for _, uid := range task.GetTargetUids() {
 		idx := s.DB().UIDShards.ShardIndex(uid)
 		shardBatches[idx] = append(shardBatches[idx], uid)
 	}
@@ -79,8 +52,8 @@ func (s *AppState) handleGroupMessageTask(payload []byte) error {
 		go func(batch []int64) {
 			defer wg.Done()
 			for _, uid := range batch {
-				if err := s.applyGroupMessage(task, uid); err != nil {
-					log.Printf("fanout apply uid=%d msg_id=%s err=%v", uid, task.MsgID, err)
+				if err := s.applyGroupMessage(&task, uid); err != nil {
+					log.Printf("fanout apply uid=%d msg_id=%s err=%v", uid, task.GetMsgId(), err)
 				}
 			}
 		}(uids)
@@ -88,65 +61,66 @@ func (s *AppState) handleGroupMessageTask(payload []byte) error {
 	wg.Wait()
 
 	// 通知全体成员 + 发送者（所有设备）。
-	notif := appmsg.NewMessageNotif(task.FromUID, task.GroupID, task.MsgID)
-	for _, uid := range task.TargetUIDs {
+	notif := appmsg.NewMessageNotif(task.GetFromUid(), task.GetGroupId(), task.GetMsgId())
+	for _, uid := range task.GetTargetUids() {
 		s.Online().Notify(uid, notif)
 	}
-	s.Online().Notify(task.FromUID, notif)
+	s.Online().Notify(task.GetFromUid(), notif)
 	return nil
 }
 
 // applyGroupMessage 把一条群消息（普通或撤回）写入单个成员的收件箱。
 // 幂等性由 Insert(OR IGNORE) + UpdateByMsgID 保证：send / recall 任务无论先后或并发，
 // 最终都收敛到一致状态，因此不再需要 outbox 的 version 收敛。
-func (s *AppState) applyGroupMessage(task groupMessageTask, uid int64) error {
+func (s *AppState) applyGroupMessage(task *taskpb.GroupMessageTask, uid int64) error {
 	store := s.MessageStore(uid)
-	seq, err := store.Insert(uid, task.MsgID, task.FromUID, 0, task.GroupID, task.MsgType, task.Body, task.SearchText, task.SendTime)
+	msgType := int8(task.GetMsgType())
+	seq, err := store.Insert(uid, task.GetMsgId(), task.GetFromUid(), 0, task.GetGroupId(), msgType, task.GetBody(), task.GetSearchText(), task.GetSendTime())
 	if err != nil {
 		return err
 	}
-	if task.Recalled {
+	if task.GetRecalled() {
 		if seq == 0 {
-			if _, err := store.UpdateByMsgID(uid, task.MsgID, task.MsgType, task.Body, task.SearchText); err != nil {
+			if _, err := store.UpdateByMsgID(uid, task.GetMsgId(), msgType, task.GetBody(), task.GetSearchText()); err != nil {
 				return err
 			}
 		}
-		recallSeq, err := store.Insert(uid, task.RecallMsgID, task.FromUID, 0, task.GroupID, task.RecallMsgType, task.RecallBody, task.RecallSearchText, task.RecallTime)
+		recallSeq, err := store.Insert(uid, task.GetRecallMsgId(), task.GetFromUid(), 0, task.GetGroupId(), int8(task.GetRecallMsgType()), task.GetRecallBody(), task.GetRecallSearchText(), task.GetRecallTime())
 		if err != nil {
 			return err
 		}
 		if recallSeq > 0 {
-			upsertConversation(s, uid, task.FromUID, 0, task.GroupID, recallSeq, task.RecallMsgID, dal.ConversationUnreadKeep)
+			upsertConversation(s, uid, task.GetFromUid(), 0, task.GetGroupId(), recallSeq, task.GetRecallMsgId(), dal.ConversationUnreadKeep)
 		}
 		return nil
 	}
 	if seq > 0 {
-		mode := recipientUnreadMode(s, uid, 0, task.GroupID)
-		upsertConversation(s, uid, task.FromUID, 0, task.GroupID, seq, task.MsgID, mode)
+		mode := recipientUnreadMode(s, uid, 0, task.GetGroupId())
+		upsertConversation(s, uid, task.GetFromUid(), 0, task.GetGroupId(), seq, task.GetMsgId(), mode)
 	}
 	return nil
 }
 
 // handleGroupSystemTask 是 group_system 任务的执行体：向全体成员写入系统消息并通知。
 func (s *AppState) handleGroupSystemTask(payload []byte) error {
-	var task groupSystemTask
-	if err := json.Unmarshal(payload, &task); err != nil {
+	var task taskpb.GroupSystemTask
+	if err := proto.Unmarshal(payload, &task); err != nil {
 		log.Printf("group system task unmarshal err=%v", err)
 		return nil
 	}
-	for _, uid := range task.UIDs {
+	for _, uid := range task.GetUids() {
 		store := s.MessageStore(uid)
-		seq, err := store.Insert(uid, task.MsgID, 0, 0, task.GroupID, dal.MsgSystem, task.Body, task.SearchText, task.SendTime)
+		seq, err := store.Insert(uid, task.GetMsgId(), 0, 0, task.GetGroupId(), dal.MsgSystem, task.GetBody(), task.GetSearchText(), task.GetSendTime())
 		if err != nil {
 			log.Printf("system msg insert uid=%d err=%v", uid, err)
 			continue
 		}
 		if seq > 0 {
-			upsertConversation(s, uid, 0, 0, task.GroupID, seq, task.MsgID, dal.ConversationUnreadIncrement)
+			upsertConversation(s, uid, 0, 0, task.GetGroupId(), seq, task.GetMsgId(), dal.ConversationUnreadIncrement)
 		}
 	}
-	notif := appmsg.NewMessageNotif(0, task.GroupID, task.MsgID)
-	for _, uid := range task.UIDs {
+	notif := appmsg.NewMessageNotif(0, task.GetGroupId(), task.GetMsgId())
+	for _, uid := range task.GetUids() {
 		s.Online().Notify(uid, notif)
 	}
 	return nil
@@ -319,15 +293,15 @@ func sendGroupMessage(s *AppState, reqID uint64, msgID string, fromUID int64, gr
 	}
 
 	// 在主流程中直接把 fanout 投递到异步队列（启用持久化时先落盘，崩溃后可重放）。
-	s.submitTask(taskKindGroupMessage, groupMessageTask{
-		MsgID:      msgID,
-		FromUID:    fromUID,
-		GroupID:    groupID,
-		MsgType:    msgType,
+	s.submitTask(taskKindGroupMessage, &taskpb.GroupMessageTask{
+		MsgId:      msgID,
+		FromUid:    fromUID,
+		GroupId:    groupID,
+		MsgType:    int32(msgType),
 		Body:       body,
 		SearchText: searchText,
 		SendTime:   now,
-		TargetUIDs: otherUIDs,
+		TargetUids: otherUIDs,
 	})
 
 	return SendMessageResult{
@@ -617,13 +591,13 @@ func sendSystemMessageToUIDs(s *AppState, groupID int64, text string, uids []int
 		log.Printf("system msg encode err: %v", err)
 		return
 	}
-	s.submitTask(taskKindGroupSystem, groupSystemTask{
-		MsgID:      msgID,
-		GroupID:    groupID,
+	s.submitTask(taskKindGroupSystem, &taskpb.GroupSystemTask{
+		MsgId:      msgID,
+		GroupId:    groupID,
 		Body:       body,
 		SearchText: searchText,
 		SendTime:   now,
-		UIDs:       uids,
+		Uids:       uids,
 	})
 }
 

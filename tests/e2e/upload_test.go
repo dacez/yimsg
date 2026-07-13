@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+	"yimsg/internal/appmsg"
+	"yimsg/internal/protocol/pb"
 )
 
 // minimalPNG is a valid 1x1 pixel PNG image.
@@ -32,7 +34,7 @@ func TestUploadImage(t *testing.T) {
 	if resp.URL == "" {
 		t.Fatal("upload should return url")
 	}
-	if resp.Size == nil || *resp.Size <= 0 {
+	if resp.Size <= 0 {
 		t.Fatal("upload should return positive size")
 	}
 }
@@ -48,7 +50,7 @@ func TestUploadAvatar(t *testing.T) {
 	if resp.URL == "" {
 		t.Fatal("upload should return url")
 	}
-	if resp.Size == nil || *resp.Size <= 0 {
+	if resp.Size <= 0 {
 		t.Fatal("upload should return positive size")
 	}
 }
@@ -65,7 +67,7 @@ func TestUploadFile(t *testing.T) {
 	if resp.URL == "" {
 		t.Fatal("upload should return url")
 	}
-	if resp.Size == nil || *resp.Size != int64(len(content)) {
+	if resp.Size != int64(len(content)) {
 		t.Fatalf("upload size mismatch: got %v, want %d", resp.Size, len(content))
 	}
 }
@@ -126,8 +128,8 @@ func TestImageMessage(t *testing.T) {
 	receiver := dial(t)
 	receiver.registerAndLogin(uniqueName("upload"), "pass1234", "Receiver")
 	makeFriends(t, sender, receiver)
-	sender.drainNotifs(func(n notification) bool { return true })
-	receiver.drainNotifs(func(n notification) bool { return true })
+	sender.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	receiver.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	upResp := uploadFile(t, sender.token, "image", "photo.png", minimalPNG)
 	if !upResp.OK {
@@ -136,31 +138,29 @@ func TestImageMessage(t *testing.T) {
 	if upResp.MediaID == "" {
 		t.Fatal("upload should return media_id")
 	}
+	mediaID := upResp.mediaID(t)
 
 	// 媒体可按 /media/image/{media_id}（无扩展名）解析访问。
 	assertMediaAccessible(t, "/media/image/"+upResp.MediaID)
 
-	sendResp := sender.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   receiver.uid,
-		"msg_type": 2, // MESSAGE_TYPE_IMAGE
-		"body":     map[string]any{"image": map[string]any{"media_id": upResp.MediaID, "mime": "image/png", "caption": "photo"}},
-	})
-	if sendResp.MsgID == "" {
+	sendResp := sender.sendMsg(userTarget(receiver.uid), pb.MessageType_MESSAGE_TYPE_IMAGE,
+		&pb.MessageBody{Kind: &pb.MessageBody_Image{Image: &pb.ImageBody{MediaId: mediaID, Mime: "image/png", Caption: "photo"}}})
+	if sendResp.GetMsgId() == "" {
 		t.Fatal("send_message should return msg_id")
 	}
 
-	receiver.waitNotif(func(n notification) bool { return n.Type == "messages:received" }, 3*time.Second)
+	receiver.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" }, 3*time.Second)
 	time.Sleep(200 * time.Millisecond)
-	syncResp := receiver.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0, "limit": 100})
+	syncResp := sendOK(receiver, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0, Limit: 100}, &pb.SyncMessagesResponse{})
 	found := false
-	for _, msg := range syncResp.Messages {
-		if msg.MsgID == sendResp.MsgID {
-			if msg.MsgType != 2 {
-				t.Errorf("msg_type = %d, want 2", msg.MsgType)
+	for _, msg := range syncResp.GetMessages() {
+		if msg.GetMsgId() == sendResp.GetMsgId() {
+			if msg.GetMsgType() != pb.MessageType_MESSAGE_TYPE_IMAGE {
+				t.Errorf("msg_type = %v, want MESSAGE_TYPE_IMAGE", msg.GetMsgType())
 			}
-			if msg.Body.Image == nil || msg.Body.Image.MediaID != upResp.MediaID {
-				t.Errorf("image body media_id mismatch: %+v", msg.Body.Image)
+			image := msg.GetBody().GetImage()
+			if image == nil || image.GetMediaId() != mediaID {
+				t.Errorf("image body media_id mismatch: %+v", image)
 			}
 			found = true
 			break
@@ -177,8 +177,8 @@ func TestFileMessage(t *testing.T) {
 	receiver := dial(t)
 	receiver.registerAndLogin(uniqueName("upload"), "pass1234", "Receiver")
 	makeFriends(t, sender, receiver)
-	sender.drainNotifs(func(n notification) bool { return true })
-	receiver.drainNotifs(func(n notification) bool { return true })
+	sender.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	receiver.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	fileContent := []byte("important document content here")
 	upResp := uploadFile(t, sender.token, "file", "doc.txt", fileContent)
@@ -188,28 +188,26 @@ func TestFileMessage(t *testing.T) {
 	if upResp.MediaID == "" {
 		t.Fatal("upload should return media_id")
 	}
+	mediaID := upResp.mediaID(t)
 
-	sendResp := sender.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   receiver.uid,
-		"msg_type": 4, // MESSAGE_TYPE_FILE
-		"body":     map[string]any{"file": map[string]any{"media_id": upResp.MediaID, "name": "doc.txt", "size": len(fileContent)}},
-	})
-	if sendResp.MsgID == "" {
+	sendResp := sender.sendMsg(userTarget(receiver.uid), pb.MessageType_MESSAGE_TYPE_FILE,
+		&pb.MessageBody{Kind: &pb.MessageBody_File{File: &pb.FileBody{MediaId: mediaID, Name: "doc.txt", Size: int64(len(fileContent))}}})
+	if sendResp.GetMsgId() == "" {
 		t.Fatal("send_message should return msg_id")
 	}
 
-	receiver.waitNotif(func(n notification) bool { return n.Type == "messages:received" }, 3*time.Second)
+	receiver.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" }, 3*time.Second)
 	time.Sleep(200 * time.Millisecond)
-	syncResp := receiver.sendOK(wsRequest{"action": "sync_messages", "last_seq": 0, "limit": 100})
+	syncResp := sendOK(receiver, "sync_messages", &pb.SyncMessagesRequest{LastSeq: 0, Limit: 100}, &pb.SyncMessagesResponse{})
 	found := false
-	for _, msg := range syncResp.Messages {
-		if msg.MsgID == sendResp.MsgID {
-			if msg.MsgType != 4 {
-				t.Errorf("msg_type = %d, want 4", msg.MsgType)
+	for _, msg := range syncResp.GetMessages() {
+		if msg.GetMsgId() == sendResp.GetMsgId() {
+			if msg.GetMsgType() != pb.MessageType_MESSAGE_TYPE_FILE {
+				t.Errorf("msg_type = %v, want MESSAGE_TYPE_FILE", msg.GetMsgType())
 			}
-			if msg.Body.File == nil || msg.Body.File.MediaID != upResp.MediaID || msg.Body.File.Name != "doc.txt" {
-				t.Errorf("file body mismatch: %+v", msg.Body.File)
+			file := msg.GetBody().GetFile()
+			if file == nil || file.GetMediaId() != mediaID || file.GetName() != "doc.txt" {
+				t.Errorf("file body mismatch: %+v", file)
 			}
 			found = true
 			break
