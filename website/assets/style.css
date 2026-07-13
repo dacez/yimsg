@@ -516,6 +516,25 @@ code {
 }
 .nav-toggle:hover { background: var(--bg-soft); }
 
+.lang-toggle {
+  margin-left: 16px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.lang-toggle:hover { border-color: var(--color-brand-500); color: var(--color-brand-500); }
+
+@media (max-width: 560px) {
+  .lang-toggle { margin-left: 8px; padding: 6px 12px; }
+}
+
 @media (max-width: 560px) {
   .nav-toggle { display: flex; align-items: center; }
 
