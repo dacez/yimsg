@@ -1,136 +1,87 @@
 package appmsg
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"strconv"
 	"yimsg/internal/dal"
-	"yimsg/internal/protocol/pb"
-
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 )
 
 // Response is the unified server response envelope：业务方法构造它之后，
 // internal/service/protobuf_methods.go 的 toXxxResponse 会把它转成真正上线
-// 的 pb.XxxResponse 类型发出去；json tag 只服务于测试辅助（把 pb 响应转成
-// 这个结构体做字段级断言，见 internal/service/protobuf_service_test_helpers_test.go
-// 的 responseFromProto），不是真实的对外协议，线上协议是 internal/protocol/yimsg.proto
-// 定义的二进制 protobuf 帧。
+// 的 pb.XxxResponse 类型发出去。这个结构体只是进程内的构造中转，不经过任何
+// 序列化，线上协议是 internal/protocol/yimsg.proto 定义的二进制 protobuf 帧。
 type Response struct {
-	RequestID uint64 `json:"request_id"`
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	ErrorCode string `json:"error_code,omitempty"`
+	RequestID uint64
+	OK        bool
+	Error     string
+	ErrorCode string
 
 	// Flattened data fields — only the relevant ones are set per response type.
-	// Omitted fields are not included in JSON output.
 
 	// RegisterResult
-	UID *JSONInt64 `json:"uid,omitempty"`
+	UID *int64
 
 	// LoginResult / AuthResult
-	Token        string        `json:"token,omitempty"`
-	ClientConfig *ClientConfig `json:"client_config,omitempty"`
+	Token        string
+	ClientConfig *ClientConfig
 
 	// Profile
-	Profile *dal.User `json:"profile,omitempty"`
+	Profile *dal.User
 
 	// Contacts
-	Contacts []Contact            `json:"contacts,omitempty"`
-	Users    []dal.BlocklistEntry `json:"users,omitempty"`
-	Mutelist []MutelistEntry      `json:"mutes,omitempty"`
+	Contacts []Contact
+	Users    []dal.BlocklistEntry
+	Mutelist []MutelistEntry
 
 	// ContactWrite
-	Seq *int64 `json:"seq,omitempty"`
+	Seq *int64
 
 	// MessageSent
-	MsgID *string `json:"msg_id,omitempty"`
+	MsgID *string
 	// Seq is shared with ContactWrite
 
 	// MessageSync / ConversationMessages
-	Messages []Message `json:"messages,omitempty"`
+	Messages []Message
 
 	// ConversationList
-	Conversations []ConversationEntry `json:"conversations,omitempty"`
-	Total         *int64              `json:"total,omitempty"`
-	UnreadCount   *int64              `json:"unread_count,omitempty"`
-	HasMore       *bool               `json:"has_more,omitempty"`
-	CursorSeq     *int64              `json:"cursor_seq,omitempty"`
+	Conversations []ConversationEntry
+	Total         *int64
+	UnreadCount   *int64
+	HasMore       *bool
+	CursorSeq     *int64
 
 	// 展示通道统一分页信息（get_* 列表使用；sync_* 仍用 has_more + cursor_seq）。
-	Page *PageInfo `json:"page,omitempty"`
+	Page *PageInfo
 
 	// GroupCreated
-	GroupIDResp *JSONInt64 `json:"group_id,omitempty"`
+	GroupIDResp *int64
 
 	// GroupMembers
-	Members []GroupMember `json:"members,omitempty"`
+	Members []GroupMember
 
 	// Batch
-	Profiles []dal.User      `json:"profiles,omitempty"`
-	Groups   []dal.GroupInfo `json:"groups,omitempty"`
+	Profiles []dal.User
+	Groups   []dal.GroupInfo
 
 	// Org（组织/tag 展示资料字典 + tags 展开与同步 + 管理面）
-	Orgs         []OrgInfo   `json:"orgs,omitempty"`
-	TagInfos     []TagInfo   `json:"tag_infos,omitempty"`
-	Tags         []Tag       `json:"tags,omitempty"`
-	OrgTagID     *JSONInt64  `json:"tag_id,omitempty"`
-	OrgAdminUIDs []JSONInt64 `json:"admin_uids,omitempty"`
-	OrgIDResp    *JSONInt64  `json:"org_id,omitempty"`
+	Orgs         []OrgInfo
+	TagInfos     []TagInfo
+	Tags         []Tag
+	OrgTagID     *int64
+	OrgAdminUIDs []int64
+	OrgIDResp    *int64
 
 	// Upload
-	URL  string `json:"url,omitempty"`
-	Size *int64 `json:"size,omitempty"`
+	URL  string
+	Size *int64
 }
 
 // PageInfo 是展示通道统一分页响应片段，桥接到 pb.PageInfo。
 // 游标对客户端不透明；total<0 表示未知/未统计。
 type PageInfo struct {
-	StartCursor     string `json:"start_cursor"`
-	EndCursor       string `json:"end_cursor"`
-	HasMoreBackward bool   `json:"has_more_backward"`
-	HasMoreForward  bool   `json:"has_more_forward"`
-	Total           int64  `json:"total"`
-}
-
-// JSONInt64 serializes int64 as a JSON string to avoid precision loss.
-type JSONInt64 int64
-
-func (j JSONInt64) MarshalJSON() ([]byte, error) {
-	return json.Marshal(fmt.Sprintf("%d", int64(j)))
-}
-
-func (j *JSONInt64) UnmarshalJSON(data []byte) error {
-	var value any
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber()
-	if err := dec.Decode(&value); err != nil {
-		return err
-	}
-	var parsed int64
-	switch v := value.(type) {
-	case string:
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			return err
-		}
-		parsed = n
-	case json.Number:
-		n, err := v.Int64()
-		if err != nil {
-			return err
-		}
-		parsed = n
-	}
-	*j = JSONInt64(parsed)
-	return nil
-}
-
-func NewJSONInt64(v int64) *JSONInt64 {
-	j := JSONInt64(v)
-	return &j
+	StartCursor     string
+	EndCursor       string
+	HasMoreBackward bool
+	HasMoreForward  bool
+	Total           int64
 }
 
 func Int64Ptr(v int64) *int64 {
@@ -143,26 +94,26 @@ func BoolPtr(v bool) *bool {
 
 // ClientConfig contains client-side configuration returned on login/authenticate.
 type ClientConfig struct {
-	CacheTTLSeconds     int64 `json:"cache_ttl_seconds"`
-	CacheMaxEntries     int   `json:"cache_max_entries"`
-	RecallWindowSeconds int64 `json:"recall_window_seconds"`
-	BatchMaxLimit       int64 `json:"batch_max_limit"`
+	CacheTTLSeconds     int64
+	CacheMaxEntries     int
+	RecallWindowSeconds int64
+	BatchMaxLimit       int64
 }
 
 // ConversationTarget represents a normalized direct or group conversation target.
 // OrgID 仅通讯录条目（ContactTarget 语义）使用；会话目标永远不携带 OrgID。
 type ConversationTarget struct {
-	UID     *JSONInt64 `json:"uid,omitempty"`
-	GroupID *JSONInt64 `json:"group_id,omitempty"`
-	OrgID   *JSONInt64 `json:"org_id,omitempty"`
+	UID     *int64
+	GroupID *int64
+	OrgID   *int64
 }
 
 func NewConversationTarget(uid, groupID int64) ConversationTarget {
 	if groupID > 0 {
-		return ConversationTarget{GroupID: NewJSONInt64(groupID)}
+		return ConversationTarget{GroupID: Int64Ptr(groupID)}
 	}
 	if uid > 0 {
-		return ConversationTarget{UID: NewJSONInt64(uid)}
+		return ConversationTarget{UID: Int64Ptr(uid)}
 	}
 	return ConversationTarget{}
 }
@@ -170,66 +121,51 @@ func NewConversationTarget(uid, groupID int64) ConversationTarget {
 // NewContactTarget 构造通讯录条目目标：friend / group / org 三者互斥。
 func NewContactTarget(uid, groupID, orgID int64) ConversationTarget {
 	if orgID > 0 {
-		return ConversationTarget{OrgID: NewJSONInt64(orgID)}
+		return ConversationTarget{OrgID: Int64Ptr(orgID)}
 	}
 	return NewConversationTarget(uid, groupID)
 }
 
 // Contact represents a normalized contact relationship.
 type Contact struct {
-	Target     ConversationTarget `json:"target"`
-	Status     uint8              `json:"status"`
-	Seq        int64              `json:"seq"`
-	RemarkName string             `json:"remark_name"`
-	SortKey    string             `json:"sort_key"`
-	SearchText string             `json:"search_text"`
+	Target     ConversationTarget
+	Status     uint8
+	Seq        int64
+	RemarkName string
+	SortKey    string
+	SearchText string
 }
 
 // MutelistEntry represents a normalized conversation mute setting.
 type MutelistEntry struct {
-	Target    ConversationTarget `json:"target"`
-	Status    uint8              `json:"status"`
-	Seq       int64              `json:"seq"`
-	UpdatedAt int64              `json:"updated_at,omitempty"`
+	Target    ConversationTarget
+	Status    uint8
+	Seq       int64
+	UpdatedAt int64
 }
 
 // Message represents a normalized message response.
-// Body 承载 protojson 形式的 MessageBody。
+// Body 是原始 protobuf 编码的 MessageBody 字节，原样透传给
+// internal/service/protobuf_methods.go 的 messageToProto，不做任何 JSON 中转。
 type Message struct {
-	Seq      int64              `json:"seq"`
-	MsgID    string             `json:"msg_id"`
-	FromUID  JSONInt64          `json:"from_uid"`
-	Target   ConversationTarget `json:"target"`
-	MsgType  int8               `json:"msg_type"`
-	Body     json.RawMessage    `json:"body"`
-	SendTime int64              `json:"send_time"`
-	Status   uint8              `json:"status"`
-}
-
-var messageBodyMarshal = protojson.MarshalOptions{}
-
-func bodyToJSON(raw []byte) json.RawMessage {
-	var body pb.MessageBody
-	if len(raw) > 0 {
-		if err := proto.Unmarshal(raw, &body); err != nil {
-			return json.RawMessage("{}")
-		}
-	}
-	data, err := messageBodyMarshal.Marshal(&body)
-	if err != nil {
-		return json.RawMessage("{}")
-	}
-	return json.RawMessage(data)
+	Seq      int64
+	MsgID    string
+	FromUID  int64
+	Target   ConversationTarget
+	MsgType  int8
+	Body     []byte
+	SendTime int64
+	Status   uint8
 }
 
 func MessageFromDAL(m dal.Message) Message {
 	return Message{
 		Seq:      m.Seq,
 		MsgID:    m.MsgID,
-		FromUID:  JSONInt64(m.FromUID),
+		FromUID:  m.FromUID,
 		Target:   NewConversationTarget(m.ToUID, m.GroupID),
 		MsgType:  m.MsgType,
-		Body:     bodyToJSON(m.Body),
+		Body:     m.Body,
 		SendTime: m.SendTime,
 		Status:   m.Status,
 	}
@@ -245,44 +181,44 @@ func MessagesFromDAL(messages []dal.Message) []Message {
 
 // ConversationEntry represents a conversation in the list.
 type ConversationEntry struct {
-	Target      ConversationTarget `json:"target"`
-	LastSeq     int64              `json:"last_seq"`
-	LastMsg     *Message           `json:"last_msg"`
-	UnreadCount int64              `json:"unread_count"`
-	Status      uint8              `json:"status"`
+	Target      ConversationTarget
+	LastSeq     int64
+	LastMsg     *Message
+	UnreadCount int64
+	Status      uint8
 }
 
 // GroupMember represents a group member entry.
 type GroupMember struct {
-	UID      JSONInt64 `json:"uid"`
-	Role     int8      `json:"role"`
-	JoinedAt int64     `json:"joined_at"`
+	UID      int64
+	Role     int8
+	JoinedAt int64
 }
 
 // OrgInfo 是组织展示资料字典：仅名字/头像，不参与同步（与 GroupInfo 同构）。
 type OrgInfo struct {
-	OrgID  JSONInt64 `json:"org_id"`
-	Name   string    `json:"name"`
-	Avatar string    `json:"avatar,omitempty"`
+	OrgID  int64
+	Name   string
+	Avatar string
 }
 
 // TagInfo 是 tag（部门/横向分组）展示资料字典：仅名字/头像，不参与同步。
 type TagInfo struct {
-	TagID  JSONInt64 `json:"tag_id"`
-	Name   string    `json:"name"`
-	Avatar string    `json:"avatar,omitempty"`
+	TagID  int64
+	Name   string
+	Avatar string
 }
 
 // Tag 是 tags（组织关系表）条目：在线展开与同步共用，唯一的同步域。
 type Tag struct {
-	TagID     JSONInt64 `json:"tag_id"`
-	ChildID   JSONInt64 `json:"child_id"`
-	ChildType uint8     `json:"child_type"`
-	Title     string    `json:"title,omitempty"`
-	Rank      int64     `json:"rank"`
-	SortKey   string    `json:"sort_key"`
-	Status    uint8     `json:"status"`
-	Seq       int64     `json:"seq"`
+	TagID     int64
+	ChildID   int64
+	ChildType uint8
+	Title     string
+	Rank      int64
+	SortKey   string
+	Status    uint8
+	Seq       int64
 }
 
 // OK responses
@@ -292,20 +228,20 @@ func OKEmpty(requestID uint64) *Response {
 }
 
 func OKRegister(requestID uint64, uid int64) *Response {
-	return &Response{RequestID: requestID, OK: true, UID: NewJSONInt64(uid)}
+	return &Response{RequestID: requestID, OK: true, UID: Int64Ptr(uid)}
 }
 
 func OKLogin(requestID uint64, token string, uid int64, cc *ClientConfig) *Response {
 	return &Response{
 		RequestID: requestID, OK: true,
-		Token: token, UID: NewJSONInt64(uid), ClientConfig: cc,
+		Token: token, UID: Int64Ptr(uid), ClientConfig: cc,
 	}
 }
 
 func OKAuth(requestID uint64, uid int64, cc *ClientConfig) *Response {
 	return &Response{
 		RequestID: requestID, OK: true,
-		UID: NewJSONInt64(uid), ClientConfig: cc,
+		UID: Int64Ptr(uid), ClientConfig: cc,
 	}
 }
 
@@ -340,7 +276,7 @@ func OKConversationMessages(requestID uint64, messages []dal.Message) *Response 
 }
 
 func OKGroupCreated(requestID uint64, groupID int64) *Response {
-	return &Response{RequestID: requestID, OK: true, GroupIDResp: NewJSONInt64(groupID)}
+	return &Response{RequestID: requestID, OK: true, GroupIDResp: Int64Ptr(groupID)}
 }
 
 func OKGroupMembers(requestID uint64, members []GroupMember) *Response {
@@ -428,18 +364,16 @@ func OKSyncTags(requestID uint64, tags []Tag) *Response {
 }
 
 func OKOrgTagCreated(requestID uint64, tagID int64) *Response {
-	return &Response{RequestID: requestID, OK: true, OrgTagID: NewJSONInt64(tagID)}
+	return &Response{RequestID: requestID, OK: true, OrgTagID: Int64Ptr(tagID)}
 }
 
 func OKOrgCreated(requestID uint64, orgID int64) *Response {
-	return &Response{RequestID: requestID, OK: true, OrgIDResp: NewJSONInt64(orgID)}
+	return &Response{RequestID: requestID, OK: true, OrgIDResp: Int64Ptr(orgID)}
 }
 
 func OKOrgAdmins(requestID uint64, uids []int64) *Response {
-	out := make([]JSONInt64, len(uids))
-	for i, u := range uids {
-		out[i] = JSONInt64(u)
-	}
+	out := make([]int64, len(uids))
+	copy(out, uids)
 	return &Response{RequestID: requestID, OK: true, OrgAdminUIDs: out}
 }
 

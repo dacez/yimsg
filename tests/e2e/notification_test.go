@@ -3,6 +3,8 @@ package e2e
 import (
 	"testing"
 	"time"
+	"yimsg/internal/appmsg"
+	"yimsg/internal/protocol/pb"
 )
 
 // TestNewMessageDMNotification verifies that when A sends a DM to B,
@@ -14,23 +16,18 @@ func TestNewMessageDMNotification(t *testing.T) {
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
 	// A and B become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// A sends DM to B
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "hello bob",
-	})
+	a.sendText(userTarget(b.uid), "hello bob")
 
 	// B should receive messages:received notification
-	n := b.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.FromUID == a.uid
+	n := b.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifUID(n) == a.uid
 	})
-	if n.FromUID != a.uid {
-		t.Errorf("from_uid = %q, want %q", n.FromUID, a.uid)
+	if notifUID(n) != a.uid {
+		t.Errorf("from_uid = %d, want %d", notifUID(n), a.uid)
 	}
 }
 
@@ -45,38 +42,29 @@ func TestNewMessageGroupNotification(t *testing.T) {
 	c.registerAndLogin(uniqueName("notif"), "pass1234", "Charlie")
 
 	// Create group with A, B, C
-	resp := a.sendOK(wsRequest{
-		"action":      "create_group",
-		"name":        "TestGroup",
-		"member_uids": []string{b.uid, c.uid},
-	})
-	groupID := resp.GroupID
-	if groupID == "" {
+	resp := sendOK(a, "create_group", &pb.CreateGroupRequest{Name: "TestGroup", MemberUids: []int64{b.uid, c.uid}}, &pb.CreateGroupResponse{})
+	groupID := resp.GetGroupId()
+	if groupID <= 0 {
 		t.Fatal("create_group should return group_id")
 	}
 
 	// A sends group message
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"group_id": groupID,
-		"msg_type": 1,
-		"content":  "hello group",
-	})
+	a.sendText(groupTarget(groupID), "hello group")
 
 	// B receives messages:received with group_id
-	nb := b.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	nb := b.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	})
-	if nb.GroupID != groupID {
-		t.Errorf("B notification group_id = %q, want %q", nb.GroupID, groupID)
+	if notifGroupID(nb) != groupID {
+		t.Errorf("B notification group_id = %d, want %d", notifGroupID(nb), groupID)
 	}
 
 	// C receives messages:received with group_id
-	nc := c.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.GroupID == groupID
+	nc := c.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifGroupID(n) == groupID
 	})
-	if nc.GroupID != groupID {
-		t.Errorf("C notification group_id = %q, want %q", nc.GroupID, groupID)
+	if notifGroupID(nc) != groupID {
+		t.Errorf("C notification group_id = %d, want %d", notifGroupID(nc), groupID)
 	}
 }
 
@@ -88,9 +76,9 @@ func TestContactsUpdatedOnAddFriend(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
 
-	n := b.waitNotif(func(n notification) bool {
+	n := b.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 	if n.Type != "contacts:updated" {
@@ -106,21 +94,21 @@ func TestContactsUpdatedOnAcceptFriend(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
 	// Drain B's notification from the add
-	b.waitNotif(func(n notification) bool {
+	b.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// A should get contacts:updated on accept
-	a.waitNotif(func(n notification) bool {
+	a.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 
 	// B (the accepter) should also get contacts:updated
-	b.waitNotif(func(n notification) bool {
+	b.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 }
@@ -139,52 +127,49 @@ func TestAcceptFriendMultiDevice(t *testing.T) {
 	b2 := dial(t)
 	b2.authenticate(token)
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b1.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b1.uid}, &pb.AddFriendResponse{})
 	// Drain add notifications on both B devices
-	b1.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
-	b2.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+	b1.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	b2.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 
 	// B1 accepts
-	b1.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(b1, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// A should get contacts:updated
-	a.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 
 	// B1 (accepter) should get contacts:updated
-	b1.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+	b1.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 
 	// B2 (other device) should also get contacts:updated
-	b2.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+	b2.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 }
 
 // TestAcceptFriendContactStatus verifies that after accept, get_contacts returns
 // updated status (FRIEND=1) for both users, not PENDING(2).
 func TestAcceptFriendContactStatus(t *testing.T) {
-	const statusFriend uint8 = 1
-	const statusPending uint8 = 2
-
 	a := dial(t)
 	a.registerAndLogin(uniqueName("notif"), "pass1234", "Alice")
 	b := dial(t)
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
 	// Before accept: both should have PENDING status
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	respA := a.sendOK(wsRequest{"action": "get_contacts"})
-	if len(respA.Contacts) != 1 || respA.Contacts[0].Status != statusPending {
-		t.Errorf("before accept: A's contact status = %d, want %d (PENDING)", respA.Contacts[0].Status, statusPending)
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	respA := sendOK(a, "get_contacts", &pb.GetContactsRequest{}, &pb.GetContactsResponse{})
+	if len(respA.GetContacts()) != 1 || respA.GetContacts()[0].GetStatus() != pb.ContactStatus_CONTACT_STATUS_PENDING_OUTGOING {
+		t.Errorf("before accept: A's contact status = %v, want PENDING_OUTGOING", respA.GetContacts()[0].GetStatus())
 	}
 
 	// Accept
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// After accept: both should have FRIEND status
-	respA = a.sendOK(wsRequest{"action": "get_contacts"})
+	respA = sendOK(a, "get_contacts", &pb.GetContactsRequest{}, &pb.GetContactsResponse{})
 	foundA := false
-	for _, c := range respA.Contacts {
-		if c.FriendUID == b.uid {
-			if c.Status != statusFriend {
-				t.Errorf("A's contact status = %d, want %d (FRIEND)", c.Status, statusFriend)
+	for _, c := range respA.GetContacts() {
+		if c.GetTarget().GetUid() == b.uid {
+			if c.GetStatus() != pb.ContactStatus_CONTACT_STATUS_FRIEND {
+				t.Errorf("A's contact status = %v, want FRIEND", c.GetStatus())
 			}
 			foundA = true
 		}
@@ -193,12 +178,12 @@ func TestAcceptFriendContactStatus(t *testing.T) {
 		t.Error("A's get_contacts did not include B")
 	}
 
-	respB := b.sendOK(wsRequest{"action": "get_contacts"})
+	respB := sendOK(b, "get_contacts", &pb.GetContactsRequest{}, &pb.GetContactsResponse{})
 	foundB := false
-	for _, c := range respB.Contacts {
-		if c.FriendUID == a.uid {
-			if c.Status != statusFriend {
-				t.Errorf("B's contact status = %d, want %d (FRIEND)", c.Status, statusFriend)
+	for _, c := range respB.GetContacts() {
+		if c.GetTarget().GetUid() == a.uid {
+			if c.GetStatus() != pb.ContactStatus_CONTACT_STATUS_FRIEND {
+				t.Errorf("B's contact status = %v, want FRIEND", c.GetStatus())
 			}
 			foundB = true
 		}
@@ -219,25 +204,25 @@ func TestContactListOrderByRemarkName(t *testing.T) {
 	c.registerAndLogin(uniqueName("notif"), "pass1234", "Charlie")
 
 	// A adds C first, then B. Both accept.
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": c.uid})
-	c.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: c.uid}, &pb.AddFriendResponse{})
+	sendOK(c, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// Set explicit remarks so order depends on remark_name instead of insertion order.
-	a.sendOK(wsRequest{"action": "update_remark", "friend_uid": c.uid, "remark_name": "Charlie"})
-	a.sendOK(wsRequest{"action": "update_remark", "friend_uid": b.uid, "remark_name": "Bob"})
+	sendOK(a, "update_remark", &pb.UpdateRemarkRequest{Target: userContactTarget(c.uid), RemarkName: "Charlie"}, &pb.UpdateRemarkResponse{})
+	sendOK(a, "update_remark", &pb.UpdateRemarkRequest{Target: userContactTarget(b.uid), RemarkName: "Bob"}, &pb.UpdateRemarkResponse{})
 
 	// Despite C being added first, list should return Bob before Charlie (alphabetical)
-	resp := a.sendOK(wsRequest{"action": "get_contacts"})
-	if len(resp.Contacts) < 2 {
-		t.Fatalf("expected at least 2 contacts, got %d", len(resp.Contacts))
+	resp := sendOK(a, "get_contacts", &pb.GetContactsRequest{}, &pb.GetContactsResponse{})
+	if len(resp.GetContacts()) < 2 {
+		t.Fatalf("expected at least 2 contacts, got %d", len(resp.GetContacts()))
 	}
-	if resp.Contacts[0].RemarkName != "Bob" {
-		t.Errorf("first contact remark = %q, want Bob", resp.Contacts[0].RemarkName)
+	if resp.GetContacts()[0].GetRemarkName() != "Bob" {
+		t.Errorf("first contact remark = %q, want Bob", resp.GetContacts()[0].GetRemarkName())
 	}
-	if resp.Contacts[1].RemarkName != "Charlie" {
-		t.Errorf("second contact remark = %q, want Charlie", resp.Contacts[1].RemarkName)
+	if resp.GetContacts()[1].GetRemarkName() != "Charlie" {
+		t.Errorf("second contact remark = %q, want Charlie", resp.GetContacts()[1].GetRemarkName())
 	}
 }
 
@@ -249,13 +234,13 @@ func TestContactsUpdatedOnRejectFriend(t *testing.T) {
 	b := dial(t)
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
 	// Drain B's notification from add (only B is notified)
-	b.waitNotif(func(n notification) bool { return n.Type == "contacts:updated" })
+	b.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 
-	b.sendOK(wsRequest{"action": "reject_friend", "friend_uid": a.uid})
+	sendOK(b, "reject_friend", &pb.RejectFriendRequest{FriendUid: a.uid}, &pb.RejectFriendResponse{})
 
-	n := a.waitNotif(func(n notification) bool {
+	n := a.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 	if n.Type != "contacts:updated" {
@@ -278,20 +263,20 @@ func TestContactsUpdatedOnDeleteFriend(t *testing.T) {
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
 	// Become friends
-	a1.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a1.uid})
+	sendOK(a1, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a1.uid}, &pb.AcceptFriendResponse{})
 
 	// Drain all contacts:updated notifications from friend setup
 	time.Sleep(300 * time.Millisecond)
-	a1.drainNotifs(func(n notification) bool { return n.Type == "contacts:updated" })
-	a2.drainNotifs(func(n notification) bool { return n.Type == "contacts:updated" })
-	b.drainNotifs(func(n notification) bool { return n.Type == "contacts:updated" })
+	a1.drainNotifs(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	a2.drainNotifs(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	b.drainNotifs(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
 
 	// A1 deletes B
-	a1.sendOK(wsRequest{"action": "delete_friend", "friend_uid": b.uid})
+	sendOK(a1, "delete_friend", &pb.DeleteFriendRequest{FriendUid: b.uid}, &pb.DeleteFriendResponse{})
 
 	// A2 (other device) should get contacts:updated
-	n := a2.waitNotif(func(n notification) bool {
+	n := a2.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "contacts:updated"
 	})
 	if n.Type != "contacts:updated" {
@@ -313,26 +298,21 @@ func TestReadClearedMultiDevice(t *testing.T) {
 	b2.authenticate(token)
 
 	// Become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b1.uid})
-	b1.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b1.uid}, &pb.AddFriendResponse{})
+	sendOK(b1, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 
 	// A sends message to B
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b1.uid,
-		"msg_type": 1,
-		"content":  "test read cleared",
-	})
+	a.sendText(userTarget(b1.uid), "test read cleared")
 
 	// Wait for message notifications
-	b1.waitNotif(func(n notification) bool { return n.Type == "messages:received" })
-	b2.waitNotif(func(n notification) bool { return n.Type == "messages:received" })
+	b1.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" })
+	b2.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" })
 
 	// B1 marks read
-	b1.sendOK(wsRequest{"action": "clear_unread", "to_uid": a.uid})
+	sendOK(b1, "clear_unread", &pb.ClearUnreadRequest{Target: userTarget(a.uid)}, &pb.ClearUnreadResponse{})
 
 	// B2 should get conversations:clearunread notification
-	n := b2.waitNotif(func(n notification) bool {
+	n := b2.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "conversations:clearunread"
 	})
 	if n.Type != "conversations:clearunread" {
@@ -354,32 +334,27 @@ func TestMultiDeviceNotification(t *testing.T) {
 	b2.authenticate(token)
 
 	// Become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b1.uid})
-	b1.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b1.uid}, &pb.AddFriendResponse{})
+	sendOK(b1, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 	time.Sleep(300 * time.Millisecond)
-	b1.drainNotifs(func(n notification) bool { return true })
-	b2.drainNotifs(func(n notification) bool { return true })
+	b1.drainNotifs(func(n *appmsg.Notification) bool { return true })
+	b2.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	// A sends DM to B
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b1.uid,
-		"msg_type": 1,
-		"content":  "multi-device test",
-	})
+	a.sendText(userTarget(b1.uid), "multi-device test")
 
 	// Both B1 and B2 should receive messages:received
-	n1 := b1.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.FromUID == a.uid
+	n1 := b1.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifUID(n) == a.uid
 	})
-	n2 := b2.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.FromUID == a.uid
+	n2 := b2.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifUID(n) == a.uid
 	})
-	if n1.FromUID != a.uid {
-		t.Errorf("b1 from_uid = %q, want %q", n1.FromUID, a.uid)
+	if notifUID(n1) != a.uid {
+		t.Errorf("b1 from_uid = %d, want %d", notifUID(n1), a.uid)
 	}
-	if n2.FromUID != a.uid {
-		t.Errorf("b2 from_uid = %q, want %q", n2.FromUID, a.uid)
+	if notifUID(n2) != a.uid {
+		t.Errorf("b2 from_uid = %d, want %d", notifUID(n2), a.uid)
 	}
 }
 
@@ -392,26 +367,21 @@ func TestSenderReceivesNotification(t *testing.T) {
 	b.registerAndLogin(uniqueName("notif"), "pass1234", "Bob")
 
 	// Become friends
-	a.sendOK(wsRequest{"action": "add_friend", "friend_uid": b.uid})
-	b.sendOK(wsRequest{"action": "accept_friend", "friend_uid": a.uid})
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
 	time.Sleep(300 * time.Millisecond)
-	a.drainNotifs(func(n notification) bool { return true })
+	a.drainNotifs(func(n *appmsg.Notification) bool { return true })
 
 	// A sends DM to B
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "self notif test",
-	})
+	a.sendText(userTarget(b.uid), "self notif test")
 
 	// B should get the notification
-	b.waitNotif(func(n notification) bool {
-		return n.Type == "messages:received" && n.FromUID == a.uid
+	b.waitNotif(func(n *appmsg.Notification) bool {
+		return n.Type == "messages:received" && notifUID(n) == a.uid
 	})
 
 	// A should also get the notification (for multi-device sync)
-	a.waitNotif(func(n notification) bool {
+	a.waitNotif(func(n *appmsg.Notification) bool {
 		return n.Type == "messages:received"
 	})
 }

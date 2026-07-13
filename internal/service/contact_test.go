@@ -2,8 +2,8 @@ package service
 
 import (
 	"testing"
-	"yimsg/internal/appmsg"
 	"yimsg/internal/dal"
+	"yimsg/internal/protocol/pb"
 )
 
 func TestAddFriendBilateral(t *testing.T) {
@@ -12,8 +12,8 @@ func TestAddFriendBilateral(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
 	resp := addFriendService(s, "r1", uidA, uidB, "Bobby")
-	if !resp.OK {
-		t.Fatalf("add_friend failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("add_friend failed: %s", errMsg(resp))
 	}
 
 	// 申请方（alice）自身记录是 PENDING_OUTGOING，被申请方（bob）自身记录是 PENDING_INCOMING。
@@ -67,8 +67,8 @@ func TestAcceptFriendBilateral(t *testing.T) {
 
 	addFriendService(s, "r1", uidA, uidB, "")
 	resp := acceptFriendService(s, "r2", uidB, uidA)
-	if !resp.OK {
-		t.Fatalf("accept_friend failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("accept_friend failed: %s", errMsg(resp))
 	}
 
 	// Both should be friends
@@ -91,11 +91,11 @@ func TestAcceptFriendNoPending(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 
 	resp := acceptFriendService(s, "r1", uidA, uidB)
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("accept without pending should fail")
 	}
-	if resp.Error != "no pending request" {
-		t.Errorf("got error %q", resp.Error)
+	if errMsg(resp) != "no pending request" {
+		t.Errorf("got error %q", errMsg(resp))
 	}
 }
 
@@ -106,8 +106,8 @@ func TestRejectFriendBilateral(t *testing.T) {
 
 	addFriendService(s, "r1", uidA, uidB, "")
 	resp := rejectFriendService(s, "r2", uidB, uidA)
-	if !resp.OK {
-		t.Fatalf("reject_friend failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("reject_friend failed: %s", errMsg(resp))
 	}
 
 	// Bob's side should be deleted
@@ -125,7 +125,7 @@ func TestDeleteFriendUnilateral(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	resp := deleteFriendService(s, "r1", uidA, uidB)
-	if !resp.OK || resp.Seq == nil {
+	if !isOK(resp) || resp.GetSeq() == 0 {
 		t.Fatalf("delete_friend failed: %+v", resp)
 	}
 
@@ -151,8 +151,8 @@ func TestUpdateRemarkService(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	resp := updateRemarkService(s, "r1", uidA, uidB, 0, "BobbyBoy")
-	if !resp.OK {
-		t.Fatalf("update_remark failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("update_remark failed: %s", errMsg(resp))
 	}
 
 	storeA := s.ContactStore(uidA)
@@ -175,17 +175,17 @@ func TestListContacts(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	resp := listContactsService(s, "r1", uidA, dal.ContactListFilter{}, "", 200)
-	if !resp.OK {
-		t.Fatalf("get_contacts failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_contacts failed: %s", errMsg(resp))
 	}
-	if len(resp.Contacts) != 1 {
-		t.Errorf("contacts = %d, want 1", len(resp.Contacts))
+	if len(resp.GetContacts()) != 1 {
+		t.Errorf("contacts = %d, want 1", len(resp.GetContacts()))
 	}
-	if resp.Page == nil || resp.Page.HasMoreForward {
-		t.Fatalf("has_more_forward = %v, want false", resp.Page)
+	if resp.GetPage() == nil || resp.GetPage().GetHasMoreForward() {
+		t.Fatalf("has_more_forward = %v, want false", resp.GetPage())
 	}
-	if resp.Contacts[0].RemarkName != "" {
-		t.Errorf("remark_name = %q, want empty", resp.Contacts[0].RemarkName)
+	if resp.GetContacts()[0].GetRemarkName() != "" {
+		t.Errorf("remark_name = %q, want empty", resp.GetContacts()[0].GetRemarkName())
 	}
 }
 
@@ -196,12 +196,12 @@ func TestListContactsNormalizedTarget(t *testing.T) {
 	makeFriends(t, s, uidA, uidB)
 
 	resp := listContactsService(s, "r1", uidA, dal.ContactListFilter{}, "", 200)
-	if !resp.OK {
-		t.Fatalf("get_contacts failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_contacts failed: %s", errMsg(resp))
 	}
 	found := false
-	for _, c := range resp.Contacts {
-		if targetUID(c.Target) == uidB {
+	for _, c := range resp.GetContacts() {
+		if c.GetTarget().GetUid() == uidB {
 			found = true
 		}
 	}
@@ -219,11 +219,11 @@ func TestListContactsExcludesDeleted(t *testing.T) {
 	deleteFriendService(s, "r1", uidA, uidB)
 
 	resp := listContactsService(s, "r2", uidA, dal.ContactListFilter{}, "", 200)
-	if !resp.OK {
-		t.Fatalf("get_contacts failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("get_contacts failed: %s", errMsg(resp))
 	}
-	if len(resp.Contacts) != 0 {
-		t.Errorf("contacts = %d, want 0 (deleted should be excluded)", len(resp.Contacts))
+	if len(resp.GetContacts()) != 0 {
+		t.Errorf("contacts = %d, want 0 (deleted should be excluded)", len(resp.GetContacts()))
 	}
 }
 
@@ -233,7 +233,7 @@ func TestContactSyncSeqTooOldAfterGCRejectsZeroWithoutRebuild(t *testing.T) {
 	uidB := registerUser(t, s, "bob", "p", "Bob")
 	makeFriends(t, s, uidA, uidB)
 
-	if resp := deleteFriendService(s, "r1", uidA, uidB); !resp.OK {
+	if resp := deleteFriendService(s, "r1", uidA, uidB); !isOK(resp) {
 		t.Fatalf("delete_friend failed: %+v", resp)
 	}
 	if _, err := s.ContactStore(uidA).Purge(uidA); err != nil {
@@ -241,11 +241,11 @@ func TestContactSyncSeqTooOldAfterGCRejectsZeroWithoutRebuild(t *testing.T) {
 	}
 
 	freshResp := syncContactsService(s, "r2", uidA, 0, 200, false)
-	if freshResp.OK || freshResp.ErrorCode != appmsg.ErrorCodeSeqTooOld {
+	if isOK(freshResp) || freshResp.GetBase().GetCode() != pb.ErrorCode_ERROR_SEQ_TOO_OLD {
 		t.Fatalf("fresh sync_contacts after gc = %+v, want seq_too_old", freshResp)
 	}
 	rebuildResp := syncContactsService(s, "r3", uidA, 0, 200, true)
-	if !rebuildResp.OK || len(rebuildResp.Contacts) != 0 {
+	if !isOK(rebuildResp) || len(rebuildResp.GetContacts()) != 0 {
 		t.Fatalf("rebuild sync_contacts after gc = %+v, want empty current snapshot", rebuildResp)
 	}
 }
@@ -260,22 +260,22 @@ func TestListContactsPagination(t *testing.T) {
 
 	// First page：keyset 游标，向下(FORWARD)翻。
 	resp := listContactsService(s, "r1", uidA, dal.ContactListFilter{}, "", 1)
-	if len(resp.Contacts) != 1 {
-		t.Fatalf("page1 = %d, want 1", len(resp.Contacts))
+	if len(resp.GetContacts()) != 1 {
+		t.Fatalf("page1 = %d, want 1", len(resp.GetContacts()))
 	}
-	if resp.Page == nil || !resp.Page.HasMoreForward {
-		t.Fatalf("page1 has_more_forward = %v, want true", resp.Page)
+	if resp.GetPage() == nil || !resp.GetPage().GetHasMoreForward() {
+		t.Fatalf("page1 has_more_forward = %v, want true", resp.GetPage())
 	}
 	// Second page：用上一页 end_cursor 续翻。
-	resp2 := listContactsService(s, "r2", uidA, dal.ContactListFilter{}, resp.Page.EndCursor, 1)
-	if len(resp2.Contacts) != 1 {
-		t.Fatalf("page2 = %d, want 1", len(resp2.Contacts))
+	resp2 := listContactsService(s, "r2", uidA, dal.ContactListFilter{}, resp.GetPage().GetEndCursor(), 1)
+	if len(resp2.GetContacts()) != 1 {
+		t.Fatalf("page2 = %d, want 1", len(resp2.GetContacts()))
 	}
-	if resp2.Page == nil || resp2.Page.HasMoreForward {
-		t.Fatalf("page2 has_more_forward = %v, want false", resp2.Page)
+	if resp2.GetPage() == nil || resp2.GetPage().GetHasMoreForward() {
+		t.Fatalf("page2 has_more_forward = %v, want false", resp2.GetPage())
 	}
 	// Different contacts
-	if targetUID(resp.Contacts[0].Target) == targetUID(resp2.Contacts[0].Target) {
+	if resp.GetContacts()[0].GetTarget().GetUid() == resp2.GetContacts()[0].GetTarget().GetUid() {
 		t.Error("pages should return different contacts")
 	}
 }

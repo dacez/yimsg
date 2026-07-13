@@ -8,6 +8,7 @@ import (
 	"yimsg/internal/auth"
 	"yimsg/internal/dal"
 	"yimsg/internal/protocol/pb"
+	"yimsg/internal/service/taskpb"
 )
 
 type recallKind int
@@ -128,18 +129,18 @@ func recallGroupMessage(s *AppState, fromUID, groupID int64, msgID string, origi
 		otherUIDs = append(otherUIDs, member.UID)
 	}
 
-	s.submitTask(taskKindGroupMessage, groupMessageTask{
-		MsgID:            msgID,
-		FromUID:          fromUID,
-		GroupID:          groupID,
+	s.submitTask(taskKindGroupMessage, &taskpb.GroupMessageTask{
+		MsgId:            msgID,
+		FromUid:          fromUID,
+		GroupId:          groupID,
 		Recalled:         true,
-		MsgType:          dal.MsgRecall,
+		MsgType:          int32(dal.MsgRecall),
 		Body:             raw,
 		SearchText:       search,
 		SendTime:         originalSendTime,
-		TargetUIDs:       otherUIDs,
-		RecallMsgID:      recallMsgID,
-		RecallMsgType:    dal.MsgRecall,
+		TargetUids:       otherUIDs,
+		RecallMsgId:      recallMsgID,
+		RecallMsgType:    int32(dal.MsgRecall),
 		RecallBody:       raw,
 		RecallSearchText: search,
 		RecallTime:       recalledAt,

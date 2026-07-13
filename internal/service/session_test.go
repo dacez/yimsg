@@ -9,18 +9,18 @@ func TestAuthenticateSuccess(t *testing.T) {
 	uid, token := registerAndLogin(t, s, "alice", "pass", "Alice")
 
 	resp := authenticateTokenService(s, "r1", token)
-	if !resp.OK {
-		t.Fatalf("authenticate failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("authenticate failed: %s", errMsg(resp))
 	}
-	if resp.UID == nil || int64(*resp.UID) != uid {
-		t.Errorf("uid mismatch: got %v, want %d", resp.UID, uid)
+	if resp.GetUid() != uid {
+		t.Errorf("uid mismatch: got %v, want %d", resp.GetUid(), uid)
 	}
 }
 
 func TestAuthenticateInvalidToken(t *testing.T) {
 	s := testState(t)
 	resp := authenticateTokenService(s, "r1", "invalid-token-xxx")
-	if resp.OK {
+	if isOK(resp) {
 		t.Error("invalid token should fail")
 	}
 }
@@ -30,13 +30,13 @@ func TestLogoutSuccess(t *testing.T) {
 	_, token := registerAndLogin(t, s, "alice", "pass", "Alice")
 
 	resp := logoutService(s, "r1", token)
-	if !resp.OK {
-		t.Fatalf("logout failed: %s", resp.Error)
+	if !isOK(resp) {
+		t.Fatalf("logout failed: %s", errMsg(resp))
 	}
 
 	// Token should be invalid after logout
 	authResp := authenticateTokenService(s, "r2", token)
-	if authResp.OK {
+	if isOK(authResp) {
 		t.Error("token should be invalid after logout")
 	}
 }
@@ -59,7 +59,7 @@ func TestLogoutCleansUserSession(t *testing.T) {
 func TestLogoutNonexistentToken(t *testing.T) {
 	s := testState(t)
 	resp := logoutService(s, "r1", "nonexistent-token")
-	if !resp.OK {
-		t.Errorf("logout nonexistent should succeed, got error: %s", resp.Error)
+	if !isOK(resp) {
+		t.Errorf("logout nonexistent should succeed, got error: %s", errMsg(resp))
 	}
 }

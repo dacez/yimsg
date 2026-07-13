@@ -1,13 +1,12 @@
 package e2e
 
 import (
-	"fmt"
-	"strconv"
 	"testing"
 
 	"yimsg/internal/config"
 	"yimsg/internal/dal"
 	"yimsg/internal/plugin"
+	"yimsg/internal/protocol/pb"
 	"yimsg/internal/service"
 	"yimsg/internal/shard"
 	"yimsg/internal/taskqueue"
@@ -22,8 +21,8 @@ import (
 // 通知不会到达连接服务端进程的 ws 客户端；通知扇出由 service 单测覆盖
 // （TestOrgUpdatedFanout），e2e 只验证拉取语义。
 const (
-	orgChildPerson = 1 // TAG_CHILD_TYPE_PERSON
-	orgChildTag    = 2 // TAG_CHILD_TYPE_TAG
+	orgChildPerson = pb.TagChildType_TAG_CHILD_TYPE_PERSON
+	orgChildTag    = pb.TagChildType_TAG_CHILD_TYPE_TAG
 )
 
 func orgAdminState(t *testing.T) *service.AppState {
@@ -51,15 +50,6 @@ func orgAdminState(t *testing.T) *service.AppState {
 	return state
 }
 
-func mustParseUID(t *testing.T, s string) int64 {
-	t.Helper()
-	uid, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		t.Fatalf("parse uid %q: %v", s, err)
-	}
-	return uid
-}
-
 // orgFixture 建一个最小组织并返回各 ID：
 //
 //	根（{run}_org）
@@ -67,7 +57,6 @@ func mustParseUID(t *testing.T, s string) int64 {
 //	└── xx部门   (rank=20)：a 部门负责人(rank=1)、staff 按名字
 type orgFixture struct {
 	orgID, leadersTag, deptTag int64
-	orgIDStr                   string
 }
 
 func buildOrgFixture(t *testing.T, state *service.AppState, bossUID, aUID, staffUID int64) orgFixture {
@@ -99,7 +88,7 @@ func buildOrgFixture(t *testing.T, state *service.AppState, bossUID, aUID, staff
 			t.Fatalf("AddOrgMember uid=%d: %v", step.uid, err)
 		}
 	}
-	return orgFixture{orgID: orgID, leadersTag: leadersTag, deptTag: deptTag, orgIDStr: fmt.Sprintf("%d", orgID)}
+	return orgFixture{orgID: orgID, leadersTag: leadersTag, deptTag: deptTag}
 }
 
 // TestOrgE2EPermissionAndMembership 验证：非成员被拒；成员通讯录出现组织行；离职后行 tombstone 且不可再读。
@@ -115,54 +104,53 @@ func TestOrgE2EPermissionAndMembership(t *testing.T) {
 	outsider := dial(t)
 	outsider.registerAndLogin(uniqueName("out"), "pw123456", "路人")
 
-	fx := buildOrgFixture(t, state,
-		mustParseUID(t, bossResp.UID), mustParseUID(t, aResp.UID), mustParseUID(t, staffResp.UID))
+	fx := buildOrgFixture(t, state, bossResp.GetUid(), aResp.GetUid(), staffResp.GetUid())
 
 	// 非成员：展开与同步均 FORBIDDEN。
-	resp := outsider.sendErr(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fx.orgIDStr})
-	if resp.ErrorCode != "FORBIDDEN" {
-		t.Errorf("outsider expand error_code = %s, want FORBIDDEN", resp.ErrorCode)
+	resp := sendErr(outsider, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.orgID}, &pb.GetTagsResponse{})
+	if resp.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("outsider expand error_code = %v, want FORBIDDEN", resp.GetBase().GetCode())
 	}
-	resp = outsider.sendErr(wsRequest{"action": "sync_tags", "org_id": fx.orgIDStr})
-	if resp.ErrorCode != "FORBIDDEN" {
-		t.Errorf("outsider sync error_code = %s, want FORBIDDEN", resp.ErrorCode)
+	resp2 := sendErr(outsider, "sync_tags", &pb.SyncTagsRequest{OrgId: fx.orgID}, &pb.SyncTagsResponse{})
+	if resp2.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("outsider sync error_code = %v, want FORBIDDEN", resp2.GetBase().GetCode())
 	}
 
 	// 成员：sync_contacts 增量可见组织行（status=FRIEND）。
-	sync := staff.sendOK(wsRequest{"action": "sync_contacts", "last_seq": 0})
+	sync := sendOK(staff, "sync_contacts", &pb.SyncContactsRequest{LastSeq: 0}, &pb.SyncContactsResponse{})
 	foundOrg := false
-	for _, c := range sync.Contacts {
-		if c.OrgID == fx.orgIDStr && c.Status == 1 {
+	for _, c := range sync.GetContacts() {
+		if c.GetTarget().GetOrgId() == fx.orgID && c.GetStatus() == pb.ContactStatus_CONTACT_STATUS_FRIEND {
 			foundOrg = true
 		}
 	}
 	if !foundOrg {
-		t.Errorf("staff contacts missing org row: %+v", sync.Contacts)
+		t.Errorf("staff contacts missing org row: %+v", sync.GetContacts())
 	}
 
 	// get_org_infos 返回组织展示资料。
-	infos := staff.sendOK(wsRequest{"action": "get_org_infos", "org_ids": []string{fx.orgIDStr}})
-	if len(infos.Orgs) != 1 || infos.Orgs[0].OrgID != fx.orgIDStr || infos.Orgs[0].Name == "" {
-		t.Errorf("get_org_infos wrong: %+v", infos.Orgs)
+	infos := sendOK(staff, "get_org_infos", &pb.GetOrgInfosRequest{OrgIds: []int64{fx.orgID}}, &pb.GetOrgInfosResponse{})
+	if len(infos.GetOrgs()) != 1 || infos.GetOrgs()[0].GetOrgId() != fx.orgID || infos.GetOrgs()[0].GetName() == "" {
+		t.Errorf("get_org_infos wrong: %+v", infos.GetOrgs())
 	}
 
 	// staff 离职（唯一一条边被摘）→ 组织行 tombstone → 读组织被拒。
-	if err := state.RemoveOrgMemberDirect(fx.orgID, fx.deptTag, mustParseUID(t, staffResp.UID)); err != nil {
+	if err := state.RemoveOrgMemberDirect(fx.orgID, fx.deptTag, staffResp.GetUid()); err != nil {
 		t.Fatal(err)
 	}
-	sync = staff.sendOK(wsRequest{"action": "sync_contacts", "last_seq": cursorSeqVal(sync.CursorSeq)})
+	sync = sendOK(staff, "sync_contacts", &pb.SyncContactsRequest{LastSeq: sync.GetCursorSeq()}, &pb.SyncContactsResponse{})
 	foundTombstone := false
-	for _, c := range sync.Contacts {
-		if c.OrgID == fx.orgIDStr && c.Status == statusDeleted {
+	for _, c := range sync.GetContacts() {
+		if c.GetTarget().GetOrgId() == fx.orgID && c.GetStatus() == pb.ContactStatus_CONTACT_STATUS_DELETED {
 			foundTombstone = true
 		}
 	}
 	if !foundTombstone {
-		t.Errorf("staff should sync org tombstone row: %+v", sync.Contacts)
+		t.Errorf("staff should sync org tombstone row: %+v", sync.GetContacts())
 	}
-	resp = staff.sendErr(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fx.orgIDStr})
-	if resp.ErrorCode != "FORBIDDEN" {
-		t.Errorf("ex-member expand error_code = %s, want FORBIDDEN", resp.ErrorCode)
+	resp3 := sendErr(staff, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.orgID}, &pb.GetTagsResponse{})
+	if resp3.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("ex-member expand error_code = %v, want FORBIDDEN", resp3.GetBase().GetCode())
 	}
 	_ = a
 }
@@ -179,50 +167,47 @@ func TestOrgE2EExpandOrderAndMultiPost(t *testing.T) {
 	staff := dial(t)
 	staffResp := staff.registerAndLogin(uniqueName("staff"), "pw123456", "小明")
 
-	fx := buildOrgFixture(t, state,
-		mustParseUID(t, bossResp.UID), mustParseUID(t, aResp.UID), mustParseUID(t, staffResp.UID))
+	fx := buildOrgFixture(t, state, bossResp.GetUid(), aResp.GetUid(), staffResp.GetUid())
 
 	// 根展开：公司领导(rank=10) 在 xx部门(rank=20) 前，均为 TAG 子项。
-	root := staff.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fx.orgIDStr})
-	if len(root.Tags) != 2 {
-		t.Fatalf("root relations = %d, want 2: %+v", len(root.Tags), root.Tags)
+	root := sendOK(staff, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.orgID}, &pb.GetTagsResponse{})
+	if len(root.GetTags()) != 2 {
+		t.Fatalf("root relations = %d, want 2: %+v", len(root.GetTags()), root.GetTags())
 	}
-	wantLeadersTag := fmt.Sprint(fx.leadersTag)
-	wantDeptTag := fmt.Sprint(fx.deptTag)
-	if root.Tags[0].ChildID != wantLeadersTag || root.Tags[0].ChildType != orgChildTag {
-		t.Errorf("root relation0 wrong: %+v", root.Tags[0])
+	if root.GetTags()[0].GetChildId() != fx.leadersTag || root.GetTags()[0].GetChildType() != orgChildTag {
+		t.Errorf("root relation0 wrong: %+v", root.GetTags()[0])
 	}
-	if root.Tags[1].ChildID != wantDeptTag || root.Tags[1].ChildType != orgChildTag {
-		t.Errorf("root relation1 wrong: %+v", root.Tags[1])
+	if root.GetTags()[1].GetChildId() != fx.deptTag || root.GetTags()[1].GetChildType() != orgChildTag {
+		t.Errorf("root relation1 wrong: %+v", root.GetTags()[1])
 	}
-	tagInfos := staff.sendOK(wsRequest{"action": "get_tag_infos", "org_id": fx.orgIDStr, "tag_ids": []string{wantLeadersTag, wantDeptTag}})
-	tagNames := map[string]string{}
-	for _, tg := range tagInfos.Tags {
-		tagNames[tg.TagID] = tg.Name
+	tagInfos := sendOK(staff, "get_tag_infos", &pb.GetTagInfosRequest{OrgId: fx.orgID, TagIds: []int64{fx.leadersTag, fx.deptTag}}, &pb.GetTagInfosResponse{})
+	tagNames := map[int64]string{}
+	for _, tg := range tagInfos.GetTags() {
+		tagNames[tg.GetTagId()] = tg.GetName()
 	}
-	if tagNames[wantLeadersTag] != "公司领导" || tagNames[wantDeptTag] != "xx部门" {
+	if tagNames[fx.leadersTag] != "公司领导" || tagNames[fx.deptTag] != "xx部门" {
 		t.Errorf("get_tag_infos names wrong: %+v", tagNames)
 	}
 
 	// 公司领导：boss(rank=10) 第一；a 未显式排序按名字沉底最后（一人多岗处 1）。
-	leaders := staff.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fmt.Sprint(fx.leadersTag)})
-	if len(leaders.Tags) != 2 || leaders.Tags[0].ChildID != bossResp.UID || leaders.Tags[1].ChildID != aResp.UID {
-		t.Fatalf("leaders order wrong: %+v", leaders.Tags)
+	leaders := sendOK(staff, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.leadersTag}, &pb.GetTagsResponse{})
+	if len(leaders.GetTags()) != 2 || leaders.GetTags()[0].GetChildId() != bossResp.GetUid() || leaders.GetTags()[1].GetChildId() != aResp.GetUid() {
+		t.Fatalf("leaders order wrong: %+v", leaders.GetTags())
 	}
-	if leaders.Tags[0].ChildType != orgChildPerson {
-		t.Errorf("boss relation should be PERSON: %+v", leaders.Tags[0])
+	if leaders.GetTags()[0].GetChildType() != orgChildPerson {
+		t.Errorf("boss relation should be PERSON: %+v", leaders.GetTags()[0])
 	}
-	if leaders.Tags[0].Title != "总经理" || leaders.Tags[0].Rank != 10 {
-		t.Errorf("boss edge wrong: %+v", leaders.Tags[0])
+	if leaders.GetTags()[0].GetTitle() != "总经理" || leaders.GetTags()[0].GetRank() != 10 {
+		t.Errorf("boss edge wrong: %+v", leaders.GetTags()[0])
 	}
 
 	// xx部门：a rank=1 排第一（一人多岗处 2，与公司领导中的排序互相独立）。
-	dept := staff.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fmt.Sprint(fx.deptTag)})
-	if len(dept.Tags) != 2 || dept.Tags[0].ChildID != aResp.UID {
-		t.Fatalf("dept order wrong: %+v", dept.Tags)
+	dept := sendOK(staff, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.deptTag}, &pb.GetTagsResponse{})
+	if len(dept.GetTags()) != 2 || dept.GetTags()[0].GetChildId() != aResp.GetUid() {
+		t.Fatalf("dept order wrong: %+v", dept.GetTags())
 	}
-	if dept.Tags[0].Title != "部门负责人" || dept.Tags[0].Rank != 1 {
-		t.Errorf("a dept edge wrong: %+v", dept.Tags[0])
+	if dept.GetTags()[0].GetTitle() != "部门负责人" || dept.GetTags()[0].GetRank() != 1 {
+		t.Errorf("a dept edge wrong: %+v", dept.GetTags()[0])
 	}
 }
 
@@ -237,19 +222,18 @@ func TestOrgE2ESyncCursorAndRebuild(t *testing.T) {
 	staff := dial(t)
 	staffResp := staff.registerAndLogin(uniqueName("staff"), "pw123456", "小明")
 
-	fx := buildOrgFixture(t, state,
-		mustParseUID(t, bossResp.UID), mustParseUID(t, aResp.UID), mustParseUID(t, staffResp.UID))
+	fx := buildOrgFixture(t, state, bossResp.GetUid(), aResp.GetUid(), staffResp.GetUid())
 
 	// 全量分页拉到底：2 tag 边 + 4 人边 = 6 条关系，单游标顺扫。
 	var lastSeq int64
 	totalTags := 0
 	for {
-		resp := staff.sendOK(wsRequest{"action": "sync_tags", "org_id": fx.orgIDStr, "last_seq": lastSeq, "limit": 4})
-		totalTags += len(resp.Tags)
-		if cursorSeqVal(resp.CursorSeq) > 0 {
-			lastSeq = cursorSeqVal(resp.CursorSeq)
+		resp := sendOK(staff, "sync_tags", &pb.SyncTagsRequest{OrgId: fx.orgID, LastSeq: lastSeq, Limit: 4}, &pb.SyncTagsResponse{})
+		totalTags += len(resp.GetTags())
+		if resp.GetCursorSeq() > 0 {
+			lastSeq = resp.GetCursorSeq()
 		}
-		if !hasMoreVal(resp.HasMore) {
+		if !resp.GetHasMore() {
 			break
 		}
 	}
@@ -258,30 +242,32 @@ func TestOrgE2ESyncCursorAndRebuild(t *testing.T) {
 	}
 
 	// 增量：摘掉 a 的部门边（a 仍在公司领导，不离职）→ 一条边 tombstone。
-	if err := state.RemoveOrgMemberDirect(fx.orgID, fx.deptTag, mustParseUID(t, aResp.UID)); err != nil {
+	if err := state.RemoveOrgMemberDirect(fx.orgID, fx.deptTag, aResp.GetUid()); err != nil {
 		t.Fatal(err)
 	}
-	inc := staff.sendOK(wsRequest{"action": "sync_tags", "org_id": fx.orgIDStr, "last_seq": lastSeq})
-	if len(inc.Tags) != 1 {
-		t.Fatalf("incremental relations=%d, want 1", len(inc.Tags))
+	inc := sendOK(staff, "sync_tags", &pb.SyncTagsRequest{OrgId: fx.orgID, LastSeq: lastSeq}, &pb.SyncTagsResponse{})
+	if len(inc.GetTags()) != 1 {
+		t.Fatalf("incremental relations=%d, want 1", len(inc.GetTags()))
 	}
-	if inc.Tags[0].Status != int(dal.TagDeleted) || inc.Tags[0].ChildID != aResp.UID {
-		t.Errorf("tombstone wrong: %+v", inc.Tags[0])
+	if inc.GetTags()[0].GetStatus() != pb.TagStatus_TAG_STATUS_DELETED || inc.GetTags()[0].GetChildId() != aResp.GetUid() {
+		t.Errorf("tombstone wrong: %+v", inc.GetTags()[0])
 	}
 
 	// GC 后旧游标 seq_too_old；rebuild=true 全量重建成功。
 	if _, err := state.OrgStore(fx.orgID).Purge(fx.orgID); err != nil {
 		t.Fatal(err)
 	}
-	old := staff.sendErr(wsRequest{"action": "sync_tags", "org_id": fx.orgIDStr, "last_seq": 1})
-	if old.ErrorCode != "SEQ_TOO_OLD" {
-		t.Errorf("stale cursor error_code = %s, want SEQ_TOO_OLD", old.ErrorCode)
+	old := sendErr(staff, "sync_tags", &pb.SyncTagsRequest{OrgId: fx.orgID, LastSeq: 1}, &pb.SyncTagsResponse{})
+	if old.GetBase().GetCode() != pb.ErrorCode_ERROR_SEQ_TOO_OLD {
+		t.Errorf("stale cursor error_code = %v, want SEQ_TOO_OLD", old.GetBase().GetCode())
 	}
-	rebuild := staff.sendOK(wsRequest{"action": "sync_tags", "org_id": fx.orgIDStr, "last_seq": 0, "rebuild": true})
-	if len(rebuild.Tags) == 0 {
+	rebuild := sendOK(staff, "sync_tags", &pb.SyncTagsRequest{OrgId: fx.orgID, LastSeq: 0, Rebuild: true}, &pb.SyncTagsResponse{})
+	if len(rebuild.GetTags()) == 0 {
 		t.Errorf("rebuild sync should return full relation set: %+v", rebuild)
 	}
 }
+
+func int64Ptr(v int64) *int64 { return &v }
 
 // TestOrgE2EManageWriteActions 端到端验证组织管理面写 action：非管理员被拒；
 // 组织根 GRANT（boss）能建部门 / 加成员 / 改名 / 授权；被授权的部门管理员（staff）
@@ -299,88 +285,86 @@ func TestOrgE2EManageWriteActions(t *testing.T) {
 	staff := dial(t)
 	staffResp := staff.registerAndLogin(uniqueName("staff"), "pw123456", "小明")
 
-	fx := buildOrgFixture(t, state,
-		mustParseUID(t, bossResp.UID), mustParseUID(t, aResp.UID), mustParseUID(t, staffResp.UID))
+	fx := buildOrgFixture(t, state, bossResp.GetUid(), aResp.GetUid(), staffResp.GetUid())
 
 	// 非管理员 staff 建部门被拒。
-	forbiddenCreate := staff.sendErr(wsRequest{"action": "create_org_tag", "org_id": fx.orgIDStr, "parent_tag_id": fx.orgIDStr, "name": "新部门"})
-	if forbiddenCreate.ErrorCode != "FORBIDDEN" {
-		t.Errorf("non-admin create_org_tag error_code = %s, want FORBIDDEN", forbiddenCreate.ErrorCode)
+	forbiddenCreate := sendErr(staff, "create_org_tag", &pb.CreateOrgTagRequest{OrgId: fx.orgID, ParentTagId: fx.orgID, Name: "新部门"}, &pb.CreateOrgTagResponse{})
+	if forbiddenCreate.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin create_org_tag error_code = %v, want FORBIDDEN", forbiddenCreate.GetBase().GetCode())
 	}
 
 	// boss（组织根 GRANT）建新部门、改新部门名、加成员、调排序。
-	created := boss.sendOK(wsRequest{"action": "create_org_tag", "org_id": fx.orgIDStr, "parent_tag_id": fx.orgIDStr, "name": "新部门"})
-	if created.TagID == "" {
+	created := sendOK(boss, "create_org_tag", &pb.CreateOrgTagRequest{OrgId: fx.orgID, ParentTagId: fx.orgID, Name: "新部门"}, &pb.CreateOrgTagResponse{})
+	if created.GetTagId() <= 0 {
 		t.Fatalf("create_org_tag should return tag_id: %+v", created)
 	}
-	newTag := created.TagID
+	newTag := created.GetTagId()
 
-	boss.sendOK(wsRequest{"action": "rename_org_tag", "org_id": fx.orgIDStr, "tag_id": newTag, "name": "新部门改名"})
-	tagInfo := boss.sendOK(wsRequest{"action": "get_tag_infos", "org_id": fx.orgIDStr, "tag_ids": []string{newTag}})
-	if len(tagInfo.Tags) != 1 || tagInfo.Tags[0].Name != "新部门改名" {
-		t.Errorf("rename_org_tag not applied: %+v", tagInfo.Tags)
+	sendOK(boss, "rename_org_tag", &pb.RenameOrgTagRequest{OrgId: fx.orgID, TagId: newTag, Name: "新部门改名"}, &pb.RenameOrgTagResponse{})
+	tagInfo := sendOK(boss, "get_tag_infos", &pb.GetTagInfosRequest{OrgId: fx.orgID, TagIds: []int64{newTag}}, &pb.GetTagInfosResponse{})
+	if len(tagInfo.GetTags()) != 1 || tagInfo.GetTags()[0].GetName() != "新部门改名" {
+		t.Errorf("rename_org_tag not applied: %+v", tagInfo.GetTags())
 	}
 
-	boss.sendOK(wsRequest{"action": "add_org_member", "org_id": fx.orgIDStr, "tag_id": newTag, "uid": staffResp.UID, "title": "新部门负责人", "rank": 1})
-	newDept := boss.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": newTag})
-	if len(newDept.Tags) != 1 || newDept.Tags[0].ChildID != staffResp.UID {
-		t.Fatalf("add_org_member not applied: %+v", newDept.Tags)
+	sendOK(boss, "add_org_member", &pb.AddOrgMemberRequest{OrgId: fx.orgID, TagId: newTag, Uid: staffResp.GetUid(), Title: "新部门负责人", Rank: int64Ptr(1)}, &pb.AddOrgMemberResponse{})
+	newDept := sendOK(boss, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: newTag}, &pb.GetTagsResponse{})
+	if len(newDept.GetTags()) != 1 || newDept.GetTags()[0].GetChildId() != staffResp.GetUid() {
+		t.Fatalf("add_org_member not applied: %+v", newDept.GetTags())
 	}
 
-	boss.sendOK(wsRequest{"action": "set_org_item_rank", "org_id": fx.orgIDStr, "tag_id": newTag, "child_id": staffResp.UID, "child_type": orgChildPerson, "title": "改后的职务", "rank": 5})
-	newDept = boss.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": newTag})
-	if newDept.Tags[0].Title != "改后的职务" || newDept.Tags[0].Rank != 5 {
-		t.Errorf("set_org_item_rank not applied: %+v", newDept.Tags[0])
+	sendOK(boss, "set_org_item_rank", &pb.SetOrgItemRankRequest{OrgId: fx.orgID, TagId: newTag, ChildId: staffResp.GetUid(), ChildType: orgChildPerson, Title: "改后的职务", Rank: 5}, &pb.SetOrgItemRankResponse{})
+	newDept = sendOK(boss, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: newTag}, &pb.GetTagsResponse{})
+	if newDept.GetTags()[0].GetTitle() != "改后的职务" || newDept.GetTags()[0].GetRank() != 5 {
+		t.Errorf("set_org_item_rank not applied: %+v", newDept.GetTags()[0])
 	}
 
 	// boss 把 a 挂进新部门后再挂一个子 tag（link_org_tag 覆盖多父）。
-	linked := boss.sendOK(wsRequest{"action": "create_org_tag", "org_id": fx.orgIDStr, "parent_tag_id": newTag, "name": "子组"})
-	if linked.TagID == "" {
+	linked := sendOK(boss, "create_org_tag", &pb.CreateOrgTagRequest{OrgId: fx.orgID, ParentTagId: newTag, Name: "子组"}, &pb.CreateOrgTagResponse{})
+	if linked.GetTagId() <= 0 {
 		t.Fatalf("create_org_tag（子组）should return tag_id")
 	}
-	linkResp := boss.sendOK(wsRequest{"action": "link_org_tag", "org_id": fx.orgIDStr, "parent_tag_id": fx.deptTag, "child_tag_id": linked.TagID})
-	_ = linkResp
-	deptExpand := boss.sendOK(wsRequest{"action": "get_tags", "org_id": fx.orgIDStr, "tag_id": fx.deptTag})
+	sendOK(boss, "link_org_tag", &pb.LinkOrgTagRequest{OrgId: fx.orgID, ParentTagId: fx.deptTag, ChildTagId: linked.GetTagId()}, &pb.LinkOrgTagResponse{})
+	deptExpand := sendOK(boss, "get_tags", &pb.GetTagsRequest{OrgId: fx.orgID, TagId: fx.deptTag}, &pb.GetTagsResponse{})
 	foundLinked := false
-	for _, tg := range deptExpand.Tags {
-		if tg.ChildID == linked.TagID && tg.ChildType == orgChildTag {
+	for _, tg := range deptExpand.GetTags() {
+		if tg.GetChildId() == linked.GetTagId() && tg.GetChildType() == orgChildTag {
 			foundLinked = true
 		}
 	}
 	if !foundLinked {
-		t.Errorf("link_org_tag not applied: %+v", deptExpand.Tags)
+		t.Errorf("link_org_tag not applied: %+v", deptExpand.GetTags())
 	}
 
 	// boss 授权 staff 管理新部门（GRANT）；staff 现在能管新部门，管不到 xx部门（兄弟）。
-	boss.sendOK(wsRequest{"action": "grant_org_admin", "org_id": fx.orgIDStr, "scope_tag_id": newTag, "uid": staffResp.UID})
-	admins := staff.sendOK(wsRequest{"action": "list_org_admins", "org_id": fx.orgIDStr, "scope_tag_id": newTag})
+	sendOK(boss, "grant_org_admin", &pb.GrantOrgAdminRequest{OrgId: fx.orgID, ScopeTagId: newTag, Uid: staffResp.GetUid()}, &pb.GrantOrgAdminResponse{})
+	admins := sendOK(staff, "list_org_admins", &pb.ListOrgAdminsRequest{OrgId: fx.orgID, ScopeTagId: newTag}, &pb.ListOrgAdminsResponse{})
 	foundStaffAdmin := false
-	for _, u := range admins.Uids {
-		if u == staffResp.UID {
+	for _, u := range admins.GetAdminUids() {
+		if u == staffResp.GetUid() {
 			foundStaffAdmin = true
 		}
 	}
 	if !foundStaffAdmin {
-		t.Errorf("list_org_admins should include staff: %+v", admins.Uids)
+		t.Errorf("list_org_admins should include staff: %+v", admins.GetAdminUids())
 	}
-	staff.sendOK(wsRequest{"action": "add_org_member", "org_id": fx.orgIDStr, "tag_id": newTag, "uid": aResp.UID})
-	forbiddenSibling := staff.sendErr(wsRequest{"action": "rename_org_tag", "org_id": fx.orgIDStr, "tag_id": fx.deptTag, "name": "改名"})
-	if forbiddenSibling.ErrorCode != "FORBIDDEN" {
-		t.Errorf("scoped admin managing sibling should be forbidden, got %s", forbiddenSibling.ErrorCode)
+	sendOK(staff, "add_org_member", &pb.AddOrgMemberRequest{OrgId: fx.orgID, TagId: newTag, Uid: aResp.GetUid()}, &pb.AddOrgMemberResponse{})
+	forbiddenSibling := sendErr(staff, "rename_org_tag", &pb.RenameOrgTagRequest{OrgId: fx.orgID, TagId: fx.deptTag, Name: "改名"}, &pb.RenameOrgTagResponse{})
+	if forbiddenSibling.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("scoped admin managing sibling should be forbidden, got %v", forbiddenSibling.GetBase().GetCode())
 	}
 
 	// 撤权后 staff 立刻失去新部门管理权；remove_org_member / delete_org_tag / rename_org 仍需 boss。
-	boss.sendOK(wsRequest{"action": "revoke_org_admin", "org_id": fx.orgIDStr, "scope_tag_id": newTag, "uid": staffResp.UID})
-	forbiddenAfterRevoke := staff.sendErr(wsRequest{"action": "add_org_member", "org_id": fx.orgIDStr, "tag_id": newTag, "uid": aResp.UID})
-	if forbiddenAfterRevoke.ErrorCode != "FORBIDDEN" {
-		t.Errorf("revoked admin should be forbidden, got %s", forbiddenAfterRevoke.ErrorCode)
+	sendOK(boss, "revoke_org_admin", &pb.RevokeOrgAdminRequest{OrgId: fx.orgID, ScopeTagId: newTag, Uid: staffResp.GetUid()}, &pb.RevokeOrgAdminResponse{})
+	forbiddenAfterRevoke := sendErr(staff, "add_org_member", &pb.AddOrgMemberRequest{OrgId: fx.orgID, TagId: newTag, Uid: aResp.GetUid()}, &pb.AddOrgMemberResponse{})
+	if forbiddenAfterRevoke.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("revoked admin should be forbidden, got %v", forbiddenAfterRevoke.GetBase().GetCode())
 	}
-	boss.sendOK(wsRequest{"action": "remove_org_member", "org_id": fx.orgIDStr, "tag_id": newTag, "uid": aResp.UID})
-	boss.sendOK(wsRequest{"action": "delete_org_tag", "org_id": fx.orgIDStr, "tag_id": newTag})
-	boss.sendOK(wsRequest{"action": "rename_org", "org_id": fx.orgIDStr, "name": "改名后的组织"})
-	orgInfo := boss.sendOK(wsRequest{"action": "get_org_infos", "org_ids": []string{fx.orgIDStr}})
-	if len(orgInfo.Orgs) != 1 || orgInfo.Orgs[0].Name != "改名后的组织" {
-		t.Errorf("rename_org not applied: %+v", orgInfo.Orgs)
+	sendOK(boss, "remove_org_member", &pb.RemoveOrgMemberRequest{OrgId: fx.orgID, TagId: newTag, Uid: aResp.GetUid()}, &pb.RemoveOrgMemberResponse{})
+	sendOK(boss, "delete_org_tag", &pb.DeleteOrgTagRequest{OrgId: fx.orgID, TagId: newTag}, &pb.DeleteOrgTagResponse{})
+	sendOK(boss, "rename_org", &pb.RenameOrgRequest{OrgId: fx.orgID, Name: "改名后的组织"}, &pb.RenameOrgResponse{})
+	orgInfo := sendOK(boss, "get_org_infos", &pb.GetOrgInfosRequest{OrgIds: []int64{fx.orgID}}, &pb.GetOrgInfosResponse{})
+	if len(orgInfo.GetOrgs()) != 1 || orgInfo.GetOrgs()[0].GetName() != "改名后的组织" {
+		t.Errorf("rename_org not applied: %+v", orgInfo.GetOrgs())
 	}
 }
 
@@ -394,37 +378,37 @@ func TestOrgE2ECreateDeleteAndLastRootAdminGuard(t *testing.T) {
 	bobResp := bob.registerAndLogin(uniqueName("bob"), "pw123456", "路人")
 
 	// 任意登录用户可以 create_org，创建者自动成为根管理员。
-	created := alice.sendOK(wsRequest{"action": "create_org", "name": "阿尔法公司"})
-	if created.OrgID == "" {
+	created := sendOK(alice, "create_org", &pb.CreateOrgRequest{Name: "阿尔法公司"}, &pb.CreateOrgResponse{})
+	if created.GetOrgId() <= 0 {
 		t.Fatalf("create_org should return org_id: %+v", created)
 	}
-	orgIDStr := created.OrgID
+	orgID := created.GetOrgId()
 
 	// 创建者能直接建部门，无关用户不能。
-	newTag := alice.sendOK(wsRequest{"action": "create_org_tag", "org_id": orgIDStr, "parent_tag_id": orgIDStr, "name": "部门"})
-	if newTag.TagID == "" {
+	newTag := sendOK(alice, "create_org_tag", &pb.CreateOrgTagRequest{OrgId: orgID, ParentTagId: orgID, Name: "部门"}, &pb.CreateOrgTagResponse{})
+	if newTag.GetTagId() <= 0 {
 		t.Fatalf("creator should manage new org: %+v", newTag)
 	}
-	forbidden := bob.sendErr(wsRequest{"action": "rename_org", "org_id": orgIDStr, "name": "改名"})
-	if forbidden.ErrorCode != "FORBIDDEN" {
-		t.Errorf("non-admin rename_org error_code = %s, want FORBIDDEN", forbidden.ErrorCode)
+	forbidden := sendErr(bob, "rename_org", &pb.RenameOrgRequest{OrgId: orgID, Name: "改名"}, &pb.RenameOrgResponse{})
+	if forbidden.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin rename_org error_code = %v, want FORBIDDEN", forbidden.GetBase().GetCode())
 	}
 
 	// 唯一根管理员撤销自己应被拒绝（CONFLICT），组织至少保留一个根管理员。
-	selfRevoke := alice.sendErr(wsRequest{"action": "revoke_org_admin", "org_id": orgIDStr, "scope_tag_id": orgIDStr, "uid": aliceResp.UID})
-	if selfRevoke.ErrorCode != "CONFLICT" {
-		t.Errorf("last root admin self-revoke error_code = %s, want CONFLICT", selfRevoke.ErrorCode)
+	selfRevoke := sendErr(alice, "revoke_org_admin", &pb.RevokeOrgAdminRequest{OrgId: orgID, ScopeTagId: orgID, Uid: aliceResp.GetUid()}, &pb.RevokeOrgAdminResponse{})
+	if selfRevoke.GetBase().GetCode() != pb.ErrorCode_ERROR_CONFLICT {
+		t.Errorf("last root admin self-revoke error_code = %v, want CONFLICT", selfRevoke.GetBase().GetCode())
 	}
 
 	// 非根管理员不能删除组织；根管理员删除后组织展示资料立即消失。
-	forbiddenDelete := bob.sendErr(wsRequest{"action": "delete_org", "org_id": orgIDStr})
-	if forbiddenDelete.ErrorCode != "FORBIDDEN" {
-		t.Errorf("non-admin delete_org error_code = %s, want FORBIDDEN", forbiddenDelete.ErrorCode)
+	forbiddenDelete := sendErr(bob, "delete_org", &pb.DeleteOrgRequest{OrgId: orgID}, &pb.DeleteOrgResponse{})
+	if forbiddenDelete.GetBase().GetCode() != pb.ErrorCode_ERROR_FORBIDDEN {
+		t.Errorf("non-admin delete_org error_code = %v, want FORBIDDEN", forbiddenDelete.GetBase().GetCode())
 	}
-	alice.sendOK(wsRequest{"action": "delete_org", "org_id": orgIDStr})
-	afterDelete := alice.sendOK(wsRequest{"action": "get_org_infos", "org_ids": []string{orgIDStr}})
-	if len(afterDelete.Orgs) != 0 {
-		t.Errorf("org should be gone after delete_org: %+v", afterDelete.Orgs)
+	sendOK(alice, "delete_org", &pb.DeleteOrgRequest{OrgId: orgID}, &pb.DeleteOrgResponse{})
+	afterDelete := sendOK(alice, "get_org_infos", &pb.GetOrgInfosRequest{OrgIds: []int64{orgID}}, &pb.GetOrgInfosResponse{})
+	if len(afterDelete.GetOrgs()) != 0 {
+		t.Errorf("org should be gone after delete_org: %+v", afterDelete.GetOrgs())
 	}
 	_ = bobResp
 }

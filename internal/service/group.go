@@ -102,7 +102,7 @@ func (s *AppState) GetGroupMembers(info *BaseInfo, req *pb.GetGroupMembersReques
 	membersDTO := make([]appmsg.GroupMember, len(members))
 	for i, m := range members {
 		membersDTO[i] = appmsg.GroupMember{
-			UID:      appmsg.JSONInt64(m.UID),
+			UID:      m.UID,
 			Role:     m.Role,
 			JoinedAt: m.JoinedAt,
 		}

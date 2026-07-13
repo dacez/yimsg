@@ -3,15 +3,18 @@ package e2e
 import (
 	"strings"
 	"testing"
+	"yimsg/internal/appmsg"
+	"yimsg/internal/msgid"
+	"yimsg/internal/protocol/pb"
 )
 
 // recallReq 通过 send_message + MESSAGE_TYPE_RECALL + RecallBody 表达撤回。
-func recallReq(toUID, msgID string) wsRequest {
-	return wsRequest{
-		"action":   "send_message",
-		"to_uid":   toUID,
-		"msg_type": 5, // MESSAGE_TYPE_RECALL
-		"body":     map[string]any{"recall": map[string]any{"msg_id": msgID}},
+func recallReq(toUID int64, msgID string) *pb.SendMessageRequest {
+	return &pb.SendMessageRequest{
+		MsgId:   msgid.Generate(),
+		Target:  userTarget(toUID),
+		MsgType: pb.MessageType_MESSAGE_TYPE_RECALL,
+		Body:    &pb.MessageBody{Kind: &pb.MessageBody_Recall{Recall: &pb.RecallBody{MsgId: msgID}}},
 	}
 }
 
@@ -22,61 +25,56 @@ func TestRecallDM(t *testing.T) {
 	b.registerAndLogin(uniqueName("recall"), "pass1234", "Bob")
 	makeFriends(t, a, b)
 
-	sendResp := a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 1,
-		"content":  "hello before recall",
-	})
-	if sendResp.MsgID == "" || sendResp.Seq == nil {
+	sendResp := a.sendText(userTarget(b.uid), "hello before recall")
+	if sendResp.GetMsgId() == "" || sendResp.GetSeq() == 0 {
 		t.Fatalf("send_message should return msg_id/seq, got %+v", sendResp)
 	}
-	b.waitNotif(func(n notification) bool { return n.Type == "messages:received" })
+	b.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" })
 
-	beforeRecall := b.sendOK(wsRequest{"action": "get_messages", "to_uid": a.uid})
-	if len(beforeRecall.Messages) != 1 {
-		t.Fatalf("recipient should see one message before recall, got %+v", beforeRecall.Messages)
+	beforeRecall := sendOK(b, "get_messages", &pb.GetMessagesRequest{Target: userTarget(a.uid)}, &pb.GetMessagesResponse{})
+	if len(beforeRecall.GetMessages()) != 1 {
+		t.Fatalf("recipient should see one message before recall, got %+v", beforeRecall.GetMessages())
 	}
-	recipientOriginalSeq := beforeRecall.Messages[0].Seq
+	recipientOriginalSeq := beforeRecall.GetMessages()[0].GetSeq()
 
-	recallResp := a.sendOK(recallReq(b.uid, sendResp.MsgID))
-	if recallResp.MsgID != sendResp.MsgID {
-		t.Fatalf("recall msg_id=%q, want %q", recallResp.MsgID, sendResp.MsgID)
+	recallResp := sendOK(a, "send_message", recallReq(b.uid, sendResp.GetMsgId()), &pb.SendMessageResponse{})
+	if recallResp.GetMsgId() != sendResp.GetMsgId() {
+		t.Fatalf("recall msg_id=%q, want %q", recallResp.GetMsgId(), sendResp.GetMsgId())
 	}
-	if recallResp.Seq == nil || *recallResp.Seq <= *sendResp.Seq {
-		t.Fatalf("recall seq should advance, got %+v", recallResp.Seq)
+	if recallResp.GetSeq() <= sendResp.GetSeq() {
+		t.Fatalf("recall seq should advance, got %+v", recallResp.GetSeq())
 	}
 
-	b.waitNotif(func(n notification) bool { return n.Type == "messages:received" })
+	b.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" })
 
 	// 展示序旧→新（ascTop）：[0]=被覆盖的原消息占位（seq 更小），[1]=撤回事件（新 msg_id）。
-	senderMessages := a.sendOK(wsRequest{"action": "get_messages", "to_uid": b.uid})
-	if len(senderMessages.Messages) != 2 {
-		t.Fatalf("sender get_messages should return placeholder + recall event, got %+v", senderMessages.Messages)
+	senderMessages := sendOK(a, "get_messages", &pb.GetMessagesRequest{Target: userTarget(b.uid)}, &pb.GetMessagesResponse{})
+	if len(senderMessages.GetMessages()) != 2 {
+		t.Fatalf("sender get_messages should return placeholder + recall event, got %+v", senderMessages.GetMessages())
 	}
-	assertRecallPlaceholder(t, "sender placeholder", senderMessages.Messages[0], sendResp.MsgID, "你撤回了一条消息")
-	assertRecallEvent(t, "sender event", senderMessages.Messages[1], sendResp.MsgID, "你撤回了一条消息")
+	assertRecallPlaceholder(t, "sender placeholder", senderMessages.GetMessages()[0], sendResp.GetMsgId(), "你撤回了一条消息")
+	assertRecallEvent(t, "sender event", senderMessages.GetMessages()[1], sendResp.GetMsgId(), "你撤回了一条消息")
 
-	recipientMessages := b.sendOK(wsRequest{"action": "get_messages", "to_uid": a.uid})
-	if len(recipientMessages.Messages) != 2 {
-		t.Fatalf("recipient get_messages should return placeholder + recall event, got %+v", recipientMessages.Messages)
+	recipientMessages := sendOK(b, "get_messages", &pb.GetMessagesRequest{Target: userTarget(a.uid)}, &pb.GetMessagesResponse{})
+	if len(recipientMessages.GetMessages()) != 2 {
+		t.Fatalf("recipient get_messages should return placeholder + recall event, got %+v", recipientMessages.GetMessages())
 	}
-	assertRecallPlaceholder(t, "recipient placeholder", recipientMessages.Messages[0], sendResp.MsgID, "对方撤回了一条消息")
-	assertRecallEvent(t, "recipient event", recipientMessages.Messages[1], sendResp.MsgID, "对方撤回了一条消息")
+	assertRecallPlaceholder(t, "recipient placeholder", recipientMessages.GetMessages()[0], sendResp.GetMsgId(), "对方撤回了一条消息")
+	assertRecallEvent(t, "recipient event", recipientMessages.GetMessages()[1], sendResp.GetMsgId(), "对方撤回了一条消息")
 
 	// 原消息正文已被服务端脱敏，撤回后不可再读到（占位在 Messages[0]）。
-	if strings.Contains(recipientMessages.Messages[0].text(), "hello before recall") {
+	if strings.Contains(bodyText(recipientMessages.GetMessages()[0]), "hello before recall") {
 		t.Fatalf("original content should be redacted after recall")
 	}
 
 	// 同步：原消息被覆盖（seq 不变）不再下发，只下发新的撤回事件消息。
-	syncResp := b.sendOK(wsRequest{"action": "sync_messages", "last_seq": recipientOriginalSeq})
-	if len(syncResp.Messages) != 1 {
-		t.Fatalf("sync_messages after recall should return only recall event, got %+v", syncResp.Messages)
+	syncResp := sendOK(b, "sync_messages", &pb.SyncMessagesRequest{LastSeq: recipientOriginalSeq}, &pb.SyncMessagesResponse{})
+	if len(syncResp.GetMessages()) != 1 {
+		t.Fatalf("sync_messages after recall should return only recall event, got %+v", syncResp.GetMessages())
 	}
-	assertRecallEvent(t, "sync event", syncResp.Messages[0], sendResp.MsgID, "对方撤回了一条消息")
-	if syncResp.Messages[0].MsgID == sendResp.MsgID {
-		t.Fatalf("sync recall event should use a new msg_id, got %+v", syncResp.Messages[0])
+	assertRecallEvent(t, "sync event", syncResp.GetMessages()[0], sendResp.GetMsgId(), "对方撤回了一条消息")
+	if syncResp.GetMessages()[0].GetMsgId() == sendResp.GetMsgId() {
+		t.Fatalf("sync recall event should use a new msg_id, got %+v", syncResp.GetMessages()[0])
 	}
 }
 
@@ -88,62 +86,65 @@ func TestRecallServerOverridesClientFields(t *testing.T) {
 	b.registerAndLogin(uniqueName("recall"), "pass1234", "Bob")
 	makeFriends(t, a, b)
 
-	sendResp := a.sendOK(wsRequest{"action": "send_message", "to_uid": b.uid, "msg_type": 1, "content": "x"})
+	sendResp := a.sendText(userTarget(b.uid), "x")
 
-	a.sendOK(wsRequest{
-		"action":   "send_message",
-		"to_uid":   b.uid,
-		"msg_type": 5,
-		"body": map[string]any{"recall": map[string]any{
-			"msg_id":       sendResp.MsgID,
-			"operator_uid": "999999",
-			"recall_time":  "1",
-			"text":         "client-supplied-should-be-ignored",
-		}},
-	})
+	sendOK(a, "send_message", &pb.SendMessageRequest{
+		MsgId:   msgid.Generate(),
+		Target:  userTarget(b.uid),
+		MsgType: pb.MessageType_MESSAGE_TYPE_RECALL,
+		Body: &pb.MessageBody{Kind: &pb.MessageBody_Recall{Recall: &pb.RecallBody{
+			MsgId:       sendResp.GetMsgId(),
+			OperatorUid: 999999,
+			RecallTime:  1,
+			Text:        "client-supplied-should-be-ignored",
+		}}},
+	}, &pb.SendMessageResponse{})
 
-	msgs := a.sendOK(wsRequest{"action": "get_messages", "to_uid": b.uid})
+	msgs := sendOK(a, "get_messages", &pb.GetMessagesRequest{Target: userTarget(b.uid)}, &pb.GetMessagesResponse{})
 	// 展示序旧→新：撤回事件是最新一条，取末尾。
-	ev := msgs.Messages[len(msgs.Messages)-1]
-	if ev.Body.Recall == nil {
+	ev := msgs.GetMessages()[len(msgs.GetMessages())-1]
+	recall := ev.GetBody().GetRecall()
+	if recall == nil {
 		t.Fatalf("expected recall body, got %+v", ev)
 	}
-	if ev.Body.Recall.OperatorUID != a.uid {
-		t.Fatalf("operator_uid = %q, want server-set %q", ev.Body.Recall.OperatorUID, a.uid)
+	if recall.GetOperatorUid() != a.uid {
+		t.Fatalf("operator_uid = %d, want server-set %d", recall.GetOperatorUid(), a.uid)
 	}
-	if ev.Body.Recall.RecallTime <= 1 {
-		t.Fatalf("recall_time should be server-set to current time, got %d", ev.Body.Recall.RecallTime)
+	if recall.GetRecallTime() <= 1 {
+		t.Fatalf("recall_time should be server-set to current time, got %d", recall.GetRecallTime())
 	}
-	if strings.Contains(ev.Body.Recall.Text, "client-supplied") {
-		t.Fatalf("text should be server-set, got %q", ev.Body.Recall.Text)
+	if strings.Contains(recall.GetText(), "client-supplied") {
+		t.Fatalf("text should be server-set, got %q", recall.GetText())
 	}
 }
 
-func assertRecallEvent(t *testing.T, label string, m message, targetMsgID, wantText string) {
+func assertRecallEvent(t *testing.T, label string, m *pb.Message, targetMsgID, wantText string) {
 	t.Helper()
-	if m.MsgType != 5 || m.Body.Recall == nil {
+	recall := m.GetBody().GetRecall()
+	if m.GetMsgType() != pb.MessageType_MESSAGE_TYPE_RECALL || recall == nil {
 		t.Fatalf("%s: expected recall message, got %+v", label, m)
 	}
-	if m.Body.Recall.MsgID != targetMsgID {
-		t.Fatalf("%s: recall.msg_id=%q, want %q", label, m.Body.Recall.MsgID, targetMsgID)
+	if recall.GetMsgId() != targetMsgID {
+		t.Fatalf("%s: recall.msg_id=%q, want %q", label, recall.GetMsgId(), targetMsgID)
 	}
-	if m.MsgID == targetMsgID {
-		t.Fatalf("%s: event should use a new msg_id, got original %q", label, m.MsgID)
+	if m.GetMsgId() == targetMsgID {
+		t.Fatalf("%s: event should use a new msg_id, got original %q", label, m.GetMsgId())
 	}
-	if !strings.Contains(m.Body.Recall.Text, wantText) {
-		t.Fatalf("%s: text=%q, want contains %q", label, m.Body.Recall.Text, wantText)
+	if !strings.Contains(recall.GetText(), wantText) {
+		t.Fatalf("%s: text=%q, want contains %q", label, recall.GetText(), wantText)
 	}
 }
 
-func assertRecallPlaceholder(t *testing.T, label string, m message, targetMsgID, wantText string) {
+func assertRecallPlaceholder(t *testing.T, label string, m *pb.Message, targetMsgID, wantText string) {
 	t.Helper()
-	if m.MsgType != 5 || m.Body.Recall == nil {
+	recall := m.GetBody().GetRecall()
+	if m.GetMsgType() != pb.MessageType_MESSAGE_TYPE_RECALL || recall == nil {
 		t.Fatalf("%s: expected recall placeholder, got %+v", label, m)
 	}
-	if m.MsgID != targetMsgID || m.Body.Recall.MsgID != targetMsgID {
-		t.Fatalf("%s: placeholder should overwrite original msg_id %q, got own=%q recall=%q", label, targetMsgID, m.MsgID, m.Body.Recall.MsgID)
+	if m.GetMsgId() != targetMsgID || recall.GetMsgId() != targetMsgID {
+		t.Fatalf("%s: placeholder should overwrite original msg_id %q, got own=%q recall=%q", label, targetMsgID, m.GetMsgId(), recall.GetMsgId())
 	}
-	if !strings.Contains(m.Body.Recall.Text, wantText) {
-		t.Fatalf("%s: text=%q, want contains %q", label, m.Body.Recall.Text, wantText)
+	if !strings.Contains(recall.GetText(), wantText) {
+		t.Fatalf("%s: text=%q, want contains %q", label, recall.GetText(), wantText)
 	}
 }

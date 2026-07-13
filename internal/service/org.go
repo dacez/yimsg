@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"strconv"
@@ -10,7 +9,10 @@ import (
 	"yimsg/internal/auth"
 	"yimsg/internal/dal"
 	"yimsg/internal/protocol/pb"
+	"yimsg/internal/service/taskpb"
 	"yimsg/internal/shard"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // 组织域：org_info（组织字典）+ tag_info（tag/部门字典）+ org_relation（唯一同步域）。
@@ -30,52 +32,40 @@ var (
 	errOrgRootAsChild = errors.New("org root tag cannot be linked as a child")
 )
 
-// orgUpdatedTask 是 org:updated 扇出任务载荷（JSON 持久化）。
-type orgUpdatedTask struct {
-	OrgID int64 `json:"org_id"`
-}
-
 // handleOrgUpdatedTask 是 org_updated 任务执行体：向全体在线成员推送轻通知。
 // 通知只带 org_id、不带增量数据；离线成员靠上线后的增量同步追平，不补发。
 func (s *AppState) handleOrgUpdatedTask(payload []byte) error {
-	var task orgUpdatedTask
-	if err := json.Unmarshal(payload, &task); err != nil {
+	var task taskpb.OrgUpdatedTask
+	if err := proto.Unmarshal(payload, &task); err != nil {
 		log.Printf("org updated task unmarshal err=%v", err)
 		return nil // 丢弃损坏载荷，避免每次启动无限重放
 	}
-	uids, err := s.OrgStore(task.OrgID).ActiveMemberUIDs(task.OrgID)
+	uids, err := s.OrgStore(task.GetOrgId()).ActiveMemberUIDs(task.GetOrgId())
 	if err != nil {
 		return err
 	}
 	for _, uid := range uids {
-		s.Online().Notify(uid, appmsg.OrgUpdatedNotif(task.OrgID)())
+		s.Online().Notify(uid, appmsg.OrgUpdatedNotif(task.GetOrgId())())
 	}
 	return nil
 }
 
 // submitOrgUpdated 投递一条 org:updated 扇出任务（一次管理操作只投一条，天然合并成批变更）。
 func (s *AppState) submitOrgUpdated(orgID int64) {
-	s.submitTask(taskKindOrgUpdated, orgUpdatedTask{OrgID: orgID})
-}
-
-// orgDeletedTask 是组织删除后、成员通讯录组织行异步清理任务载荷（JSON 持久化）。
-// MemberUIDs 在组织结构物理删除前快照——事后组织分片已经查不到"谁曾是成员"。
-type orgDeletedTask struct {
-	OrgID      int64   `json:"org_id"`
-	MemberUIDs []int64 `json:"member_uids"`
+	s.submitTask(taskKindOrgUpdated, &taskpb.OrgUpdatedTask{OrgId: orgID})
 }
 
 // handleOrgDeletedTask 是 org_deleted 任务执行体：逐个成员软删除其通讯录组织行
 // 并推送 contacts:updated（离职语义，与 RemoveOrgMemberDirect 的末边分支一致）。
 func (s *AppState) handleOrgDeletedTask(payload []byte) error {
-	var task orgDeletedTask
-	if err := json.Unmarshal(payload, &task); err != nil {
+	var task taskpb.OrgDeletedTask
+	if err := proto.Unmarshal(payload, &task); err != nil {
 		log.Printf("org deleted task unmarshal err=%v", err)
 		return nil // 丢弃损坏载荷，避免每次启动无限重放
 	}
-	for _, uid := range task.MemberUIDs {
-		if _, _, err := s.ContactStore(uid).Delete(uid, 0, 0, task.OrgID); err != nil {
-			log.Printf("org deleted contact delete uid=%d org=%d err=%v", uid, task.OrgID, err)
+	for _, uid := range task.GetMemberUids() {
+		if _, _, err := s.ContactStore(uid).Delete(uid, 0, 0, task.GetOrgId()); err != nil {
+			log.Printf("org deleted contact delete uid=%d org=%d err=%v", uid, task.GetOrgId(), err)
 			continue
 		}
 		notifyContactsUpdated(s, uid)
@@ -85,7 +75,7 @@ func (s *AppState) handleOrgDeletedTask(payload []byte) error {
 
 // submitOrgDeleted 投递一条组织删除后的成员通讯录清理任务。
 func (s *AppState) submitOrgDeleted(orgID int64, memberUIDs []int64) {
-	s.submitTask(taskKindOrgDeleted, orgDeletedTask{OrgID: orgID, MemberUIDs: memberUIDs})
+	s.submitTask(taskKindOrgDeleted, &taskpb.OrgDeletedTask{OrgId: orgID, MemberUids: memberUIDs})
 }
 
 // orgName 读取组织展示名。
@@ -172,7 +162,7 @@ func (s *AppState) GetOrgInfos(info *BaseInfo, req *pb.GetOrgInfosRequest) *pb.G
 
 	orgs := make([]appmsg.OrgInfo, len(infos))
 	for i, o := range infos {
-		orgs[i] = appmsg.OrgInfo{OrgID: appmsg.JSONInt64(o.OrgID), Name: o.Name, Avatar: o.Avatar}
+		orgs[i] = appmsg.OrgInfo{OrgID: o.OrgID, Name: o.Name, Avatar: o.Avatar}
 	}
 	return toGetOrgInfosResponse(appmsg.OKOrgInfos(reqID, orgs))
 }
@@ -195,7 +185,7 @@ func (s *AppState) GetTagInfos(info *BaseInfo, req *pb.GetTagInfosRequest) *pb.G
 	}
 	tags := make([]appmsg.TagInfo, len(rows))
 	for i, t := range rows {
-		tags[i] = appmsg.TagInfo{TagID: appmsg.JSONInt64(t.TagID), Name: t.Name, Avatar: t.Avatar}
+		tags[i] = appmsg.TagInfo{TagID: t.TagID, Name: t.Name, Avatar: t.Avatar}
 	}
 	return toGetTagInfosResponse(appmsg.OKTagInfos(reqID, tags))
 }
@@ -310,8 +300,8 @@ func (s *AppState) SyncTags(info *BaseInfo, req *pb.SyncTagsRequest) *pb.SyncTag
 
 func tagFromDAL(r dal.Tag) appmsg.Tag {
 	return appmsg.Tag{
-		TagID:     appmsg.JSONInt64(r.TagID),
-		ChildID:   appmsg.JSONInt64(r.ChildID),
+		TagID:     r.TagID,
+		ChildID:   r.ChildID,
 		ChildType: r.ChildType,
 		Title:     r.Title,
 		Rank:      r.Rank,

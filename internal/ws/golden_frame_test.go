@@ -2,8 +2,6 @@ package ws
 
 import (
 	"encoding/hex"
-	"encoding/json"
-	"os"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -11,44 +9,71 @@ import (
 	"yimsg/internal/protocol/pb"
 )
 
-type goldenFrameFile struct {
-	Protobuf struct {
-		Message  string `json:"message"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		BodyHex  string `json:"body_hex"`
-	} `json:"protobuf"`
-	Frames []goldenFrameCase `json:"frames"`
-}
+// 以下常量是 Go / TypeScript 共享的 protobuf frame 字节样例（golden vector）。
+// 两侧分别硬编码同一组数据（见 frontend/tests/unit/sdk/protocol-golden-frame.test.ts），
+// 不再通过共享 JSON fixture 文件中转；修改帧格式时需要同步更新两侧常量。
+const (
+	goldenUsername = "alice"
+	goldenPassword = "pass"
+	goldenBodyHex  = "5205616c6963655a0470617373"
+)
 
 type goldenFrameCase struct {
-	Name         string `json:"name"`
-	LittleEndian bool   `json:"little_endian"`
-	Magic        byte   `json:"magic"`
-	Codec        byte   `json:"codec"`
-	Reserved     byte   `json:"reserved"`
-	Checksum     byte   `json:"checksum"`
-	Size         uint16 `json:"size"`
-	RequestID    uint64 `json:"request_id,string"`
-	Type         uint16 `json:"type"`
-	BodyHex      string `json:"body_hex"`
-	FrameHex     string `json:"frame_hex"`
+	Name         string
+	LittleEndian bool
+	Magic        byte
+	Codec        byte
+	Reserved     byte
+	Checksum     byte
+	Size         uint16
+	RequestID    uint64
+	Type         uint16
+	BodyHex      string
+	FrameHex     string
+}
+
+var goldenFrameCases = []goldenFrameCase{
+	{
+		Name:         "login_request_big_endian",
+		LittleEndian: false,
+		Magic:        77,
+		Codec:        2,
+		Reserved:     0,
+		Checksum:     227,
+		Size:         13,
+		RequestID:    72623859790382856,
+		Type:         2,
+		BodyHex:      goldenBodyHex,
+		FrameHex:     "4d0200e3000d010203040506070800025205616c6963655a0470617373",
+	},
+	{
+		Name:         "login_request_little_endian",
+		LittleEndian: true,
+		Magic:        77,
+		Codec:        3,
+		Reserved:     0,
+		Checksum:     48,
+		Size:         13,
+		RequestID:    72623859790382856,
+		Type:         2,
+		BodyHex:      goldenBodyHex,
+		FrameHex:     "4d0300300d00080706050403020102005205616c6963655a0470617373",
+	},
 }
 
 func TestGoldenLoginFrames(t *testing.T) {
-	fixture := readGoldenFrameFixture(t)
 	body, err := proto.Marshal(&pb.LoginRequest{
-		Username: fixture.Protobuf.Username,
-		Password: fixture.Protobuf.Password,
+		Username: goldenUsername,
+		Password: goldenPassword,
 	})
 	if err != nil {
 		t.Fatalf("marshal login request: %v", err)
 	}
-	if got := hex.EncodeToString(body); got != fixture.Protobuf.BodyHex {
-		t.Fatalf("protobuf body hex=%s, want %s", got, fixture.Protobuf.BodyHex)
+	if got := hex.EncodeToString(body); got != goldenBodyHex {
+		t.Fatalf("protobuf body hex=%s, want %s", got, goldenBodyHex)
 	}
 
-	for _, tc := range fixture.Frames {
+	for _, tc := range goldenFrameCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wantFrame := decodeHex(t, tc.FrameHex)
 			wantBody := decodeHex(t, tc.BodyHex)
@@ -81,7 +106,7 @@ func TestGoldenLoginFrames(t *testing.T) {
 			if err := proto.Unmarshal(frame.Body, &decoded); err != nil {
 				t.Fatalf("unmarshal golden body: %v", err)
 			}
-			if decoded.Username != fixture.Protobuf.Username || decoded.Password != fixture.Protobuf.Password {
+			if decoded.Username != goldenUsername || decoded.Password != goldenPassword {
 				t.Fatalf("decoded login request username=%q password=%q", decoded.Username, decoded.Password)
 			}
 		})
@@ -105,19 +130,6 @@ func assertGoldenHeaderBytes(t *testing.T, frame []byte, tc goldenFrameCase) {
 	if frame[frameChecksumOffset] != tc.Checksum {
 		t.Fatalf("checksum=0x%02x, want 0x%02x", frame[frameChecksumOffset], tc.Checksum)
 	}
-}
-
-func readGoldenFrameFixture(t *testing.T) goldenFrameFile {
-	t.Helper()
-	data, err := os.ReadFile("../../tests/fixtures/protocol/golden_frames.json")
-	if err != nil {
-		t.Fatalf("read golden fixture: %v", err)
-	}
-	var fixture goldenFrameFile
-	if err := json.Unmarshal(data, &fixture); err != nil {
-		t.Fatalf("parse golden fixture: %v", err)
-	}
-	return fixture
 }
 
 func decodeHex(t *testing.T, value string) []byte {

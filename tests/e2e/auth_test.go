@@ -1,12 +1,15 @@
 package e2e
 
-import "testing"
+import (
+	"testing"
+	"yimsg/internal/protocol/pb"
+)
 
 func TestRegister(t *testing.T) {
 	c := dial(t)
 	username := uniqueName("auth")
 	resp := c.register(username, "pass1234", "Nick")
-	if resp.UID == "" {
+	if resp.GetUid() <= 0 {
 		t.Fatal("register should return a non-empty uid")
 	}
 }
@@ -17,24 +20,17 @@ func TestRegisterDuplicate(t *testing.T) {
 	c.register(username, "pass1234", "Nick")
 
 	c2 := dial(t)
-	resp := c2.send(wsRequest{
-		"action": "register", "username": username,
-		"password": "pass1234", "nickname": "Nick2",
-	})
-	if resp.OK {
-		t.Fatal("duplicate register should fail")
-	}
+	resp := sendErr(c2, "register", &pb.RegisterRequest{
+		Username: username, Password: "pass1234", Nickname: "Nick2",
+	}, &pb.RegisterResponse{})
+	_ = resp
 }
 
 func TestRegisterEmptyUsername(t *testing.T) {
 	c := dial(t)
-	resp := c.send(wsRequest{
-		"action": "register", "username": "",
-		"password": "pass1234", "nickname": "Nick",
-	})
-	if resp.OK {
-		t.Fatal("register with empty username should fail")
-	}
+	sendErr(c, "register", &pb.RegisterRequest{
+		Username: "", Password: "pass1234", Nickname: "Nick",
+	}, &pb.RegisterResponse{})
 }
 
 func TestLoginSuccess(t *testing.T) {
@@ -44,17 +40,17 @@ func TestLoginSuccess(t *testing.T) {
 
 	c2 := dial(t)
 	resp := c2.login(username, "pass1234")
-	if resp.UID == "" {
+	if resp.GetUid() <= 0 {
 		t.Fatal("login should return uid")
 	}
-	if resp.Token == "" {
+	if resp.GetToken() == "" {
 		t.Fatal("login should return token")
 	}
-	if resp.ClientConfig == nil {
+	if resp.GetClientConfig() == nil {
 		t.Fatal("login should return client_config")
 	}
-	if resp.ClientConfig.RecallWindowSeconds <= 0 {
-		t.Fatalf("login should return positive recall_window_seconds, got %+v", resp.ClientConfig)
+	if resp.GetClientConfig().GetRecallWindowSeconds() <= 0 {
+		t.Fatalf("login should return positive recall_window_seconds, got %+v", resp.GetClientConfig())
 	}
 }
 
@@ -64,22 +60,12 @@ func TestLoginWrongPassword(t *testing.T) {
 	c.register(username, "pass1234", "Nick")
 
 	c2 := dial(t)
-	resp := c2.send(wsRequest{
-		"action": "login", "username": username, "password": "wrongpass",
-	})
-	if resp.OK {
-		t.Fatal("login with wrong password should fail")
-	}
+	sendErr(c2, "login", &pb.LoginRequest{Username: username, Password: "wrongpass"}, &pb.LoginResponse{})
 }
 
 func TestLoginNonexistentUser(t *testing.T) {
 	c := dial(t)
-	resp := c.send(wsRequest{
-		"action": "login", "username": uniqueName("auth"), "password": "pass1234",
-	})
-	if resp.OK {
-		t.Fatal("login with nonexistent user should fail")
-	}
+	sendErr(c, "login", &pb.LoginRequest{Username: uniqueName("auth"), Password: "pass1234"}, &pb.LoginResponse{})
 }
 
 func TestAuthenticate(t *testing.T) {
@@ -91,29 +77,24 @@ func TestAuthenticate(t *testing.T) {
 	loginResp := c2.login(username, "pass1234")
 
 	c3 := dial(t)
-	authResp := c3.authenticate(loginResp.Token)
-	if authResp.UID == "" {
+	authResp := c3.authenticate(loginResp.GetToken())
+	if authResp.GetUid() <= 0 {
 		t.Fatal("authenticate should return uid")
 	}
-	if authResp.UID != loginResp.UID {
-		t.Fatalf("authenticate uid %s != login uid %s", authResp.UID, loginResp.UID)
+	if authResp.GetUid() != loginResp.GetUid() {
+		t.Fatalf("authenticate uid %d != login uid %d", authResp.GetUid(), loginResp.GetUid())
 	}
-	if authResp.ClientConfig == nil {
+	if authResp.GetClientConfig() == nil {
 		t.Fatal("authenticate should return client_config")
 	}
-	if authResp.ClientConfig.RecallWindowSeconds != loginResp.ClientConfig.RecallWindowSeconds {
-		t.Fatalf("authenticate recall_window_seconds %d != login recall_window_seconds %d", authResp.ClientConfig.RecallWindowSeconds, loginResp.ClientConfig.RecallWindowSeconds)
+	if authResp.GetClientConfig().GetRecallWindowSeconds() != loginResp.GetClientConfig().GetRecallWindowSeconds() {
+		t.Fatalf("authenticate recall_window_seconds %d != login recall_window_seconds %d", authResp.GetClientConfig().GetRecallWindowSeconds(), loginResp.GetClientConfig().GetRecallWindowSeconds())
 	}
 }
 
 func TestAuthenticateInvalidToken(t *testing.T) {
 	c := dial(t)
-	resp := c.send(wsRequest{
-		"action": "authenticate", "token": "invalid_token_abc123",
-	})
-	if resp.OK {
-		t.Fatal("authenticate with invalid token should fail")
-	}
+	sendErr(c, "authenticate", &pb.AuthenticateRequest{Token: "invalid_token_abc123"}, &pb.AuthenticateResponse{})
 }
 
 func TestLogout(t *testing.T) {
@@ -126,16 +107,10 @@ func TestLogout(t *testing.T) {
 
 	// Old token should no longer work
 	c2 := dial(t)
-	resp := c2.send(wsRequest{"action": "authenticate", "token": token})
-	if resp.OK {
-		t.Fatal("authenticate with logged-out token should fail")
-	}
+	sendErr(c2, "authenticate", &pb.AuthenticateRequest{Token: token}, &pb.AuthenticateResponse{})
 }
 
 func TestRequiresAuth(t *testing.T) {
 	c := dial(t)
-	resp := c.send(wsRequest{"action": "get_user_infos"})
-	if resp.OK {
-		t.Fatal("get_user_infos without auth should fail")
-	}
+	sendErr(c, "get_user_infos", &pb.GetUserInfosRequest{}, &pb.GetUserInfosResponse{})
 }

@@ -1,7 +1,7 @@
 # 协议治理方案
 
 > 主要对照：`internal/protocol/yimsg.proto`、`internal/protocol/pb/yimsg.pb.go`、`frontend/src/sdk/generated/yimsg.ts`、`internal/ws/connection.go`、`frontend/src/sdk/transport/`。
-> 最后复核：2026-06-29。
+> 最后复核：2026-07-12。
 > 触发更新：WebSocket interface、请求 / 响应字段、错误码、通知类型、SDK ↔ 服务端映射或协议生成策略变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；完整接口矩阵见 [`../接口总览.md`](../接口总览.md)；本文负责协议一致性治理和代码生成规则。
 
@@ -135,7 +135,7 @@ go run ./tools/cmd/protocolgen --check
 4. 评估是否需要更强校验：16 字节 header 下只能容纳 CRC-8；若未来需要更强链路完整性，应通过协议版本升级引入 CRC-16 / CRC-32 或认证摘要。
 5. 补充 request_id 上限和溢出策略，前端长期连接达到 `uint64` 边界前应主动重连或重置会话。
 
-当前已有跨语言 golden frame 回归：`tests/fixtures/protocol/golden_frames.json` 固定 `LoginRequest` 的 protobuf body，以及 big-endian / little-endian 两个完整 frame；Go 测试 `internal/ws/golden_frame_test.go` 和 TypeScript 测试 `frontend/tests/unit/sdk/protocol-golden-frame.test.ts` 共同校验 magic、codec、reserved、CRC、size、request_id、type 和 body 字节。
+当前已有跨语言 golden frame 回归：Go 测试 `internal/ws/golden_frame_test.go` 和 TypeScript 测试 `frontend/tests/unit/sdk/protocol-golden-frame.test.ts` 各自硬编码同一组样例常量（`LoginRequest` 的 protobuf body，以及 big-endian / little-endian 两个完整 frame），共同校验 magic、codec、reserved、CRC、size、request_id、type 和 body 字节。
 
 ## 8. 目录结构建议
 

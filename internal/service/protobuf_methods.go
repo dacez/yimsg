@@ -6,7 +6,7 @@ import (
 	"yimsg/internal/dal"
 	"yimsg/internal/protocol/pb"
 
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // exceededBatch 报告批量 ID 去重后是否超过服务端上限。max<=0 表示不限制。
@@ -146,10 +146,10 @@ func muteToProto(m appmsg.MutelistEntry) *pb.MutelistEntry {
 }
 
 func messageToProto(m appmsg.Message) *pb.Message {
-	out := &pb.Message{Seq: m.Seq, MsgId: m.MsgID, FromUid: int64(m.FromUID), Target: conversationTargetToProto(m.Target), MsgType: pb.MessageType(m.MsgType), SendTime: m.SendTime, Status: pb.MessageStatus(m.Status)}
+	out := &pb.Message{Seq: m.Seq, MsgId: m.MsgID, FromUid: m.FromUID, Target: conversationTargetToProto(m.Target), MsgType: pb.MessageType(m.MsgType), SendTime: m.SendTime, Status: pb.MessageStatus(m.Status)}
 	if len(m.Body) > 0 {
 		var body pb.MessageBody
-		if err := protojson.Unmarshal(m.Body, &body); err == nil {
+		if err := proto.Unmarshal(m.Body, &body); err == nil {
 			out.Body = &body
 		}
 	}
