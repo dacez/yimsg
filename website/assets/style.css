@@ -1,5 +1,11 @@
 @import url('tokens.css');
 
+/* ── Language defaults: English visible, Chinese hidden ── */
+.lang-zh { display: none; }
+html.lang-zh .lang-en { display: none; }
+html.lang-zh .lang-zh { display: revert; }
+/* .lang-en uses native display (block for div/dt, inline for span, etc.) */
+
 :root {
   /* 明亮商业风配色 */
   --bg: #ffffff;
@@ -127,6 +133,31 @@ code {
   transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 .nav-cta:hover { transform: translateY(-1px); }
+
+/* Language toggle */
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lang-toggle {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+.lang-toggle:hover {
+  border-color: var(--color-brand-500);
+  color: var(--color-brand-500);
+  background: var(--color-brand-100);
+}
 
 /* Hero */
 .hero { padding: 116px 0 90px; text-align: center; }

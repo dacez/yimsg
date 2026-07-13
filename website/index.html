@@ -1,11 +1,26 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yimsg · 极简单机部署的私有化即时通讯</title>
-  <meta name="description" content="yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：巴掌大的迷你主机接入内网即可使用，单台支撑数百人，多台叠加灵活扩容。一行代码即可把聊天能力嵌入官网做客服组件，也能作为独立网页应用直接使用，支持本地持久化。" />
+  <title>yimsg · Self-hosted Instant Messaging</title>
+  <meta name="description" content="yimsg is a minimalist self-hosted instant messaging system: deploy on a single machine in minutes, all data stays on your own hardware. Embed chat into your website with one line of code, or run as a standalone web app." />
   <link rel="stylesheet" href="assets/style.css" />
+  <script>
+    // Detect language before paint to avoid flicker
+    (function(){
+      var lang = 'en';
+      try {
+        var s = localStorage.getItem('yimsg-lang');
+        if (s === 'en' || s === 'zh') lang = s;
+        else {
+          var nav = navigator.language || '';
+          if (nav.indexOf('zh') === 0) lang = 'zh';
+        }
+      } catch(e) {}
+      if (lang === 'zh') document.documentElement.classList.add('lang-zh');
+    })();
+  </script>
 </head>
 <body>
   <div class="bg-aurora" aria-hidden="true"></div>
@@ -16,65 +31,115 @@
         <span class="brand-mark">yi</span>msg
       </a>
       <nav class="nav-links">
-        <a href="#hardware">迷你主机</a>
-        <a href="#advantages">核心优势</a>
-        <a href="#scenarios">应用场景</a>
-        <a href="#ai">AI 引擎</a>
+        <a href="#hardware"><span class="lang-en">Pocket Server</span><span class="lang-zh">迷你主机</span></a>
+        <a href="#advantages"><span class="lang-en">Advantages</span><span class="lang-zh">核心优势</span></a>
+        <a href="#scenarios"><span class="lang-en">Use Cases</span><span class="lang-zh">应用场景</span></a>
+        <a href="#ai"><span class="lang-en">AI Engine</span><span class="lang-zh">AI 引擎</span></a>
         <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub</a>
-        <a class="nav-cta" href="/app/">打开应用</a>
+        <a class="nav-cta" href="/app/"><span class="lang-en">Open App</span><span class="lang-zh">打开应用</span></a>
       </nav>
-      <button class="nav-toggle" aria-label="打开菜单" aria-expanded="false">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <line x1="3" y1="12" x2="21" y2="12"/>
-          <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
+      <div class="nav-right">
+        <button class="lang-toggle" id="langToggle" aria-label="Switch language">
+          <span class="lang-en">中文</span>
+          <span class="lang-zh">EN</span>
+        </button>
+        <button class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
   <main>
+    <!-- Hero -->
     <section class="hero">
       <div class="container">
-        <span class="hero-badge">极简单机部署 · 数据自主可控</span>
+        <span class="hero-badge">
+          <span class="lang-en">Self-hosted · Data Sovereignty</span>
+          <span class="lang-zh">极简单机部署 · 数据自主可控</span>
+        </span>
         <h1 class="hero-title">
-          你的消息，<span class="grad-text">只属于你自己</span>
+          <span class="lang-en">Your messages, <span class="grad-text">only yours</span></span>
+          <span class="lang-zh">你的消息，<span class="grad-text">只属于你自己</span></span>
         </h1>
         <p class="hero-sub">
-          yimsg 是一套极简的私有化即时通讯框架——一台机器、几分钟即可部署上线。
-          所有数据就放在你自己的办公室里，不经任何第三方云，完全由你掌控。
+          <span class="lang-en">
+            yimsg is a minimalist self-hosted IM framework — one machine, up and running in minutes.
+            All data stays in your own office, never touching any third-party cloud. You control everything.
+          </span>
+          <span class="lang-zh">
+            yimsg 是一套极简的私有化即时通讯框架——一台机器、几分钟即可部署上线。
+            所有数据就放在你自己的办公室里，不经任何第三方云，完全由你掌控。
+          </span>
         </p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="/demo/responsive.html">立即体验</a>
-          <a class="btn btn-ghost" href="#advantages">了解核心优势</a>
+          <a class="btn btn-primary" href="/demo/responsive.html">
+            <span class="lang-en">Try Live Demo</span>
+            <span class="lang-zh">立即体验</span>
+          </a>
+          <a class="btn btn-ghost" href="#advantages">
+            <span class="lang-en">Why yimsg</span>
+            <span class="lang-zh">了解核心优势</span>
+          </a>
         </div>
         <dl class="hero-stats">
-          <div><dt>1 台机器</dt><dd>极简单机部署，开箱即用</dd></div>
-          <div><dt>2 核 4G</dt><dd>轻松支撑百人同时在线</dd></div>
-          <div><dt>&lt; 32MB</dt><dd>部署包极致精简</dd></div>
-          <div><dt>0 第三方云</dt><dd>数据全留在你的办公室</dd></div>
+          <div>
+            <dt class="lang-en">1 Machine</dt>
+            <dt class="lang-zh">1 台机器</dt>
+            <dd><span class="lang-en">Minimalist single-machine deploy</span><span class="lang-zh">极简单机部署，开箱即用</span></dd>
+          </div>
+          <div>
+            <dt class="lang-en">2-Core 4GB</dt>
+            <dt class="lang-zh">2 核 4G</dt>
+            <dd><span class="lang-en">Handles 100+ concurrent users</span><span class="lang-zh">轻松支撑百人同时在线</span></dd>
+          </div>
+          <div>
+            <dt>&lt; 32MB</dt>
+            <dd><span class="lang-en">Ultra-compact deployment</span><span class="lang-zh">部署包极致精简</span></dd>
+          </div>
+          <div>
+            <dt class="lang-en">Zero Cloud</dt>
+            <dt class="lang-zh">0 第三方云</dt>
+            <dd><span class="lang-en">Data stays in your office</span><span class="lang-zh">数据全留在你的办公室</span></dd>
+          </div>
         </dl>
       </div>
     </section>
 
+    <!-- Pocket Server -->
     <section id="hardware" class="section">
       <div class="container">
-        <span class="section-eyebrow">Pocket Server</span>
-        <h2 class="section-title">超小迷你，放进口袋的即时通讯系统</h2>
+        <span class="section-eyebrow lang-en">Pocket Server</span>
+        <span class="section-eyebrow lang-zh">Pocket Server</span>
+        <h2 class="section-title">
+          <span class="lang-en">Pocket-sized instant messaging server</span>
+          <span class="lang-zh">超小迷你，放进口袋的即时通讯系统</span>
+        </h2>
         <p class="section-lead">
-          一台巴掌大的迷你主机，就是你的整套聊天服务器。
-          接入内网即可使用，聊天数据始终留在你自己手里。
+          <span class="lang-en">
+            A palm-sized mini PC is your entire chat server. Plug into your local network and go — chat data stays in your hands.
+          </span>
+          <span class="lang-zh">
+            一台巴掌大的迷你主机，就是你的整套聊天服务器。
+            接入内网即可使用，聊天数据始终留在你自己手里。
+          </span>
         </p>
         <div class="hw-grid">
           <div class="hw-visual">
             <div class="hw-photo-wrap">
-              <img class="hw-photo-main" src="assets/minipc-hand.png" alt="一只手就能托起的 yimsg 迷你主机" />
-              <span class="hw-chip hw-chip-a">🔌 接入内网 · 即插即用</span>
+              <img class="hw-photo-main" src="assets/minipc-hand.png" alt="yimsg mini PC in hand" />
+              <span class="hw-chip hw-chip-a lang-en">🔌 LAN · Plug and play</span>
+              <span class="hw-chip hw-chip-a lang-zh">🔌 接入内网 · 即插即用</span>
             </div>
             <div class="hw-diagram-wrap">
-              <span class="hw-chip hw-chip-b">📈 集群部署 · 灵活扩容</span>
+              <span class="hw-chip hw-chip-b lang-en">📈 Clustering · scale on demand</span>
+              <span class="hw-chip hw-chip-b lang-zh">📈 集群部署 · 灵活扩容</span>
               <svg class="hw-scale-diagram" viewBox="0 0 480 150" role="img" aria-labelledby="hwScaleTitle">
-                <title id="hwScaleTitle">单台起步，多台叠加成集群，互联互通、支撑更大规模人数的示意图</title>
+                <title id="hwScaleTitle">Scale from one machine to a cluster diagram</title>
                 <defs>
                   <linearGradient id="hwGrad" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0" stop-color="var(--color-brand-500)" />
@@ -84,24 +149,23 @@
                     <path d="M0,0 L10,5 L0,10 z" fill="var(--color-brand-500)" />
                   </marker>
                 </defs>
-
                 <rect x="32" y="48" width="56" height="44" rx="10" fill="url(#hwGrad)" />
                 <circle cx="46" cy="84" r="2.6" fill="#ffffff" opacity="0.85" />
                 <circle cx="56" cy="84" r="2.6" fill="#ffffff" opacity="0.85" />
-                <text x="60" y="114" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">单台起步</text>
-                <text x="60" y="132" text-anchor="middle" font-size="11" fill="var(--muted)">数百人</text>
-
+                <text class="lang-en" x="60" y="114" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">Start with one</text>
+                <text class="lang-zh" x="60" y="114" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">单台起步</text>
+                <text class="lang-en" x="60" y="132" text-anchor="middle" font-size="11" fill="var(--muted)">100s of users</text>
+                <text class="lang-zh" x="60" y="132" text-anchor="middle" font-size="11" fill="var(--muted)">数百人</text>
                 <path d="M96,70 L166,70" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#hwArrow)" />
-                <text x="131" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="var(--color-brand-500)">多台叠加</text>
-
-                <text x="301" y="18" text-anchor="middle" font-size="12" fill="var(--muted)">多台部署，互联互通</text>
-
+                <text class="lang-en" x="131" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="var(--color-brand-500)">Add more</text>
+                <text class="lang-zh" x="131" y="56" text-anchor="middle" font-size="12" font-weight="600" fill="var(--color-brand-500)">多台叠加</text>
+                <text class="lang-en" x="301" y="18" text-anchor="middle" font-size="12" fill="var(--muted)">Multiple nodes, interconnected</text>
+                <text class="lang-zh" x="301" y="18" text-anchor="middle" font-size="12" fill="var(--muted)">多台部署，互联互通</text>
                 <rect x="182" y="40" width="46" height="38" rx="9" fill="url(#hwGrad)" />
                 <rect x="246" y="40" width="46" height="38" rx="9" fill="url(#hwGrad)" />
                 <rect x="310" y="40" width="46" height="38" rx="9" fill="url(#hwGrad)" />
                 <rect x="374" y="40" width="46" height="38" rx="9" fill="none" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" />
                 <text x="397" y="65" text-anchor="middle" font-size="16" font-weight="600" fill="var(--color-brand-500)">+</text>
-
                 <path d="M205,78 L205,100 L397,100 L397,78" fill="none" stroke="var(--line)" stroke-width="2" />
                 <path d="M269,78 L269,100" fill="none" stroke="var(--line)" stroke-width="2" />
                 <path d="M333,78 L333,100" fill="none" stroke="var(--line)" stroke-width="2" />
@@ -109,159 +173,204 @@
                 <circle cx="269" cy="100" r="3.5" fill="var(--brand-3)" />
                 <circle cx="333" cy="100" r="3.5" fill="var(--brand-3)" />
                 <circle cx="397" cy="100" r="3.5" fill="var(--brand-3)" />
-
-                <text x="301" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">支持更大规模的企业</text>
+                <text class="lang-en" x="301" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">Enterprise scale ready</text>
+                <text class="lang-zh" x="301" y="128" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)">支持更大规模的企业</text>
               </svg>
             </div>
           </div>
           <div class="hw-copy">
             <ul class="hw-list">
               <li>
-                <strong>小到可以随身带走</strong>
-                口袋、抽屉、桌角都放得下，不用机房、不用机柜，
-                搬办公室时装进口袋就能把整套系统带走。
+                <strong class="lang-en">Small enough to carry anywhere</strong>
+                <strong class="lang-zh">小到可以随身带走</strong>
+                <span class="lang-en">Fits in a pocket, drawer, or desk corner. No server room, no rack — move offices and the whole system comes with you.</span>
+                <span class="lang-zh">口袋、抽屉、桌角都放得下，不用机房、不用机柜，搬办公室时装进口袋就能把整套系统带走。</span>
               </li>
               <li>
-                <strong>一台就够全公司用</strong>
-                单台即可稳定支撑数百人同时在线聊天，
-                通电开机、接上网线，几分钟后全公司就能开聊。
+                <strong class="lang-en">One machine for the whole company</strong>
+                <strong class="lang-zh">一台就够全公司用</strong>
+                <span class="lang-en">A single unit stably supports hundreds of concurrent users. Power on, plug in the network cable, and the whole company is chatting in minutes.</span>
+                <span class="lang-zh">单台即可稳定支撑数百人同时在线聊天，通电开机、接上网线，几分钟后全公司就能开聊。</span>
               </li>
               <li>
-                <strong>人多了，再加一台<span class="pro-badge">商业版</span></strong>
-                集群部署、灵活扩容：多台叠加，互联互通，
-                规模随业务自然生长。
+                <strong class="lang-en">Need more? Add another<span class="pro-badge">Pro</span></strong>
+                <strong class="lang-zh">人多了，再加一台<span class="pro-badge">商业版</span></strong>
+                <span class="lang-en">Cluster deployment, flexible scaling: stack multiple nodes, fully interconnected, growing naturally with your business.</span>
+                <span class="lang-zh">集群部署、灵活扩容：多台叠加，互联互通，规模随业务自然生长。</span>
               </li>
               <li>
-                <strong>接入内网即可使用</strong>
-                无需公网、无需域名，插进办公室内网就能用，
-                聊天数据一步都不出你的办公室。
+                <strong class="lang-en">Works on your local network</strong>
+                <strong class="lang-zh">接入内网即可使用</strong>
+                <span class="lang-en">No public IP, no domain name needed. Plug into your office LAN and go — chat data never leaves your office.</span>
+                <span class="lang-zh">无需公网、无需域名，插进办公室内网就能用，聊天数据一步都不出你的办公室。</span>
               </li>
             </ul>
             <div class="hw-actions">
-              <a class="btn btn-primary" href="/demo/responsive.html">立即体验</a>
-              <a class="btn btn-ghost" href="#scenarios">看看能做什么</a>
+              <a class="btn btn-primary" href="/demo/responsive.html">
+                <span class="lang-en">Try Live Demo</span>
+                <span class="lang-zh">立即体验</span>
+              </a>
+              <a class="btn btn-ghost" href="#scenarios">
+                <span class="lang-en">See what's possible</span>
+                <span class="lang-zh">看看能做什么</span>
+              </a>
             </div>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- Advantages -->
     <section id="advantages" class="section">
       <div class="container">
-        <span class="section-eyebrow">Why yimsg</span>
-        <h2 class="section-title">为企业而生的三大核心优势</h2>
-        <p class="section-lead">把数据主权、极简部署与极致性能，全部装进一台属于你自己的机器。</p>
+        <span class="section-eyebrow lang-en">Why yimsg</span>
+        <span class="section-eyebrow lang-zh">Why yimsg</span>
+        <h2 class="section-title">
+          <span class="lang-en">Three pillars built for business</span>
+          <span class="lang-zh">为企业而生的三大核心优势</span>
+        </h2>
+        <p class="section-lead">
+          <span class="lang-en">Data sovereignty, one-minute deploy, and extreme efficiency — all in a machine you own.</span>
+          <span class="lang-zh">把数据主权、极简部署与极致性能，全部装进一台属于你自己的机器。</span>
+        </p>
         <div class="grid">
           <article class="card">
             <div class="card-icon">🔒</div>
-            <h3>数据自主可控</h3>
+            <h3><span class="lang-en">Data Sovereignty</span><span class="lang-zh">数据自主可控</span></h3>
             <p>
-              所有数据都掌握在自己手上，集中在办公室的一台机器里，
-              不经过任何第三方云，完全由你掌控。需要时可一键删除，彻底清空。
+              <span class="lang-en">All data stays on your own machine in your office. Never touches any third-party cloud. One-click complete purge when needed.</span>
+              <span class="lang-zh">所有数据都掌握在自己手上，集中在办公室的一台机器里，不经过任何第三方云，完全由你掌控。需要时可一键删除，彻底清空。</span>
             </p>
           </article>
           <article class="card">
             <div class="card-icon">🚀</div>
-            <h3>极简部署</h3>
+            <h3><span class="lang-en">One-Minute Deploy</span><span class="lang-zh">极简部署</span></h3>
             <p>
-              一台机器、几分钟即可上线，无需复杂运维。
-              无论是否拥有域名或公网 IP，都有对应接入方式，最坏网络下也能稳定连通。
+              <span class="lang-en">One machine, up and running in minutes. No complex ops. Works with or without a domain name or public IP — reliable connectivity even in worst-case networks.</span>
+              <span class="lang-zh">一台机器、几分钟即可上线，无需复杂运维。无论是否拥有域名或公网 IP，都有对应接入方式，最坏网络下也能稳定连通。</span>
             </p>
           </article>
           <article class="card">
             <div class="card-icon">⚡</div>
-            <h3>极致性能</h3>
+            <h3><span class="lang-en">Extreme Efficiency</span><span class="lang-zh">极致性能</span></h3>
             <p>
-              2 核 4G 单机即可支撑百人聊天，部署包不到 32MB，客户端内存可控，
-              天然适用于资源受限的嵌入式场景。
+              <span class="lang-en">100+ concurrent users on a 2-core 4GB machine. Deployment under 32MB. Bounded client memory — perfect for resource-constrained embedded scenarios.</span>
+              <span class="lang-zh">2 核 4G 单机即可支撑百人聊天，部署包不到 32MB，客户端内存可控，天然适用于资源受限的嵌入式场景。</span>
             </p>
           </article>
         </div>
       </div>
     </section>
 
+    <!-- Use Cases -->
     <section id="scenarios" class="section section-alt">
       <div class="container">
-        <span class="section-eyebrow">Use Cases</span>
-        <h2 class="section-title">一套 UIKit，多种玩法</h2>
-        <p class="section-lead">同一套聊天能力，既能整套开箱即用，也能按需嵌入到你自己的产品里，还能适配手机与桌面两种终端。</p>
+        <span class="section-eyebrow lang-en">Use Cases</span>
+        <span class="section-eyebrow lang-zh">Use Cases</span>
+        <h2 class="section-title">
+          <span class="lang-en">One UIKit, endless possibilities</span>
+          <span class="lang-zh">一套 UIKit，多种玩法</span>
+        </h2>
+        <p class="section-lead">
+          <span class="lang-en">The same chat engine — use it out of the box, embed it into your product, or adapt across phone and desktop.</span>
+          <span class="lang-zh">同一套聊天能力，既能整套开箱即用，也能按需嵌入到你自己的产品里，还能适配手机与桌面两种终端。</span>
+        </p>
         <div class="grid">
           <article class="card">
             <div class="card-icon">🎧</div>
-            <h3>客服组件</h3>
+            <h3><span class="lang-en">Customer Service Widget</span><span class="lang-zh">客服组件</span></h3>
             <p>
-              把 yimsg UIKit 一行代码嵌入官网或后台系统，
-              访客无需注册加好友，随时都能发起临时会话咨询客服。
+              <span class="lang-en">Embed yimsg UIKit into your website or admin panel with one line of code. Visitors can start a support chat instantly — no registration required.</span>
+              <span class="lang-zh">把 yimsg UIKit 一行代码嵌入官网或后台系统，访客无需注册加好友，随时都能发起临时会话咨询客服。</span>
             </p>
-            <a class="card-link" href="/demo/customer-service.html" target="_blank" rel="noopener">体验客服组件 →</a>
+            <a class="card-link" href="/demo/customer-service.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try customer widget →</span>
+              <span class="lang-zh">体验客服组件 →</span>
+            </a>
           </article>
           <article class="card">
             <div class="card-icon">🧑‍💻</div>
-            <h3>六宫格客服工作台</h3>
+            <h3><span class="lang-en">6-Grid Agent Desk</span><span class="lang-zh">六宫格客服工作台</span></h3>
             <p>
-              一个人也能同屏坐镇 6 个客服账号：小团队多店铺、多渠道客服共用同一坐席时，
-              6 路客户会话逐格直接回复，无需来回切换登录。
+              <span class="lang-en">One person manages 6 support accounts simultaneously. Perfect for small teams with multiple stores or channels — reply to all conversations from one screen.</span>
+              <span class="lang-zh">一个人也能同屏坐镇 6 个客服账号：小团队多店铺、多渠道客服共用同一坐席时，6 路客户会话逐格直接回复，无需来回切换登录。</span>
             </p>
-            <a class="card-link" href="/demo/customer-service-grid.html" target="_blank" rel="noopener">体验六宫格工作台 →</a>
+            <a class="card-link" href="/demo/customer-service-grid.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try agent desk →</span>
+              <span class="lang-zh">体验六宫格工作台 →</span>
+            </a>
           </article>
           <article class="card">
             <div class="card-icon">🖥️</div>
-            <h3>独立网页应用</h3>
+            <h3><span class="lang-en">Standalone Web App</span><span class="lang-zh">独立网页应用</span></h3>
             <p>
-              也可以作为一套独立完整的网页 IM 应用直接使用，
-              登录即可收发消息、管理联系人与群组，无需额外开发。
+              <span class="lang-en">Use as a complete standalone web IM app. Log in, send messages, manage contacts and groups — zero extra development needed.</span>
+              <span class="lang-zh">也可以作为一套独立完整的网页 IM 应用直接使用，登录即可收发消息、管理联系人与群组，无需额外开发。</span>
             </p>
-            <a class="card-link" href="/demo/full-chat.html" target="_blank" rel="noopener">体验完整企业 IM →</a>
+            <a class="card-link" href="/demo/full-chat.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try full enterprise IM →</span>
+              <span class="lang-zh">体验完整企业 IM →</span>
+            </a>
           </article>
           <article class="card">
             <div class="card-icon">👥</div>
-            <h3>通讯录 + 组织架构</h3>
+            <h3><span class="lang-en">Contacts & Org Chart</span><span class="lang-zh">通讯录 + 组织架构</span></h3>
             <p>
-              好友与复杂组织架构统一收进通讯录页，四层部门、约 76 人的示例组织一目了然；
-              完整底部导航可在聊天 / 通讯录 / 设置之间自由切换。
+              <span class="lang-en">Friends and complex organizational structures unified in one contacts page. ~76-person, 4-level department hierarchy at a glance. Full bottom navigation between Chat, Contacts, and Settings.</span>
+              <span class="lang-zh">好友与复杂组织架构统一收进通讯录页，四层部门、约 76 人的示例组织一目了然；完整底部导航可在聊天 / 通讯录 / 设置之间自由切换。</span>
             </p>
-            <a class="card-link" href="/demo/contacts.html" target="_blank" rel="noopener">体验组织通讯录 →</a>
+            <a class="card-link" href="/demo/contacts.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try org contacts →</span>
+              <span class="lang-zh">体验组织通讯录 →</span>
+            </a>
           </article>
           <article class="card">
             <div class="card-icon">💾</div>
-            <h3>本地持久化</h3>
+            <h3><span class="lang-en">Local Persistence</span><span class="lang-zh">本地持久化</span></h3>
             <p>
-              客户端支持本地持久化缓存，刷新页面或断网重连都不会丢失会话——
-              该 demo 已自动登录，无需自己注册。
+              <span class="lang-en">Client-side persistent caching — refresh the page or reconnect after network loss without losing your conversations. This demo is auto-logged in, no registration needed.</span>
+              <span class="lang-zh">客户端支持本地持久化缓存，刷新页面或断网重连都不会丢失会话——该 demo 已自动登录，无需自己注册。</span>
             </p>
-            <a class="card-link" href="/demo/app.html" target="_blank" rel="noopener">体验本地持久化 →</a>
+            <a class="card-link" href="/demo/app.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try persistent mode →</span>
+              <span class="lang-zh">体验本地持久化 →</span>
+            </a>
           </article>
           <article class="card">
             <div class="card-icon">📱</div>
-            <h3>手机 / PC 双端适配</h3>
+            <h3><span class="lang-en">Phone & Desktop Adaptive</span><span class="lang-zh">手机 / PC 双端适配</span></h3>
             <p>
-              同一套 UIKit 自动适配手机与桌面两种布局：手机端底部导航 + 单栏切换，
-              桌面端侧栏导航 + 多栏并列，无需为不同设备单独开发。
+              <span class="lang-en">The same UIKit automatically adapts to phone and desktop layouts: bottom nav + single panel on mobile, sidebar + multi-panel on desktop. No separate development per device.</span>
+              <span class="lang-zh">同一套 UIKit 自动适配手机与桌面两种布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列，无需为不同设备单独开发。</span>
             </p>
-            <a class="card-link" href="/demo/responsive.html" target="_blank" rel="noopener">体验手机 / PC 双端 →</a>
+            <a class="card-link" href="/demo/responsive.html" target="_blank" rel="noopener">
+              <span class="lang-en">Try responsive demo →</span>
+              <span class="lang-zh">体验手机 / PC 双端 →</span>
+            </a>
           </article>
         </div>
       </div>
     </section>
 
+    <!-- AI Engine -->
     <section id="ai" class="section">
       <div class="container">
-        <h2 class="sr-only">以目标为导向，AI 自动安排、跟踪、调整工作，驱动团队持续对齐与执行</h2>
+        <h2 class="sr-only">Goal-driven AI Engine: automatically plan, track, and adjust work to drive team alignment and execution</h2>
         <div class="ai-stack">
           <div class="ai-card">
             <img src="assets/ai-headline.webp"
-              alt="以目标为导向，AI 自动安排、跟踪、调整工作，驱动团队持续对齐与执行——在每天、每周、每月的循环迭代中，让企业持续接近目标" />
-            <span class="pro-badge pro-badge-lg ai-card-badge">商业版</span>
+              alt="Goal-driven AI Engine: automatically plan, track, and adjust work in daily, weekly, monthly cycles" />
+            <span class="pro-badge pro-badge-lg ai-card-badge"><span class="lang-en">Pro</span><span class="lang-zh">商业版</span></span>
           </div>
           <img src="assets/ai-overview.webp"
-            alt="yimsg 作为企业信息中枢汇聚沟通消息、任务、文档、日程、文件与成员数据，AI 智能引擎在每天、每周、每月的循环中自动洞察、安排、跟踪与调整工作，并实时计算每项工作对目标的贡献度" />
+            alt="yimsg as enterprise information hub converging messages, tasks, docs, schedules, files and member data. AI Engine auto-insights, plans, tracks and adjusts work across daily, weekly, monthly cycles, computing each task's contribution to goals in real time." />
           <img src="assets/ai-flow.webp"
-            alt="闭环迭代，让目标一步步被实现：从共同的目标出发，AI 识别关键方向、自动制定计划、自动分配任务、自动跟踪进展、自动调整优化，整体达成度持续接近目标" />
+            alt="Closed-loop iteration: start from shared goals, AI identifies key directions, auto-plans, auto-assigns tasks, auto-tracks progress, auto-adjusts — overall achievement steadily converges toward targets." />
         </div>
         <div class="ai-card ai-poster-card">
           <img class="ai-poster" src="assets/ai-poster.webp"
-            alt="yimsg AI 智能引擎全景图：信息汇聚全面连接，AI 智能引擎驱动每天、每周、每月的循环迭代，每一项工作都在推动目标实现，闭环迭代让整体达成度持续接近目标" />
-          <span class="pro-badge pro-badge-lg ai-card-badge">商业版</span>
+            alt="yimsg AI Engine panorama: information fully connected, AI drives daily/weekly/monthly cycles, every task pushes goals forward, closed-loop iteration converges toward targets" />
+          <span class="pro-badge pro-badge-lg ai-card-badge"><span class="lang-en">Pro</span><span class="lang-zh">商业版</span></span>
         </div>
       </div>
     </section>
@@ -269,14 +378,20 @@
 
   <footer class="site-footer">
     <div class="container">
-      <span><span class="brand-mark">yi</span>msg · 极简单机部署的私有化即时通讯</span>
       <span>
-        <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub 开源仓库</a>
-        · 本页面为静态官网，由服务端 <code>/site/</code> 挂载。
+        <span class="brand-mark">yi</span>msg
+        <span class="lang-en"> · Self-hosted Instant Messaging</span>
+        <span class="lang-zh"> · 极简单机部署的私有化即时通讯</span>
+      </span>
+      <span>
+        <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub</a>
+        <span class="lang-en"> · Static site served via server <code>/site/</code> mount.</span>
+        <span class="lang-zh"> · 本页面为静态官网，由服务端 <code>/site/</code> 挂载。</span>
       </span>
     </div>
   </footer>
 
+  <script src="assets/i18n.js"></script>
   <script>
     const toggle = document.querySelector('.nav-toggle');
     const links = document.querySelector('.nav-links');
@@ -284,7 +399,6 @@
       const open = links.classList.toggle('open');
       toggle.setAttribute('aria-expanded', open);
     });
-    // 点击链接后自动关闭
     links.querySelectorAll('a').forEach(a => {
       a.addEventListener('click', () => {
         links.classList.remove('open');
