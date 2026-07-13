@@ -5,7 +5,9 @@ import type { AppInstance } from '../app-instance';
 /**
  * 通讯录管理弹层：单页模态内自持面包屑栈，管理部门增删改、成员归属、
  * 排序与管理员授权。所有写操作只调用 SDK，不做本地乐观更新——结构变化靠
- * org:updated 轻通知 + 重新拉取本节点数据（本弹层每次写操作后重新 render 自己）。
+ * org:updated 轻通知 + 重新拉取本节点数据（本弹层每次写操作后重新 render 自己）；
+ * tag/user/org 的展示名称异步补齐靠订阅 display:updated 触发重新 render，弹层关闭
+ * 时解绑。
  * 权限完全由服务端 requireOrgManage 把关：调用方对当前节点没有管理权限时，
  * 写 action 抛 FORBIDDEN，这里统一用 toast 提示，不在前端预判权限。
  * 添加成员 / 授予管理员按用户名录入（操作者不该也不需要知道对方 uid），
@@ -14,6 +16,21 @@ import type { AppInstance } from '../app-instance';
 export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId: string): Promise<void> {
   let stack: string[] = [initialTagId || orgId];
   let requestId = 0;
+
+  // 新建/进入部门等操作 render() 时，刚变化的 tag/org/user 展示信息（名称、头像）
+  // 往往还未入缓存，会先按 id 兜底展示；缓存异步补齐后通过 display:updated 通知，
+  // 这里订阅它以便弹层还开着时把兜底的 id 换成真实名称。弹层关闭（含点击遮罩关闭）
+  // 时通过监听 modal-overlay 的 hidden class 变化解绑，避免残留监听。
+  const onDisplayUpdated = (): void => { void render(); };
+  app.client.on('display:updated', onDisplayUpdated);
+  const overlay = app.$('modal-overlay');
+  const stopWatchingClose = new MutationObserver(() => {
+    if (overlay.classList.contains('hidden')) {
+      app.client.off('display:updated', onDisplayUpdated);
+      stopWatchingClose.disconnect();
+    }
+  });
+  stopWatchingClose.observe(overlay, { attributes: true, attributeFilter: ['class'] });
 
   async function render(): Promise<void> {
     const reqId = ++requestId;

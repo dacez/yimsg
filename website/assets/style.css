@@ -549,6 +549,15 @@ code {
     font-size: 1rem;
   }
   .nav-links a:last-child { border-bottom: none; }
+
+  /* .nav-cta 的水平内边距在这里会被 .nav-links a 的 padding:14px 0 覆盖（后者
+     选择器特异性更高），导致文字紧贴甚至被 border-radius:999px 的圆角裁切；
+     用同等特异性的选择器把内边距和居中找回来。 */
+  .nav-links .nav-cta {
+    margin-top: 8px;
+    padding: 12px 20px;
+    text-align: center;
+  }
 }
 
 /* 全局焦点环 */
