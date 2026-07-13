@@ -38,8 +38,8 @@ func TestRecallDM(t *testing.T) {
 	recipientOriginalSeq := beforeRecall.GetMessages()[0].GetSeq()
 
 	recallResp := sendOK(a, "send_message", recallReq(b.uid, sendResp.GetMsgId()), &pb.SendMessageResponse{})
-	if recallResp.GetMsgId() == sendResp.GetMsgId() {
-		t.Fatalf("recall event should use a new msg_id, got %q", recallResp.GetMsgId())
+	if recallResp.GetMsgId() != sendResp.GetMsgId() {
+		t.Fatalf("recall msg_id=%q, want %q", recallResp.GetMsgId(), sendResp.GetMsgId())
 	}
 	if recallResp.GetSeq() <= sendResp.GetSeq() {
 		t.Fatalf("recall seq should advance, got %+v", recallResp.GetSeq())
