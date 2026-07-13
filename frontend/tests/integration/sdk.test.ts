@@ -447,6 +447,57 @@ describe('Contacts', () => {
 });
 
 // ============================================================
+// Org（组织管理：按用户名录入的便捷方法）
+// ============================================================
+describe('Org', () => {
+  it('addOrgMemberByUsername resolves username to uid and adds the member', async () => {
+    const { client: alice, uid: aliceUid } = await createAuthenticatedClient('org_add_a');
+    const { client: bob, uid: bobUid, username: bobUsername } = await createAuthenticatedClient('org_add_b');
+    track(alice); track(bob);
+    await alice.startSession({ storage: 'memory' });
+
+    const orgId = await alice.createOrg('Org Add Test');
+    // getTags 要求调用方本身是组织成员，先把自己挂进去（与 showCreateOrgModal 的建组织流程一致）。
+    await alice.addOrgMember(orgId, orgId, aliceUid);
+    await alice.addOrgMemberByUsername(orgId, orgId, bobUsername);
+
+    const { tags } = await alice.getTags({ orgId, tagId: orgId, limit: 50 });
+    expect(tags.some(t => t.childId === bobUid)).toBe(true);
+  });
+
+  it('addOrgMemberByUsername rejects unknown username', async () => {
+    const { client: alice } = await createAuthenticatedClient('org_add_nf');
+    track(alice);
+    await alice.startSession({ storage: 'memory' });
+
+    const orgId = await alice.createOrg('Org Add NF Test');
+    await expect(alice.addOrgMemberByUsername(orgId, orgId, 'nonexistent_user_xyz_123')).rejects.toThrow();
+  });
+
+  it('grantOrgAdminByUsername resolves username to uid and grants admin', async () => {
+    const { client: alice } = await createAuthenticatedClient('org_grant_a');
+    const { client: bob, uid: bobUid, username: bobUsername } = await createAuthenticatedClient('org_grant_b');
+    track(alice); track(bob);
+    await alice.startSession({ storage: 'memory' });
+
+    const orgId = await alice.createOrg('Org Grant Test');
+    await alice.grantOrgAdminByUsername(orgId, orgId, bobUsername);
+
+    const admins = await alice.listOrgAdmins(orgId, orgId);
+    expect(admins).toContain(bobUid);
+  });
+
+  it('grantOrgAdminByUsername rejects unknown username', async () => {
+    const { client: alice } = await createAuthenticatedClient('org_grant_nf');
+    track(alice);
+    await alice.startSession({ storage: 'memory' });
+
+    const orgId = await alice.createOrg('Org Grant NF Test');
+    await expect(alice.grantOrgAdminByUsername(orgId, orgId, 'nonexistent_user_xyz_123')).rejects.toThrow();
+  });
+});
+
+// ============================================================
 // Groups
 // ============================================================
 describe('Groups', () => {

@@ -1508,7 +1508,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     }
   }
 
-  /** 把人挂进组织节点（组织根传 tagId=orgId）。 */
+  /** 把人挂进组织节点（组织根传 tagId=orgId）；uid 为内部路由键，供已知 uid 的程序化调用（如创建者自挂）使用。 */
   async addOrgMember(
     orgId: string,
     tagId: string,
@@ -1535,6 +1535,18 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         }),
       );
     }
+  }
+
+  /** 按用户名把人挂进组织节点：界面层不应该也不需要知道对方 uid，SDK 内部解析后落地到 addOrgMember。 */
+  async addOrgMemberByUsername(
+    orgId: string,
+    tagId: string,
+    username: string,
+    params?: { title?: string; rank?: number },
+  ): Promise<void> {
+    this.assertNonEmpty(username, "username", "addOrgMemberByUsername");
+    const uid = await this.resolveUidByUsername(username, "addOrgMemberByUsername");
+    await this.addOrgMember(orgId, tagId, uid, params);
   }
 
   /** 把人从组织节点移除；若因此失去在该组织的全部边则视为离职。 */
@@ -1609,7 +1621,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
 
   /**
    * 授予 uid 管理 scopeTagId 为根子树的权限（组织根传 scopeTagId=orgId 即全组织管理员）。
-   * 调用方自己必须已经对 scopeTagId（或其祖先）持有管理权限。
+   * 调用方自己必须已经对 scopeTagId（或其祖先）持有管理权限。uid 为内部路由键，供程序化调用使用。
    */
   async grantOrgAdmin(orgId: string, scopeTagId: string, uid: string): Promise<void> {
     this.requireAuthenticated("grantOrgAdmin");
@@ -1626,6 +1638,22 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         }),
       );
     }
+  }
+
+  /** 按用户名授予管理权限：界面层不应该也不需要知道对方 uid，SDK 内部解析后落地到 grantOrgAdmin。 */
+  async grantOrgAdminByUsername(orgId: string, scopeTagId: string, username: string): Promise<void> {
+    this.assertNonEmpty(username, "username", "grantOrgAdminByUsername");
+    const uid = await this.resolveUidByUsername(username, "grantOrgAdminByUsername");
+    await this.grantOrgAdmin(orgId, scopeTagId, uid);
+  }
+
+  /** 把用户名解析为 uid；找不到时抛出携带 context 的 RequestError，供各 ByUsername 方法复用。 */
+  private async resolveUidByUsername(username: string, context: string): Promise<string> {
+    const profile = await this.searchUser(username);
+    if (!profile) {
+      throw new RequestError("REQUEST_FAILED", `用户不存在：${username}`, { context });
+    }
+    return profile.uid;
   }
 
   /** 撤销 uid 对 scopeTagId 为根子树的管理权限。 */

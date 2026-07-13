@@ -8,6 +8,8 @@ import type { AppInstance } from '../app-instance';
  * org:updated 轻通知 + 重新拉取本节点数据（本弹层每次写操作后重新 render 自己）。
  * 权限完全由服务端 requireOrgManage 把关：调用方对当前节点没有管理权限时，
  * 写 action 抛 FORBIDDEN，这里统一用 toast 提示，不在前端预判权限。
+ * 添加成员 / 授予管理员按用户名录入（操作者不该也不需要知道对方 uid），
+ * 由 SDK 的 addOrgMemberByUsername / grantOrgAdminByUsername 内部解析成 uid。
  */
 export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId: string): Promise<void> {
   let stack: string[] = [initialTagId || orgId];
@@ -107,7 +109,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
         <div class="form-group org-admin-inline-form">
           <label>${app.escapeHtml(app.t('orgAdmin.addMemberBtn'))}</label>
           <div class="org-admin-inline-row">
-            <input class="input" type="text" id="oa-add-member-uid" placeholder="${app.escapeHtml(app.t('orgAdmin.addMemberUidPlaceholder'))}">
+            <input class="input" type="text" id="oa-add-member-username" placeholder="${app.escapeHtml(app.t('orgAdmin.addMemberUsernamePlaceholder'))}">
             <input class="input" type="text" id="oa-add-member-title" placeholder="${app.escapeHtml(app.t('orgAdmin.addMemberTitlePlaceholder'))}">
             <button class="btn btn-sm btn-primary" id="oa-add-member-submit">${app.t('orgAdmin.addMemberBtn')}</button>
           </div>
@@ -118,7 +120,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
         <div class="org-items">${adminsHtml}</div>
         <div class="form-group org-admin-inline-form">
           <div class="org-admin-inline-row">
-            <input class="input" type="text" id="oa-grant-uid" placeholder="${app.escapeHtml(app.t('orgAdmin.grantUidPlaceholder'))}">
+            <input class="input" type="text" id="oa-grant-username" placeholder="${app.escapeHtml(app.t('orgAdmin.grantUsernamePlaceholder'))}">
             <button class="btn btn-sm btn-primary" id="oa-grant-submit">${app.t('orgAdmin.grantBtn')}</button>
           </div>
         </div>
@@ -251,11 +253,11 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
 
     // ---- 成员：添加 / 排序 / 移除 ----
     app.$('oa-add-member-submit').addEventListener('click', async () => {
-      const uid = (app.$('oa-add-member-uid') as HTMLInputElement).value.trim();
+      const username = (app.$('oa-add-member-username') as HTMLInputElement).value.trim();
       const title = (app.$('oa-add-member-title') as HTMLInputElement).value.trim();
-      if (!uid) return;
+      if (!username) return;
       try {
-        await app.client.addOrgMember(orgId, tagId, uid, { title });
+        await app.client.addOrgMemberByUsername(orgId, tagId, username, { title });
         app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
       } catch (e) {
         app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
@@ -306,10 +308,10 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
 
     // ---- 管理员：授予 / 撤销 ----
     app.$('oa-grant-submit').addEventListener('click', async () => {
-      const uid = (app.$('oa-grant-uid') as HTMLInputElement).value.trim();
-      if (!uid) return;
+      const username = (app.$('oa-grant-username') as HTMLInputElement).value.trim();
+      if (!username) return;
       try {
-        await app.client.grantOrgAdmin(orgId, tagId, uid);
+        await app.client.grantOrgAdminByUsername(orgId, tagId, username);
         app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
       } catch (e) {
         app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');

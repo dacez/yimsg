@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-12。
+> 最后复核：2026-07-13。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -356,12 +356,14 @@ interface Contact {
 | `renameOrgTag` | `(orgId, tagId, name, avatar?) => Promise<void>` |
 | `deleteOrgTag` | `(orgId, tagId) => Promise<void>` |
 | `linkOrgTag` | `(orgId, parentTagId, childTagId, rank?) => Promise<void>`；把已存在的 tag 额外挂到另一个父节点下（DAG 多父） |
-| `addOrgMember` | `(orgId, tagId, uid, { title?, rank? }?) => Promise<void>` |
+| `addOrgMember` | `(orgId, tagId, uid, { title?, rank? }?) => Promise<void>`；`uid` 是内部路由键，供已知 uid 的程序化调用（如创建者自挂）使用 |
+| `addOrgMemberByUsername` | `(orgId, tagId, username, { title?, rank? }?) => Promise<void>`；界面层录入用户名的入口，内部按用户名解析出 uid 后落地到 `addOrgMember`，找不到该用户名时抛 `RequestError` |
 | `removeOrgMember` | `(orgId, tagId, uid) => Promise<void>` |
 | `setOrgItemRank` | `(orgId, tagId, childId, childType, rank, title?) => Promise<void>`；`rank` 为必填的显式排序值 |
 | `renameOrg` | `(orgId, name, avatar?) => Promise<void>`；需对组织根有管理权限 |
 | `deleteOrg` | `(orgId) => Promise<void>`；需对组织根有管理权限，删除整个组织，不可撤销 |
-| `grantOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；授予 `uid` 管理 `scopeTagId` 为根子树的权限，组织根传 `scopeTagId=orgId` 即全组织管理员 |
+| `grantOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；授予 `uid` 管理 `scopeTagId` 为根子树的权限，组织根传 `scopeTagId=orgId` 即全组织管理员；`uid` 是内部路由键，供程序化调用使用 |
+| `grantOrgAdminByUsername` | `(orgId, scopeTagId, username) => Promise<void>`；界面层录入用户名的入口，内部按用户名解析出 uid 后落地到 `grantOrgAdmin`，找不到该用户名时抛 `RequestError` |
 | `revokeOrgAdmin` | `(orgId, scopeTagId, uid) => Promise<void>`；组织根（`scopeTagId=orgId`）撤权时服务端原子校验剩余根管理员数量，删空前拒绝（`ERROR_CONFLICT`），保证组织至少保留一个根管理员 |
 | `listOrgAdmins` | `(orgId, scopeTagId) => Promise<string[]>`；只返回直接挂在该节点上的管理员，不含挂在祖先节点、递归覆盖到此的管理员 |
 
