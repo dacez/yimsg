@@ -27,9 +27,9 @@
     <button id="btn-locale-en">English</button>
   </div>
   <script type="module">
-    import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
-    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
-    window.YimsgUIKit = YimsgUIKit;
+    // 单独的小模块，只依赖本地 demo-i18n.js：让文案尽快跟随语言渲染，
+    // 不必等待下面 mount 用的 yimsg-uikit.js（体积大得多）下载完成，避免先闪一下中文再变英文。
+    import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
 
     const TRANSLATIONS = {
       zh: {
@@ -57,6 +57,14 @@
     const lang = detectDemoLang();
     const dict = TRANSLATIONS[lang];
     applyDemoI18n(lang, dict);
+    window.__demoI18n = { lang, dict };
+  </script>
+  <script type="module">
+    import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    import { demoLocale } from './demo-i18n.js';
+    window.YimsgUIKit = YimsgUIKit;
+
+    const { lang } = window.__demoI18n;
 
     let handle = null;
     const host = document.getElementById('chat-host');

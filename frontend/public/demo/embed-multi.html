@@ -42,9 +42,9 @@
     <section class="cell"><div class="cell-header" data-i18n="cell8">格 8 · user5 · 内存</div><div id="host-u5-memory" class="cell-host"></div></section>
   </div>
   <script type="module">
-    import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    // 单独的小模块，只依赖本地 demo-i18n.js：让文案尽快跟随语言渲染，
+    // 不必等待下面 mount 用的 yimsg-uikit.js（体积大得多）下载完成，避免先闪一下中文再变英文。
     import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
-    window.YimsgUIKit = YimsgUIKit;
 
     // 本页专门用来验证多实例间语言互不共享（见 frontend/tests/ui/uikit-multi.spec.ts），
     // 因此每个 widget 的初始 locale 固定为 zh-CN，不跟随访客语言；页面自身的说明文字仍会跟随语言切换。
@@ -83,6 +83,10 @@
 
     const lang = detectDemoLang();
     applyDemoI18n(lang, TRANSLATIONS[lang]);
+  </script>
+  <script type="module">
+    import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    window.YimsgUIKit = YimsgUIKit;
 
     const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
     const uploadUrl = '/api/upload';

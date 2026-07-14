@@ -20,8 +20,9 @@
   <div class="agents" id="agents"></div>
   <div id="chat-host" class="host"></div>
   <script type="module">
-    import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
-    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
+    // 单独的小模块，只依赖本地 demo-i18n.js：让文案尽快跟随语言渲染，
+    // 不必等待下面 mount 用的 yimsg-uikit.js（体积大得多）下载完成，避免先闪一下中文再变英文。
+    import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
 
     const TRANSLATIONS = {
       zh: {
@@ -57,6 +58,13 @@
     const lang = detectDemoLang();
     const dict = TRANSLATIONS[lang];
     applyDemoI18n(lang, dict);
+    window.__demoI18n = { lang, dict };
+  </script>
+  <script type="module">
+    import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
+    import { demoLocale } from './demo-i18n.js';
+
+    const { lang, dict } = window.__demoI18n;
 
     function randomSuffix() {
       return Math.random().toString(36).slice(2, 8);
