@@ -14,21 +14,49 @@
   </style>
 </head>
 <body>
-  <h1>yimsg · uikit 嵌入示例</h1>
-  <p class="tip">通过 ESM 引入 <code>yimsg-uikit.js</code> 后，调用 <code>mount(el, options)</code> 即可嵌入 IM 面板。widget 使用 Shadow DOM 隔离样式，与宿主互不干扰；宿主低于 320 x 360 px 时会直接显示“容器太小”的提示，而不是裁切界面。</p>
+  <h1 data-i18n="h1">yimsg · uikit 嵌入示例</h1>
+  <p class="tip" data-i18n-html="tip">通过 ESM 引入 <code>yimsg-uikit.js</code> 后，调用 <code>mount(el, options)</code> 即可嵌入 IM 面板。widget 使用 Shadow DOM 隔离样式，与宿主互不干扰；宿主低于 320 x 360 px 时会直接显示“容器太小”的提示，而不是裁切界面。</p>
   <div id="chat-host" class="embed"></div>
   <div class="demo-toolbar">
-    <button id="btn-unmount">卸载 widget</button>
-    <button id="btn-remount">重新挂载</button>
-    <button id="btn-theme-light">浅色主题</button>
-    <button id="btn-theme-dark">深色主题</button>
-    <button id="btn-theme-auto">自动主题</button>
+    <button id="btn-unmount" data-i18n="btnUnmount">卸载 widget</button>
+    <button id="btn-remount" data-i18n="btnRemount">重新挂载</button>
+    <button id="btn-theme-light" data-i18n="btnThemeLight">浅色主题</button>
+    <button id="btn-theme-dark" data-i18n="btnThemeDark">深色主题</button>
+    <button id="btn-theme-auto" data-i18n="btnThemeAuto">自动主题</button>
     <button id="btn-locale-zh">中文</button>
     <button id="btn-locale-en">English</button>
   </div>
   <script type="module">
     import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
     window.YimsgUIKit = YimsgUIKit;
+
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg uikit 嵌入示例',
+        h1: 'yimsg · uikit 嵌入示例',
+        tip: '通过 ESM 引入 <code>yimsg-uikit.js</code> 后，调用 <code>mount(el, options)</code> 即可嵌入 IM 面板。widget 使用 Shadow DOM 隔离样式，与宿主互不干扰；宿主低于 320 x 360 px 时会直接显示“容器太小”的提示，而不是裁切界面。',
+        btnUnmount: '卸载 widget',
+        btnRemount: '重新挂载',
+        btnThemeLight: '浅色主题',
+        btnThemeDark: '深色主题',
+        btnThemeAuto: '自动主题',
+      },
+      en: {
+        pageTitle: 'yimsg uikit embed example',
+        h1: 'yimsg · UIKit embed example',
+        tip: "Import <code>yimsg-uikit.js</code> as an ESM module, then call <code>mount(el, options)</code> to embed the IM panel. The widget uses Shadow DOM to isolate styles from the host page; when the host is smaller than 320 x 360 px it shows a \"container too small\" notice instead of clipping the UI.",
+        btnUnmount: 'Unmount widget',
+        btnRemount: 'Remount',
+        btnThemeLight: 'Light theme',
+        btnThemeDark: 'Dark theme',
+        btnThemeAuto: 'Auto theme',
+      },
+    };
+
+    const lang = detectDemoLang();
+    const dict = TRANSLATIONS[lang];
+    applyDemoI18n(lang, dict);
 
     let handle = null;
     const host = document.getElementById('chat-host');
@@ -38,7 +66,7 @@
         wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
         uploadUrl: '/api/upload',
         theme: 'auto',
-        locale: 'auto',
+        locale: demoLocale(lang),
         onLogout: () => console.log('[uikit-demo] user logged out'),
         onReady: (client) => console.log('[uikit-demo] ready', client),
         onAuthenticated: ({ token, uid }) => console.log('[uikit-demo] authenticated', { token, uid }),

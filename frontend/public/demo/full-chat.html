@@ -15,11 +15,33 @@
   </style>
 </head>
 <body>
-  <h1>yimsg · 完整体验 demo</h1>
-  <p class="tip">三个账号已自动登录，互为好友并共享同一个群聊「产品体验群」。在任意一栏发消息，其余两栏会实时收到——用于演示完整的登录、群聊与单聊能力。</p>
+  <h1 data-i18n="h1">yimsg · 完整体验 demo</h1>
+  <p class="tip" data-i18n="tip">三个账号已自动登录，互为好友并共享同一个群聊「产品体验群」。在任意一栏发消息，其余两栏会实时收到——用于演示完整的登录、群聊与单聊能力。</p>
   <div class="panels" id="panels"></div>
   <script type="module">
     import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
+
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg 完整体验 demo',
+        h1: 'yimsg · 完整体验 demo',
+        tip: '三个账号已自动登录，互为好友并共享同一个群聊「产品体验群」。在任意一栏发消息，其余两栏会实时收到——用于演示完整的登录、群聊与单聊能力。',
+        cred: (username) => `用户名：${username}　密码：${PASSWORD}`,
+        loginFailed: (msg) => `登录失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
+      },
+      en: {
+        pageTitle: 'yimsg full experience demo',
+        h1: 'yimsg · Full experience demo',
+        tip: 'Three accounts are signed in automatically, already friends, and share one group chat "Product Experience Group". Send a message in any panel and the other two receive it in real time — this demonstrates full login, group chat, and direct chat.',
+        cred: (username) => `Username: ${username}  Password: ${PASSWORD}`,
+        loginFailed: (msg) => `Sign-in failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
+      },
+    };
+
+    const lang = detectDemoLang();
+    const dict = TRANSLATIONS[lang];
+    applyDemoI18n(lang, dict);
 
     const PASSWORD = 'Demo@123456';
     const ACCOUNTS = [
@@ -38,7 +60,7 @@
       panel.innerHTML = `
         <div class="panel-header">
           <span>${account.label}</span>
-          <span class="cred">用户名：${account.username}　密码：${PASSWORD}</span>
+          <span class="cred">${dict.cred(account.username)}</span>
         </div>
         <div class="panel-host panel-error" hidden></div>
       `;
@@ -53,10 +75,10 @@
         token = auth.token;
         return client.startSession();
       }).then(() => {
-        mount(host, { client, token, viewMode: 'full', theme: 'light', locale: 'auto' });
+        mount(host, { client, token, viewMode: 'full', theme: 'light', locale: demoLocale(lang) });
       }).catch((err) => {
         host.classList.add('panel-error');
-        host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+        host.textContent = dict.loginFailed(err?.message || err);
         console.warn('[demo-full-chat] login failed', account.username, err);
       });
     }

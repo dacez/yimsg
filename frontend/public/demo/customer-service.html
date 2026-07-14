@@ -14,19 +14,49 @@
   </style>
 </head>
 <body>
-  <h1>yimsg · 客服组件 demo</h1>
-  <p class="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。</p>
-  <div class="cred" id="cred">正在注册访客账号…</div>
+  <h1 data-i18n="h1">yimsg · 客服组件 demo</h1>
+  <p class="tip" data-i18n-html="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。</p>
+  <div class="cred" id="cred" data-i18n="registering">正在注册访客账号…</div>
   <div class="agents" id="agents"></div>
   <div id="chat-host" class="host"></div>
   <script type="module">
     import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
 
-    const AGENTS = [
-      { username: 'demo_kf_1', label: '客服-小美' },
-      { username: 'demo_kf_2', label: '客服-小林' },
-      { username: 'demo_kf_3', label: '客服-阿强' },
-    ];
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg 客服组件 demo',
+        h1: 'yimsg · 客服组件 demo',
+        tip: "页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。",
+        registering: '正在注册访客账号…',
+        guestNickname: '访客',
+        cred: (username, password) => `访客账号：${username}　密码：${password}`,
+        initFailed: (msg) => `初始化失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
+        agents: [
+          { username: 'demo_kf_1', label: '客服-小美' },
+          { username: 'demo_kf_2', label: '客服-小林' },
+          { username: 'demo_kf_3', label: '客服-阿强' },
+        ],
+      },
+      en: {
+        pageTitle: 'yimsg customer service widget demo',
+        h1: 'yimsg · Customer service widget demo',
+        tip: "This page auto-registers and signs in a random guest account, showing only the conversation list + chat view (<code>viewMode: 'chat-only'</code>). Direct chat doesn't require a friend relationship — pick any agent below to start a temporary conversation.",
+        registering: 'Registering guest account…',
+        guestNickname: 'Guest',
+        cred: (username, password) => `Guest account: ${username}  Password: ${password}`,
+        initFailed: (msg) => `Init failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
+        agents: [
+          { username: 'demo_kf_1', label: 'Agent Mei' },
+          { username: 'demo_kf_2', label: 'Agent Lin' },
+          { username: 'demo_kf_3', label: 'Agent Qiang' },
+        ],
+      },
+    };
+
+    const lang = detectDemoLang();
+    const dict = TRANSLATIONS[lang];
+    applyDemoI18n(lang, dict);
 
     function randomSuffix() {
       return Math.random().toString(36).slice(2, 8);
@@ -39,18 +69,18 @@
       const password = randomSuffix() + randomSuffix();
 
       const client = new YimsgClient({ wsUrl, uploadUrl });
-      await client.register(username, password, '访客');
+      await client.register(username, password, dict.guestNickname);
       const auth = await client.login(username, password);
       await client.startSession();
 
-      document.getElementById('cred').textContent = `访客账号：${username}　密码：${password}`;
+      document.getElementById('cred').textContent = dict.cred(username, password);
 
       const host = document.getElementById('chat-host');
-      const handle = mount(host, { client, token: auth.token, viewMode: 'chat-only', theme: 'light', locale: 'auto' });
+      const handle = mount(host, { client, token: auth.token, viewMode: 'chat-only', theme: 'light', locale: demoLocale(lang) });
 
       const agentsEl = document.getElementById('agents');
       let activeUid = null;
-      for (const agent of AGENTS) {
+      for (const agent of dict.agents) {
         const btn = document.createElement('button');
         btn.textContent = agent.label;
         btn.addEventListener('click', async () => {
@@ -71,7 +101,7 @@
       document.getElementById('cred').textContent = '';
       const host = document.getElementById('chat-host');
       host.className = 'host error';
-      host.textContent = `初始化失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+      host.textContent = dict.initFailed(err?.message || err);
       console.warn('[demo-customer-service] init failed', err);
     });
   </script>

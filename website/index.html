@@ -450,6 +450,9 @@
       }
 
       let lang = currentLang();
+      // 首次访问未手动切换过语言时也要写入 localStorage：demo/ 下的页面通过同一个
+      // key 读取当前语言，确保从本页任意语言状态点进 demo 都能保持一致，而不仅是手动切换后才生效。
+      try { localStorage.setItem(STORAGE_KEY, lang); } catch { /* 隐私模式等场景下静默忽略 */ }
       applyLang(lang);
 
       langToggleBtn.addEventListener('click', () => {

@@ -11,12 +11,34 @@
   </style>
 </head>
 <body>
-  <h1>yimsg · 打开应用</h1>
-  <p class="tip">已自动登录一个真实账号并开启本地持久化存储（<code>storage: 'persistent'</code>），完整应用（聊天 / 通讯录 / 设置 + 底部导航）随开随用；刷新页面或断网重连，会话数据都不会丢失。</p>
-  <div class="cred">用户名：demo_alice　密码：Demo@123456</div>
+  <h1 data-i18n="h1">yimsg · 打开应用</h1>
+  <p class="tip" data-i18n-html="tip">已自动登录一个真实账号并开启本地持久化存储（<code>storage: 'persistent'</code>），完整应用（聊天 / 通讯录 / 设置 + 底部导航）随开随用；刷新页面或断网重连，会话数据都不会丢失。</p>
+  <div class="cred" data-i18n="cred">用户名：demo_alice　密码：Demo@123456</div>
   <div id="chat-host" class="host"></div>
   <script type="module">
     import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
+
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg 应用 demo',
+        h1: 'yimsg · 打开应用',
+        tip: "已自动登录一个真实账号并开启本地持久化存储（<code>storage: 'persistent'</code>），完整应用（聊天 / 通讯录 / 设置 + 底部导航）随开随用；刷新页面或断网重连，会话数据都不会丢失。",
+        cred: '用户名：demo_alice　密码：Demo@123456',
+        loginFailed: (msg) => `登录失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
+      },
+      en: {
+        pageTitle: 'yimsg app demo',
+        h1: 'yimsg · Open the app',
+        tip: "Signed in automatically with a real account and local persistent storage enabled (<code>storage: 'persistent'</code>): the full app (chat / contacts / settings + bottom nav) is ready to use — refreshing the page or reconnecting after a dropped connection never loses your conversation data.",
+        cred: 'Username: demo_alice  Password: Demo@123456',
+        loginFailed: (msg) => `Sign-in failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
+      },
+    };
+
+    const lang = detectDemoLang();
+    const dict = TRANSLATIONS[lang];
+    applyDemoI18n(lang, dict);
 
     const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
     const uploadUrl = '/api/upload';
@@ -28,10 +50,10 @@
       token = auth.token;
       return client.startSession({ storage: 'persistent' });
     }).then(() => {
-      mount(host, { client, token, viewMode: 'full', theme: 'light', locale: 'auto' });
+      mount(host, { client, token, viewMode: 'full', theme: 'light', locale: demoLocale(lang) });
     }).catch((err) => {
       host.className = 'host error';
-      host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+      host.textContent = dict.loginFailed(err?.message || err);
       console.warn('[demo-app] login failed', err);
     });
   </script>

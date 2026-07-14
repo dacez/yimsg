@@ -25,25 +25,65 @@
   </style>
 </head>
 <body>
-  <h1>yimsg · UIKit 多实例 8 宫格</h1>
-  <p class="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 内存）共存，不共享会话、语言、布局与本地数据库；持久存储可在设置页用「清除数据」按钮随时清空。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
+  <h1 data-i18n="h1">yimsg · UIKit 多实例 8 宫格</h1>
+  <p class="tip" data-i18n="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 内存）共存，不共享会话、语言、布局与本地数据库；持久存储可在设置页用「清除数据」按钮随时清空。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
   <div class="toolbar">
-    <button id="btn-remount-all">重新挂载全部</button>
-    <button id="btn-unmount-all">卸载全部</button>
+    <button id="btn-remount-all" data-i18n="btnRemountAll">重新挂载全部</button>
+    <button id="btn-unmount-all" data-i18n="btnUnmountAll">卸载全部</button>
   </div>
   <div class="grid" id="multi-grid">
-    <section class="cell"><div class="cell-header">格 1 · user1 · 持久存储</div><div id="host-u1-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 2 · user1 · 持久存储（副本）</div><div id="host-u1-persistent-2" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 3 · user1 · 内存</div><div id="host-u1-memory" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 4 · user2 · 持久存储</div><div id="host-u2-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 5 · user3 · 持久存储</div><div id="host-u3-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 6 · user4 · 内存</div><div id="host-u4-memory" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 7 · user5 · 持久存储</div><div id="host-u5-persistent" class="cell-host"></div></section>
-    <section class="cell"><div class="cell-header">格 8 · user5 · 内存</div><div id="host-u5-memory" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell1">格 1 · user1 · 持久存储</div><div id="host-u1-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell2">格 2 · user1 · 持久存储（副本）</div><div id="host-u1-persistent-2" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell3">格 3 · user1 · 内存</div><div id="host-u1-memory" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell4">格 4 · user2 · 持久存储</div><div id="host-u2-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell5">格 5 · user3 · 持久存储</div><div id="host-u3-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell6">格 6 · user4 · 内存</div><div id="host-u4-memory" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell7">格 7 · user5 · 持久存储</div><div id="host-u5-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell8">格 8 · user5 · 内存</div><div id="host-u5-memory" class="cell-host"></div></section>
   </div>
   <script type="module">
     import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
     window.YimsgUIKit = YimsgUIKit;
+
+    // 本页专门用来验证多实例间语言互不共享（见 frontend/tests/ui/uikit-multi.spec.ts），
+    // 因此每个 widget 的初始 locale 固定为 zh-CN，不跟随访客语言；页面自身的说明文字仍会跟随语言切换。
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg uikit 多实例示例',
+        h1: 'yimsg · UIKit 多实例 8 宫格',
+        tip: '同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 内存）共存，不共享会话、语言、布局与本地数据库；持久存储可在设置页用「清除数据」按钮随时清空。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。',
+        btnRemountAll: '重新挂载全部',
+        btnUnmountAll: '卸载全部',
+        cell1: '格 1 · user1 · 持久存储',
+        cell2: '格 2 · user1 · 持久存储（副本）',
+        cell3: '格 3 · user1 · 内存',
+        cell4: '格 4 · user2 · 持久存储',
+        cell5: '格 5 · user3 · 持久存储',
+        cell6: '格 6 · user4 · 内存',
+        cell7: '格 7 · user5 · 持久存储',
+        cell8: '格 8 · user5 · 内存',
+      },
+      en: {
+        pageTitle: 'yimsg uikit multi-instance example',
+        h1: 'yimsg · UIKit 8-panel multi-instance grid',
+        tip: 'Mounts 8 mutually isolated UIKit instances on one page: the same account can coexist across multiple modes (persistent / memory) without sharing conversations, language, layout, or local database; persistent storage can be wiped anytime with the "Clear data" button in settings. This page enlarges each widget closer to a real card-usage size; hosts smaller than 320 x 360 px show a container-too-small notice instead of clipping the UI.',
+        btnRemountAll: 'Remount all',
+        btnUnmountAll: 'Unmount all',
+        cell1: 'Panel 1 · user1 · persistent',
+        cell2: 'Panel 2 · user1 · persistent (copy)',
+        cell3: 'Panel 3 · user1 · memory',
+        cell4: 'Panel 4 · user2 · persistent',
+        cell5: 'Panel 5 · user3 · persistent',
+        cell6: 'Panel 6 · user4 · memory',
+        cell7: 'Panel 7 · user5 · persistent',
+        cell8: 'Panel 8 · user5 · memory',
+      },
+    };
+
+    const lang = detectDemoLang();
+    applyDemoI18n(lang, TRANSLATIONS[lang]);
+
     const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
     const uploadUrl = '/api/upload';
     const configs = [

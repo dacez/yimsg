@@ -101,30 +101,56 @@
 </head>
 <body>
   <div class="page">
-    <h1>yimsg · 手机 / PC 双端布局 demo</h1>
-    <p class="tip">同一套 UIKit 通过 <code>layout: 'mobile' / 'desktop'</code> 强制切换布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列。两个账号已自动登录，互为好友，可直接体验两种布局下的完整应用。</p>
+    <h1 data-i18n="h1">yimsg · 手机 / PC 双端布局 demo</h1>
+    <p class="tip" data-i18n-html="tip">同一套 UIKit 通过 <code>layout: 'mobile' / 'desktop'</code> 强制切换布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列。两个账号已自动登录，互为好友，可直接体验两种布局下的完整应用。</p>
     <div class="stage" id="stage"></div>
   </div>
   <script type="module">
     import { mount, YimsgClient } from '/uikit/yimsg-uikit.js';
+    import { detectDemoLang, demoLocale, applyDemoI18n } from './demo-i18n.js';
 
     const PASSWORD = 'Demo@123456';
-    const DEVICES = [
-      { username: 'demo_bob', name: 'Bob · 手机布局', layout: 'mobile', kind: 'mobile' },
-      { username: 'demo_carol', name: 'Carol · 桌面布局', layout: 'desktop', kind: 'desktop' },
-    ];
+
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg 手机 / PC 双端布局 demo',
+        h1: 'yimsg · 手机 / PC 双端布局 demo',
+        tip: "同一套 UIKit 通过 <code>layout: 'mobile' / 'desktop'</code> 强制切换布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列。两个账号已自动登录，互为好友，可直接体验两种布局下的完整应用。",
+        cred: (username) => `用户名：${username}　密码：${PASSWORD}`,
+        loginFailed: (msg) => `登录失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
+        devices: [
+          { username: 'demo_bob', name: 'Bob · 手机布局', layout: 'mobile', kind: 'mobile' },
+          { username: 'demo_carol', name: 'Carol · 桌面布局', layout: 'desktop', kind: 'desktop' },
+        ],
+      },
+      en: {
+        pageTitle: 'yimsg mobile / desktop layout demo',
+        h1: 'yimsg · Mobile / desktop layout demo',
+        tip: "The same UIKit switches layout with <code>layout: 'mobile' / 'desktop'</code>: bottom nav with single-column switching on mobile, sidebar nav with multi-column layout on desktop. Two accounts are signed in automatically and already friends — try the full app in both layouts directly.",
+        cred: (username) => `Username: ${username}  Password: ${PASSWORD}`,
+        loginFailed: (msg) => `Sign-in failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
+        devices: [
+          { username: 'demo_bob', name: 'Bob · Mobile layout', layout: 'mobile', kind: 'mobile' },
+          { username: 'demo_carol', name: 'Carol · Desktop layout', layout: 'desktop', kind: 'desktop' },
+        ],
+      },
+    };
+
+    const lang = detectDemoLang();
+    const dict = TRANSLATIONS[lang];
+    applyDemoI18n(lang, dict);
 
     const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
     const uploadUrl = '/api/upload';
     const stageEl = document.getElementById('stage');
 
-    for (const item of DEVICES) {
+    for (const item of dict.devices) {
       const device = document.createElement('div');
       device.className = 'device';
       device.innerHTML = `
         <div class="device-label">
           <span class="name">${item.name}</span>
-          <span class="cred">用户名：${item.username}　密码：${PASSWORD}</span>
+          <span class="cred">${dict.cred(item.username)}</span>
         </div>
         <div class="device-frame ${item.kind}">
           ${item.kind === 'desktop' ? '<div class="browser-bar"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div>' : ''}
@@ -140,10 +166,10 @@
         token = auth.token;
         return client.startSession();
       }).then(() => {
-        mount(host, { client, token, viewMode: 'full', layout: item.layout, theme: 'light', locale: 'auto' });
+        mount(host, { client, token, viewMode: 'full', layout: item.layout, theme: 'light', locale: demoLocale(lang) });
       }).catch((err) => {
         host.classList.add('panel-error');
-        host.textContent = `登录失败：${err?.message || err}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`;
+        host.textContent = dict.loginFailed(err?.message || err);
         console.warn('[demo-responsive] login failed', item.username, err);
       });
     }
