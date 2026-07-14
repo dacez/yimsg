@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-13。
+> 最后复核：2026-07-14。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -424,6 +424,7 @@ client.on('conversations:sent', (event) => {});
 client.on('contacts:updated', (event) => {});
 client.on('blocklist:updated', (event) => {});
 client.on('conversations:mutelist-updated', (event) => {});
+client.on('org:updated', (event) => {});
 client.on('display:updated', (event) => {});
 client.on('error', (event) => {});
 ```
@@ -438,6 +439,7 @@ client.on('error', (event) => {});
 | `contacts:updated` | `ContactsUpdatedEvent` | 联系人索引或服务端联系人分页已变化，UI 应重新拉取 当前页 |
 | `blocklist:updated` | `BlocklistUpdatedEvent` | 收到 `blocklist:updated` 后，提示 UI 失效当前可见屏蔽列表状态 |
 | `conversations:mutelist-updated` | `MutelistUpdatedEvent` | 收到 `conversations:mutelist-updated` 后，提示 UI 失效当前可见免打扰状态 |
+| `org:updated` | `OrgUpdatedEvent` | 组织架构发生变化，UI 应按 `orgIds` 重拉受影响组织的 `getTags`/`getTagInfos`/`getOrgInfos` 展开数据 |
 | `display:updated` | `DisplayInfoUpdatedEvent` | 显示名缓存刷新完成 |
 | `error` | `ClientErrorEvent` | SDK 内部异步错误 |
 
@@ -451,6 +453,7 @@ client.on('error', (event) => {});
 | `ContactsUpdatedEvent` | `reason`，取值包括 `notification_sync`、`display_reordered` |
 | `BlocklistUpdatedEvent` | `snapshot, reason`，当前 `reason` 为 `notification` |
 | `MutelistUpdatedEvent` | `snapshot, reason`，当前 `reason` 为 `notification` |
+| `OrgUpdatedEvent` | `orgIds`：发生变化的组织 ID 列表（通知合并后去重） |
 | `DisplayInfoUpdatedEvent` | `keys, scope`，`scope` 为 `user` / `group` / `mixed` |
 | `ClientErrorEvent` | `error, context, snapshot` |
 
@@ -461,6 +464,7 @@ client.on('error', (event) => {});
 - `conversations:sent` 仅在本端发送消息成功时触发（`keys` 为目标会话）。默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页（newest，发出的会话因 `seq` 最大落在顶部）并滚回顶部，不点亮提示条。会话列表初始渲染由 UI `renderReadyState` 负责、不发事件；他端来消息走 `messages:received`（贴顶重拉、非贴顶点亮提示条），与本端主动发送区分。
 - `messages:deleted` 由 `delete_message`（本端或他端 `messages:delete` 通知）触发，携带 `messageId` 与会话 `key`；打开中的会话 UI 在消息数据窗口内就地删除该消息、剩余往上补齐，并对会话 `key` 定向刷新预览，不重拉当前会话。持久模式先同步本地再发事件。
 - `blocklist:updated` / `conversations:mutelist-updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../同步机制方案.md`](../同步机制方案.md)。
+- `org:updated` 只携带发生变化的 `orgIds`，不带增量数据；SDK 按 `org_id` 合并去重多条通知后一次性触发。`grant_org_admin`/`revoke_org_admin` 只变更管理员授权（与组织架构位置解耦，不出现在 `getTags` 结果里），不会触发该事件；`delete_org` 走 `contacts:updated` 异步清理各成员通讯录组织行，也不触发该事件。
 - `MemoryDataGateway` 的内存增量流与 `PersistentDataGateway` 的本地消息库都遵循同一规则，避免 UI 看见一条额外的空白系统消息。
 
 ## 6. 只读约束
