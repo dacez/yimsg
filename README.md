@@ -94,7 +94,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 ## Memory Guarantees
 
-Every long-lived collection in the Yimsg SDK is a **bounded collection**: capacity is fixed at construction time and never grows at runtime — unbounded Map / Set / Queue growth is prohibited — so the SDK's peak memory footprint is statically estimable. See [`docs/frontend/有界集合方案.md`](docs/frontend/有界集合方案.md) (Chinese) for details.
+Every long-lived collection in the Yimsg SDK is a **bounded collection**: capacity is fixed at construction time and never grows at runtime — unbounded Map / Set / Queue growth is prohibited — so the SDK's peak memory footprint is statically estimable. See [`docs/frontend/sdk/有界集合方案.md`](docs/frontend/sdk/有界集合方案.md) (Chinese) for details.
 
 Key upper bounds:
 
@@ -117,7 +117,7 @@ Each collection exposes `size` / `capacity` / `bucketCount` / `bucketCapacity` /
 
 ### Peak Memory Estimation
 
-`YimsgClient.estimateMaxMemoryBytes(options)` rolls every bounded collection (caches, queues, pending requests, sync batches, baseline) into a theoretical peak-memory estimate. It's purely static with no side effects and can be called before an instance is even constructed. Each component is statically computable — see §11 of [`docs/frontend/sdk设计方案.md`](docs/frontend/sdk设计方案.md) (Chinese) for details.
+`YimsgClient.estimateMaxMemoryBytes(options)` rolls every bounded collection (caches, queues, pending requests, sync batches, baseline) into a theoretical peak-memory estimate. It's purely static with no side effects and can be called before an instance is even constructed. Each component is statically computable — see §11 of [`docs/frontend/sdk/sdk设计方案.md`](docs/frontend/sdk/sdk设计方案.md) (Chinese) for details.
 
 ## Quick Start
 
@@ -191,14 +191,14 @@ Most in-depth design documents are currently maintained in Chinese only.
 - Frontend doc index: [`docs/frontend/README.md`](docs/frontend/README.md)
 - Server architecture: [`docs/server/服务器架构方案.md`](docs/server/服务器架构方案.md)
 - Database overview: [`docs/server/db/数据库设计总览.md`](docs/server/db/数据库设计总览.md)
-- Interface overview: [`docs/接口总览.md`](docs/接口总览.md)
+- Interface overview: [`docs/protocol/接口总览.md`](docs/protocol/接口总览.md)
 - Protocol governance: [`docs/protocol/README.md`](docs/protocol/README.md)
 - Sync mechanism: [`docs/同步机制方案.md`](docs/同步机制方案.md)
 - Frontend architecture: [`docs/frontend/前端设计方案.md`](docs/frontend/前端设计方案.md)
-- SDK design and interface: [`docs/frontend/sdk设计方案.md`](docs/frontend/sdk设计方案.md), [`docs/frontend/sdk接口说明.md`](docs/frontend/sdk接口说明.md)
-- UIKit design: [`docs/frontend/UIKit方案.md`](docs/frontend/UIKit方案.md)
+- SDK design and interface: [`docs/frontend/sdk/sdk设计方案.md`](docs/frontend/sdk/sdk设计方案.md), [`docs/frontend/sdk/sdk接口说明.md`](docs/frontend/sdk/sdk接口说明.md)
+- UIKit design: [`docs/frontend/uikit/UIKit方案.md`](docs/frontend/uikit/UIKit方案.md)
 - Test plan: [`docs/测试方案.md`](docs/测试方案.md)
-- Plugin architecture: [`docs/插件架构方案.md`](docs/插件架构方案.md)
+- Plugin architecture: [`docs/server/插件架构方案.md`](docs/server/插件架构方案.md)
 
 ## Maintenance Conventions
 

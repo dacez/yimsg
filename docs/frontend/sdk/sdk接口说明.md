@@ -3,7 +3,7 @@
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
 > 最后复核：2026-07-16。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
-> 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
+> 入口关系：上级索引见 [`README.md`](../README.md)；通用同步机制见 [`../../同步机制方案.md`](../../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
 ## 目录
 
@@ -33,6 +33,8 @@
 - [8.1 启动流程](#81-启动流程)
 - [8.2 页面刷新恢复](#82-页面刷新恢复)
 - [8.3 事件驱动 UI](#83-事件驱动-ui)
+- [8.4 分页读取会话和消息](#84-分页读取会话和消息)
+- [8.5 联系人和群组操作](#85-联系人和群组操作)
 - [9. 调用前置条件](#9-调用前置条件)
 - [10. 当前版本结论](#10-当前版本结论)
 - [10.1 ClientOptions 主要可配置项](#101-clientoptions-主要可配置项)
@@ -175,7 +177,7 @@ await client.startSession({
 
 `SessionStartResult` 会返回实际使用的 `mode`、`requestedFileSystem` / `actualFileSystem`、是否从持久化降级到即时模式，以及本地数据重置是否失败。未显式指定 `fileSystem` 时，SDK 会自动探测并优先选择当前环境可用后端（浏览器优先 `opfs`，Node.js 优先 `local`）；若请求持久化但无可用后端，会自动降级为即时会话。若本地持久化能力打开失败，`startSession()` 会回退到 `authenticated` 并抛 `StorageModeError`，由调用方决定是否重试 instant；本地库打开后的数据同步失败通过 `session:sync` 和 `error` 事件上报。
 
-> `login` / `authenticate` 成功响应中的 `client_config` 字段定义、默认值和服务端硬约束见 [`../接口总览.md#15-client_config`](../接口总览.md#15-client_config)。本文只说明 SDK 如何在客户端侧应用这些配置。
+> `login` / `authenticate` 成功响应中的 `client_config` 字段定义、默认值和服务端硬约束见 [`../../protocol/接口总览.md#15-client_config`](../../protocol/接口总览.md#15-client_config)。本文只说明 SDK 如何在客户端侧应用这些配置。
 
 ---
 
@@ -347,7 +349,7 @@ interface Contact {
 
 ## 4.6 组织管理
 
-`createOrg` 是权限链条唯一的自举点，任意登录用户都可以调用，调用方自动成为新组织根的初始管理员，不需要预先持有任何授权。除此之外，以下写方法均要求调用方对目标节点（或其祖先）持有管理员授权，否则服务端返回 `FORBIDDEN`（`RequestError`）；SDK 不做本地乐观更新，写成功后依赖既有 `org:updated` 轻通知 + 重新拉取刷新展示，详见 [`../server/组织架构方案.md`](../server/组织架构方案.md) 第 10 节。
+`createOrg` 是权限链条唯一的自举点，任意登录用户都可以调用，调用方自动成为新组织根的初始管理员，不需要预先持有任何授权。除此之外，以下写方法均要求调用方对目标节点（或其祖先）持有管理员授权，否则服务端返回 `FORBIDDEN`（`RequestError`）；SDK 不做本地乐观更新，写成功后依赖既有 `org:updated` 轻通知 + 重新拉取刷新展示，详见 [`../../server/组织架构方案.md`](../../server/组织架构方案.md) 第 10 节。
 
 | 方法 | 签名 |
 |------|------|
@@ -463,7 +465,7 @@ client.on('error', (event) => {});
 - `conversations:clearunread` / `conversations:delete` 是轻量定向信号，携带 `keys`：UI 对仍在数据窗口内的会话调用 `getConversations({ targets })` 拉取当前状态并更新窗口（删除态返回空 → 从窗口移除、剩余往上补齐）；不在窗口则忽略，靠后续全量刷新追平。`getConversations({ targets })` 遵守轻通知原则，按目标只读取单个/多个会话当前状态、不分页。
 - `conversations:sent` 仅在本端发送消息成功时触发（`keys` 为目标会话）。默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页（newest，发出的会话因 `seq` 最大落在顶部）并滚回顶部，不点亮提示条。会话列表初始渲染由 UI `renderReadyState` 负责、不发事件；他端来消息走 `messages:received`（贴顶重拉、非贴顶点亮提示条），与本端主动发送区分。
 - `messages:deleted` 由 `delete_message`（本端或他端 `messages:delete` 通知）触发，携带 `messageId` 与会话 `key`；打开中的会话 UI 在消息数据窗口内就地删除该消息、剩余往上补齐，并对会话 `key` 定向刷新预览，不重拉当前会话。持久模式先同步本地再发事件。
-- `blocklist:updated` / `conversations:mutelist-updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../同步机制方案.md`](../同步机制方案.md)。
+- `blocklist:updated` / `conversations:mutelist-updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../../同步机制方案.md`](../../同步机制方案.md)。
 - `org:updated` 只携带发生变化的 `orgIds`，不带增量数据；SDK 按 `org_id` 合并去重多条通知后一次性触发。`grant_org_admin`/`revoke_org_admin` 只变更管理员授权（与组织架构位置解耦，不出现在 `getTags` 结果里），不会触发该事件；`delete_org` 走 `contacts:updated` 异步清理各成员通讯录组织行，也不触发该事件。
 - `InstantDataGateway` 的内存增量流与 `PersistentDataGateway` 的本地消息库都遵循同一规则，避免 UI 看见一条额外的空白系统消息。
 
@@ -550,6 +552,35 @@ client.on('display:updated', () => {
 });
 ```
 
+## 8.4 分页读取会话和消息
+
+```ts
+const page = await client.getConversations({ limit: 30 });
+const first = page.conversations[0];
+
+if (first) {
+  const descriptor = client.describeConversation(first);
+  const messages = await client.getMessages({
+    target: descriptor.target,
+    limit: 50,
+  });
+  console.log(messages.messages.map(message => client.describeMessage(message).text));
+}
+```
+
+## 8.5 联系人和群组操作
+
+```ts
+await client.addFriend('10002', '产品同学');
+await client.acceptFriend('10003');
+
+const contacts = await client.getContacts({ limit: 50 });
+const groupId = await client.createGroup('项目群', ['10002', '10003']);
+
+await client.favoriteGroup(groupId, '工作群');
+await client.updateRemark({ groupId }, '研发沟通');
+```
+
 ---
 
 ## 9. 调用前置条件
@@ -632,4 +663,4 @@ client.on('display:updated', () => {
 
 - `frontend/src/sdk/index.ts`
 - 本文档
-- `docs/frontend/sdk设计方案.md`
+- `docs/frontend/sdk/sdk设计方案.md`

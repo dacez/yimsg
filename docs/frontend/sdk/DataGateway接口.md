@@ -3,7 +3,7 @@
 > 主要对照：`frontend/src/sdk/datagateway/interface.ts`、`base.ts`、`instant.ts`、`persistent.ts`、`frontend/src/sdk/state/cache.ts`。
 > 最后复核：2026-07-16。
 > 触发更新：DataGateway 接口、同步事件、显示信息本地缓存接口或 instant / persistent 数据来源变化时同步更新。
-> 入口关系：上级索引见 [`README.md`](README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；公开 API 见 [`sdk接口说明.md`](sdk接口说明.md)。
+> 入口关系：上级索引见 [`README.md`](../README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；公开 API 见 [`sdk接口说明.md`](sdk接口说明.md)。
 
 ## 1. 定位
 

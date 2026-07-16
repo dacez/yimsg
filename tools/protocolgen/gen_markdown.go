@@ -22,7 +22,7 @@ func GenMarkdown(p *Proto, m *Manifest) []byte {
 	b.WriteString("> 主要对照：`internal/protocol/yimsg.proto`、`internal/protocol/pb/yimsg.pb.go`、`frontend/src/sdk/generated/yimsg.ts`、`internal/ws/`、`frontend/src/sdk/generated/`、`docs/protocol/README.md`。\n")
 	b.WriteString("> 最后复核：由 `go run ./tools/cmd/protocolgen` 自动生成，请勿手工编辑。\n")
 	b.WriteString("> 触发更新：协议 proto、生成器、type、请求 / 响应字段、错误码或通知类型变化时重新运行 `go run ./tools/cmd/protocolgen`。\n")
-	b.WriteString("> 入口关系：上级索引见 [`../README.md`](../README.md)；协议治理方案见 [`../protocol/README.md`](../protocol/README.md)；完整 SDK ↔ 服务端映射见 [`../接口总览.md`](../接口总览.md)。\n\n")
+	b.WriteString("> 入口关系：上级索引见 [`../README.md`](../README.md)；协议治理方案见 [`../protocol/README.md`](../protocol/README.md)；完整 SDK ↔ 服务端映射见 [`../protocol/接口总览.md`](../protocol/接口总览.md)。\n\n")
 
 	b.WriteString("## 帧格式\n\n")
 	b.WriteString("核心业务 WebSocket 帧使用 protobuf 定义 body。帧格式为 `magic:uint8('M') + codec:uint8(bitfield) + reserved:uint8(0) + checksum:uint8(CRC-8) + size:uint16 + request_id:uint64 + type:uint16 + body`，header 为 16 字节，`size` 最大是 `65519`；`codec` bit0 表示大小端，bit1-4 表示 version，bit5-7 保留并与后续 `reserved` 字节连续；`type=0` 是无效值；action enum 命名统一为 `TYPE_ACTION_*`，通知 enum 命名统一为 `TYPE_NOTIFY_*`；`request_id=0` 且 `type` 位于通知段表示服务端通知。\n\n")

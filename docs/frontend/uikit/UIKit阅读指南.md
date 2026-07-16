@@ -3,7 +3,7 @@
 > 主要对照：`frontend/src/uikit/app/shell.ts`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/app-instance.ts`、`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/safe-dom.ts`、`frontend/src/uikit/embed.ts`。
 > 最后复核：2026-07-11。
 > 触发更新：UIKit 视图结构、样式系统、DOM 构建模式、布局机制或新手上手路线发生变化时同步更新。
-> 入口关系：上级索引见 [`README.md`](README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
+> 入口关系：上级索引见 [`README.md`](../README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
 
 ## 目录
 
@@ -526,7 +526,7 @@ flowchart TD
 | 7 响应式 | `app/layout.ts`、`responsive-layout.ts` | §7 |
 | 8 安全/嵌入 | `app/safe-dom.ts`、`embed.ts` | §9 |
 
-更细的视图职责与状态字段，读完本指南后去看 [`UI设计方案.md`](UI设计方案.md)；嵌入接口看 [`UIKit方案.md`](UIKit方案.md)；SDK 数据怎么来看 [`sdk设计方案.md`](sdk设计方案.md)。
+更细的视图职责与状态字段，读完本指南后去看 [`UI设计方案.md`](UI设计方案.md)；嵌入接口看 [`UIKit方案.md`](UIKit方案.md)；SDK 数据怎么来看 [`sdk设计方案.md`](../sdk/sdk设计方案.md)。
 
 ## 11. 一次完整的数据流追踪
 

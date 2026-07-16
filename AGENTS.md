@@ -51,11 +51,11 @@
 - `docs/`：长期设计文档；生成类协议速查位于 `docs/generated/`，过期文档放 `docs/archive/`。
 
 ## 变更检查点
-- 改 WebSocket interface、请求/响应字段、错误码、notification、`client_config`：同步 `internal/protocol/yimsg.proto`、生成物、`docs/接口总览.md`、相关服务端/前端文档和测试。
+- 改 WebSocket interface、请求/响应字段、错误码、notification、`client_config`：同步 `internal/protocol/yimsg.proto`、生成物、`docs/protocol/接口总览.md`、相关服务端/前端文档和测试。
 - 改服务端业务：优先查 `internal/service/*`、`internal/dal/*_store.go`、`tests/e2e/` 和对应 `docs/server/` 专题；涉及推送时确认在线注册先于认证响应的时序。
 - 改同步域：同步检查 DAL 的 `List/Sync/GetVersion/Purge`、Service 写路径、WebSocket action、SDK DataGateway、持久本地表、通知和 `docs/同步机制方案.md`。
-- 改前端 SDK API：同步 `docs/frontend/sdk接口说明.md`、`docs/frontend/sdk设计方案.md`、`frontend/tests/unit/sdk/` 和必要的 integration 测试。
-- 改 UIKit/UI：同步 `docs/frontend/UIKit方案.md` 或 `docs/frontend/UI设计方案.md`，同时关注主应用和嵌入式 UIKit 两种宿主。
+- 改前端 SDK API：同步 `docs/frontend/sdk/sdk接口说明.md`、`docs/frontend/sdk/sdk设计方案.md`、`frontend/tests/unit/sdk/` 和必要的 integration 测试。
+- 改 UIKit/UI：同步 `docs/frontend/uikit/UIKit方案.md` 或 `docs/frontend/uikit/UI设计方案.md`，同时关注主应用和嵌入式 UIKit 两种宿主。
 - 改配置默认值：同步 `config.toml`、`internal/config/config.go`、`README.md` 或对应服务端文档。
 
 ## 全量测试脚本说明

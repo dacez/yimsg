@@ -3,7 +3,7 @@
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/internal/`、`frontend/src/sdk/datagateway/`、`frontend/src/sdk/state/`、`frontend/src/sdk/transport/`、`frontend/src/sdk/generated/yimsg.ts`、`frontend/src/worker/sqlite.worker.ts`、`internal/protocol/yimsg.proto`。
 > 最后复核：2026-07-16。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
-> 入口关系：上级索引见 [`README.md`](README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../同步机制方案.md`](../同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../接口总览.md`](../接口总览.md)。
+> 入口关系：上级索引见 [`README.md`](../README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../../同步机制方案.md`](../../同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../../protocol/接口总览.md`](../../protocol/接口总览.md)。
 
 本文只描述当前 `frontend/src/sdk/` 的实现事实，协议、接口、字段、事件和本地表均以当前代码为准。
 
@@ -244,21 +244,10 @@ sequenceDiagram
 
 ### 6.1 帧格式
 
-`frontend/src/sdk/transport/frame.ts` 负责 WebSocket 二进制帧编解码：
+`frontend/src/sdk/transport/frame.ts` 负责 WebSocket 二进制帧编解码。帧字段语义、`codec` 位域、CRC-8 参数和整包上限的权威说明见 [`../../protocol/README.md`](../../protocol/README.md)，本文只保留 SDK 侧差异：
 
-| 字段 | 当前规则 |
-|---|---|
-| header | 固定 16 字节 |
-| magic | `uint8('M')` |
-| codec | bit0 endian，bit1-4 version，bit5-7 保留且必须为 0；当前 version 为 1 |
-| reserved | 必须为 `0` |
-| checksum | checksum 字节置 0 后按整包计算 CRC-8，poly `0x07`，init `0x00` |
-| size | body 字节数；整包最大 `0xffff`，body 最大 `65519` |
-| request_id | `uint64` 字符串化保存；普通请求自增，通知固定为 `0` |
-| type | `uint16`，`0` 非法；值来自 protobuf `Type` |
-| body | protobuf request / response / notification |
-
-SDK 发送请求时使用 big-endian；解码响应和通知时按 codec endian bit 解析。
+- `request_id` 在 SDK 内以字符串化的 `uint64` 保存；普通请求自增，通知固定为 `0`。
+- SDK 发送请求时使用 big-endian；解码响应和通知时按 codec endian bit 解析。
 
 ### 6.2 `WsTransport`
 
