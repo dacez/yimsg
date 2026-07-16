@@ -30,7 +30,7 @@
 - 数据库 schema 入口：`internal/dal/schema.go`；字段说明权威文档是 `docs/server/db/schema字段对照.md`。
 - 协议单一事实源：`internal/protocol/yimsg.proto`。改 action、字段、错误码、Type、BaseRequest/BaseResponse 或 notification 时，先改 proto，再运行 `go run ./tools/cmd/protocolgen` 刷新生成物。
 - 前端 SDK 公开入口：`frontend/src/sdk/client.ts` 和 `frontend/src/sdk/index.ts`。SDK 必须保持 UI 无关，长期内存状态必须有上限、淘汰策略或释放路径。
-- 前端运行时核心：`frontend/src/sdk/client-session-runtime.ts`、`frontend/src/sdk/datagateway/`。`memory` 模式不保存完整本地副本，`persistent` 模式通过本地 SQLite/OPFS 同步副本读取。
+- 前端运行时核心：`frontend/src/sdk/client-session-runtime.ts`、`frontend/src/sdk/datagateway/`。`instant` 模式不保存完整本地副本，`persistent` 模式通过本地 SQLite/OPFS 同步副本读取。
 - UIKit 嵌入入口：`frontend/src/uikit/embed.ts`；主应用和嵌入式 UIKit 共享 `frontend/src/uikit/app/views/` 下的视图。
 - 文档索引入口：`docs/README.md`；服务端看 `docs/server/README.md`，前端看 `docs/frontend/README.md`，测试看 `docs/测试方案.md`。
 

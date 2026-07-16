@@ -49,14 +49,14 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 - **Customer service widget**: embed the Yimsg UIKit into your website or admin panel with one line of code and have a complete live-chat support entry point within minutes
 - **Standalone web app**: use it directly as a complete, standalone web IM app — log in to send messages and manage contacts and groups
-- **Local persistence**: the client supports local persistent caching so refreshing the page or reconnecting after a dropped connection never loses your conversations; a pure in-memory mode is also available that leaves no data on the local machine
+- **Local persistence**: the client supports local persistent caching so refreshing the page or reconnecting after a dropped connection never loses your conversations; an instant mode (pure in-memory) is also available that leaves no data on the local machine
 
 ## Current Implementation Overview
 
 - **Server**: Go 1.24, main entry point at `cmd/server/main.go`, with core modules under `internal/`
 - **Primary protocol**: WebSocket binary frames; `internal/protocol/yimsg.proto` is the single source of truth. The frame header uses `codec(bitfield) + size:uint16 + request_id:uint64 + type:uint16`, the whole packet is capped at `0xffff` bytes, and HTTP is used only for static assets, file uploads, and media access
 - **Storage model**: SQLite shards, accessed via four routing keys — `uid` / `username` / `group_id` / `token`
-- **Frontend form**: a single SDK + UIKit that supports a Lite mode (`mode: 'memory'` in the UIKit API, pure in-memory) and a persistent-storage mode (`mode: 'persistent'`, backed by a persistent storage layer + SQLite; the settings page lets you "Clear Data" and resync from scratch at any time)
+- **Frontend form**: a single SDK + UIKit that supports a Lite mode (`mode: 'instant'` in the UIKit API, pure in-memory) and a persistent-storage mode (`mode: 'persistent'`, backed by a persistent storage layer + SQLite; the settings page lets you "Clear Data" and resync from scratch at any time)
 - **Optional capabilities**: message recall, message extensions (quote / forward / Markdown / @mentions), conversation mute, block list, media upload, a pluggable extension mechanism
 - **Test suite**: backend unit tests, backend E2E tests, frontend unit tests, SDK integration tests, and Playwright UI tests — the full entry point is `./tools/run_all_tests.sh`
 
@@ -89,7 +89,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 - `YimsgClient`: a UI-agnostic IM SDK
 - `YimsgUIKit.mount()`: a Shadow DOM component embeddable into a host page
 - `mountApp()`: the entry point for the project's own full Web app
-- Lite (`mode: 'memory'`) / persistent-storage dual modes, local caching, event bridging, and profile/group display-info caching
+- Lite (`mode: 'instant'`) / persistent-storage dual modes, local caching, event bridging, and profile/group display-info caching
 - Theming, i18n, responsive layout, manual mounting, and host callback capabilities
 
 ## Memory Guarantees

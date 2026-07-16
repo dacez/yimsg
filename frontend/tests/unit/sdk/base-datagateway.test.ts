@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MemoryDataGateway } from "../../../src/sdk/datagateway/memory";
+import { InstantDataGateway } from "../../../src/sdk/datagateway/instant";
 import { BaseDataGateway } from "../../../src/sdk/datagateway/base";
 import type { Message } from "../../../src/types";
 import type { WsTransport } from "../../../src/sdk/transport/connection";
@@ -271,13 +271,13 @@ describe("BaseDataGateway notification queue", () => {
   });
 });
 
-describe("MemoryDataGateway notifications", () => {
-  let ds: MemoryDataGateway;
+describe("InstantDataGateway notifications", () => {
+  let ds: InstantDataGateway;
   let transport: WsTransport;
 
   beforeEach(() => {
     transport = mockTransport();
-    ds = new MemoryDataGateway(transport);
+    ds = new InstantDataGateway(transport);
   });
 
   it("messages:received 按通知 msg_id 拉取内容并派发，不扫描会话、不调用 sync_messages", async () => {

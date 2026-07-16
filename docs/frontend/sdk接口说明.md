@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/generated/actions.gen.ts`、`frontend/src/sdk/internal/action-mappers.ts`。
-> 最后复核：2026-07-14。
+> 最后复核：2026-07-16。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；通用同步机制见 [`../同步机制方案.md`](../同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -465,7 +465,7 @@ client.on('error', (event) => {});
 - `messages:deleted` 由 `delete_message`（本端或他端 `messages:delete` 通知）触发，携带 `messageId` 与会话 `key`；打开中的会话 UI 在消息数据窗口内就地删除该消息、剩余往上补齐，并对会话 `key` 定向刷新预览，不重拉当前会话。持久模式先同步本地再发事件。
 - `blocklist:updated` / `conversations:mutelist-updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../同步机制方案.md`](../同步机制方案.md)。
 - `org:updated` 只携带发生变化的 `orgIds`，不带增量数据；SDK 按 `org_id` 合并去重多条通知后一次性触发。`grant_org_admin`/`revoke_org_admin` 只变更管理员授权（与组织架构位置解耦，不出现在 `getTags` 结果里），不会触发该事件；`delete_org` 走 `contacts:updated` 异步清理各成员通讯录组织行，也不触发该事件。
-- `MemoryDataGateway` 的内存增量流与 `PersistentDataGateway` 的本地消息库都遵循同一规则，避免 UI 看见一条额外的空白系统消息。
+- `InstantDataGateway` 的内存增量流与 `PersistentDataGateway` 的本地消息库都遵循同一规则，避免 UI 看见一条额外的空白系统消息。
 
 ## 6. 只读约束
 

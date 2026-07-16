@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
-> 最后复核：2026-07-13。
+> 最后复核：2026-07-16。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -133,7 +133,7 @@ frontend/src/
 
 点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`。只改内存态和 DOM class，不触碰 `location`/`history`：无论在应用内做任何操作（登录/注册、聊天、建群、加好友等），浏览器"后退"都应该直接离开应用本身，而不是回退到应用内部的上一个视图或上一个打开的会话——这是所有视图切换和打开会话都不写 URL 的直接原因。
 
-会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪（细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §6），触底向后翻、触顶向前翻；未读角标直接使用会话项携带的 `unreadCount`；memory 模式由后端返回，持久存储模式来自本地会话表。他端来消息 `messages:received` 触发 `force` 刷新：用户贴顶时直接清空重拉首页；不贴顶时列表不动，只点亮"有新消息"提示条（`#conversation-update-pill`）并刷新未读角标，点击提示条或滚回顶部后追平。本端发送消息 `conversations:sent` 默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页并滚回顶部（`renderConversationList({ toTop:true })`），不点亮提示条；会话列表初始渲染由 `renderReadyState` 负责、不依赖该事件。`conversations:clearunread` / `conversations:delete` 携带 `keys`：对仍在数据窗口内的会话调 `getConversations({ targets })` 定向拉取当前状态并更新窗口（删除态返回空 → 移除往上补齐），不整列表重拉、会话不在窗口则忽略（`refreshConversations`）。
+会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪（细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §6），触底向后翻、触顶向前翻；未读角标直接使用会话项携带的 `unreadCount`；instant 模式由后端返回，持久存储模式来自本地会话表。他端来消息 `messages:received` 触发 `force` 刷新：用户贴顶时直接清空重拉首页；不贴顶时列表不动，只点亮"有新消息"提示条（`#conversation-update-pill`）并刷新未读角标，点击提示条或滚回顶部后追平。本端发送消息 `conversations:sent` 默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页并滚回顶部（`renderConversationList({ toTop:true })`），不点亮提示条；会话列表初始渲染由 `renderReadyState` 负责、不依赖该事件。`conversations:clearunread` / `conversations:delete` 携带 `keys`：对仍在数据窗口内的会话调 `getConversations({ targets })` 定向拉取当前状态并更新窗口（删除态返回空 → 移除往上补齐），不整列表重拉、会话不在窗口则忽略（`refreshConversations`）。
 
 不支持会话深链：应用不读取、也不写入任何 URL 状态（无论独立主应用 `embedded: false` 还是嵌入式 widget `embedded: true`），进入 ready 状态固定落在会话列表（chat 视图，不预选会话）。宿主页面如需让嵌入式 widget 直接打开指定会话，走 `mount()` 返回的 `handle.openConversation(target)` 编程式接口，不经过 URL。这个设计同时解决了两个问题：一是同一页面可以同时挂载多个 widget（如客服工作台一屏多开多个客服账号）时，多个 widget 不再需要抢同一份浏览器 `location`/`history`；二是应用内部导航（切视图、打开会话等）不再往宿主页面的浏览器历史里塞状态，避免用户点"后退"时先被迫在应用内部状态间来回，而不是直接离开应用。
 
@@ -192,7 +192,7 @@ sequenceDiagram
         UI->>UI: selectModeAndInit → initAfterAuth
     else 无 token
         alt localStorage.mode 为空
-            UI->>UI: 显示认证页 + 模式选择弹窗（memory / 持久存储）
+            UI->>UI: 显示认证页 + 模式选择弹窗（instant / 持久存储）
         else localStorage.mode 已存在
             UI->>UI: 仅显示认证页
         end
@@ -292,7 +292,7 @@ export function render*()       — 渲染/重绘函数，可被 main-app.ts 或
 | `register(username, password, nickname)` | `client.register()` → 自动调用 `login()` |
 | `initSelectedModeAfterAuth()` | 认证成功后直接使用已保存模式启动会话；切换 持久存储用户时把“重置本地会话数据”的业务意图交给 SDK |
 | `promptModeSelection(options)` | 显示模式选择 Modal，保存 mode / layout，并按需初始化会话 |
-| `showModeSelectionModal()` | 渲染 memory/持久存储选择 Modal，返回 Promise |
+| `showModeSelectionModal()` | 渲染 instant/持久存储选择 Modal，返回 Promise |
 
 #### 交互流程
 
@@ -305,7 +305,7 @@ sequenceDiagram
 
     alt 首次进入且 localStorage.token 为空
         Auth->>Modal: showModeSelectionModal()
-        U->>Modal: 选择 memory / 持久存储
+        U->>Modal: 选择 instant / 持久存储
         Modal-->>Auth: mode
         Auth->>Auth: localStorage.setItem('mode', mode)
     end
@@ -322,7 +322,7 @@ sequenceDiagram
         Auth->>SDK: startSession(storage='persistent')
         end
     else 其它情况
-      Auth->>SDK: startSession(storage='memory')
+      Auth->>SDK: startSession(storage='instant')
     end
 ```
 
@@ -340,7 +340,7 @@ sequenceDiagram
 
 - **认证错误**使用 `#auth-error` 元素显示（非 Toast），避免遮挡表单
 - **模式选择 Modal** 用 `Promise` 等待用户点击，协调异步流程
-- 只要没有 token，就会先要求选择模式（memory / 持久存储）
+- 只要没有 token，就会先要求选择模式（instant / 持久存储）
 - token 无效时会清空 token 并回到登录页；模式在下一次登录前重新选择
 - 登录成功后不再二次弹出模式选择，而是直接按已保存模式初始化；若已保存 `persistent` 且当前环境支持，则继续使用 `persistent`
 
@@ -746,7 +746,7 @@ showCreateOrgModal():
     │   ├── #settings-avatar        头像（点击上传）
     │   ├── #settings-nickname      当前昵称
     │   ├── #settings-uid           UID
-    │   └── #settings-mode          模式标识（memory / 持久存储）
+    │   └── #settings-mode          模式标识（instant / 持久存储）
     ├── .settings-card（Profile）
     │   ├── #edit-nickname          昵称编辑框
     │   └── #save-profile-btn       保存按钮
@@ -766,7 +766,7 @@ renderSettings():
   #settings-avatar → avatarInnerHtml(display)
   #settings-nickname → display.nickname || snapshot.currentUid
   #settings-uid → 'UID: ' + snapshot.currentUid
-  #settings-mode → snapshot.mode（memory 橙色 / 持久存储 绿色）
+  #settings-mode → snapshot.mode（instant 橙色 / 持久存储 绿色）
   #edit-nickname → display.nickname
 ```
 
@@ -1024,7 +1024,7 @@ SDK 层（YimsgClient — 单门面）
 ├── 会话数据通过 YimsgClient / DataGateway 读取；SDK 不维护 ConversationStore
 ├── PendingContactsIndex                         — 待处理请求 key 集合
 ├── DisplayInfoCache                      — 用户/群显示信息缓存
-└── DataGateway                            — memory / 持久存储数据读取与同步
+└── DataGateway                            — instant / 持久存储数据读取与同步
 
 视图层（模块级变量 — 辅助状态）
 ├── views/chat/state.ts: currentConvKey, currentMessages, loadingMoreMessages,

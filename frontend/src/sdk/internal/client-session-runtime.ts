@@ -1,4 +1,4 @@
-import { MemoryDataGateway } from "../datagateway/memory";
+import { InstantDataGateway } from "../datagateway/instant";
 import { DisplayInfoCache } from "../state/cache";
 import { SessionLifecycleMachine } from "../state/lifecycle";
 import { WsTransport } from "../transport/connection";
@@ -370,7 +370,7 @@ export class ClientSessionRuntime {
         instanceId: options.instanceId,
       });
     }
-    return new MemoryDataGateway(this.deps.transport, {
+    return new InstantDataGateway(this.deps.transport, {
       batchMaxLimit: this.deps.getBatchMaxLimit(),
     });
   }

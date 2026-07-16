@@ -1,7 +1,7 @@
 # SDK 设计方案
 
 > 主要对照：`frontend/src/sdk/index.ts`、`frontend/src/sdk/types.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/internal/`、`frontend/src/sdk/datagateway/`、`frontend/src/sdk/state/`、`frontend/src/sdk/transport/`、`frontend/src/sdk/generated/yimsg.ts`、`frontend/src/worker/sqlite.worker.ts`、`internal/protocol/yimsg.proto`。
-> 最后复核：2026-07-10。
+> 最后复核：2026-07-16。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../同步机制方案.md`](../同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../接口总览.md`](../接口总览.md)。
 
@@ -27,10 +27,10 @@ flowchart TD
 
   Runtime --> Transport[WsTransport]
   Runtime --> DataGateway{DataGateway}
-  DataGateway --> MemoryGateway[MemoryDataGateway]
+  DataGateway --> InstantGateway[InstantDataGateway]
   DataGateway --> PersistentGateway[PersistentDataGateway]
 
-  MemoryGateway --> Transport
+  InstantGateway --> Transport
   PersistentGateway --> Transport
   PersistentGateway --> SQLite[(SQLite: OPFS worker 或 local better-sqlite3)]
   DisplayCache --> DataGateway
@@ -156,7 +156,7 @@ sequenceDiagram
 
 | 场景 | 结果 |
 |---|---|
-| 请求 `instant` | 创建 `MemoryDataGateway` |
+| 请求 `instant` | 创建 `InstantDataGateway` |
 | 请求 `persistent` 且有可用后端 | 创建 `PersistentDataGateway`，DB 名为 `yimsg-{uid}__{instanceId}.db` |
 | 请求 `persistent` 但无可用后端 | 自动降级为 `instant`，`SessionStartResult.degraded = true` |
 | persistent 后端可用但打开或初始化失败 | `startSession()` 回到 `authenticated` 并抛 `StorageModeError(STORAGE_FAILED)` |
@@ -310,9 +310,9 @@ SDK 发送请求时使用 big-endian；解码响应和通知时按 codec endian 
 | 同步事件 | 有 domain 的任务发出 `started` / `success` / `failed` |
 | 清理 | 清空游标、通知标记、会话 key 集合和全部回调 |
 
-### 7.3 MemoryDataGateway
+### 7.3 InstantDataGateway
 
-instant 模式不维护本地完整副本。它的全部行为恰好就是 `BaseDataGateway` 的基线默认（直读后端、不维护游标、消息通知按累积 `msg_id` 批量直读、联系人通知只发失效信号），因此 `MemoryDataGateway` 目前是一个不含任何额外逻辑的空壳类，保留独立文件只为将来 instant 专属逻辑预留落点。
+instant 模式不维护本地完整副本。它的全部行为恰好就是 `BaseDataGateway` 的基线默认（直读后端、不维护游标、消息通知按累积 `msg_id` 批量直读、联系人通知只发失效信号），因此 `InstantDataGateway` 目前是一个不含任何额外逻辑的空壳类，保留独立文件只为将来 instant 专属逻辑预留落点。
 
 | 逻辑 | 当前实现（均继承自 Base 基线默认） |
 |---|---|

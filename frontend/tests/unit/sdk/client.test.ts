@@ -5,7 +5,7 @@ import {
   ValidationError,
   isYimsgError,
 } from "../../../src/sdk/errors";
-import { MemoryDataGateway } from "../../../src/sdk/datagateway/memory";
+import { InstantDataGateway } from "../../../src/sdk/datagateway/instant";
 import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_MARKDOWN,
@@ -53,21 +53,21 @@ function setupClientWithMocks(
 ) {
   // 获取 beforeEach 中设置的 sendBinary spy 引用，供测试自定义其行为
   const transportSendBinary = vi.mocked(WsTransport.prototype.sendBinary);
-  vi.spyOn(MemoryDataGateway.prototype, "init").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "init").mockResolvedValue({
     lastMsgSeq: 0,
     lastContactSeq: 0,
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_contacts").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "get_contacts").mockResolvedValue({
     offset: 0,
     total: 0,
     contacts: [],
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_conversations").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "get_conversations").mockResolvedValue({
     offset: 0,
     total: 0,
     conversations: [],
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_unread_count").mockResolvedValue(
+  vi.spyOn(InstantDataGateway.prototype, "get_unread_count").mockResolvedValue(
     0,
   );
 
@@ -259,7 +259,7 @@ describe("YimsgClient", () => {
     } as any);
     await client.login("alice", "password");
     await client.startSession({ storage: "instant" });
-    const getSpy = MemoryDataGateway.prototype
+    const getSpy = InstantDataGateway.prototype
       .get_conversations as unknown as ReturnType<typeof vi.fn>;
     getSpy.mockClear();
 
@@ -283,7 +283,7 @@ describe("YimsgClient", () => {
     });
 
     await client.startSession({ storage: "instant" });
-    const getUnreadCountSpy = MemoryDataGateway.prototype
+    const getUnreadCountSpy = InstantDataGateway.prototype
       .get_unread_count as unknown as ReturnType<typeof vi.fn>;
     getUnreadCountSpy.mockResolvedValueOnce(3);
 
@@ -410,7 +410,7 @@ describe("YimsgClient", () => {
   });
 
   it("clears the previous datagateway before reinitializing a session", async () => {
-    const clearSpy = vi.spyOn(MemoryDataGateway.prototype, "clear");
+    const clearSpy = vi.spyOn(InstantDataGateway.prototype, "clear");
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
 
@@ -459,7 +459,7 @@ describe("YimsgClient", () => {
   });
 
   it("destroy() clears dataGateway and store", async () => {
-    const clearSpy = vi.spyOn(MemoryDataGateway.prototype, "clear");
+    const clearSpy = vi.spyOn(InstantDataGateway.prototype, "clear");
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
     await client.startSession({ storage: "instant" });
@@ -478,7 +478,7 @@ describe("YimsgClient", () => {
 
     // Make first init slow so the second startSession can overtake it.
     let resolveFirstInit!: () => void;
-    const initMock = MemoryDataGateway.prototype.init as unknown as ReturnType<
+    const initMock = InstantDataGateway.prototype.init as unknown as ReturnType<
       typeof vi.fn
     >;
     initMock

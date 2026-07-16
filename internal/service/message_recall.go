@@ -93,7 +93,7 @@ func (s *AppState) recallViaSend(info *BaseInfo, recallMsgID string, toUID, grou
 		// 群撤回的 messages:received 信号由异步任务队列的 recall 任务在写完各成员收件箱后发出。
 	} else {
 		// 通知携带原消息 msg_id（撤回占位）：占位在收发双方收件箱都按原 msg_id 存在，
-		// memory / persistent 都能用 get_messages(msg_ids=[msg_id]) 取到，撤回事件消息不单独落持久库。
+		// instant / persistent 都能用 get_messages(msg_ids=[msg_id]) 取到，撤回事件消息不单独落持久库。
 		notif := appmsg.NewMessageNotif(uid, 0, msgID)
 		s.Online().Notify(toUID, notif)
 		s.Online().Notify(uid, notif)

@@ -37,7 +37,7 @@ function flush(): Promise<void> {
 }
 
 // instant 基线用 BaseDataGateway 的具体子类。
-class MemoryGateway extends BaseDataGateway {}
+class InstantGateway extends BaseDataGateway {}
 
 describe("组织 action 映射", () => {
   it("sync_tags 响应归一化：child_id/child_type、tombstone、游标", () => {
@@ -65,12 +65,12 @@ describe("组织 action 映射", () => {
 });
 
 describe("组织 instant 基线", () => {
-  let gateway: MemoryGateway;
+  let gateway: InstantGateway;
   let transport: WsTransport;
 
   beforeEach(() => {
     transport = mockTransport();
-    gateway = new MemoryGateway(transport);
+    gateway = new InstantGateway(transport);
   });
 
   it("get_tags 在线展开并透传排序结果", async () => {
