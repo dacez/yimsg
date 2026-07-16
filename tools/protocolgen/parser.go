@@ -1,4 +1,4 @@
-// Package protocolgen 以 internal/protocol/yimsg.proto 为唯一事实源，
+// Package protocolgen 以 protocol/yimsg.proto 为唯一事实源，
 // 解析协议并生成 Go / TypeScript 两端的机械映射代码与协议文档。
 //
 // 业务逻辑、SDK 公开接口、DataGateway、缓存、状态机、msg_id 生成等仍然手写，

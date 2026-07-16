@@ -1,0 +1,38 @@
+{
+  "name": "yimsg-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "protocol",
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "check:guards": "node tools/scripts/check-frontend-guards.mjs",
+    "build": "npm run build -w @yimsg/sdk && npm run build -w @yimsg/uikit && npm run build -w @yimsg/web && npm run build:examples -w @yimsg/uikit",
+    "test": "npm run test:unit && npm run test:uikit && npm run test:web",
+    "test:unit": "npm run test:unit -w @yimsg/sdk",
+    "test:sdk": "npm run test:integration -w @yimsg/sdk",
+    "test:uikit": "npm run test -w @yimsg/uikit",
+    "test:web": "npm run test -w @yimsg/web",
+    "test:e2e": "npm run test:ui -w @yimsg/web",
+    "test:ui": "npm run test:e2e",
+    "test:ui:headed": "npm run test:ui:headed -w @yimsg/web"
+  },
+  "overrides": {
+    "picomatch": "^4.0.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^4.1.4",
+    "grpc-tools": "^1.13.1",
+    "jscpd": "^3.5.10",
+    "ts-proto": "^2.11.8",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "ws": "^8.20.0"
+  }
+}

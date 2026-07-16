@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>yimsg uikit 多实例示例</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 20px; background: #f5f6fa; color: #333; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .tip { font-size: 13px; color: #666; margin: 0 0 16px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .toolbar button { padding: 6px 12px; border-radius: 6px; border: 1px solid #d0d7de; background: #fff; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: start; }
+    .cell { min-width: 0; display: flex; flex-direction: column; background: #fff; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.08); overflow: hidden; }
+    .cell-header { padding: 10px 12px; font-size: 13px; font-weight: 600; border-bottom: 1px solid #eef2f7; background: #fafbfc; }
+    .cell-host { flex: 0 0 auto; height: clamp(380px, 42vh, 440px); min-height: 380px; }
+    @media (max-width: 1280px) {
+      .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+      .cell-host { height: clamp(360px, 38vh, 420px); min-height: 360px; }
+    }
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .cell-host { height: min(62vh, 420px); min-height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <h1 data-i18n="h1">yimsg · UIKit 多实例 8 宫格</h1>
+  <p class="tip" data-i18n="tip">同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 即时）共存，不共享会话、语言、布局与本地数据库；持久存储可在设置页用「清除数据」按钮随时清空。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。</p>
+  <div class="toolbar">
+    <button id="btn-remount-all" data-i18n="btnRemountAll">重新挂载全部</button>
+    <button id="btn-unmount-all" data-i18n="btnUnmountAll">卸载全部</button>
+  </div>
+  <div class="grid" id="multi-grid">
+    <section class="cell"><div class="cell-header" data-i18n="cell1">格 1 · user1 · 持久存储</div><div id="host-u1-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell2">格 2 · user1 · 持久存储（副本）</div><div id="host-u1-persistent-2" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell3">格 3 · user1 · 即时</div><div id="host-u1-instant" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell4">格 4 · user2 · 持久存储</div><div id="host-u2-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell5">格 5 · user3 · 持久存储</div><div id="host-u3-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell6">格 6 · user4 · 即时</div><div id="host-u4-instant" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell7">格 7 · user5 · 持久存储</div><div id="host-u5-persistent" class="cell-host"></div></section>
+    <section class="cell"><div class="cell-header" data-i18n="cell8">格 8 · user5 · 即时</div><div id="host-u5-instant" class="cell-host"></div></section>
+  </div>
+  <script type="module">
+    // 单独的小模块，只依赖本地 demo-i18n.js：让文案尽快跟随语言渲染，
+    // 不必等待下面 mount 用的 yimsg-uikit.js（体积大得多）下载完成，避免先闪一下中文再变英文。
+    import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
+
+    // 本页专门用来验证多实例间语言互不共享（见 apps/web/tests/ui/uikit-multi.spec.ts），
+    // 因此每个 widget 的初始 locale 固定为 zh-CN，不跟随访客语言；页面自身的说明文字仍会跟随语言切换。
+    const TRANSLATIONS = {
+      zh: {
+        pageTitle: 'yimsg uikit 多实例示例',
+        h1: 'yimsg · UIKit 多实例 8 宫格',
+        tip: '同页同时挂载 8 个互相隔离的 UIKit 实例：同账号多模式（持久存储 / 即时）共存，不共享会话、语言、布局与本地数据库；持久存储可在设置页用「清除数据」按钮随时清空。示例页会把每个 widget 放大到更接近真实卡片使用场景的尺寸；若宿主小于 320 x 360 px，UIKit 会直接提示容器过小而不是裁切界面。',
+        btnRemountAll: '重新挂载全部',
+        btnUnmountAll: '卸载全部',
+        cell1: '格 1 · user1 · 持久存储',
+        cell2: '格 2 · user1 · 持久存储（副本）',
+        cell3: '格 3 · user1 · 即时',
+        cell4: '格 4 · user2 · 持久存储',
+        cell5: '格 5 · user3 · 持久存储',
+        cell6: '格 6 · user4 · 即时',
+        cell7: '格 7 · user5 · 持久存储',
+        cell8: '格 8 · user5 · 即时',
+      },
+      en: {
+        pageTitle: 'yimsg uikit multi-instance example',
+        h1: 'yimsg · UIKit 8-panel multi-instance grid',
+        tip: 'Mounts 8 mutually isolated UIKit instances on one page: the same account can coexist across multiple modes (persistent / instant) without sharing conversations, language, layout, or local database; persistent storage can be wiped anytime with the "Clear data" button in settings. This page enlarges each widget closer to a real card-usage size; hosts smaller than 320 x 360 px show a container-too-small notice instead of clipping the UI.',
+        btnRemountAll: 'Remount all',
+        btnUnmountAll: 'Unmount all',
+        cell1: 'Panel 1 · user1 · persistent',
+        cell2: 'Panel 2 · user1 · persistent (copy)',
+        cell3: 'Panel 3 · user1 · instant',
+        cell4: 'Panel 4 · user2 · persistent',
+        cell5: 'Panel 5 · user3 · persistent',
+        cell6: 'Panel 6 · user4 · instant',
+        cell7: 'Panel 7 · user5 · persistent',
+        cell8: 'Panel 8 · user5 · instant',
+      },
+    };
+
+    const lang = detectDemoLang();
+    applyDemoI18n(lang, TRANSLATIONS[lang]);
+  </script>
+  <script type="module">
+    import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+    window.YimsgUIKit = YimsgUIKit;
+
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    const uploadUrl = '/api/upload';
+    const configs = [
+      { hostId: 'host-u1-persistent', mode: 'persistent', instanceId: 'grid-u1-persistent' },
+      { hostId: 'host-u1-persistent-2', mode: 'persistent', instanceId: 'grid-u1-persistent-2' },
+      { hostId: 'host-u1-instant', mode: 'instant', instanceId: 'grid-u1-instant' },
+      { hostId: 'host-u2-persistent', mode: 'persistent', instanceId: 'grid-u2-persistent' },
+      { hostId: 'host-u3-persistent', mode: 'persistent', instanceId: 'grid-u3-persistent' },
+      { hostId: 'host-u4-instant', mode: 'instant', instanceId: 'grid-u4-instant' },
+      { hostId: 'host-u5-persistent', mode: 'persistent', instanceId: 'grid-u5-persistent' },
+      { hostId: 'host-u5-instant', mode: 'instant', instanceId: 'grid-u5-instant' },
+    ];
+
+    window.__gridHandles = {};
+
+    function mountOne(config) {
+      const host = document.getElementById(config.hostId);
+      const handle = window.YimsgUIKit.mount(host, {
+        wsUrl,
+        uploadUrl,
+        theme: 'auto',
+        locale: 'zh-CN',
+        layout: 'auto',
+        mode: config.mode,
+        instanceId: config.instanceId,
+      });
+      window.__gridHandles[config.hostId] = handle;
+      return handle;
+    }
+
+    function mountAll() {
+      for (const config of configs) mountOne(config);
+    }
+
+    function unmountAll() {
+      for (const handle of Object.values(window.__gridHandles)) {
+        handle?.unmount?.();
+      }
+      window.__gridHandles = {};
+    }
+
+    window.__gridDemo = {
+      configs,
+      mountAll,
+      unmountAll,
+      getHandle(hostId) {
+        return window.__gridHandles[hostId] || null;
+      },
+      shadowChildCount(hostId) {
+        const host = document.getElementById(hostId);
+        return host?.shadowRoot ? host.shadowRoot.childNodes.length : 0;
+      },
+    };
+
+    mountAll();
+    document.getElementById('btn-remount-all').addEventListener('click', () => {
+      unmountAll();
+      mountAll();
+    });
+    document.getElementById('btn-unmount-all').addEventListener('click', () => {
+      unmountAll();
+    });
+  </script>
+</body>
+</html>

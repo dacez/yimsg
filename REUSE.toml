@@ -1,0 +1,49 @@
+version = 1
+SPDX-PackageName = "yimsg"
+SPDX-PackageSupplier = "DaceZ and Yimsg contributors"
+SPDX-PackageDownloadLocation = "https://github.com/dacez/yimsg"
+
+[[annotations]]
+path = [
+  "server/**",
+  "apps/web/**",
+  "config.toml",
+  ".github/workflows/deploy.yml",
+  "tools/scripts/init_server_env.sh",
+  "tools/scripts/deploy-windows-local.ps1",
+  "tools/scripts/install-windows-autostart.ps1"
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright 2026 DaceZ and Yimsg contributors"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = [
+  "protocol/**",
+  "packages/sdk/**",
+  "packages/uikit/**",
+  "website/**",
+  "docs/**",
+  "tools/README.md",
+  "tools/*.sh",
+  "tools/cmd/**",
+  "tools/protocolgen/**",
+  "tools/scripts/build.sh",
+  "tools/scripts/check-frontend-guards.mjs",
+  "tools/scripts/check_docs_consistency.sh",
+  "tools/scripts/check_go_coverage.sh",
+  "tools/scripts/check_quality.sh",
+  "tools/scripts/run_all_tests.sh",
+  "*.md",
+  "*.json",
+  "*.mod",
+  "*.sum",
+  "REUSE.toml",
+  ".github/copilot-instructions.md",
+  ".gitattributes",
+  ".gitignore",
+  ".jscpd.json"
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Copyright 2026 DaceZ and Yimsg contributors"
+SPDX-License-Identifier = "Apache-2.0"

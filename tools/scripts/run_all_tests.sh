@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FRONTEND_DIR="$ROOT_DIR/frontend"
+FRONTEND_DIR="$ROOT_DIR"
 
 # Detect Windows (Git Bash / MSYS2 / Cygwin)
 IS_WINDOWS=false
@@ -154,7 +154,7 @@ ensure_go_codegen_deps() {
 }
 
 ensure_frontend_deps() {
-  cd "${FRONTEND_DIR}"
+  cd "${ROOT_DIR}"
   if [[ ! -d node_modules ]]; then
     retry npm ci
   fi
@@ -176,7 +176,7 @@ playwright_browser_ready() {
 # 该下载失败不影响 UI 测试，因此这里**以浏览器能否启动为成败判据**，而非 install
 # 退出码：只要完整构建就绪即视为成功，避免被 headless-shell 下载失败误伤整轮测试。
 ensure_playwright_browser() {
-  cd "${FRONTEND_DIR}"
+  cd "${ROOT_DIR}"
   if [[ "${YIMSG_SKIP_PLAYWRIGHT_INSTALL:-0}" == "1" \
         || "${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-0}" == "1" ]]; then
     echo "已设置跳过标记，跳过 Playwright 浏览器安装"
@@ -232,9 +232,7 @@ ensure_go_modules() {
 build_frontend() {
   cd "${ROOT_DIR}"
   run_step "protocol codegen" go run ./tools/cmd/protocolgen
-  cd "${FRONTEND_DIR}"
   npm run build
-  cd "${ROOT_DIR}"
 }
 
 write_config() {
@@ -283,7 +281,7 @@ EOF
 }
 
 start_server() {
-  go build -o "${SERVER_BIN}" ./cmd/server
+  go build -o "${SERVER_BIN}" ./server/cmd/yimsg-server
   "${SERVER_BIN}" "${CONFIG_FILE}" >"${SERVER_LOG}" 2>&1 &
   SERVER_PID=$!
   if ! wait_http_ready "http://${SERVER_HOST}:${SERVER_PORT}/" 30; then
@@ -309,15 +307,17 @@ run_tests() {
   run_step "docs consistency" bash "${ROOT_DIR}/tools/scripts/check_docs_consistency.sh"
   # 禁用 go test 缓存，确保任何回归都能在本次执行中被检测到。
   local go_pkgs=()
-  read_lines_into_array go_pkgs "go list ./... | grep -v '^yimsg/tests/e2e$'"
-  run_step "go test (excluding tests/e2e)" go test -count=1 ${go_pkgs[@]+"${go_pkgs[@]}"}
-  run_step "go test ./tests/e2e/... -tls=false" go test -count=1 -v -timeout=3m ./tests/e2e/... -tls=false -host="${SERVER_HOST}" -port="${SERVER_PORT}" -config="${CONFIG_FILE}"
+  read_lines_into_array go_pkgs "go list ./... | grep -v '^yimsg/server/tests/e2e$'"
+  run_step "go test (excluding server/tests/e2e)" go test -count=1 ${go_pkgs[@]+"${go_pkgs[@]}"}
+  run_step "go test ./server/tests/e2e/... -tls=false" go test -count=1 -v -timeout=3m ./server/tests/e2e/... -tls=false -host="${SERVER_HOST}" -port="${SERVER_PORT}" -config="${CONFIG_FILE}"
   (
-    cd "${FRONTEND_DIR}"
-    run_step "frontend test:unit" npm run test:unit
-    run_step "frontend test:sdk" env SERVER_WS_URL=ws://${SERVER_HOST}:${SERVER_PORT}/ws npm run test:sdk
+    cd "${ROOT_DIR}"
+    run_step "frontend sdk test:unit" npm run test:unit
+    run_step "frontend sdk test:integration" env SERVER_WS_URL=ws://${SERVER_HOST}:${SERVER_PORT}/ws npm run test:sdk
+    run_step "frontend uikit test" npm run test:uikit
+    run_step "frontend web test" npm run test:web
     # Playwright globalSetup 复用脚本已编译的服务端二进制与已构建的 web/，避免重复 go build 与前端构建。
-    run_step "frontend test:ui" env YIMSG_PREBUILT_SERVER="${SERVER_BIN}" YIMSG_SKIP_FRONTEND_BUILD=1 npm run test:ui
+    run_step "frontend test:ui" env YIMSG_PREBUILT_SERVER="${SERVER_BIN}" YIMSG_SKIP_FRONTEND_BUILD=1 npm run test:e2e
   )
 }
 

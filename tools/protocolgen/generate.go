@@ -10,15 +10,15 @@ import (
 
 // 相对仓库根目录的生成物路径。protoc 直接产出的 pb.go / yimsg.ts 不在此列。
 const (
-	ProtoRelPath = "internal/protocol/yimsg.proto"
+	ProtoRelPath = "protocol/yimsg.proto"
 
-	outGoActionService = "internal/ws/action_service_gen.go"
-	outGoDispatch      = "internal/ws/action_dispatch_gen.go"
-	outGoNotification  = "internal/ws/notification_frame_gen.go"
-	outTSActions       = "frontend/src/sdk/generated/actions.gen.ts"
-	outTSNotifications = "frontend/src/sdk/generated/notifications.gen.ts"
-	outMarkdown        = "docs/generated/协议接口表.md"
-	outManifestJSON    = "docs/generated/protocol_manifest.json"
+	outGoActionService = "server/internal/ws/action_service_gen.go"
+	outGoDispatch      = "server/internal/ws/action_dispatch_gen.go"
+	outGoNotification  = "server/internal/ws/notification_frame_gen.go"
+	outTSActions       = "packages/sdk/src/generated/actions.gen.ts"
+	outTSNotifications = "packages/sdk/src/generated/notifications.gen.ts"
+	outMarkdown        = "protocol/docs/协议接口表.md"
+	outManifestJSON    = "protocol/generated/protocol_manifest.json"
 )
 
 // BuildOutputs 解析 proto、构造 manifest 并生成全部非 protoc 生成物（路径 -> 内容）。

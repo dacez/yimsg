@@ -145,31 +145,33 @@ func markdownTableRows(text string) [][]string {
 // ─── 1. 文档头部模板校验 ──────────────────────────────────────────────────────
 
 func (c *checker) checkHeaders() {
-	docsDir := filepath.Join(c.root, "docs")
-	err := filepath.WalkDir(docsDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
-			return err
-		}
-		c.stats.docFiles++
-		text := c.readFile(path)
-		lines := strings.SplitN(text, "\n", 11)
-		if len(lines) > 10 {
-			lines = lines[:10]
-		}
-		head := strings.Join(lines, "\n")
-		rel, _ := filepath.Rel(c.root, path)
-		for _, field := range []string{"主要对照", "最后复核", "触发更新"} {
-			if !strings.Contains(head, fmt.Sprintf("> %s：", field)) {
-				c.addError(fmt.Sprintf("%s 缺少头部模板字段：%s", rel, field))
+	for _, relDir := range []string{"docs", "server/docs", "protocol/docs", "packages/sdk/docs", "packages/uikit/docs"} {
+		docsDir := filepath.Join(c.root, relDir)
+		err := filepath.WalkDir(docsDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
+				return err
 			}
+			c.stats.docFiles++
+			text := c.readFile(path)
+			lines := strings.SplitN(text, "\n", 11)
+			if len(lines) > 10 {
+				lines = lines[:10]
+			}
+			head := strings.Join(lines, "\n")
+			rel, _ := filepath.Rel(c.root, path)
+			for _, field := range []string{"主要对照", "最后复核", "触发更新"} {
+				if !strings.Contains(head, fmt.Sprintf("> %s：", field)) {
+					c.addError(fmt.Sprintf("%s 缺少头部模板字段：%s", rel, field))
+				}
+			}
+			if !strings.Contains(head, "> 入口关系：") {
+				c.addError(fmt.Sprintf("%s 缺少头部模板字段：入口关系", rel))
+			}
+			return nil
+		})
+		if err != nil {
+			c.addError(fmt.Sprintf("遍历文档目录 %s 失败: %v", relDir, err))
 		}
-		if !strings.Contains(head, "> 入口关系：") {
-			c.addError(fmt.Sprintf("%s 缺少头部模板字段：入口关系", rel))
-		}
-		return nil
-	})
-	if err != nil {
-		c.addError(fmt.Sprintf("遍历文档目录失败: %v", err))
 	}
 }
 
@@ -288,8 +290,8 @@ func parseSchemaTablesFromText(text string) map[string]*tableInfo {
 }
 
 func (c *checker) checkSchemaDoc() {
-	text := c.readFile(filepath.Join(c.root, "internal/dal/schema.go"))
-	doc := c.readFile(filepath.Join(c.root, "docs/server/db/schema字段对照.md"))
+	text := c.readFile(filepath.Join(c.root, "server/internal/dal/schema.go"))
+	doc := c.readFile(filepath.Join(c.root, "server/docs/db/schema字段对照.md"))
 	if text == "" || doc == "" {
 		return
 	}
@@ -419,10 +421,10 @@ var (
 
 func (c *checker) checkActionsDoc() {
 	// type -> request/response/方法 的映射现在由 protocolgen 生成到
-	// internal/ws/action_dispatch_gen.go，连接层不再手写 dispatch switch。
-	code := c.readFile(filepath.Join(c.root, "internal/ws/action_dispatch_gen.go"))
-	proto := c.readFile(filepath.Join(c.root, "internal/protocol/yimsg.proto"))
-	doc := c.readFile(filepath.Join(c.root, "docs/protocol/接口总览.md"))
+	// server/internal/ws/action_dispatch_gen.go，连接层不再手写 dispatch switch。
+	code := c.readFile(filepath.Join(c.root, "server/internal/ws/action_dispatch_gen.go"))
+	proto := c.readFile(filepath.Join(c.root, "protocol/yimsg.proto"))
+	doc := c.readFile(filepath.Join(c.root, "protocol/docs/接口总览.md"))
 	if code == "" || proto == "" || doc == "" {
 		return
 	}
@@ -546,8 +548,8 @@ var tsControlKeywords = map[string]bool{
 }
 
 func (c *checker) checkSDKDoc() {
-	client := c.readFile(filepath.Join(c.root, "frontend/src/sdk/client.ts"))
-	doc := c.readFile(filepath.Join(c.root, "docs/frontend/sdk/sdk接口说明.md"))
+	client := c.readFile(filepath.Join(c.root, "packages/sdk/src/client.ts"))
+	doc := c.readFile(filepath.Join(c.root, "packages/sdk/docs/sdk接口说明.md"))
 	if client == "" || doc == "" {
 		return
 	}
@@ -611,54 +613,56 @@ var markdownLinkRe = regexp.MustCompile(`!?\[[^\]]*\]\(([^)]+)\)`)
 var markdownHeadingRe = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+?)\s*$`)
 
 func (c *checker) checkDocLinks() {
-	docsDir := filepath.Join(c.root, "docs")
 	anchorCache := make(map[string]map[string]bool)
-	err := filepath.WalkDir(docsDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
-			return err
-		}
-		text := c.readFile(path)
-		rel, _ := filepath.Rel(c.root, path)
-		for _, m := range markdownLinkRe.FindAllStringSubmatch(text, -1) {
-			target := strings.TrimSpace(m[1])
-			if target == "" || strings.HasPrefix(target, "#") || strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") {
-				continue
+	for _, relDir := range []string{"docs", "server/docs", "protocol/docs", "packages/sdk/docs", "packages/uikit/docs"} {
+		docsDir := filepath.Join(c.root, relDir)
+		err := filepath.WalkDir(docsDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
+				return err
 			}
-			if spaceIdx := strings.Index(target, " "); spaceIdx >= 0 {
-				target = target[:spaceIdx]
-			}
-			anchor := ""
-			if hash := strings.Index(target, "#"); hash >= 0 {
-				anchor = target[hash+1:]
-				target = target[:hash]
-			}
-			if target == "" {
-				continue
-			}
-			clean := filepath.Clean(filepath.Join(filepath.Dir(path), target))
-			if !strings.HasPrefix(clean, c.root) {
-				c.addError(fmt.Sprintf("%s 包含越界相对链接：%s", rel, m[1]))
-				continue
-			}
-			if _, err := os.Stat(clean); err != nil {
-				c.addError(fmt.Sprintf("%s 包含断链：%s", rel, m[1]))
-				continue
-			}
-			if anchor != "" && strings.HasSuffix(clean, ".md") {
-				anchors, ok := anchorCache[clean]
-				if !ok {
-					anchors = markdownAnchors(c.readFile(clean))
-					anchorCache[clean] = anchors
+			text := c.readFile(path)
+			rel, _ := filepath.Rel(c.root, path)
+			for _, m := range markdownLinkRe.FindAllStringSubmatch(text, -1) {
+				target := strings.TrimSpace(m[1])
+				if target == "" || strings.HasPrefix(target, "#") || strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "mailto:") {
+					continue
 				}
-				if !anchors[anchor] {
-					c.addError(fmt.Sprintf("%s 包含失效锚点链接：%s", rel, m[1]))
+				if spaceIdx := strings.Index(target, " "); spaceIdx >= 0 {
+					target = target[:spaceIdx]
+				}
+				anchor := ""
+				if hash := strings.Index(target, "#"); hash >= 0 {
+					anchor = target[hash+1:]
+					target = target[:hash]
+				}
+				if target == "" {
+					continue
+				}
+				clean := filepath.Clean(filepath.Join(filepath.Dir(path), target))
+				if !strings.HasPrefix(clean, c.root) {
+					c.addError(fmt.Sprintf("%s 包含越界相对链接：%s", rel, m[1]))
+					continue
+				}
+				if _, err := os.Stat(clean); err != nil {
+					c.addError(fmt.Sprintf("%s 包含断链：%s", rel, m[1]))
+					continue
+				}
+				if anchor != "" && strings.HasSuffix(clean, ".md") {
+					anchors, ok := anchorCache[clean]
+					if !ok {
+						anchors = markdownAnchors(c.readFile(clean))
+						anchorCache[clean] = anchors
+					}
+					if !anchors[anchor] {
+						c.addError(fmt.Sprintf("%s 包含失效锚点链接：%s", rel, m[1]))
+					}
 				}
 			}
+			return nil
+		})
+		if err != nil {
+			c.addError(fmt.Sprintf("遍历文档链接 %s 失败: %v", relDir, err))
 		}
-		return nil
-	})
-	if err != nil {
-		c.addError(fmt.Sprintf("遍历文档链接失败: %v", err))
 	}
 }
 
@@ -711,11 +715,13 @@ var (
 )
 
 func (c *checker) collectTestStats() {
-	c.collectGoTests(filepath.Join(c.root, "internal"), &c.stats.goUnitFiles, &c.stats.goUnitTests, nil)
-	c.collectGoTests(filepath.Join(c.root, "tests/e2e"), &c.stats.goE2EFiles, &c.stats.goE2ETests, &c.stats.goE2EHasMain)
-	c.collectFrontendTests(filepath.Join(c.root, "frontend/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
-	c.collectFrontendTests(filepath.Join(c.root, "frontend/tests/integration"), &c.stats.frontSDKFiles, &c.stats.frontSDKTests)
-	c.collectFrontendTests(filepath.Join(c.root, "frontend/tests/ui"), &c.stats.frontUIFiles, &c.stats.frontUITests)
+	c.collectGoTests(filepath.Join(c.root, "server/internal"), &c.stats.goUnitFiles, &c.stats.goUnitTests, nil)
+	c.collectGoTests(filepath.Join(c.root, "server/tests/e2e"), &c.stats.goE2EFiles, &c.stats.goE2ETests, &c.stats.goE2EHasMain)
+	c.collectFrontendTests(filepath.Join(c.root, "packages/sdk/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
+	c.collectFrontendTests(filepath.Join(c.root, "packages/uikit/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
+	c.collectFrontendTests(filepath.Join(c.root, "apps/web/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
+	c.collectFrontendTests(filepath.Join(c.root, "packages/sdk/tests/integration"), &c.stats.frontSDKFiles, &c.stats.frontSDKTests)
+	c.collectFrontendTests(filepath.Join(c.root, "apps/web/tests/ui"), &c.stats.frontUIFiles, &c.stats.frontUITests)
 }
 
 func (c *checker) collectGoTests(dir string, files *int, tests *int, hasMain *bool) {
@@ -787,8 +793,8 @@ func (c *checker) warnReviewDates() {
 func (c *checker) changedMarkdownFiles() []string {
 	seen := make(map[string]bool)
 	gitDiffArgs := [][]string{
-		{"diff", "-z", "--name-only", "HEAD", "--", "docs"},
-		{"diff", "-z", "--cached", "--name-only", "HEAD", "--", "docs"},
+		{"diff", "-z", "--name-only", "HEAD", "--", "docs", "server/docs", "protocol/docs", "packages/sdk/docs", "packages/uikit/docs"},
+		{"diff", "-z", "--cached", "--name-only", "HEAD", "--", "docs", "server/docs", "protocol/docs", "packages/sdk/docs", "packages/uikit/docs"},
 	}
 	for _, args := range gitDiffArgs {
 		out, err := exec.Command("git", args...).Output()

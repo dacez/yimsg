@@ -10,12 +10,12 @@
 + 任何数据库 schema 变更和接口变更都要先征求确认。
 + 项目处于研发阶段，不做 migration、ALTER TABLE 升级逻辑或旧数据兼容，只要最优雅的代码。
 + 过期的文档放到 ./docs/archive 里面。
-+ 如果需要部署，线上服务器相互独立，当前实际部署 `ssh yimsg-se`（首尔）一台，登录对应服务器后部署；部署脚本支持按同样步骤增加更多独立服务器，详见 `docs/部署方案.md`。
++ 如果需要部署，线上服务器相互独立，当前实际部署 `ssh yimsg-se`（首尔）一台，登录对应服务器后部署；部署脚本支持按同样步骤增加更多独立服务器，详见 `docs/deployment/部署方案.md`。
 + 修改任何文档（含本指南三份文件）后，必须从仓库根目录运行 `go run ./tools/cmd/check-docs-consistency/`（或 `./tools/scripts/check_docs_consistency.sh`）校验文档一致性。
 + 仓库同时维护 `AGENTS.md`、`.github/copilot-instructions.md`、`CLAUDE.md` 三份编码指南，分别供 Agent/Codex、GitHub Copilot、Claude 使用；除各自标题（`Yimsg Agent Guide`、`Yimsg Copilot Instructions`、`Yimsg Claude Guide`）外，正文内容必须完全一致。主动修改其中任意一份时，必须把改动同步到另外两份。
 
 ## 项目不变量
-- 服务端主接口是 WebSocket 二进制帧，协议单一事实源是 `internal/protocol/yimsg.proto`。帧格式固定为 `magic:uint8('M') + codec:uint8(bitfield) + reserved:uint8(0) + checksum:uint8(CRC-8) + size:uint16 + request_id:uint64 + type:uint16 + body`：`codec` 从低位到高位为 bit0 endian（0=big-endian，1=little-endian）、bit1-4 version（当前 1）、bit5-7 保留且必须为 0，并与后续 reserved 字节连续；HTTP 仅用于上传、静态资源和媒体文件访问。协议整包上限是 `0xffff` 字节，header 为 16 字节，所以 `size` 最大是 `65519`；校验码按 checksum 字节置 0 后对整包计算 CRC-8（poly `0x07`，init `0x00`）；`type=0` 是无效值，服务端通知固定使用 `request_id=0` 且 `type` 为通知段枚举值。
+- 服务端主接口是 WebSocket 二进制帧，协议单一事实源是 `protocol/yimsg.proto`。帧格式固定为 `magic:uint8('M') + codec:uint8(bitfield) + reserved:uint8(0) + checksum:uint8(CRC-8) + size:uint16 + request_id:uint64 + type:uint16 + body`：`codec` 从低位到高位为 bit0 endian（0=big-endian，1=little-endian）、bit1-4 version（当前 1）、bit5-7 保留且必须为 0，并与后续 reserved 字节连续；HTTP 仅用于上传、静态资源和媒体文件访问。协议整包上限是 `0xffff` 字节，header 为 16 字节，所以 `size` 最大是 `65519`；校验码按 checksum 字节置 0 后对整包计算 CRC-8（poly `0x07`，init `0x00`）；`type=0` 是无效值，服务端通知固定使用 `request_id=0` 且 `type` 为通知段枚举值。
 - 每个接口在 protobuf 中必须有独立 Request / Response。`uid` 与 `request_id` 由 WebSocket 帧头解析后填入 Go 端 `BaseInfo` 结构体，作为每个业务方法的第一个参数传入（proto 中不再包含 `BaseRequest`）。Response 通过 `BaseResponse base = 1` 承载 `ErrorCode code` 和 `msg`，业务字段从 10 开始。业务代码不能信任或修改客户端 body 中的身份字段。
 - 除 `ErrorCode` 的 `0` 表示 `OK` 外，protobuf enum 的 `0` 都只能表示 invalid / reserved / error，真实业务枚举值从 1 开始。
 - 数据按 `uid`、`username`、`group_id`、`token` 四类路由键分片；跨表聚合在应用层完成，路由分片键不在同一个分片的表绝对不能 JOIN，在同一分片，尽量避免 JOIN。
@@ -24,39 +24,39 @@
 - 研发阶段本地持久库或服务端 schema 不做迁移；schema 版本不匹配时优先重建并重新同步。
 
 ## 快速入口
-- 服务端启动入口：`cmd/server/main.go`。启动流程是加载配置、合并插件 schema、打开四类 SQLite 分片、打开异步任务队列并启动 worker、重放未完成任务、启动 GC 和插件任务，然后挂载 `/ws`、`/api/upload`、`/media/` 与静态前端。
-- WebSocket 分发入口：`internal/ws/connection.go`。`dispatch` 按 action 调用 service，认证上线 / 登出清理在连接层处理；群消息 fanout 在 service 内投递到异步任务队列，dispatch 不感知。
-- 服务端状态与分片路由入口：`internal/service/state.go`。新增 Store 访问或跨分片读取时，先确认路由键和应用层聚合边界。
-- 数据库 schema 入口：`internal/dal/schema.go`；字段说明权威文档是 `docs/server/db/schema字段对照.md`。
-- 协议单一事实源：`internal/protocol/yimsg.proto`。改 action、字段、错误码、Type、BaseRequest/BaseResponse 或 notification 时，先改 proto，再运行 `go run ./tools/cmd/protocolgen` 刷新生成物。
-- 前端 SDK 公开入口：`frontend/src/sdk/client.ts` 和 `frontend/src/sdk/index.ts`。SDK 必须保持 UI 无关，长期内存状态必须有上限、淘汰策略或释放路径。
-- 前端运行时核心：`frontend/src/sdk/client-session-runtime.ts`、`frontend/src/sdk/datagateway/`。`instant` 模式不保存完整本地副本，`persistent` 模式通过本地 SQLite/OPFS 同步副本读取。
-- UIKit 嵌入入口：`frontend/src/uikit/embed.ts`；主应用和嵌入式 UIKit 共享 `frontend/src/uikit/app/views/` 下的视图。
-- 文档索引入口：`docs/README.md`；服务端看 `docs/server/README.md`，前端看 `docs/frontend/README.md`，测试看 `docs/测试方案.md`。
+- 服务端启动入口：`server/cmd/yimsg-server/main.go`。启动流程是加载配置、合并插件 schema、打开四类 SQLite 分片、打开异步任务队列并启动 worker、重放未完成任务、启动 GC 和插件任务，然后挂载 `/ws`、`/api/upload`、`/media/` 与静态前端。
+- WebSocket 分发入口：`server/internal/ws/connection.go`。`dispatch` 按 action 调用 service，认证上线 / 登出清理在连接层处理；群消息 fanout 在 service 内投递到异步任务队列，dispatch 不感知。
+- 服务端状态与分片路由入口：`server/internal/service/state.go`。新增 Store 访问或跨分片读取时，先确认路由键和应用层聚合边界。
+- 数据库 schema 入口：`server/internal/dal/schema.go`；字段说明权威文档是 `server/docs/db/schema字段对照.md`。
+- 协议单一事实源：`protocol/yimsg.proto`。改 action、字段、错误码、Type、BaseRequest/BaseResponse 或 notification 时，先改 proto，再运行 `go run ./tools/cmd/protocolgen` 刷新生成物。
+- 前端 SDK 公开入口：`packages/sdk/src/client.ts` 和 `packages/sdk/src/index.ts`。SDK 必须保持 UI 无关，长期内存状态必须有上限、淘汰策略或释放路径。
+- 前端运行时核心：`packages/sdk/src/internal/client-session-runtime.ts`、`packages/sdk/src/datagateway/`。`instant` 模式不保存完整本地副本，`persistent` 模式通过本地 SQLite/OPFS 同步副本读取。
+- UIKit 嵌入入口：`packages/uikit/src/embed.ts`；主应用和嵌入式 UIKit 共享 `packages/uikit/src/app/views/` 下的视图。
+- 文档索引入口：`docs/README.md`；服务端看 `server/docs/README.md`，前端看 `docs/architecture/前端文档索引.md`，测试看 `docs/development/测试方案.md`。
 
 ## 文件结构速览
-- `cmd/server/`：服务端启动入口和进程装配。
-- `internal/protocol/`：protobuf 源、协议目录、帧编解码、Go 生成物和 wire 辅助。
-- `internal/ws/`：WebSocket 连接状态、二进制 frame 收发、action dispatch 和通知转发。
-- `internal/service/`：业务用例层，负责校验、跨 Store 编排、通知触发和 fanout 任务。
-- `internal/dal/`：SQLite schema、分片 Store 和底层数据访问。
-- `internal/online/`、`internal/taskqueue/`：在线连接注册 / 通知缓冲；通用持久化异步任务队列，承载群消息 / 系统消息扇出并在崩溃后重放。
-- `frontend/src/sdk/`：对外 SDK、transport、协议生成物、同步运行时和 DataGateway。
-- `frontend/src/uikit/`：主应用 / 嵌入式 UIKit 的视图、组件和挂载入口。
-- `tests/e2e/`：后端 WebSocket/HTTP 端到端测试；`frontend/tests/`：SDK unit / integration 和 Playwright UI 测试。
+- `server/cmd/yimsg-server/`：服务端启动入口和进程装配。
+- `protocol/`：protobuf 源、通用 Go / TypeScript 生成物、协议文档；服务端帧编解码位于 `server/internal/ws/`。
+- `server/internal/ws/`：WebSocket 连接状态、二进制 frame 收发、action dispatch 和通知转发。
+- `server/internal/service/`：业务用例层，负责校验、跨 Store 编排、通知触发和 fanout 任务。
+- `server/internal/dal/`：SQLite schema、分片 Store 和底层数据访问。
+- `server/internal/online/`、`server/internal/taskqueue/`：在线连接注册 / 通知缓冲；通用持久化异步任务队列，承载群消息 / 系统消息扇出并在崩溃后重放。
+- `packages/sdk/src/`：对外 SDK、transport、SDK 专用协议映射、同步运行时和 DataGateway；通用 protobuf TypeScript 生成物位于 `protocol/generated/typescript/`。
+- `packages/uikit/src/`：主应用 / 嵌入式 UIKit 的视图、组件和挂载入口。
+- `server/tests/e2e/`：服务端 WebSocket/HTTP 端到端测试；`packages/sdk/tests/`、`packages/uikit/tests/`、`apps/web/tests/` 分别承载 SDK、UIKit 与官方 Web App 测试。
 - `tools/scripts/`：仓库级 shell 脚本真实实现；`tools/*.sh` 仅作为兼容入口。
-- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`tools/cmd/seed-data/`、`tools/cmd/test-seed/`、`tools/cmd/seed-demo/`：Go 工具命令目录。
-- `tools/internal/seedkit/`：seed-data / test-seed / seed-demo 共用的 service 层调用样板（BaseInfo 构造、响应判定、常见 ConversationTarget/MessageBody 构造）。
-- `tools/protocolgen/`：protocolgen 的 proto 解析、manifest 与 Go / TS / Markdown 生成库；协议机械映射生成物落在 `internal/ws/*_gen.go` 与 `frontend/src/sdk/generated/{actions,notifications}.gen.ts`。
-- `docs/`：长期设计文档；生成类协议速查位于 `docs/generated/`，过期文档放 `docs/archive/`。
+- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`server/tools/cmd/seed-data/`、`server/tools/cmd/test-seed/`、`server/tools/cmd/seed-demo/`：Go 工具命令目录。
+- `server/tools/internal/seedkit/`：seed-data / test-seed / seed-demo 共用的 service 层调用样板（BaseInfo 构造、响应判定、常见 ConversationTarget/MessageBody 构造）。
+- `tools/protocolgen/`：protocolgen 的 proto 解析、manifest 与 Go / TS / Markdown 生成库；协议机械映射生成物落在 `server/internal/ws/*_gen.go` 与 `packages/sdk/src/generated/{actions,notifications}.gen.ts`。
+- `docs/`：跨组件长期设计文档；生成类协议速查位于 `protocol/docs/`，过期文档放 `docs/archive/`。
 
 ## 变更检查点
-- 改 WebSocket interface、请求/响应字段、错误码、notification、`client_config`：同步 `internal/protocol/yimsg.proto`、生成物、`docs/protocol/接口总览.md`、相关服务端/前端文档和测试。
-- 改服务端业务：优先查 `internal/service/*`、`internal/dal/*_store.go`、`tests/e2e/` 和对应 `docs/server/` 专题；涉及推送时确认在线注册先于认证响应的时序。
-- 改同步域：同步检查 DAL 的 `List/Sync/GetVersion/Purge`、Service 写路径、WebSocket action、SDK DataGateway、持久本地表、通知和 `docs/同步机制方案.md`。
-- 改前端 SDK API：同步 `docs/frontend/sdk/sdk接口说明.md`、`docs/frontend/sdk/sdk设计方案.md`、`frontend/tests/unit/sdk/` 和必要的 integration 测试。
-- 改 UIKit/UI：同步 `docs/frontend/uikit/UIKit方案.md` 或 `docs/frontend/uikit/UI设计方案.md`，同时关注主应用和嵌入式 UIKit 两种宿主。
-- 改配置默认值：同步 `config.toml`、`internal/config/config.go`、`README.md` 或对应服务端文档。
+- 改 WebSocket interface、请求/响应字段、错误码、notification、`client_config`：同步 `protocol/yimsg.proto`、生成物、`protocol/docs/接口总览.md`、相关服务端/前端文档和测试。
+- 改服务端业务：优先查 `server/internal/service/*`、`server/internal/dal/*_store.go`、`server/tests/e2e/` 和对应 `server/docs/` 专题；涉及推送时确认在线注册先于认证响应的时序。
+- 改同步域：同步检查 DAL 的 `List/Sync/GetVersion/Purge`、Service 写路径、WebSocket action、SDK DataGateway、持久本地表、通知和 `docs/architecture/同步机制方案.md`。
+- 改前端 SDK API：同步 `packages/sdk/docs/sdk接口说明.md`、`packages/sdk/docs/sdk设计方案.md`、`packages/sdk/tests/unit/sdk/` 和必要的 integration 测试。
+- 改 UIKit/UI：同步 `packages/uikit/docs/UIKit方案.md` 或 `packages/uikit/docs/UI设计方案.md`，同时关注主应用和嵌入式 UIKit 两种宿主。
+- 改配置默认值：同步 `config.toml`、`server/internal/config/config.go`、`README.md` 或对应服务端文档。
 
 ## 全量测试脚本说明
 - `./tools/run_all_tests.sh` 会准备前端依赖、安装 Playwright Chromium 浏览器、拉起服务端，再执行 Go 单测、E2E、前端 unit / sdk / ui 测试。

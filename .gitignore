@@ -1,5 +1,5 @@
 # Binaries
-/server
+/bin/
 /server.exe
 /seed-data
 /seed-demo
@@ -17,12 +17,13 @@ certs/
 # Frontend build output
 web/
 
-# Frontend dependencies & test artifacts
+# Workspace dependencies & test artifacts
 node_modules/
-frontend/node_modules/
-frontend/test-results/
-frontend/playwright-report/
-frontend/coverage/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/coverage/
+packages/sdk/coverage/
+packages/uikit/coverage/
 
 # Playwright test artifacts (root level)
 test-results/

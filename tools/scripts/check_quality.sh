@@ -4,13 +4,13 @@
 #
 # 环境变量：
 #   MIN_GO_COVERAGE        Go 行覆盖率阈值，默认 55；透传给 check_go_coverage.sh。
-#   前端覆盖率阈值          由 frontend/vitest.config.ts 的 coverage.thresholds 决定；
-#                          临时下调需同步 docs/测试方案.md 留痕。
+#   前端覆盖率阈值          由 packages/sdk/vitest.config.ts 的 coverage.thresholds 决定；
+#                          临时下调需同步 docs/development/测试方案.md 留痕。
 #   重复率阈值              由 .jscpd.json 的 threshold 决定（默认 3%）。
 #
 # 依赖：
 #   - 已安装 Go（进入仓库即有）；
-#   - 已安装 frontend/node_modules（脚本会自动 npm ci）。
+#   - 已安装根目录 node_modules（脚本会自动 npm ci）。
 #
 # 用法：
 #   ./tools/scripts/check_quality.sh
@@ -36,9 +36,9 @@ run_step() {
 }
 
 ensure_frontend_deps() {
-  if [[ ! -d "${ROOT_DIR}/frontend/node_modules" ]]; then
-    echo "frontend/node_modules 不存在，执行 npm ci"
-    (cd "${ROOT_DIR}/frontend" && npm ci)
+  if [[ ! -d "${ROOT_DIR}/node_modules" ]]; then
+    echo "node_modules 不存在，执行 npm ci"
+    (cd "${ROOT_DIR}" && npm ci)
   fi
 }
 
@@ -47,11 +47,11 @@ run_step "go-coverage" bash "${ROOT_DIR}/tools/scripts/check_go_coverage.sh"
 
 # 2) 前端单测覆盖率（依赖 @vitest/coverage-v8），保留 vitest 自身的 text-summary 输出便于肉眼观察。
 ensure_frontend_deps
-run_step "frontend-coverage" bash -c "cd '${ROOT_DIR}/frontend' && npm run test:unit:coverage"
+run_step "frontend-coverage" npm run test:unit:coverage -w @yimsg/sdk
 
 # 3) 代码重复率（jscpd 覆盖 Go + TS 源码），必须从仓库根目录运行以使
 #    .jscpd.json 中的相对 glob 正确解析。
-JSCPD_BIN="${ROOT_DIR}/frontend/node_modules/.bin/jscpd"
+JSCPD_BIN="${ROOT_DIR}/node_modules/.bin/jscpd"
 if [[ ! -x "${JSCPD_BIN}" ]]; then
   echo "未找到 jscpd 可执行文件：${JSCPD_BIN}"
   FAILED+=("duplication:missing")

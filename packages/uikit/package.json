@@ -1,0 +1,19 @@
+{
+  "name": "@yimsg/uikit",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts",
+    "./web-app-adapter": "./src/web-app-adapter.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json && vite build --config vite.config.ts",
+    "build:examples": "node scripts-copy-demo.mjs",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@yimsg/sdk": "*"
+  }
+}

@@ -1,0 +1,731 @@
+package dal
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"strconv"
+
+	"yimsg/server/internal/shard"
+)
+
+// OrgStore provides org operations（org_id 分片）。
+//
+// org_info / tag_info 是无 seq/status 的展示字典（与 group_info 同构，按需
+// 查询、不参与同步）；tags 是组织架构唯一的同步域，任何结构变更
+// bump org_version.max_seq 并留 tombstone；展示排序走 rank 索引、同步游标
+// 走 seq 索引，两者正交。
+type OrgStore struct{ db *shard.DB }
+
+// NewOrgStore creates an OrgStore backed by the given shard.
+func NewOrgStore(db *shard.DB) *OrgStore { return &OrgStore{db: db} }
+
+const tagSelectFields = `org_id, tag_id, child_id, child_type, title, rank, sort_key, status, seq, created_at, updated_at`
+
+// bumpOrgSeq 在事务内推进 org_version.max_seq 并返回新 seq（org 分片内单调）。
+func bumpOrgSeq(tx *sql.Tx, orgID int64) (int64, error) {
+	if _, err := tx.Exec(
+		"INSERT INTO org_version (org_id, gc_safe_seq, max_seq) VALUES (?, 0, 1) ON CONFLICT(org_id) DO UPDATE SET max_seq = max_seq + 1",
+		orgID,
+	); err != nil {
+		return 0, fmt.Errorf("bump org seq: %w", err)
+	}
+	var seq int64
+	if err := tx.QueryRow("SELECT max_seq FROM org_version WHERE org_id = ?", orgID).Scan(&seq); err != nil {
+		return 0, fmt.Errorf("read org seq: %w", err)
+	}
+	return seq, nil
+}
+
+// ---- org_info：组织展示字典，无 seq/status，不参与同步 ----
+
+// UpsertOrgInfo 写入或更新组织展示资料。
+func (s *OrgStore) UpsertOrgInfo(orgID int64, name, avatar string, now int64) error {
+	if _, err := s.db.Writer.Exec(
+		`INSERT INTO org_info (org_id, name, avatar, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(org_id) DO UPDATE SET
+		   name = excluded.name, avatar = excluded.avatar, updated_at = excluded.updated_at`,
+		orgID, name, avatar, now, now,
+	); err != nil {
+		return fmt.Errorf("upsert org info: %w", err)
+	}
+	return nil
+}
+
+// GetOrgInfo 返回单个组织展示资料，不存在返回 nil。
+func (s *OrgStore) GetOrgInfo(orgID int64) (*OrgInfo, error) {
+	row := s.db.Reader.QueryRow(
+		`SELECT org_id, name, avatar, created_at, updated_at FROM org_info WHERE org_id = ?`, orgID,
+	)
+	o, err := scanOrgInfo(row)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get org info: %w", err)
+	}
+	return &o, nil
+}
+
+// ListOrgInfos 批量读取组织展示资料。
+func (s *OrgStore) ListOrgInfos(orgIDs []int64) ([]OrgInfo, error) {
+	ids := positiveInt64s(orgIDs)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	query := `SELECT org_id, name, avatar, created_at, updated_at FROM org_info
+	 WHERE org_id IN (` + placeholders(len(ids)) + `)`
+	return queryRows(s.db.Reader, "list org infos", query, scanOrgInfo, int64sToAny(ids)...)
+}
+
+func scanOrgInfo(row rowScanner) (OrgInfo, error) {
+	var o OrgInfo
+	err := row.Scan(&o.OrgID, &o.Name, &o.Avatar, &o.CreatedAt, &o.UpdatedAt)
+	return o, err
+}
+
+// ---- tag_info：tag（部门/横向分组）展示字典，无 seq/status，不参与同步 ----
+
+// UpsertTagInfo 写入或更新一个 tag 的展示资料（不改动其挂载关系）。
+func (s *OrgStore) UpsertTagInfo(orgID, tagID int64, name, avatar string, now int64) error {
+	if _, err := s.db.Writer.Exec(
+		`INSERT INTO tag_info (org_id, tag_id, name, avatar, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(org_id, tag_id) DO UPDATE SET
+		   name = excluded.name, avatar = excluded.avatar, updated_at = excluded.updated_at`,
+		orgID, tagID, name, avatar, now, now,
+	); err != nil {
+		return fmt.Errorf("upsert tag info: %w", err)
+	}
+	return nil
+}
+
+// RenameTagInfo 改 tag 展示名/头像，并在改名时于同事务内级联刷新"以其为
+// 子 tag"的 ACTIVE 边 sort_key（tag 边无备注语义，投影即 tag 名），逐行 bump seq。
+func (s *OrgStore) RenameTagInfo(orgID, tagID int64, name, avatar string, now int64) error {
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var oldName string
+		hadRow := true
+		if err := tx.QueryRow(
+			"SELECT name FROM tag_info WHERE org_id = ? AND tag_id = ?", orgID, tagID,
+		).Scan(&oldName); err != nil {
+			if !isNoRows(err) {
+				return err
+			}
+			hadRow = false
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO tag_info (org_id, tag_id, name, avatar, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(org_id, tag_id) DO UPDATE SET
+			   name = excluded.name, avatar = excluded.avatar, updated_at = excluded.updated_at`,
+			orgID, tagID, name, avatar, now, now,
+		); err != nil {
+			return err
+		}
+		if hadRow && oldName != name {
+			_, err := s.refreshEdgeSortKeys(tx, orgID, "child_type = ? AND child_id = ?",
+				[]any{TagChildTag, tagID}, ContactSortKey("", name), now)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("rename tag info: %w", err)
+	}
+	return nil
+}
+
+// GetTagInfo 返回单个 tag 展示资料，不存在返回 nil。
+func (s *OrgStore) GetTagInfo(orgID, tagID int64) (*TagInfo, error) {
+	row := s.db.Reader.QueryRow(
+		`SELECT org_id, tag_id, name, avatar, created_at, updated_at FROM tag_info WHERE org_id = ? AND tag_id = ?`,
+		orgID, tagID,
+	)
+	t, err := scanTagInfo(row)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get tag info: %w", err)
+	}
+	return &t, nil
+}
+
+// ListTagInfos 批量读取本组织内的 tag 展示资料。
+func (s *OrgStore) ListTagInfos(orgID int64, tagIDs []int64) ([]TagInfo, error) {
+	ids := positiveInt64s(tagIDs)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	query := `SELECT org_id, tag_id, name, avatar, created_at, updated_at FROM tag_info
+	 WHERE org_id = ? AND tag_id IN (` + placeholders(len(ids)) + `)`
+	args := append([]any{orgID}, int64sToAny(ids)...)
+	return queryRows(s.db.Reader, "list tag infos", query, scanTagInfo, args...)
+}
+
+// DeleteTagInfo 物理删除 tag 字典行（无 tombstone），并墓碑两个方向的关联边
+// （下挂边 tag_id=X、被挂边 child_type=TAG,child_id=X），同事务内逐行 bump seq。
+// 被挂在别处的子节点不受影响（DAG）。
+func (s *OrgStore) DeleteTagInfo(orgID, tagID int64, now int64) (bool, error) {
+	var found bool
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		res, err := tx.Exec("DELETE FROM tag_info WHERE org_id = ? AND tag_id = ?", orgID, tagID)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		found = n > 0
+		if !found {
+			return nil
+		}
+		return s.tombstoneEdges(tx, orgID, "(tag_id = ? OR (child_type = ? AND child_id = ?))",
+			now, tagID, TagChildTag, tagID)
+	})
+	if err != nil {
+		return false, fmt.Errorf("delete tag info: %w", err)
+	}
+	return found, nil
+}
+
+func scanTagInfo(row rowScanner) (TagInfo, error) {
+	var t TagInfo
+	err := row.Scan(&t.OrgID, &t.TagID, &t.Name, &t.Avatar, &t.CreatedAt, &t.UpdatedAt)
+	return t, err
+}
+
+// refreshEdgeSortKeys 重算命中谓词的 ACTIVE 边 sort_key，逐行 bump seq，返回变更行数。
+func (s *OrgStore) refreshEdgeSortKeys(tx *sql.Tx, orgID int64, predicate string, predicateArgs []any, sortKey string, now int64) (int64, error) {
+	args := append([]any{orgID}, predicateArgs...)
+	args = append(args, TagActive, sortKey)
+	rows, err := tx.Query(
+		`SELECT tag_id, child_id, child_type FROM tags
+		 WHERE org_id = ? AND `+predicate+` AND status = ? AND sort_key != ?`,
+		args...,
+	)
+	if err != nil {
+		return 0, err
+	}
+	type edgeKey struct {
+		tagID, childID int64
+		childType      uint8
+	}
+	var keys []edgeKey
+	for rows.Next() {
+		var k edgeKey
+		if err := rows.Scan(&k.tagID, &k.childID, &k.childType); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		keys = append(keys, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, k := range keys {
+		seq, err := bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.Exec(
+			`UPDATE tags SET sort_key = ?, seq = ?, updated_at = ?
+			 WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?`,
+			sortKey, seq, now, orgID, k.tagID, k.childID, k.childType,
+		); err != nil {
+			return 0, err
+		}
+	}
+	return int64(len(keys)), nil
+}
+
+// tombstoneEdges 墓碑命中谓词的全部 ACTIVE 边，逐行 bump seq。
+func (s *OrgStore) tombstoneEdges(tx *sql.Tx, orgID int64, predicate string, now int64, args ...any) error {
+	queryArgs := append([]any{orgID}, args...)
+	queryArgs = append(queryArgs, TagActive)
+	rows, err := tx.Query(
+		"SELECT tag_id, child_id, child_type FROM tags WHERE org_id = ? AND "+predicate+" AND status = ?",
+		queryArgs...,
+	)
+	if err != nil {
+		return err
+	}
+	type edgeKey struct {
+		tagID, childID int64
+		childType      uint8
+	}
+	var keys []edgeKey
+	for rows.Next() {
+		var k edgeKey
+		if err := rows.Scan(&k.tagID, &k.childID, &k.childType); err != nil {
+			rows.Close()
+			return err
+		}
+		keys = append(keys, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		seq, err := bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(
+			`UPDATE tags SET status = ?, seq = ?, updated_at = ?
+			 WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?`,
+			TagDeleted, seq, now, orgID, k.tagID, k.childID, k.childType,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ---- tags：唯一的同步域 ----
+
+// UpsertTag 写入或更新一条关系边并 bump seq。
+// 返回 (新 seq, 写入前该 child 在本组织是否已有其他 ACTIVE 边)；
+// childType=TagChildTag 时第二个返回值恒为 true。
+// 上层用 hadActive=false 判定"人的第一条边"以联动通讯录组织行。
+func (s *OrgStore) UpsertTag(orgID, tagID, childID int64, childType uint8, title string, rank int64, sortKey string, now int64) (int64, bool, error) {
+	var newSeq int64
+	hadActive := true
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		if childType == TagChildPerson {
+			var count int64
+			if err := tx.QueryRow(
+				"SELECT COUNT(*) FROM tags WHERE org_id = ? AND child_type = ? AND child_id = ? AND status = ?",
+				orgID, TagChildPerson, childID, TagActive,
+			).Scan(&count); err != nil {
+				return err
+			}
+			hadActive = count > 0
+		}
+		var err error
+		newSeq, err = bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(
+			`INSERT INTO tags (org_id, tag_id, child_id, child_type, title, rank, sort_key, status, seq, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(org_id, tag_id, child_id, child_type) DO UPDATE SET
+			   title = excluded.title,
+			   rank = excluded.rank,
+			   sort_key = excluded.sort_key,
+			   status = excluded.status,
+			   seq = excluded.seq,
+			   updated_at = excluded.updated_at`,
+			orgID, tagID, childID, childType, title, rank, sortKey, TagActive, newSeq, now, now,
+		)
+		return err
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("upsert tag: %w", err)
+	}
+	return newSeq, hadActive, nil
+}
+
+// RemoveTag 墓碑一条边并 bump seq。
+// 返回 (removed, 该 child 在本组织是否仍有其他 ACTIVE 边)；
+// 上层用 stillActive=false 判定"人的最后一条边"（离职）。
+func (s *OrgStore) RemoveTag(orgID, tagID, childID int64, childType uint8, now int64) (bool, bool, error) {
+	var found bool
+	stillActive := false
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRow(
+			"SELECT 1 FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ? AND status = ?",
+			orgID, tagID, childID, childType, TagActive,
+		).Scan(&exists); err != nil {
+			if isNoRows(err) {
+				return nil
+			}
+			return err
+		}
+		found = true
+
+		seq, err := bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(
+			`UPDATE tags SET status = ?, seq = ?, updated_at = ?
+			 WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?`,
+			TagDeleted, seq, now, orgID, tagID, childID, childType,
+		); err != nil {
+			return err
+		}
+		if childType == TagChildPerson {
+			var count int64
+			if err := tx.QueryRow(
+				"SELECT COUNT(*) FROM tags WHERE org_id = ? AND child_type = ? AND child_id = ? AND status = ?",
+				orgID, TagChildPerson, childID, TagActive,
+			).Scan(&count); err != nil {
+				return err
+			}
+			stillActive = count > 0
+		}
+		return nil
+	})
+	if err != nil {
+		return false, false, fmt.Errorf("remove tag: %w", err)
+	}
+	return found, stillActive, nil
+}
+
+// RevokeOrgAdmin 墓碑一条 GRANT 边；scopeTagID 为组织根（scopeTagID == orgID）
+// 时，在同一事务内原子校验剩余根管理员数量，删空前拒绝（返回 ErrOrgLastRootAdmin）
+// ——"一个组织至少一个根管理员"的校验与删除必须同事务，否则并发撤权可能
+// 竞态穿透，永久锁死组织的管理入口。子树管理员（scopeTagID != orgID）无此约束。
+func (s *OrgStore) RevokeOrgAdmin(orgID, scopeTagID, uid int64, now int64) (bool, error) {
+	var found bool
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRow(
+			"SELECT 1 FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ? AND status = ?",
+			orgID, scopeTagID, uid, TagChildGrant, TagActive,
+		).Scan(&exists); err != nil {
+			if isNoRows(err) {
+				return nil
+			}
+			return err
+		}
+		found = true
+
+		if scopeTagID == orgID {
+			var count int64
+			if err := tx.QueryRow(
+				"SELECT COUNT(*) FROM tags WHERE org_id = ? AND tag_id = ? AND child_type = ? AND status = ?",
+				orgID, orgID, TagChildGrant, TagActive,
+			).Scan(&count); err != nil {
+				return err
+			}
+			if count <= 1 {
+				return ErrOrgLastRootAdmin
+			}
+		}
+
+		seq, err := bumpOrgSeq(tx, orgID)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(
+			`UPDATE tags SET status = ?, seq = ?, updated_at = ?
+			 WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ?`,
+			TagDeleted, seq, now, orgID, scopeTagID, uid, TagChildGrant,
+		)
+		return err
+	})
+	if err != nil {
+		if errors.Is(err, ErrOrgLastRootAdmin) {
+			return false, ErrOrgLastRootAdmin
+		}
+		return false, fmt.Errorf("revoke org admin: %w", err)
+	}
+	return found, nil
+}
+
+// DeleteOrg 删除整个组织：同事务内物理删除 tags/tag_info/org_info/org_version
+// 全部四张表的行。组织本身连同 org_version 一起消失，没有留 tombstone 的意义
+// （同步域随组织一起没了）；成员通讯录组织行不在这个事务里（跨分片），由
+// 调用方在事务外异步清理。
+func (s *OrgStore) DeleteOrg(orgID int64) error {
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		if _, err := tx.Exec("DELETE FROM tags WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM tag_info WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM org_info WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec("DELETE FROM org_version WHERE org_id = ?", orgID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("delete org: %w", err)
+	}
+	return nil
+}
+
+// ListTagsPage 是展开的展示通道 keyset 分页：仅 ACTIVE 行，
+// 展示序 (rank, sort_key, child_type, child_id) 升序，索引即最终顺序。
+// GRANT 行（管理员授权）与组织架构位置解耦，天然排除在展开结果之外。
+// cursorParts 为不透明游标解码后的 keyset 字段 [rank, sort_key, child_type, child_id]；
+// backward=true 时按反方向查询，调用方需把结果反转回展示序。
+func (s *OrgStore) ListTagsPage(orgID, tagID int64, cursorParts []string, backward bool, limit int64) ([]Tag, error) {
+	where := "org_id = ? AND tag_id = ? AND status = ? AND child_type != ?"
+	args := []interface{}{orgID, tagID, TagActive, TagChildGrant}
+
+	orderBy := "rank, sort_key, child_type, child_id"
+	if backward {
+		orderBy = "rank DESC, sort_key DESC, child_type DESC, child_id DESC"
+	}
+	if len(cursorParts) >= 4 {
+		rank, err1 := strconv.ParseInt(cursorParts[0], 10, 64)
+		childType, err2 := strconv.ParseInt(cursorParts[2], 10, 64)
+		childID, err3 := strconv.ParseInt(cursorParts[3], 10, 64)
+		if err1 != nil || err2 != nil || err3 != nil {
+			return nil, fmt.Errorf("invalid tag cursor")
+		}
+		if backward {
+			where += " AND (rank, sort_key, child_type, child_id) < (?, ?, ?, ?)"
+		} else {
+			where += " AND (rank, sort_key, child_type, child_id) > (?, ?, ?, ?)"
+		}
+		args = append(args, rank, cursorParts[1], childType, childID)
+	}
+
+	args = append(args, limit)
+	return queryRows(s.db.Reader, "list tags page",
+		`SELECT `+tagSelectFields+`
+		 FROM tags WHERE `+where+`
+		 ORDER BY `+orderBy+` LIMIT ?`,
+		scanTag, args...,
+	)
+}
+
+// SyncPage 返回 seq > afterSeq 的一页增量关系边（含 tombstone）。GRANT 行
+// （管理员授权）不进入这个面向全体组织成员的同步域，只通过 ListGrantedAdmins
+// 按管理权限读取，避免向普通成员泄露组织的管理员结构。
+func (s *OrgStore) SyncPage(orgID, afterSeq, limit int64) ([]Tag, bool, error) {
+	probe := limit + 1
+	rows, err := queryRows(s.db.Reader, "sync tags",
+		`SELECT `+tagSelectFields+` FROM tags
+		 WHERE org_id = ? AND seq > ? AND child_type != ? ORDER BY seq ASC LIMIT ?`,
+		scanTag, orgID, afterSeq, TagChildGrant, probe,
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	hasMore := int64(len(rows)) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+	return rows, hasMore, nil
+}
+
+// ListDirectMemberUIDs 返回某父节点直属 ACTIVE 人边的 uid 列表。
+func (s *OrgStore) ListDirectMemberUIDs(orgID, tagID int64) ([]int64, error) {
+	rows, err := s.db.Reader.Query(
+		"SELECT child_id FROM tags WHERE org_id = ? AND tag_id = ? AND child_type = ? AND status = ?",
+		orgID, tagID, TagChildPerson, TagActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list org direct member uids: %w", err)
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
+// ActiveMemberUIDs 返回本组织全体 ACTIVE 成员 uid（去重），供通知扇出。
+func (s *OrgStore) ActiveMemberUIDs(orgID int64) ([]int64, error) {
+	rows, err := s.db.Reader.Query(
+		"SELECT DISTINCT child_id FROM tags WHERE org_id = ? AND child_type = ? AND status = ?",
+		orgID, TagChildPerson, TagActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list org member uids: %w", err)
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
+// UpdateMemberSortKeys 在成员昵称变化时重算其全部 ACTIVE 边的 sort_key，逐行 bump seq。
+// 返回变更行数；0 表示投影已一致，无需扇出。
+func (s *OrgStore) UpdateMemberSortKeys(orgID, uid int64, sortKey string, now int64) (int64, error) {
+	var changed int64
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var err error
+		changed, err = s.refreshEdgeSortKeys(tx, orgID, "child_type = ? AND child_id = ?",
+			[]any{TagChildPerson, uid}, sortKey, now)
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("update org member sort keys: %w", err)
+	}
+	return changed, nil
+}
+
+// WouldCreateCycle 报告把 childTagID 挂到 parentTagID 下是否成环：
+// 从 childTagID 沿 ACTIVE tag 边向下 BFS，可达集合中出现 parentTagID 即成环。
+func (s *OrgStore) WouldCreateCycle(orgID, parentTagID, childTagID int64) (bool, error) {
+	if parentTagID == childTagID {
+		return true, nil
+	}
+	visited := map[int64]struct{}{childTagID: {}}
+	frontier := []int64{childTagID}
+	for len(frontier) > 0 {
+		next := make([]int64, 0)
+		for _, tagID := range frontier {
+			rows, err := s.db.Reader.Query(
+				"SELECT child_id FROM tags WHERE org_id = ? AND tag_id = ? AND child_type = ? AND status = ?",
+				orgID, tagID, TagChildTag, TagActive,
+			)
+			if err != nil {
+				return false, fmt.Errorf("org cycle check: %w", err)
+			}
+			children, err := scanInt64Rows(rows)
+			rows.Close()
+			if err != nil {
+				return false, fmt.Errorf("org cycle check: %w", err)
+			}
+			for _, child := range children {
+				if child == parentTagID {
+					return true, nil
+				}
+				if _, ok := visited[child]; ok {
+					continue
+				}
+				visited[child] = struct{}{}
+				next = append(next, child)
+			}
+		}
+		frontier = next
+	}
+	return false, nil
+}
+
+// CanManage 判断 uid 是否有权管理 tagID 为根的子树（创建/改名/删除其子部门、
+// 增删调整其直属成员、修改边排序、授权/撤权）：从 tagID 自身向上回溯到组织根，
+// 逐层查是否存在 uid 的 GRANT 边，命中任意一层即放行——挂在祖先层的授权天然
+// 递归覆盖子孙。与 WouldCreateCycle 同构，按层批量查询，深度受写入侧组织层级
+// 上限约束天然有界，不需要整棵树进内存。
+func (s *OrgStore) CanManage(orgID, tagID, uid int64) (bool, error) {
+	visited := map[int64]struct{}{tagID: {}}
+	frontier := []int64{tagID}
+	for len(frontier) > 0 {
+		for _, tag := range frontier {
+			var exists int
+			err := s.db.Reader.QueryRow(
+				"SELECT 1 FROM tags WHERE org_id = ? AND tag_id = ? AND child_id = ? AND child_type = ? AND status = ?",
+				orgID, tag, uid, TagChildGrant, TagActive,
+			).Scan(&exists)
+			if err == nil {
+				return true, nil
+			}
+			if !isNoRows(err) {
+				return false, fmt.Errorf("org can manage: %w", err)
+			}
+		}
+		next := make([]int64, 0)
+		for _, tag := range frontier {
+			if tag == orgID {
+				continue // 已经是组织根，没有更上一层
+			}
+			rows, err := s.db.Reader.Query(
+				"SELECT tag_id FROM tags WHERE org_id = ? AND child_type = ? AND child_id = ? AND status = ?",
+				orgID, TagChildTag, tag, TagActive,
+			)
+			if err != nil {
+				return false, fmt.Errorf("org can manage parents: %w", err)
+			}
+			parents, err := scanInt64Rows(rows)
+			rows.Close()
+			if err != nil {
+				return false, fmt.Errorf("org can manage parents: %w", err)
+			}
+			for _, p := range parents {
+				if _, ok := visited[p]; ok {
+					continue
+				}
+				visited[p] = struct{}{}
+				next = append(next, p)
+			}
+		}
+		frontier = next
+	}
+	return false, nil
+}
+
+// ListGrantedAdmins 返回直接挂在 scopeTagID 上的管理员 uid 列表（GRANT 边），
+// 不含挂在祖先节点、递归覆盖到此的管理员。
+func (s *OrgStore) ListGrantedAdmins(orgID, scopeTagID int64) ([]int64, error) {
+	rows, err := s.db.Reader.Query(
+		"SELECT child_id FROM tags WHERE org_id = ? AND tag_id = ? AND child_type = ? AND status = ?",
+		orgID, scopeTagID, TagChildGrant, TagActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list granted admins: %w", err)
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
+// GetVersion returns the gc_safe_seq and max_seq for an org.
+func (s *OrgStore) GetVersion(orgID int64) (gcSafeSeq, maxSeq int64, err error) {
+	var version SyncVersion
+	e := s.db.Reader.QueryRow(
+		"SELECT gc_safe_seq, max_seq FROM org_version WHERE org_id = ?", orgID,
+	).Scan(&version.GCSafeSeq, &version.MaxSeq)
+	if e != nil {
+		if isNoRows(e) {
+			return 0, 0, nil
+		}
+		return 0, 0, fmt.Errorf("get org version: %w", e)
+	}
+	return version.GCSafeSeq, version.MaxSeq, nil
+}
+
+// Purge 物理删除本组织关系表 tombstone 并升 gc_safe_seq 水位线（三步同事务）。
+func (s *OrgStore) Purge(orgID int64) (int64, error) {
+	var deleted int64
+	err := withTx(s.db.Writer, func(tx *sql.Tx) error {
+		var maxSeq int64
+		if err := tx.QueryRow(
+			"SELECT COALESCE(MAX(seq), 0) FROM tags WHERE org_id = ? AND status = ?",
+			orgID, TagDeleted,
+		).Scan(&maxSeq); err != nil {
+			return err
+		}
+		if maxSeq == 0 {
+			return nil
+		}
+
+		res, err := tx.Exec("DELETE FROM tags WHERE org_id = ? AND status = ?", orgID, TagDeleted)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		deleted = n
+
+		_, err = tx.Exec(
+			`INSERT INTO org_version (org_id, gc_safe_seq, max_seq) VALUES (?, ?, ?)
+			 ON CONFLICT(org_id) DO UPDATE SET
+			   gc_safe_seq = MAX(org_version.gc_safe_seq, excluded.gc_safe_seq),
+			   max_seq = MAX(org_version.max_seq, excluded.max_seq)`,
+			orgID, maxSeq, maxSeq,
+		)
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("org gc: %w", err)
+	}
+	return deleted, nil
+}
+
+// ListPurgeable returns up to limit org IDs that have relation tombstones.
+func (s *OrgStore) ListPurgeable(limit, afterOrgID int64) ([]int64, error) {
+	rows, err := s.db.Reader.Query(
+		`SELECT DISTINCT org_id FROM tags WHERE status = ? AND org_id > ? ORDER BY org_id ASC LIMIT ?`,
+		TagDeleted, afterOrgID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list purgeable orgs: %w", err)
+	}
+	defer rows.Close()
+	return scanInt64Rows(rows)
+}
+
+func scanTag(row rowScanner) (Tag, error) {
+	var r Tag
+	err := row.Scan(&r.OrgID, &r.TagID, &r.ChildID, &r.ChildType, &r.Title, &r.Rank, &r.SortKey, &r.Status, &r.Seq, &r.CreatedAt, &r.UpdatedAt)
+	return r, err
+}

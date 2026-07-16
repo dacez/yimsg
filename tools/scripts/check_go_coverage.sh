@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 运行 Go 单元测试（排除 tests/e2e）并计算总体行覆盖率，与阈值比较。
+# 运行 Go 单元测试（排除 server/tests/e2e）并计算总体行覆盖率，与阈值比较。
 #
 # 用法：
 #   ./tools/scripts/check_go_coverage.sh                    # 默认阈值 55%
@@ -22,15 +22,15 @@ COVERAGE_OUT="${COVERAGE_OUT:-/tmp/yimsg-go-coverage.out}"
 
 echo "==== Go 覆盖率 (阈值 ${MIN_COVERAGE}%) ===="
 
-# 对 internal/ 生产代码包统计覆盖率。
+# 对 server/internal/ 生产代码包统计覆盖率。
 # 排除：
-#   - cmd/server：仅是进程入口，依赖真实端口/依赖注入，由 E2E 黑盒覆盖；
-#   - tests/e2e：黑盒测试本身；
+#   - server/cmd/yimsg-server：仅是进程入口，依赖真实端口/依赖注入，由 E2E 黑盒覆盖；
+#   - server/tests/e2e：黑盒测试本身；
 #   - tools：辅助脚本。
 pkgs=()
 while IFS= read -r line; do
   [[ -n "${line}" ]] && pkgs+=("${line}")
-done < <(go list ./internal/...)
+done < <(go list ./server/internal/...)
 
 if [[ "${#pkgs[@]}" -eq 0 ]]; then
   echo "未找到需要统计覆盖率的 Go 包"

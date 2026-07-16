@@ -34,12 +34,10 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: 安装前端依赖（提供 protocolgen 所需的 grpc_tools_node_protoc）
-        run: |
-          cd frontend
-          npm ci
+        run: npm ci
 
       - name: 安装 protoc-gen-go
         run: |
@@ -50,15 +48,13 @@ jobs:
         run: go run ./tools/cmd/protocolgen
 
       - name: 构建前端产物
-        run: |
-          cd frontend
-          npm run build
+        run: npm run build
 
       - name: 交叉编译服务端二进制（Linux/amd64）
-        run: GOOS=linux GOARCH=amd64 go build -o server-linux-amd64 ./cmd/server
+        run: GOOS=linux GOARCH=amd64 go build -o server-linux-amd64 ./server/cmd/yimsg-server
 
       - name: 交叉编译 seed-demo 二进制（Linux/amd64，每次部署都从当前代码全新构建）
-        run: GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./tools/cmd/seed-demo
+        run: GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./server/tools/cmd/seed-demo
 
       - name: 配置部署密钥
         env:

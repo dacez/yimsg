@@ -6,7 +6,7 @@
   "minTokens": 60,
   "minLines": 10,
   "gitignore": true,
-  "pattern": "{internal,cmd,frontend/src}/**/*.{go,ts}",
+  "pattern": "{server/internal,server/cmd,protocol,packages/sdk/src,packages/uikit/src,apps/web/src}/**/*.{go,ts}",
   "format": ["go", "typescript"],
   "ignore": [
     "**/*_test.go",
