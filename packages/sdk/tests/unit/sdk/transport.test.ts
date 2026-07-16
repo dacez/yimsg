@@ -175,6 +175,33 @@ describe('WsTransport', () => {
     expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ type: 'messages:received' }));
   });
 
+  it('malformed incoming frame is dropped with a console warning, connection stays usable', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    transport.connect();
+    await vi.advanceTimersByTimeAsync(0);
+
+    mockWs.onmessage!({ data: new Uint8Array([1, 2, 3]) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[WsTransport]'));
+
+    const promise = sendPing();
+    await receiveResponse(0, { base: { code: 0, msg: '' } });
+    await expect(promise).resolves.toMatchObject({ base: { code: 0 } });
+
+    warnSpy.mockRestore();
+  });
+
+  it('socket error event logs via console.error without throwing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    transport.connect();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(() => mockWs.onerror!()).not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[WsTransport]'));
+
+    errorSpy.mockRestore();
+  });
+
   it('frame body limit keeps whole packet under 64K', () => {
     expect(() => encodeFrame('b', '1', 6, new Uint8Array(0xffff - 16))).not.toThrow();
     expect(() => encodeFrame('b', '1', 6, new Uint8Array(0xffff - 15))).toThrow('frame packet too large');

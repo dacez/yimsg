@@ -66,6 +66,7 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 			return
 		}
 		defer ws.Close()
+		log.Printf("ws connected remote=%s", r.RemoteAddr)
 
 		conn := &connState{codec: FrameCodecProtobuf, endian: FrameEndianBig}
 		var writeMu sync.Mutex
@@ -112,6 +113,7 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 
 		// Disconnect cleanup
 		defer func() {
+			log.Printf("ws disconnected remote=%s uid=%d", r.RemoteAddr, conn.uid)
 			if conn.uid != 0 {
 				state.Plugins.HandleDisconnect(state, conn.uid)
 				for _, c := range conn.conns {
@@ -123,9 +125,13 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 		for {
 			messageType, msgBytes, err := ws.ReadMessage()
 			if err != nil {
+				if websocket.IsUnexpectedCloseError(err) {
+					log.Printf("ws read err remote=%s uid=%d: %v", r.RemoteAddr, conn.uid, err)
+				}
 				break
 			}
 			if messageType != websocket.BinaryMessage {
+				log.Printf("ws unexpected message type=%d remote=%s uid=%d", messageType, r.RemoteAddr, conn.uid)
 				break
 			}
 
@@ -159,7 +165,7 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 			switch result.Type {
 			case pb.Type_TYPE_ACTION_LOGIN:
 				if resp, ok := result.Response.(*pb.LoginResponse); ok && responseOK(resp.GetBase()) && resp.GetUid() != 0 {
-					bindAuthAndDrain(ws, state, conn, resp.GetUid(), resp.GetToken(), result.ResponseFrame, sendFrame, sendNotification)
+					bindAuthAndDrain(ws, state, conn, r.RemoteAddr, resp.GetUid(), resp.GetToken(), result.ResponseFrame, sendFrame, sendNotification)
 					continue
 				}
 			case pb.Type_TYPE_ACTION_AUTHENTICATE:
@@ -168,10 +174,11 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 					if req, ok := result.Request.(*pb.AuthenticateRequest); ok {
 						token = req.GetToken()
 					}
-					bindAuthAndDrain(ws, state, conn, resp.GetUid(), token, result.ResponseFrame, sendFrame, sendNotification)
+					bindAuthAndDrain(ws, state, conn, r.RemoteAddr, resp.GetUid(), token, result.ResponseFrame, sendFrame, sendNotification)
 					continue
 				}
 			case pb.Type_TYPE_ACTION_LOGOUT:
+				log.Printf("ws logout remote=%s uid=%d", r.RemoteAddr, conn.uid)
 				sendFrame(result.ResponseFrame)
 				clearAuthState(state, conn)
 				ws.SetReadDeadline(time.Now().Add(unauthenticatedTimeout))
@@ -189,9 +196,10 @@ func HandleWS(state *service.AppState) http.HandlerFunc {
 // bindAuthAndDrain 在 login / authenticate 成功后绑定连接认证态，
 // 先注册在线连接（保证认证后立即下发的通知被缓冲），再发送认证响应，
 // 最后启动 goroutine 把在线注册缓冲的通知写回 socket。
-func bindAuthAndDrain(ws *websocket.Conn, state *service.AppState, conn *connState, uid int64, token string, responseFrame []byte, sendFrame func([]byte), sendNotification func(*appmsg.Notification)) {
+func bindAuthAndDrain(ws *websocket.Conn, state *service.AppState, conn *connState, remoteAddr string, uid int64, token string, responseFrame []byte, sendFrame func([]byte), sendNotification func(*appmsg.Notification)) {
 	ws.SetReadDeadline(time.Time{})
 	authConn := applySetAuth(state, conn, uid, token)
+	log.Printf("ws auth ok remote=%s uid=%d", remoteAddr, uid)
 	sendFrame(responseFrame)
 	go func() {
 		for msg := range authConn.Ch {
