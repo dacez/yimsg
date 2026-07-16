@@ -21,9 +21,9 @@ test.describe('Settings', () => {
     await page.click('[data-view="settings"]');
     const badge = page.locator('#settings-mode');
     await expect(badge).toBeVisible();
-    // Should show either Instant or 持久存储
+    // 默认语言为中文，应显示"即时"或"持久存储"
     const text = await badge.textContent();
-    expect(['Instant', '持久存储']).toContain(text?.trim());
+    expect(['即时', '持久存储']).toContain(text?.trim());
   });
 
   test('update nickname updates settings display', async ({ page }) => {
@@ -163,7 +163,7 @@ test.describe('Settings', () => {
   test('clear data button only shows in persistent mode', async ({ page }) => {
     await register(page, uniqueUser('cdmem'), password, 'InstantUser');
     await page.click('[data-view="settings"]');
-    await expect(page.locator('#settings-mode')).toHaveText('Instant');
+    await expect(page.locator('#settings-mode')).toHaveText('即时');
     await expect(page.locator('#clear-data-btn')).toBeHidden();
   });
 
