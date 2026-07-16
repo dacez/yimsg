@@ -97,13 +97,13 @@
 `DisplayInfoCache` 内部维护**两套结构完全独立**的有界集合 `userStore` / `groupStore`，各自包含：
 
 ```
-userStore.cache:   FifoU64Map<DisplayCacheEntry>   key = uid (uint64)
-userStore.pending: BoundedU64Set                    key = uid (uint64)
-userStore.loading: BoundedU64Set                    key = uid (uint64)
-groupStore.*:      同上                              key = group_id (uint64)
+userStore.cache:   FifoMap<string, DisplayCacheEntry>   key = uid (十进制 uint64 字符串)
+userStore.pending: FifoSet<string>                       key = uid (十进制 uint64 字符串)
+userStore.loading: FifoSet<string>                       key = uid (十进制 uint64 字符串)
+groupStore.*:      同上                                   key = group_id (十进制 uint64 字符串)
 ```
 
-key 永远是纯 uint64，不再使用 `user:<uid>` / `group:<groupId>` 字符串前缀。每套缓存固定容量、FIFO 淘汰，`size` 永不超过 `capacity`；待拉取 / 在飞队列为 reject 策略的固定容量集合。详见 [`有界集合方案.md`](有界集合方案.md)。
+key 永远是纯 uint64 十进制字符串，不再使用 `user:<uid>` / `group:<groupId>` 字符串前缀。每套缓存固定容量、FIFO 淘汰，`size` 永不超过 `capacity`；待拉取 / 在飞队列由 `enqueue()` 显式前置容量检查，满则抛 `ValidationError`。详见 [`有界集合方案.md`](有界集合方案.md)。
 
 ### 6.2 备选方案（已否决）
 

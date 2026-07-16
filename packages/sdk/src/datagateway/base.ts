@@ -34,6 +34,7 @@ import {
   clampBatchLimit,
   collectSerialBatches,
 } from "../internal/limits";
+import { FifoMap, FifoSet } from "../internal/bounded";
 
 export interface BaseDataGatewayOptions {
   readonly batchMaxLimit?: number;
@@ -51,21 +52,25 @@ export abstract class BaseDataGateway implements DataGateway {
    * enqueue() 被调用时只更新标记，不再新增 Promise 链节点，防止高频通知导致无界队列增长。
    */
   private readonly pendingFlags: Record<string, boolean> = {};
-  /** `conversations:clearunread` 需要额外保存待处理的清未读 convKey 集合。 */
-  private readonly pendingClearedKeys = new Set<string>();
-  /** `conversations:delete` 待处理的被删会话 convKey 集合（去重）。 */
-  private readonly pendingDeletedConvKeys = new Set<string>();
-  /** `messages:delete` 待处理的被删消息：msg_id → 所在会话 convKey。 */
-  private readonly pendingDeletedMsgIds = new Map<string, string>();
+  /**
+   * `conversations:clearunread` 需要额外保存待处理的清未读 convKey 集合。
+   * 固定容量 FifoSet，防止高频通知在 flush 前无界积累；容量满时淘汰最旧 key，
+   * 即便被淘汰也只是延迟到下一批通知处理，不影响最终一致性。
+   */
+  private readonly pendingClearedKeys: FifoSet<string>;
+  /** `conversations:delete` 待处理的被删会话 convKey 集合（去重），容量与语义同 pendingClearedKeys。 */
+  private readonly pendingDeletedConvKeys: FifoSet<string>;
+  /** `messages:delete` 待处理的被删消息：msg_id → 所在会话 convKey，容量与语义同 pendingClearedKeys。 */
+  private readonly pendingDeletedMsgIds: FifoMap<string, string>;
   /**
    * 待处理的 messages:received 触发消息 id 集合（去重）。
    * 多个会话的通知在同一调度窗口内合并时，这里累积全部 msg_id，
    * flush 时一次性批量拉取，避免只保留最后一条导致 onMessages 漏消息。
-   * 上限为 batchMaxLimit，溢出直接丢弃（重绘信号仍会兜底纠正未读/列表）。
+   * 上限为 batchMaxLimit，FIFO 淘汰（重绘信号仍会兜底纠正未读/列表）。
    */
-  protected readonly pendingMessageIds = new Set<string>();
-  /** 待处理的 org:updated 组织 ID 集合（去重合并，flush 时一次性处理）。 */
-  protected readonly pendingOrgIds = new Set<string>();
+  protected readonly pendingMessageIds: FifoSet<string>;
+  /** 待处理的 org:updated 组织 ID 集合（去重合并，flush 时一次性处理），容量与语义同 pendingMessageIds。 */
+  protected readonly pendingOrgIds: FifoSet<string>;
 
   private messagesReceivedCb: ((messages: Message[]) => void) | null = null;
   private contactsChangedCb:
@@ -88,6 +93,11 @@ export abstract class BaseDataGateway implements DataGateway {
     this.batchMaxLimit = clampBatchLimit(
       options.batchMaxLimit ?? DEFAULT_MAX_BATCH_LIMIT,
     );
+    this.pendingClearedKeys = new FifoSet<string>({ capacity: this.batchMaxLimit });
+    this.pendingDeletedConvKeys = new FifoSet<string>({ capacity: this.batchMaxLimit });
+    this.pendingDeletedMsgIds = new FifoMap<string, string>({ capacity: this.batchMaxLimit });
+    this.pendingMessageIds = new FifoSet<string>({ capacity: this.batchMaxLimit });
+    this.pendingOrgIds = new FifoSet<string>({ capacity: this.batchMaxLimit });
   }
 
   // ---- Lifecycle ----
@@ -375,10 +385,9 @@ export abstract class BaseDataGateway implements DataGateway {
     switch (n.type) {
       case "messages:received": {
         // 累积触发本次通知的 msg_id；按 msg_ids 取消息只认 uid、忽略 target，故无需记录会话目标。
+        // pendingMessageIds 容量为 batchMaxLimit，FIFO 淘汰兜底，无需手动检查 size。
         const msgId = n.msg_id ? String(n.msg_id) : "";
-        if (msgId && this.pendingMessageIds.size < this.batchMaxLimit) {
-          this.pendingMessageIds.add(msgId);
-        }
+        if (msgId) this.pendingMessageIds.add(msgId);
         this.enqueue("messages:received", this.syncDomain("messages"), () =>
           this.handleMessagesReceived(),
         );

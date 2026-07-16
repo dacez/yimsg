@@ -87,8 +87,6 @@ export type {
   SendQuotedTextInput,
   SendImageInput,
   SendFileInput,
-  SdkMaxMemoryBreakdown,
-  SdkMaxMemoryEstimate,
   SyncReadiness,
   SyncDomain,
   SyncStatus,
