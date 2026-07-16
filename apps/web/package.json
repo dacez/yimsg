@@ -1,0 +1,16 @@
+{
+  "name": "@yimsg/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm run check:guards && tsc --noEmit -p tsconfig.json && vite build --config vite.config.ts",
+    "check:guards": "node ../../tools/scripts/check-frontend-guards.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "test:ui": "playwright test --config playwright.config.ts",
+    "test:ui:headed": "playwright test --config playwright.config.ts --headed"
+  },
+  "dependencies": {
+    "@yimsg/uikit": "*"
+  }
+}

@@ -15,7 +15,7 @@ server.log
 certs/
 
 # Frontend build output
-web/
+/web/
 
 # Workspace dependencies & test artifacts
 node_modules/
