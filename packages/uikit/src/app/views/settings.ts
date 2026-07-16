@@ -122,7 +122,7 @@ export function createSettingsView(app: AppInstance) {
 
     const modeEl = app.$('settings-mode');
     const isInstant = snapshot.mode === 'instant';
-    modeEl.textContent = isInstant ? 'Instant' : '持久存储';
+    modeEl.textContent = isInstant ? app.t('auth.liteTitle') : app.t('auth.persistentTitle');
     modeEl.className = 'mode-badge ' + (isInstant ? 'mode-badge-instant' : 'mode-badge-persistent');
     app.$('settings-storage-card').classList.toggle('hidden', isInstant);
 
