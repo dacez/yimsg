@@ -107,17 +107,17 @@ Yimsg SDK 所有长期驻留集合均为**有界集合**：容量在构造时确
 
 ### Bounded Collections
 
-基础设施位于 `packages/sdk/src/internal/bounded/`，提供真正固定容量、固定 bucket、固定 slot 的结构，开放寻址 + 桶内线性扫描，无链表 / 无动态 chaining / 无堆碎片，易于跨语言（Rust/Go/C）复刻：
+基础设施位于 `packages/sdk/src/internal/bounded/`，所有长期驻留集合的容量都在构造时指定、size 永不超过 capacity：
 
-- `BoundedU64Map<V>`：uint64（`keysHi`/`keysLo` 两段 uint32）-> V 映射，`bucketCount` 为 2 的幂、`bucketCapacity` 默认 8，支持 `reject` / `fifo` / `lru` 淘汰。
-- `BoundedU64Set`：固定容量 uint64 去重集合，reject 策略，承载「待拉取 / 在飞」队列。
+- `FifoU64Map<V>`：容量受限的 uint64 -> V FIFO 映射（`V` 默认 `string`，也支持任意值类型），基于原生 Map 实现，容量满时淘汰最早插入的 key。
+- `BoundedU64Set`：真正固定容量、固定 bucket、固定 slot 的 uint64 去重集合，开放寻址 + 桶内线性扫描，无链表 / 无动态 chaining / 无堆碎片，易于跨语言（Rust/Go/C）复刻；reject 策略，承载「待拉取 / 在飞」队列。
 - `BoundedQueue<V>`：固定容量环形缓冲 FIFO 队列，支持 `reject` / `overwrite_oldest`。
 
-每个集合都暴露 `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` 统计，可通过 `client.getBoundedCollectionStats()` 获取，用于 benchmark / debug。
+每个集合都暴露 `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` 统计（`FifoU64Map` 以 `bucketCount=1`、`bucketCapacity=capacity`、`rejectCount=0` 统一语义暴露），可通过 `client.getBoundedCollectionStats()` 获取，用于 benchmark / debug。
 
 ### Peak Memory Estimation
 
-`YimsgClient.estimateMaxMemoryBytes(options)` 把所有有界集合（缓存、队列、待响应请求、同步批次、基线）纳入理论峰值估算，纯静态、无副作用，可在构造实例前调用。各分项均静态可计算，详见 [`packages/sdk/docs/sdk设计方案.md`](packages/sdk/docs/sdk设计方案.md) §11。
+`YimsgClient.estimateMaxMemoryBytes(options)` 把所有有界集合（缓存、队列、待响应请求、同步批次、基线）纳入理论峰值估算，纯静态、无副作用，可在构造实例前调用。`BoundedU64Set` / `BoundedQueue` 各分项静态精确可计算，`FifoU64Map` 分项为粗略上界估算，详见 [`packages/sdk/docs/sdk设计方案.md`](packages/sdk/docs/sdk设计方案.md) §11。
 
 ## 快速开始
 

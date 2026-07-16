@@ -74,11 +74,12 @@ export const DEFAULT_RECALL_WINDOW_SECONDS = 120;
 export const DEFAULT_FORWARD_MAX_ITEMS = 20;
 
 // ── 有界集合（Bounded Collections）容量参数 ───────────────────────────────────
-// 这些常量决定 BoundedU64Map / BoundedU64Set 的固定 bucket 布局，是 SDK 内存
-// 静态可估算的基础。bucketCount 由「期望容量 / loadFactor / bucketCapacity」向上
-// 对齐到 2 的幂得到，运行期不再增长。
+// 这些常量决定 BoundedU64Set 的固定 bucket 布局，是其内存静态可估算的基础。
+// bucketCount 由「期望容量 / loadFactor / bucketCapacity」向上对齐到 2 的幂得到，
+// 运行期不再增长。FifoU64Map（显示信息缓存、pendingRequests）改用原生 Map 实现，
+// 不再需要 bucket 布局参数。
 
-/** 显示信息缓存与待拉取队列的每桶槽位数（bucketCapacity）。 */
+/** 显示信息待拉取 / 在飞队列（BoundedU64Set）的每桶槽位数（bucketCapacity）。 */
 export const DISPLAY_CACHE_BUCKET_CAPACITY = 8;
 
 /**
@@ -88,19 +89,9 @@ export const DISPLAY_CACHE_BUCKET_CAPACITY = 8;
  */
 export const DISPLAY_QUEUE_LOAD_FACTOR = 0.5;
 
-/** WsTransport pendingRequests（BoundedU64Map）的每桶槽位数。 */
-export const PENDING_REQUEST_BUCKET_CAPACITY = 8;
-
-/**
- * pendingRequests 有界 map 的目标负载因子。
- * 取 0.5 预留 2× 物理容量 headroom，避免顺序自增 request_id 在个别 bucket 上倾斜，
- * 导致本可接纳的并发请求被提前拒绝。
- */
-export const PENDING_REQUEST_LOAD_FACTOR = 0.5;
-
 // ── estimateMaxMemoryBytes 推导常量 ──────────────────────────────────────────
 // 以下常量为对应「值对象」在 V8 JS 堆中的字节上界（不含有界集合的固定 slot 结构开销，
-// 后者由 estimateBoundedU64MapBytes / estimateBoundedU64SetBytes 单独计入）。
+// 后者由 estimateFifoU64MapBytes / estimateBoundedU64SetBytes 单独计入）。
 // 字符串按平均长度推导（UTF-16，每字符 2 字节）；对象头约 64 字节。
 
 /**

@@ -4,7 +4,7 @@ import type { DataGateway, MaybePromise } from '../datagateway/interface';
 import { ValidationError } from '../errors';
 import { DEFAULT_CACHE_TTL_SECONDS, DEFAULT_CACHE_MAX_ENTRIES, DEFAULT_PROFILE_LOAD_QUEUE_MAX_ENTRIES, DEFAULT_MAX_BATCH_LIMIT, DISPLAY_CACHE_BUCKET_CAPACITY, DISPLAY_QUEUE_LOAD_FACTOR } from '../internal/sdk-defaults';
 import { clampBatchLimit } from '../internal/limits';
-import { BoundedU64Map, BoundedU64Set, type BoundedStats } from '../internal/bounded';
+import { FifoU64Map, BoundedU64Set, type BoundedStats } from '../internal/bounded';
 
 const DEFAULT_DISPLAY_INFO_LOAD_MERGE_WINDOW_MS = 8;
 
@@ -59,18 +59,14 @@ function isValidU64Id(key: string): boolean {
  */
 class ScopeStore {
   /** 显示信息缓存：固定容量 FIFO，溢出自动淘汰最旧条目。 */
-  readonly cache: BoundedU64Map<DisplayCacheEntry>;
+  readonly cache: FifoU64Map<DisplayCacheEntry>;
   /** 待拉取去重队列：reject 策略，满则拒绝（上层抛 ValidationError）。 */
   readonly pending: BoundedU64Set;
   /** 在飞（已发起 DataGateway 加载）去重集合。 */
   readonly loading: BoundedU64Set;
 
   constructor(cacheMaxEntries: number, queueMaxEntries: number) {
-    this.cache = new BoundedU64Map<DisplayCacheEntry>({
-      capacity: cacheMaxEntries,
-      bucketCapacity: DISPLAY_CACHE_BUCKET_CAPACITY,
-      eviction: 'fifo',
-    });
+    this.cache = new FifoU64Map<DisplayCacheEntry>({ capacity: cacheMaxEntries });
     this.pending = new BoundedU64Set({
       capacity: queueMaxEntries,
       bucketCapacity: DISPLAY_CACHE_BUCKET_CAPACITY,
@@ -123,7 +119,7 @@ class ScopeStore {
  * DisplayInfoCache — 用户头像/昵称、群名称的有界 FIFO + TTL 缓存。
  *
  * 用户域与群域完全拆分（userStore / groupStore），各自基于固定容量的
- * BoundedU64Map（缓存）+ BoundedU64Set（待拉取 / 在飞队列），内存静态可估算。
+ * FifoU64Map（缓存）+ BoundedU64Set（待拉取 / 在飞队列）。
  *
  * - 命中且未过期 → 立即返回
  * - 命中但过期 → 返回旧值并请求 DataGateway 后台刷新
@@ -135,8 +131,8 @@ export class DisplayInfoCache {
   private readonly groupStore: ScopeStore;
   private readonly orgStore: ScopeStore;
   private readonly tagStore: ScopeStore;
-  /** tag_id → org_id 的旁路记录：get_tag_infos 需要 org_id 做路由，供 flush 时取用；容量与待拉取队列同阶，非强一致。 */
-  private readonly tagOrgById = new Map<string, string>();
+  /** tag_id → org_id 的旁路记录：get_tag_infos 需要 org_id 做路由，供 flush 时取用；容量与待拉取队列同阶，非强一致，FIFO 淘汰。 */
+  private readonly tagOrgById: FifoU64Map<string>;
   private cacheTtlMs: number;
   private queueMaxSize: number;
   private batchMaxSize: number;
@@ -155,6 +151,7 @@ export class DisplayInfoCache {
     this.batchMaxSize = clampBatchLimit(options.batchMaxLimit ?? DEFAULT_MAX_BATCH_LIMIT);
     this.loadMergeWindowMs = Math.max(0, options.loadMergeWindowMs ?? DEFAULT_DISPLAY_INFO_LOAD_MERGE_WINDOW_MS);
     this.getDataGateway = options.dataGateway;
+    this.tagOrgById = new FifoU64Map<string>({ capacity: this.queueMaxSize });
     this.userStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
     this.groupStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
     this.orgStore = new ScopeStore(cacheMaxSize, this.queueMaxSize);
@@ -170,13 +167,9 @@ export class DisplayInfoCache {
     }
   }
 
-  /** 记录 tagId 所属 org_id，供 flush 时批量拉取 get_tag_infos 使用。 */
+  /** 记录 tagId 所属 org_id，供 flush 时批量拉取 get_tag_infos 使用；容量满时 FifoU64Map 自动淘汰最旧记录。 */
   private rememberTagOrg(tagId: string, orgId: string): void {
     if (!orgId || orgId === '0') return;
-    if (!this.tagOrgById.has(tagId) && this.tagOrgById.size >= this.queueMaxSize) {
-      const oldest = this.tagOrgById.keys().next().value;
-      if (oldest !== undefined) this.tagOrgById.delete(oldest);
-    }
     this.tagOrgById.set(tagId, orgId);
   }
 

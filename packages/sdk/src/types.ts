@@ -535,14 +535,13 @@ export interface ClientErrorEvent {
  */
 export interface SdkMaxMemoryBreakdown {
   /**
-   * 用户显示信息缓存（独立 BoundedU64Map，FIFO 淘汰）满载上界字节数。
-   * 上界 = 固定容量 × (slot 结构开销 + DisplayCacheEntry 值字节)，
-   * 容量由 cacheMaxEntries 向上对齐到 bucketCount(2^n) × bucketCapacity 决定。
+   * 用户显示信息缓存（独立 FifoU64Map，FIFO 淘汰）满载上界字节数。
+   * 上界 = 容量(cacheMaxEntries) × (Map 条目结构开销 + DisplayCacheEntry 值字节)。
    * 单值 DisplayCacheEntry ≈ 448 字节（对象头64 + username64 + name64 + avatar192 + remark48 + expireAt8）。
    */
   readonly profileUserCacheBytes: number;
   /**
-   * 群显示信息缓存（与用户缓存对称的独立 BoundedU64Map）满载上界字节数。
+   * 群显示信息缓存（与用户缓存对称的独立 FifoU64Map）满载上界字节数。
    * 用户 / 群已拆分为两套纯 uint64 key 的有界集合，本字段不再恒为 0；
    * 同一 cacheMaxEntries 下与 profileUserCacheBytes 相等。
    */
@@ -556,9 +555,9 @@ export interface SdkMaxMemoryBreakdown {
   readonly profileQueueBytes: number;
   /**
    * WsTransport 最大并发未响应请求上界字节数。
-   * 待响应请求存于固定容量 BoundedU64Map（reject 淘汰）；sendBinary() 在
+   * 待响应请求存于固定容量 FifoU64Map；sendBinary() 在
    * size ≥ maxPendingRequests 时立即拒绝，底层有界容量进一步保证 size ≤ capacity。
-   * 上界 = 固定容量 × (slot 结构开销 + 单值 PendingReq ≈ 384 字节)，容量含 2× headroom。
+   * 上界 = 容量(maxPendingRequests) × (Map 条目结构开销 + 单值 PendingReq ≈ 384 字节)。
    */
   readonly pendingRequestsBytes: number;
   /**

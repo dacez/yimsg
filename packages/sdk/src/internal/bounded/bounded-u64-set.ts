@@ -1,14 +1,14 @@
 /**
- * BoundedU64Set —— 固定容量的 uint64 集合，与 BoundedU64Map 共用同一套
- * 开放寻址 + 固定桶 + 桶内线性扫描布局，但不保存 value，专用于「待拉取 / 在飞」
- * 这类去重队列状态。
+ * BoundedU64Set —— 固定容量的 uint64 集合，基于开放寻址 + 固定桶 + 桶内线性
+ * 扫描布局（与 bucket-layout.ts 的容量对齐算法共用），不保存 value，专用于
+ * 「待拉取 / 在飞」这类去重队列状态。
  *
  * 默认 reject 策略：容量满时 add() 返回 false（调用方据此抛错或丢弃），
  * 不允许新 key 淘汰已有 key。
  */
 
 import { hashU64, parseU64, u64Equal, u64ToString } from './u64';
-import { computeBoundedCapacity } from './bounded-u64-map';
+import { computeBoundedCapacity } from './bucket-layout';
 import type { BoundedStats } from './stats';
 
 const STATE_EMPTY = 0;

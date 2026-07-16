@@ -85,11 +85,9 @@ import {
   SDK_BASELINE_BYTES,
   DISPLAY_CACHE_BUCKET_CAPACITY,
   DISPLAY_QUEUE_LOAD_FACTOR,
-  PENDING_REQUEST_BUCKET_CAPACITY,
-  PENDING_REQUEST_LOAD_FACTOR,
 } from "./internal/sdk-defaults";
 import {
-  estimateBoundedU64MapBytes,
+  estimateFifoU64MapBytes,
   estimateBoundedU64SetBytes,
 } from "./internal/bounded";
 import { clampBatchLimit, clampOptionalPageLimit } from "./internal/limits";
@@ -324,28 +322,29 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
    * ## 计算公式
    * ```
    * totalBytes
-   *   = profileUserCacheBytes  (= 用户显示信息 BoundedU64Map 满载字节，由 cacheMaxEntries 决定)
-   *   + profileGroupCacheBytes (= 群显示信息 BoundedU64Map 满载字节，由 cacheMaxEntries 决定)
+   *   = profileUserCacheBytes  (= 用户显示信息 FifoU64Map 满载字节，由 cacheMaxEntries 决定)
+   *   + profileGroupCacheBytes (= 群显示信息 FifoU64Map 满载字节，由 cacheMaxEntries 决定)
    *   + profileQueueBytes      (= 4 × 待拉取/在飞 BoundedU64Set 满载字节，由 profileLoadQueueMaxEntries 决定)
-   *   + pendingRequestsBytes   (= 待响应请求 BoundedU64Map 满载字节，由 maxPendingRequests 决定)
+   *   + pendingRequestsBytes   (= 待响应请求 FifoU64Map 满载字节，由 maxPendingRequests 决定)
    *   + syncBatchBytes         (= 200 × 640 = 128,000  — 常量，不受配置影响)
    *   + forwardBundleBytes     (= 1,048,576           — 常量，不受配置影响)
    *   + baselineBytes          (= 65,536              — 常量，不受配置影响)
    * ```
    *
    * ## 论证
-   * 所有长期驻留集合均为固定容量有界结构（BoundedU64Map / BoundedU64Set），容量在
-   * 构造时由配置决定并向上对齐到 `bucketCount(2^n) × bucketCapacity`，运行期不再增长。
-   * 每项满载字节 = `capacity × (固定 slot 结构开销 + 值/引用字节)`，由
-   * `estimateBoundedU64MapBytes` / `estimateBoundedU64SetBytes` 计算。
-   * - `profileUserCacheBytes` / `profileGroupCacheBytes`：用户与群各一套 FIFO BoundedU64Map，
+   * 所有长期驻留集合均为「size 永不超过 capacity」的有界结构（FifoU64Map / BoundedU64Set），
+   * 容量在构造时由配置决定，运行期不再增长。
+   * - `profileUserCacheBytes` / `profileGroupCacheBytes`：用户与群各一套 FifoU64Map，
+   *   满载字节 = `capacity × (Map 条目结构开销 96 字节 + 值字节)`，由 `estimateFifoU64MapBytes` 计算；
    *   单值 DisplayCacheEntry ≈ 448 字节（对象头64 + username64 + name64 + avatar192 + remark48 + expireAt8）。
    *   FIFO 淘汰保证 size ≤ capacity（见 cache.ts ScopeStore）。
-   * - `profileQueueBytes`：用户与群各有 pending + loading 两个 BoundedU64Set，共 4 个，
+   * - `profileQueueBytes`：用户与群各有 pending + loading 两个 BoundedU64Set，共 4 个，容量向上对齐到
+   *   `bucketCount(2^n) × bucketCapacity`，由 `estimateBoundedU64SetBytes` 计算；
    *   reject 策略保证「队列满」精确发生在 profileLoadQueueMaxEntries（见 cache.ts enqueue）。
    * - `pendingRequestsBytes`：WsTransport.sendBinary() 在 size ≥ maxPendingRequests 时立即拒绝，
-   *   底层 BoundedU64Map(reject) 进一步保证 size ≤ capacity（见 connection.ts），
-   *   单值 PendingReq ≈ 384 字节（resolve+reject 闭包256 + timer16 + codec 引用8 + 对象头64）。
+   *   底层 FifoU64Map 进一步保证 size ≤ capacity（见 connection.ts），满载字节由
+   *   `estimateFifoU64MapBytes` 计算；单值 PendingReq ≈ 384 字节
+   *   （resolve+reject 闭包256 + timer16 + codec 引用8 + 对象头64）。
    * - `syncBatchBytes`：handleMessagesReceived 每次 syncMessages 最多拉取 DEFAULT_SYNC_BATCH_SIZE=200 条，
    *   立即通过 emitMessagesReceived 派发后释放，不累积（见 base.ts）。
    *   每条 Message ≈ 624 字节，上取整至 640，共 200×640 = 128,000 字节。
@@ -376,20 +375,20 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       options.maxPendingRequests ?? DEFAULT_WS_MAX_PENDING_REQUESTS,
     );
 
-    // 用户与群显示信息缓存现为两套独立的固定容量 BoundedU64Map（FIFO 淘汰）。
-    const profileUserCacheBytes = estimateBoundedU64MapBytes(
-      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE, DISPLAY_CACHE_BUCKET_CAPACITY, 'fifo',
+    // 用户与群显示信息缓存现为两套独立的固定容量 FifoU64Map（FIFO 淘汰）。
+    const profileUserCacheBytes = estimateFifoU64MapBytes(
+      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE,
     );
-    const profileGroupCacheBytes = estimateBoundedU64MapBytes(
-      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE, DISPLAY_CACHE_BUCKET_CAPACITY, 'fifo',
+    const profileGroupCacheBytes = estimateFifoU64MapBytes(
+      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE,
     );
     // 待拉取 / 在飞队列：用户与群各 2 个 BoundedU64Set（pending + loading），共 4 个。
     const profileQueueBytes = 4 * estimateBoundedU64SetBytes(
       profileLoadQueueMaxEntries, DISPLAY_CACHE_BUCKET_CAPACITY, DISPLAY_QUEUE_LOAD_FACTOR,
     );
-    // 待响应请求：固定容量 BoundedU64Map（reject 淘汰）。
-    const pendingRequestsBytes = estimateBoundedU64MapBytes(
-      maxPendingRequests, BYTES_PER_PENDING_REQUEST_VALUE, PENDING_REQUEST_BUCKET_CAPACITY, 'reject', PENDING_REQUEST_LOAD_FACTOR,
+    // 待响应请求：固定容量 FifoU64Map（size 由 sendBinary() 的前置检查保证 ≤ capacity）。
+    const pendingRequestsBytes = estimateFifoU64MapBytes(
+      maxPendingRequests, BYTES_PER_PENDING_REQUEST_VALUE,
     );
     const syncBatchBytes = DEFAULT_SYNC_BATCH_SIZE * BYTES_PER_SYNC_MESSAGE;
     const forwardBundleBytes = DEFAULT_MAX_FORWARD_BUNDLE_BYTES;
