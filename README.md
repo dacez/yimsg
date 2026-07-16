@@ -107,17 +107,17 @@ Key upper bounds:
 
 ### Bounded Collections
 
-The infrastructure lives under `packages/sdk/src/internal/bounded/` and provides structures with truly fixed capacity, fixed bucket count, and fixed slot count — open addressing plus in-bucket linear scanning, no linked lists, no dynamic chaining, no heap fragmentation, making it easy to port across languages (Rust/Go/C):
+The infrastructure lives under `packages/sdk/src/internal/bounded/`. Every long-lived collection has its capacity fixed at construction time and its size never exceeds that capacity:
 
-- `BoundedU64Map<V>`: a uint64 (split into `keysHi`/`keysLo` uint32 pairs) -> V map, with `bucketCount` a power of two, `bucketCapacity` defaulting to 8, and support for `reject` / `fifo` / `lru` eviction.
-- `BoundedU64Set`: a fixed-capacity uint64 dedup set with a reject policy, used for "pending / in-flight" queues.
+- `FifoU64Map<V>`: a capacity-bounded uint64 -> V FIFO map (`V` defaults to `string`, but any value type is supported), backed by a native `Map`; once full, writing a new key evicts the oldest one.
+- `BoundedU64Set`: a structure with truly fixed capacity, fixed bucket count, and fixed slot count — open addressing plus in-bucket linear scanning, no linked lists, no dynamic chaining, no heap fragmentation, making it easy to port across languages (Rust/Go/C). Reject policy, used for "pending / in-flight" queues.
 - `BoundedQueue<V>`: a fixed-capacity ring-buffer FIFO queue supporting `reject` / `overwrite_oldest`.
 
-Each collection exposes `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` statistics, retrievable via `client.getBoundedCollectionStats()`, for benchmarking and debugging.
+Each collection exposes `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` statistics (`FifoU64Map` reports them as `bucketCount=1`, `bucketCapacity=capacity`, `rejectCount=0`), retrievable via `client.getBoundedCollectionStats()`, for benchmarking and debugging.
 
 ### Peak Memory Estimation
 
-`YimsgClient.estimateMaxMemoryBytes(options)` rolls every bounded collection (caches, queues, pending requests, sync batches, baseline) into a theoretical peak-memory estimate. It's purely static with no side effects and can be called before an instance is even constructed. Each component is statically computable — see §11 of [`packages/sdk/docs/sdk设计方案.md`](packages/sdk/docs/sdk设计方案.md) (Chinese) for details.
+`YimsgClient.estimateMaxMemoryBytes(options)` rolls every bounded collection (caches, queues, pending requests, sync batches, baseline) into a theoretical peak-memory estimate. It's purely static with no side effects and can be called before an instance is even constructed. `BoundedU64Set` / `BoundedQueue` components are statically exact; `FifoU64Map` components are a rough upper-bound estimate — see §11 of [`packages/sdk/docs/sdk设计方案.md`](packages/sdk/docs/sdk设计方案.md) (Chinese) for details.
 
 ## Quick Start
 
