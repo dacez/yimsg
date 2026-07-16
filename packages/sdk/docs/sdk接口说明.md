@@ -68,8 +68,7 @@ await client.startSession({ storage: 'instant' });
 |------|------|------|
 | `getSessionSnapshot()` | `() => SessionSnapshot` | 返回完整只读生命周期快照，推荐作为状态判断主入口 |
 | `getClientConfig()` | `() => ClientConfig` | 返回当前 SDK 客户端配置快照；包含显示信息缓存 TTL / 条目上限、撤回时限和当前批量上限。缓存字段固定使用本地默认 / 构造初始值，登录或 token 鉴权成功后不运行期改变；撤回时限使用后端 `recall_window_seconds`，批量上限取构造参数与后端 `batch_max_limit` 的较小值 |
-| `static estimateMaxMemoryBytes(options?)` | `(options?: ClientOptions) => SdkMaxMemoryEstimate` | 静态方法，纯计算，无副作用。依据 `ClientOptions` 中的上限参数，静态推导 SDK 在当前配置下的最大 JS 堆内存占用（字节上界）。返回只读的 `SdkMaxMemoryEstimate`，包含 `totalBytes` 和各分项明细 `breakdown`。可在构造实例前调用，用于容量评估或配置合理性检查。详见 [`sdk设计方案.md § 10.1`](sdk设计方案.md)。 |
-| `getBoundedCollectionStats()` | `() => BoundedCollectionStats` | 返回所有长期驻留有界集合（用户/群显示信息缓存、待拉取/在飞队列、待响应请求 map）的实时运行时统计：`size`、`capacity`、`bucketCount`、`bucketCapacity`、`rejectCount`、`evictionCount`、`loadFactor`。与 `estimateMaxMemoryBytes()` 的「理论上界」互补，反映「当前实际占用」，用于 benchmark / 内存诊断。详见 [`sdk设计方案.md § 10.2`](sdk设计方案.md)。 |
+| `getBoundedCollectionStats()` | `() => BoundedCollectionStats` | 返回所有长期驻留有界集合（用户/群显示信息缓存、待拉取/在飞队列、待响应请求 map）的实时运行时统计：`size`、`capacity`、`bucketCount`、`bucketCapacity`、`rejectCount`、`evictionCount`、`loadFactor`，反映「当前实际占用」，用于 benchmark / 内存诊断。详见 [`sdk设计方案.md § 11.4`](sdk设计方案.md)。 |
 
 `SessionSnapshot`：
 

@@ -192,7 +192,7 @@ sequenceDiagram
 
 | 能力域 | `YimsgClient` 方法 |
 |---|---|
-| 构造与状态 | `new YimsgClient(options)`、`getSessionSnapshot()`、`getClientConfig()`、`YimsgClient.estimateMaxMemoryBytes(options)`、`getBoundedCollectionStats()` |
+| 构造与状态 | `new YimsgClient(options)`、`getSessionSnapshot()`、`getClientConfig()`、`getBoundedCollectionStats()` |
 | 事件 | `on()`、`off()`、`once()`、`listenerCount()`、`removeAllListeners()` |
 | 生命周期 | `register()`、`login()`、`authenticate()`、`startSession()`、`logout()`、`destroy()` |
 | 会话 | `getConversations()`、`getUnreadCount()`、`clearUnread()`、`deleteConversation()`、`describeConversation()` |
@@ -337,14 +337,14 @@ persistent 模式维护当前用户、当前 `instanceId` 的 SQLite 副本。
 
 `DisplayInfoCache` 将用户与群展示资料拆分为两套结构完全独立的有界集合（`userStore` / `groupStore`），key 永远是纯 uint64（`uid` 或 `group_id`），不再使用 `user:{uid}` / `group:{groupId}` 字符串 tagged key。每个域包含：
 
-- `cache`：固定容量 `FifoU64Map<DisplayCacheEntry>`，FIFO 淘汰，溢出自动淘汰最旧条目。
-- `pending` / `loading`：固定容量 `BoundedU64Set`，reject 策略，承载「待拉取 / 在飞」去重队列。
+- `cache`：固定容量 `FifoMap<string, DisplayCacheEntry>`，FIFO 淘汰，溢出自动淘汰最旧条目。
+- `pending` / `loading`：固定容量 `FifoSet<string>`，`enqueue()` 显式前置容量检查，满则抛 `ValidationError`，承载「待拉取 / 在飞」去重队列。
 
-拆分的收益：key 永远纯 uint64、无需 tagged union / packed key、不会发生 uid 与 group_id 冲突、跨语言（C/Rust/Go）实现更简单；代价是允许少量容量浪费（用户与群各自预留容量）。详见 [`有界集合方案.md`](有界集合方案.md)。
+拆分的收益：key 永远纯 uint64、无需 tagged union / packed key、不会发生 uid 与 group_id 冲突；代价是允许少量容量浪费（用户与群各自预留容量）。详见 [`有界集合方案.md`](有界集合方案.md)。
 
 ```mermaid
 flowchart TD
-  Read[getUserInfos / getGroupInfos] --> Cache{对应域 FifoU64Map}
+  Read[getUserInfos / getGroupInfos] --> Cache{对应域 FifoMap}
   Cache -->|命中未过期| ReturnFresh[同步返回缓存值]
   Cache -->|命中过期| ReturnStale[同步返回旧值并入队]
   Cache -->|未命中| ReturnEmpty[同步返回空值并入队]
@@ -508,33 +508,20 @@ storage(open DB + read meta)
 | 公开分页 limit | 500 | `clampOptionalPageLimit()` 硬封顶 |
 | batch 网络请求 | 500 | 构造期和服务端配置共同约束 |
 | 同步批次 | 200 | `DEFAULT_SYNC_BATCH_SIZE` |
-| 用户显示信息缓存 | 10000 | 独立 `FifoU64Map`，FIFO 淘汰 |
-| 群显示信息缓存 | 10000 | 与用户对称的独立 `FifoU64Map`，FIFO 淘汰 |
+| 用户显示信息缓存 | 10000 | 独立 `FifoMap`，FIFO 淘汰 |
+| 群显示信息缓存 | 10000 | 与用户对称的独立 `FifoMap`，FIFO 淘汰 |
 | 显示信息队列 | 2000 | 每个域 pending + loading 合计；用户与群相互独立 |
 | 转发包下载 | 1 MB | 读取 `arrayBuffer()` 前检查 `Content-Length` |
 | 同类型通知任务 | 1 个 pending 标记 | 防止通知 Promise 链无界增长 |
+| BaseDataGateway 通知累积器 | `batchMaxLimit`（默认 500） | 5 个 `pending*` 累积器（见 [`有界集合方案.md`](有界集合方案.md) 第 6 节），FIFO 淘汰 |
+| SqliteWorkerApi 并发调用 | 256 | `DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS`，超限立即 reject |
 | 事件 listener | 无硬上限 | 超过 10 个开发期告警 |
 
-所有长期驻留集合都建立在「容量在构造时确定、size 永不超过 capacity」的有界结构（`FifoU64Map` / `BoundedU64Set`）之上，因此 SDK 峰值内存可估算；其中 `BoundedU64Set` 基于定长 TypedArray 可静态精确计算字节上界，`FifoU64Map` 改用原生 Map 实现，估算为粗略上界（详见 [`有界集合方案.md`](有界集合方案.md) 第 2 节）。详见 [`有界集合方案.md`](有界集合方案.md)。
-
-`YimsgClient.estimateMaxMemoryBytes(options)` 估算 SDK 可控的长期 JS 堆上界，不包含 UI DOM、图片解码、业务方 listener 闭包、调用方无限并发产生的瞬态数据，也不包含 SQLite / OPFS 磁盘副本。
-
-当前公式（各有界集合满载字节由 `estimateFifoU64MapBytes` / `estimateBoundedU64SetBytes` 计算）：
-
-```text
-totalBytes
-  = profileUserCacheBytes   // 用户显示信息 FifoU64Map(fifo) 满载，由 cacheMaxEntries 决定
-  + profileGroupCacheBytes  // 群显示信息 FifoU64Map(fifo) 满载，由 cacheMaxEntries 决定
-  + profileQueueBytes       // 4 × 待拉取/在飞 BoundedU64Set 满载，由 profileLoadQueueMaxEntries 决定
-  + pendingRequestsBytes    // 待响应请求 FifoU64Map 满载，由 maxPendingRequests 决定
-  + DEFAULT_SYNC_BATCH_SIZE * BYTES_PER_SYNC_MESSAGE
-  + DEFAULT_MAX_FORWARD_BUNDLE_BYTES
-  + SDK_BASELINE_BYTES
-```
+所有长期驻留集合都建立在「容量在构造时确定、size 永不超过 capacity」的有界结构（`FifoMap` / `FifoSet` / `BoundedQueue`）之上。`FifoMap` / `FifoSet` 基于原生 Map / Set 实现，不再提供字节上界静态估算；详见 [`有界集合方案.md`](有界集合方案.md)。
 
 ### 11.4 运行时统计
 
-`client.getBoundedCollectionStats()` 返回所有有界集合的实时统计（`size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor`），与 `estimateMaxMemoryBytes()` 的「理论上界」互补，反映「当前实际占用」，用于 benchmark、内存诊断与回归监控。
+`client.getBoundedCollectionStats()` 返回所有有界集合的实时统计（`size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor`），反映「当前实际占用」，用于 benchmark、内存诊断与回归监控。
 
 ## 12. 当前评估与演进指导
 
@@ -574,7 +561,7 @@ totalBytes
 - **公开面薄且稳定。** 单 `YimsgClient` 入口降低接入成本，内部 transport、frame、SQLite、sync cursor 和缓存结构不外泄。
 - **协议一致性强。** type ↔ request / response / notification 的机械映射由 `protocolgen` 生成，减少手写 switch 漂移。
 - **状态源单一。** persistent 本地库只是服务端状态缓存，只有 sync 链路写入，action 成功后不直接改本地表。
-- **资源可预测。** 长期驻留集合全部有容量、淘汰或拒绝策略，能用 `estimateMaxMemoryBytes()` 和统计接口解释内存。
+- **资源可预测。** 长期驻留集合全部有容量与淘汰策略，能用 `getBoundedCollectionStats()` 统计接口解释内存。
 - **UI 无关。** SDK 不保存选中会话、滚动窗口、组件状态或完整页面数据，UIKit 和业务 UI 可以独立演进。
 
 #### 缺点

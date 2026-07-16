@@ -1,7 +1,12 @@
+import { FifoMap } from '../internal/bounded';
+import { DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS } from '../internal/sdk-defaults';
+
 export class SqliteWorkerApi {
   private worker: Worker;
   private nextId = 0;
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private readonly pending = new FifoMap<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>({
+    capacity: DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS,
+  });
 
   constructor() {
     this.worker = new Worker(
@@ -20,6 +25,10 @@ export class SqliteWorkerApi {
 
   private call(method: string, args: unknown[]): Promise<unknown> {
     return new Promise((resolve, reject) => {
+      if (this.pending.size >= DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS) {
+        reject(new Error(`SQLite worker 并发调用已达上限（最多 ${DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS} 个）`));
+        return;
+      }
       const id = this.nextId++;
       this.pending.set(id, { resolve, reject });
       this.worker.postMessage({ id, method, args });
@@ -52,9 +61,9 @@ export class SqliteWorkerApi {
 
   terminate(): void {
     this.worker.terminate();
-    for (const p of this.pending.values()) {
+    this.pending.forEach((p) => {
       p.reject(new Error('Worker terminated'));
-    }
+    });
     this.pending.clear();
   }
 }

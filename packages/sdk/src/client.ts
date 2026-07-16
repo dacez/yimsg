@@ -65,7 +65,6 @@ import type {
   UploadResult,
   UserDisplayInfo,
   UserInfo as PublicUserInfo,
-  SdkMaxMemoryEstimate,
 } from "./types";
 import type { MsgType } from "./models";
 import { MSG_TYPE_TEXT } from "./constants";
@@ -73,23 +72,9 @@ import {
   DEFAULT_MAX_BATCH_LIMIT,
   DEFAULT_MAX_PAGE_LIMIT,
   DEFAULT_RECALL_WINDOW_SECONDS,
-  DEFAULT_SYNC_BATCH_SIZE,
-  DEFAULT_MAX_FORWARD_BUNDLE_BYTES,
   DEFAULT_CACHE_TTL_SECONDS,
   DEFAULT_CACHE_MAX_ENTRIES,
-  DEFAULT_PROFILE_LOAD_QUEUE_MAX_ENTRIES,
-  DEFAULT_WS_MAX_PENDING_REQUESTS,
-  BYTES_PER_DISPLAY_CACHE_VALUE,
-  BYTES_PER_PENDING_REQUEST_VALUE,
-  BYTES_PER_SYNC_MESSAGE,
-  SDK_BASELINE_BYTES,
-  DISPLAY_CACHE_BUCKET_CAPACITY,
-  DISPLAY_QUEUE_LOAD_FACTOR,
 } from "./internal/sdk-defaults";
-import {
-  estimateFifoU64MapBytes,
-  estimateBoundedU64SetBytes,
-} from "./internal/bounded";
 import { clampBatchLimit, clampOptionalPageLimit } from "./internal/limits";
 import {
   mapUserDisplayInfo,
@@ -303,117 +288,11 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   /**
    * 返回所有长期驻留有界集合的实时运行时统计（size / capacity / loadFactor /
    * rejectCount / evictionCount 等），用于 benchmark、内存诊断与回归监控。
-   * 与 estimateMaxMemoryBytes() 的「理论上界」互补：本方法反映「当前实际占用」。
    */
   getBoundedCollectionStats(): BoundedCollectionStats {
     return freezeObject({
       displayInfoCache: this._displayInfoCache.stats(),
       pendingRequests: this._transport.pendingRequestsStats(),
-    });
-  }
-
-  /**
-   * 静态计算当前 ClientOptions 配置下 SDK 的最大 JS 堆内存用量（字节）。
-   *
-   * 该方法纯静态、无副作用，可在构造实例前调用，用于容量评估或配置合理性检查。
-   * 返回值是理论上界：所有有界数据结构同时达到上限时的估算总和；
-   * 实际峰值因 V8 内部优化（内联缓存、压缩指针、GC）、字段真实长度和使用路径不同而更低。
-   *
-   * ## 计算公式
-   * ```
-   * totalBytes
-   *   = profileUserCacheBytes  (= 用户显示信息 FifoU64Map 满载字节，由 cacheMaxEntries 决定)
-   *   + profileGroupCacheBytes (= 群显示信息 FifoU64Map 满载字节，由 cacheMaxEntries 决定)
-   *   + profileQueueBytes      (= 4 × 待拉取/在飞 BoundedU64Set 满载字节，由 profileLoadQueueMaxEntries 决定)
-   *   + pendingRequestsBytes   (= 待响应请求 FifoU64Map 满载字节，由 maxPendingRequests 决定)
-   *   + syncBatchBytes         (= 200 × 640 = 128,000  — 常量，不受配置影响)
-   *   + forwardBundleBytes     (= 1,048,576           — 常量，不受配置影响)
-   *   + baselineBytes          (= 65,536              — 常量，不受配置影响)
-   * ```
-   *
-   * ## 论证
-   * 所有长期驻留集合均为「size 永不超过 capacity」的有界结构（FifoU64Map / BoundedU64Set），
-   * 容量在构造时由配置决定，运行期不再增长。
-   * - `profileUserCacheBytes` / `profileGroupCacheBytes`：用户与群各一套 FifoU64Map，
-   *   满载字节 = `capacity × (Map 条目结构开销 96 字节 + 值字节)`，由 `estimateFifoU64MapBytes` 计算；
-   *   单值 DisplayCacheEntry ≈ 448 字节（对象头64 + username64 + name64 + avatar192 + remark48 + expireAt8）。
-   *   FIFO 淘汰保证 size ≤ capacity（见 cache.ts ScopeStore）。
-   * - `profileQueueBytes`：用户与群各有 pending + loading 两个 BoundedU64Set，共 4 个，容量向上对齐到
-   *   `bucketCount(2^n) × bucketCapacity`，由 `estimateBoundedU64SetBytes` 计算；
-   *   reject 策略保证「队列满」精确发生在 profileLoadQueueMaxEntries（见 cache.ts enqueue）。
-   * - `pendingRequestsBytes`：WsTransport.sendBinary() 在 size ≥ maxPendingRequests 时立即拒绝，
-   *   底层 FifoU64Map 进一步保证 size ≤ capacity（见 connection.ts），满载字节由
-   *   `estimateFifoU64MapBytes` 计算；单值 PendingReq ≈ 384 字节
-   *   （resolve+reject 闭包256 + timer16 + codec 引用8 + 对象头64）。
-   * - `syncBatchBytes`：handleMessagesReceived 每次 syncMessages 最多拉取 DEFAULT_SYNC_BATCH_SIZE=200 条，
-   *   立即通过 emitMessagesReceived 派发后释放，不累积（见 base.ts）。
-   *   每条 Message ≈ 624 字节，上取整至 640，共 200×640 = 128,000 字节。
-   * - `forwardBundleBytes`：loadForwardedMessages 在 arrayBuffer() 前校验 Content-Length ≤
-   *   DEFAULT_MAX_FORWARD_BUNDLE_BYTES=1 MB，超限抛错，瞬态峰值有界。
-   * - `baselineBytes`：固定对象（SessionLifecycleMachine、EventEmitter、
-   *   WsTransport 基础字段、各协作对象）常驻内存，经实测约 64 KB。
-   *
-   * 持久存储模式下 本地磁盘副本属于 `StorageManager` 管辖，不计入 JS 堆，本方法不涵盖。
-   *
-   * @param options 与构造 YimsgClient 使用相同的选项对象；未传则使用所有 SDK 默认值。
-   * @returns 只读的 SdkMaxMemoryEstimate，包含总字节数和各分项明细。
-   */
-  static estimateMaxMemoryBytes(
-    options: ClientOptions = {},
-  ): SdkMaxMemoryEstimate {
-    const cacheMaxEntries = Math.max(
-      0,
-      options.cacheMaxEntries ?? DEFAULT_CACHE_MAX_ENTRIES,
-    );
-    const profileLoadQueueMaxEntries = Math.max(
-      0,
-      options.profileLoadQueueMaxEntries ??
-        DEFAULT_PROFILE_LOAD_QUEUE_MAX_ENTRIES,
-    );
-    const maxPendingRequests = Math.max(
-      0,
-      options.maxPendingRequests ?? DEFAULT_WS_MAX_PENDING_REQUESTS,
-    );
-
-    // 用户与群显示信息缓存现为两套独立的固定容量 FifoU64Map（FIFO 淘汰）。
-    const profileUserCacheBytes = estimateFifoU64MapBytes(
-      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE,
-    );
-    const profileGroupCacheBytes = estimateFifoU64MapBytes(
-      cacheMaxEntries, BYTES_PER_DISPLAY_CACHE_VALUE,
-    );
-    // 待拉取 / 在飞队列：用户与群各 2 个 BoundedU64Set（pending + loading），共 4 个。
-    const profileQueueBytes = 4 * estimateBoundedU64SetBytes(
-      profileLoadQueueMaxEntries, DISPLAY_CACHE_BUCKET_CAPACITY, DISPLAY_QUEUE_LOAD_FACTOR,
-    );
-    // 待响应请求：固定容量 FifoU64Map（size 由 sendBinary() 的前置检查保证 ≤ capacity）。
-    const pendingRequestsBytes = estimateFifoU64MapBytes(
-      maxPendingRequests, BYTES_PER_PENDING_REQUEST_VALUE,
-    );
-    const syncBatchBytes = DEFAULT_SYNC_BATCH_SIZE * BYTES_PER_SYNC_MESSAGE;
-    const forwardBundleBytes = DEFAULT_MAX_FORWARD_BUNDLE_BYTES;
-    const baselineBytes = SDK_BASELINE_BYTES;
-
-    const totalBytes =
-      profileUserCacheBytes +
-      profileGroupCacheBytes +
-      profileQueueBytes +
-      pendingRequestsBytes +
-      syncBatchBytes +
-      forwardBundleBytes +
-      baselineBytes;
-
-    return Object.freeze({
-      totalBytes,
-      breakdown: Object.freeze({
-        profileUserCacheBytes,
-        profileGroupCacheBytes,
-        profileQueueBytes,
-        pendingRequestsBytes,
-        syncBatchBytes,
-        forwardBundleBytes,
-        baselineBytes,
-      }),
     });
   }
 

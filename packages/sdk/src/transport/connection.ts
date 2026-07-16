@@ -24,7 +24,7 @@ import {
   DEFAULT_WS_HEARTBEAT_INTERVAL_MS,
   DEFAULT_WS_MAX_PENDING_REQUESTS,
 } from '../internal/sdk-defaults';
-import { FifoU64Map, type BoundedStats } from '../internal/bounded';
+import { FifoMap, type BoundedStats } from '../internal/bounded';
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -95,7 +95,7 @@ export class WsTransport implements ClientTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reqIdCounter = 0;
-  private readonly pendingRequests: FifoU64Map<PendingReq>;
+  private readonly pendingRequests: FifoMap<string, PendingReq>;
   private intentionalClose = false;
   /** 连续重连尝试计数；成功建连后清零。 */
   private reconnectAttempts = 0;
@@ -147,10 +147,10 @@ export class WsTransport implements ClientTransport {
     this.wsFactory = options.wsFactory ?? ((u: string) => new WebSocket(u));
     this.maxPendingRequests = options.maxPendingRequests ?? DEFAULT_WS_MAX_PENDING_REQUESTS;
     this.reconnectNotifyThreshold = options.reconnectNotifyThreshold ?? DEFAULT_WS_RECONNECT_NOTIFY_THRESHOLD;
-    // 待响应请求采用固定容量 FifoU64Map：size 永不超过 maxPendingRequests——
+    // 待响应请求采用固定容量 FifoMap：size 永不超过 maxPendingRequests——
     // sendBinary() 在 size >= maxPendingRequests 时提前拒绝新请求（见下），
     // 因此底层 FIFO 淘汰在正常路径下不会触发，仅作为兜底保护。
-    this.pendingRequests = new FifoU64Map<PendingReq>({
+    this.pendingRequests = new FifoMap<string, PendingReq>({
       capacity: this.maxPendingRequests,
     });
   }

@@ -94,7 +94,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 ## Memory Guarantees
 
-Every long-lived collection in the Yimsg SDK is a **bounded collection**: capacity is fixed at construction time and never grows at runtime — unbounded Map / Set / Queue growth is prohibited — so the SDK's peak memory footprint is statically estimable. See [`packages/sdk/docs/有界集合方案.md`](packages/sdk/docs/有界集合方案.md) (Chinese) for details.
+Every long-lived collection in the Yimsg SDK is a **bounded collection**: capacity is fixed at construction time and size never exceeds that capacity — unbounded Map / Set / Queue growth is prohibited. See [`packages/sdk/docs/有界集合方案.md`](packages/sdk/docs/有界集合方案.md) (Chinese) for details.
 
 Key upper bounds:
 
@@ -109,15 +109,11 @@ Key upper bounds:
 
 The infrastructure lives under `packages/sdk/src/internal/bounded/`. Every long-lived collection has its capacity fixed at construction time and its size never exceeds that capacity:
 
-- `FifoU64Map<V>`: a capacity-bounded uint64 -> V FIFO map (`V` defaults to `string`, but any value type is supported), backed by a native `Map`; once full, writing a new key evicts the oldest one.
-- `BoundedU64Set`: a structure with truly fixed capacity, fixed bucket count, and fixed slot count — open addressing plus in-bucket linear scanning, no linked lists, no dynamic chaining, no heap fragmentation, making it easy to port across languages (Rust/Go/C). Reject policy, used for "pending / in-flight" queues.
+- `FifoMap<K, V>`: a capacity-bounded, fully generic FIFO map — key and value can be any type — backed by a native `Map`; once full, writing a new key evicts the oldest one. Implements `Symbol.iterator`, so it behaves like a native `Map` for `for...of` and spread.
+- `FifoSet<T>`: the `FifoSet` counterpart of `FifoMap` — a capacity-bounded FIFO dedup set for elements of any type, backed by a native `Set`; adds `drain()` for atomically draining all elements.
 - `BoundedQueue<V>`: a fixed-capacity ring-buffer FIFO queue supporting `reject` / `overwrite_oldest`.
 
-Each collection exposes `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` statistics (`FifoU64Map` reports them as `bucketCount=1`, `bucketCapacity=capacity`, `rejectCount=0`), retrievable via `client.getBoundedCollectionStats()`, for benchmarking and debugging.
-
-### Peak Memory Estimation
-
-`YimsgClient.estimateMaxMemoryBytes(options)` rolls every bounded collection (caches, queues, pending requests, sync batches, baseline) into a theoretical peak-memory estimate. It's purely static with no side effects and can be called before an instance is even constructed. `BoundedU64Set` / `BoundedQueue` components are statically exact; `FifoU64Map` components are a rough upper-bound estimate — see §11 of [`packages/sdk/docs/sdk设计方案.md`](packages/sdk/docs/sdk设计方案.md) (Chinese) for details.
+Each collection exposes `size` / `capacity` / `bucketCount` / `bucketCapacity` / `rejectCount` / `evictionCount` / `loadFactor` statistics (`FifoMap` / `FifoSet` report them as `bucketCount=1`, `bucketCapacity=capacity`, `rejectCount=0`), retrievable via `client.getBoundedCollectionStats()`, for benchmarking and debugging.
 
 ## Quick Start
 
