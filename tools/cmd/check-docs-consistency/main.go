@@ -422,7 +422,7 @@ func (c *checker) checkActionsDoc() {
 	// internal/ws/action_dispatch_gen.go，连接层不再手写 dispatch switch。
 	code := c.readFile(filepath.Join(c.root, "internal/ws/action_dispatch_gen.go"))
 	proto := c.readFile(filepath.Join(c.root, "internal/protocol/yimsg.proto"))
-	doc := c.readFile(filepath.Join(c.root, "docs/接口总览.md"))
+	doc := c.readFile(filepath.Join(c.root, "docs/protocol/接口总览.md"))
 	if code == "" || proto == "" || doc == "" {
 		return
 	}
@@ -463,8 +463,8 @@ func (c *checker) checkActionsDoc() {
 		c.addError("connection.go dispatch switch 缺少 Type：" + strings.Join(missingTypes, ", "))
 	}
 
-	secondChapterStart := strings.Index(doc, "### 6.1 WebSocket action 列表")
-	summaryStart := strings.Index(doc, "### 6.2 对外接口汇总")
+	secondChapterStart := strings.Index(doc, "### 3.1 WebSocket action 列表")
+	summaryStart := strings.Index(doc, "### 3.2 对外接口汇总")
 	if secondChapterStart < 0 || summaryStart < 0 {
 		c.addError("接口总览缺少 WebSocket action 列表或汇总章节")
 		return
@@ -503,10 +503,10 @@ func (c *checker) checkActionsDoc() {
 	}
 
 	// 校验 SDK ↔ 服务端 action 映射表（§ 3.2）
-	mapStart := strings.Index(doc, "### 3.2 SDK ↔ 服务端 action 映射")
+	mapStart := strings.Index(doc, "### 2.1 SDK ↔ 服务端 action 映射")
 	if mapStart >= 0 {
 		var mappingSection string
-		if mapEnd := strings.Index(doc[mapStart:], "### 3.3"); mapEnd >= 0 {
+		if mapEnd := strings.Index(doc[mapStart:], "### 2.2"); mapEnd >= 0 {
 			mappingSection = doc[mapStart : mapStart+mapEnd]
 		} else if mapEnd := strings.Index(doc[mapStart:], "---"); mapEnd >= 0 {
 			mappingSection = doc[mapStart : mapStart+mapEnd]
@@ -525,7 +525,7 @@ func (c *checker) checkActionsDoc() {
 		}
 		sort.Strings(unknownMapped)
 		if len(unknownMapped) > 0 {
-			c.addError("接口总览 § 3.2 映射到不存在的 action：" + strings.Join(unknownMapped, ", "))
+			c.addError("接口总览 § 2.1 映射到不存在的 action：" + strings.Join(unknownMapped, ", "))
 		}
 	}
 }
@@ -547,7 +547,7 @@ var tsControlKeywords = map[string]bool{
 
 func (c *checker) checkSDKDoc() {
 	client := c.readFile(filepath.Join(c.root, "frontend/src/sdk/client.ts"))
-	doc := c.readFile(filepath.Join(c.root, "docs/frontend/sdk接口说明.md"))
+	doc := c.readFile(filepath.Join(c.root, "docs/frontend/sdk/sdk接口说明.md"))
 	if client == "" || doc == "" {
 		return
 	}

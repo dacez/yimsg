@@ -15,7 +15,7 @@ import (
 // WebSocket 通道是强类型 protobuf（内部路由按 internal/protocol/yimsg.proto
 // 生成的数值 type 做 switch），插件如需暴露新的对外 action，必须像核心 action
 // 一样先在 yimsg.proto 里定义明确的 message 并跑 protocolgen，不存在通用的
-// JSON 按请求分发层，详见 docs/插件架构方案.md。
+// JSON 按请求分发层，详见 docs/server/插件架构方案.md。
 type Plugin interface {
 	// Name 返回插件唯一标识符
 	Name() string

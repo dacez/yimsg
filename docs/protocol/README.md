@@ -1,9 +1,9 @@
 # 协议治理方案
 
 > 主要对照：`internal/protocol/yimsg.proto`、`internal/protocol/pb/yimsg.pb.go`、`frontend/src/sdk/generated/yimsg.ts`、`internal/ws/connection.go`、`frontend/src/sdk/transport/`。
-> 最后复核：2026-07-12。
+> 最后复核：2026-07-16。
 > 触发更新：WebSocket interface、请求 / 响应字段、错误码、通知类型、SDK ↔ 服务端映射或协议生成策略变化时同步更新。
-> 入口关系：上级索引见 [`../README.md`](../README.md)；完整接口矩阵见 [`../接口总览.md`](../接口总览.md)；本文负责协议一致性治理和代码生成规则。
+> 入口关系：上级索引见 [`../README.md`](../README.md)；完整接口矩阵见 [`接口总览.md`](接口总览.md)；本文负责协议一致性治理和代码生成规则。
 
 ## 1. 定位
 
@@ -109,7 +109,7 @@ message ExampleResponse {
 2. 确认 `frontend/node_modules` 中已有 `grpc-tools` / `ts-proto`，且本机可执行 `protoc-gen-go`。
 3. 运行 `go run ./tools/cmd/protocolgen` 刷新生成物。
 4. 同步服务端 dispatch、SDK transport、E2E 和前端单测。
-5. 同步 `docs/接口总览.md`、本文和相关专题文档。
+5. 同步 [`接口总览.md`](接口总览.md)、本文和相关专题文档。
 6. 从仓库根目录运行 `./tools/run_all_tests.sh`。
 
 只读校验生成物是否最新：
@@ -136,14 +136,3 @@ go run ./tools/cmd/protocolgen --check
 5. 补充 request_id 上限和溢出策略，前端长期连接达到 `uint64` 边界前应主动重连或重置会话。
 
 当前已有跨语言 golden frame 回归：Go 测试 `internal/ws/golden_frame_test.go` 和 TypeScript 测试 `frontend/tests/unit/sdk/protocol-golden-frame.test.ts` 各自硬编码同一组样例常量（`LoginRequest` 的 protobuf body，以及 big-endian / little-endian 两个完整 frame），共同校验 magic、codec、reserved、CRC、size、request_id、type 和 body 字节。
-
-## 8. 目录结构建议
-
-当前不建议把仓库根目录立即改成 `docs/`、`frontend/`、`backend/`、`protocol/`、`scripts/` 五段式。这个项目是 Go 主仓库，`cmd/`、`internal/`、`tests/`、`tools/` 符合 Go 生态约定；强行移动到 `backend/` 会影响 import path、脚本、文档链接和部署入口，收益暂时不足。
-
-更稳妥的演进方式：
-
-1. 短期保持现状，只把协议入口文档和 README 索引写清楚。
-2. 如果协议需要独立发布，再考虑新增顶层 `protocol/`，把 `.proto`、生成配置和 golden tests 迁出。
-3. 如果后端要独立成可发布服务，再整体规划 `backend/`，同时调整 Go module 路径、CI、脚本和部署文档。
-4. `tools/` 继续承载真实脚本实现；不建议改名为 `scripts/`，因为当前已有 `tools/scripts/` 与兼容入口。

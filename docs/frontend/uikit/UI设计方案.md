@@ -3,7 +3,7 @@
 > 主要对照：`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/style.css`、`frontend/src/uikit/app/bounded-stream-window.ts`、`frontend/src/uikit/app/view-refresh.ts`。
 > 最后复核：2026-07-16。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
-> 入口关系：上级索引见 [`README.md`](README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
+> 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
 ## 目录
 
@@ -57,7 +57,7 @@
 
 本文档详细描述 UI 视图层（`frontend/src/uikit/app/views/`、`frontend/src/uikit/app/main-app.ts`、`frontend/src/uikit/app/utils.ts`、`frontend/src/uikit/app/bounded-stream-window.ts`）的设计逻辑。原独立的“有界消息流窗口改造”说明已经并入本文，本文是 UI 结构、交互、有界消息流窗口和样式约束的单一事实源。
 
-**依赖关系：** UI 层仅通过当前 `AppInstance.client` 与业务逻辑交互，不直接接触 WebSocket、DataGateway 或缓存内部。SDK 的公开接口和事件见 [SDK 设计方案](sdk设计方案.md)；双模式架构、DataGateway、内存状态等全局设计见 [前端设计方案](前端设计方案.md)；UIKit 的整体架构与嵌入接口见 [UIKit 方案](UIKit方案.md)。
+**依赖关系：** UI 层仅通过当前 `AppInstance.client` 与业务逻辑交互，不直接接触 WebSocket、DataGateway 或缓存内部。SDK 的公开接口和事件见 [SDK 设计方案](../sdk/sdk设计方案.md)；双模式架构、DataGateway、内存状态等全局设计见 [前端设计方案](../前端设计方案.md)；UIKit 的整体架构与嵌入接口见 [UIKit 方案](UIKit方案.md)。
 
 ---
 
@@ -1115,12 +1115,12 @@ SDK 事件 → main-app.ts 事件处理 → 调用 render 函数 → 读取 clie
 
 ## 14. SDK 使用边界
 
-SDK 公开方法、类型和事件的完整清单统一维护在 [`sdk接口说明.md`](sdk接口说明.md)，UI 文档不再重复逐方法矩阵。本文只保留 UI 层使用 SDK 时需要遵守的边界：
+SDK 公开方法、类型和事件的完整清单统一维护在 [`sdk接口说明.md`](../sdk/sdk接口说明.md)，UI 文档不再重复逐方法矩阵。本文只保留 UI 层使用 SDK 时需要遵守的边界：
 
 1. UI 通过 `YimsgClient` 门面调用 SDK，不直接访问 WebSocket transport、DataGateway 或本地持久存储 worker。
 2. 会话、联系人、群成员和消息列表都使用分页接口，不恢复全量快照读取。
 3. UI 只解析 `ConversationDescriptor`、`MessageContentDescriptor` 等 SDK 输出模型，不自行约定会话 key 前缀或扩展消息 envelope。
-4. SDK 公开 API、事件或 `ClientOptions` 变化时，先同步 [`sdk接口说明.md`](sdk接口说明.md) 和 [`sdk设计方案.md`](sdk设计方案.md)；只有 UI 调用方式或交互边界变化时才更新本文。
+4. SDK 公开 API、事件或 `ClientOptions` 变化时，先同步 [`sdk接口说明.md`](../sdk/sdk接口说明.md) 和 [`sdk设计方案.md`](../sdk/sdk设计方案.md)；只有 UI 调用方式或交互边界变化时才更新本文。
 5. 提交前运行 `./tools/check_docs_consistency.sh` 复核 SDK 公开方法清单；涉及 UI 行为或实现时运行 `./tools/run_all_tests.sh`。
 
 ## 15. 维护检查点
