@@ -1,7 +1,7 @@
 # DisplayInfoCache 接口说明
 
 > 主要对照：`frontend/src/sdk/state/cache.ts`、`frontend/src/sdk/client.ts`、`frontend/src/sdk/client-session-runtime.ts`、`frontend/tests/unit/sdk/cache.test.ts`。  
-> 最后复核：2026-05-30。
+> 最后复核：2026-07-16。
 > 触发更新：`DisplayInfoCache` 构造参数、公开方法、回调字段或缓存协作语义变化时同步更新。  
 > 入口关系：上级索引见 [`README.md`](README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；`DataGateway` 协作接口见 [`DataGateway接口.md`](DataGateway接口.md)。
 
@@ -22,7 +22,7 @@
 1. 读取接口永远同步返回：先读内存缓存，命中返回当前值，过期返回旧值，未命中先放空值。
 2. 过期 / 未命中 key 立即进入有界队列；`DisplayInfoCache` 按短时间窗口合并相邻同类 key 后调用 `DataGateway.get_user_infos()` / `get_group_infos()`。
 3. 缓存 TTL、条目上限、队列上限、批量上限和请求合并窗口只在构造时注入，认证后不再运行期改变。
-4. `DataGateway.get_user_infos()` / `get_group_infos()` 会接收本次缓存 TTL 与更新回调；persistent 模式先返回本地 `displayinfo` 数据，再异步刷新过期 / 未命中项；memory 模式先返回空数组，再异步请求服务端。
+4. `DataGateway.get_user_infos()` / `get_group_infos()` 会接收本次缓存 TTL 与更新回调；persistent 模式先返回本地 `displayinfo` 数据，再异步刷新过期 / 未命中项；instant 模式先返回空数组，再异步请求服务端。
 5. `DataGateway` 异步拿到服务端最新资料后通过参数回调让 `DisplayInfoCache` 写入内存缓存；缓存过期时间按本次写入时间加 TTL 计算，不使用服务端资料的业务 `updated_at`。
 6. `DisplayInfoCache` 写入后发 `display:updated` 通知 UI 重读。
 

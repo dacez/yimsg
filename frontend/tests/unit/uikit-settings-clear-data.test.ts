@@ -2,7 +2,7 @@
  * uikit 设置页「清除数据」按钮单元测试。
  *
  * 覆盖 `views/settings.ts` 的 clearData 分支：
- * - persistent 模式下展示按钮，memory 模式下隐藏；
+ * - persistent 模式下展示按钮，instant 模式下隐藏；
  * - 取消确认弹窗不触发 startSession；
  * - 确认后以 resetLocalData='current-user' 重新初始化持久化会话，成功后刷新 UI 并 toast；
  * - resetLocalDataError / degraded 两种失败路径的处理。
@@ -58,7 +58,7 @@ function startSessionResult(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function createApp(options: { mode: 'memory' | 'persistent'; confirmed?: boolean } = { mode: 'persistent', confirmed: true }) {
+function createApp(options: { mode: 'instant' | 'persistent'; confirmed?: boolean } = { mode: 'persistent', confirmed: true }) {
   const elements = new Map<string, ReturnType<typeof createElement>>();
   const getElement = (id: string, initial: Record<string, unknown> = {}) => {
     if (!elements.has(id)) elements.set(id, createElement(initial));
@@ -111,14 +111,14 @@ describe('uikit settings 清除数据', () => {
     vi.clearAllMocks();
   });
 
-  it('persistent 模式下展示「清除数据」卡片，memory 模式下隐藏', () => {
+  it('persistent 模式下展示「清除数据」卡片，instant 模式下隐藏', () => {
     const persistentCtx = createApp({ mode: 'persistent' });
     createSettingsView(persistentCtx.app).renderSettings();
     expect(persistentCtx.elements.get('settings-storage-card')!.classList.contains('hidden')).toBe(false);
 
-    const memoryCtx = createApp({ mode: 'memory' });
-    createSettingsView(memoryCtx.app).renderSettings();
-    expect(memoryCtx.elements.get('settings-storage-card')!.classList.contains('hidden')).toBe(true);
+    const instantCtx = createApp({ mode: 'instant' });
+    createSettingsView(instantCtx.app).renderSettings();
+    expect(instantCtx.elements.get('settings-storage-card')!.classList.contains('hidden')).toBe(true);
   });
 
   it('取消确认弹窗不会调用 startSession', async () => {
@@ -163,17 +163,17 @@ describe('uikit settings 清除数据', () => {
     expect(ctx.mocks.views.chat.renderConversationList).not.toHaveBeenCalled();
   });
 
-  it('降级为 memory：更新本地存储模式并上报 mode:persistent-fallback', async () => {
+  it('降级为 instant：更新本地存储模式并上报 mode:persistent-fallback', async () => {
     const ctx = createApp({ mode: 'persistent', confirmed: true });
     ctx.mocks.client.startSession.mockResolvedValueOnce(
-      startSessionResult({ degraded: true, actualStorage: 'memory', mode: 'memory' }),
+      startSessionResult({ degraded: true, actualStorage: 'instant', mode: 'instant' }),
     );
     const view = createSettingsView(ctx.app);
     view.setupSettings();
 
     await ctx.elements.get('clear-data-btn')!.trigger('click');
 
-    expect(ctx.mocks.storage.setStoredMode).toHaveBeenCalledWith('memory');
+    expect(ctx.mocks.storage.setStoredMode).toHaveBeenCalledWith('instant');
     expect(ctx.mocks.storage.clearStoredPersistentUid).toHaveBeenCalledTimes(1);
     expect(ctx.mocks.emitAppError).toHaveBeenCalledWith(expect.any(Error), 'mode:persistent-fallback');
     expect(ctx.mocks.showToast).toHaveBeenCalledWith('settings.clearDataSuccess', 'success');

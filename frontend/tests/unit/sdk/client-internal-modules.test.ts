@@ -60,7 +60,7 @@ describe('client internal guards', () => {
       isSessionInitialized: false,
       sessionState: 'authenticated',
       connectionState: 'connected',
-      mode: 'memory',
+      mode: 'instant',
     } as const;
 
     expect(requireAuthenticated(snapshot, 'tok', 'sendMessage')).toEqual({ uid: '100', token: 'tok' });

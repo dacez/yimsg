@@ -29,7 +29,7 @@ export class SessionLifecycleMachine {
   private state: MutableLifecycleState = {
     sessionState: 'idle',
     connectionState: 'disconnected',
-    mode: 'memory',
+    mode: 'instant',
     currentUid: '',
   };
 

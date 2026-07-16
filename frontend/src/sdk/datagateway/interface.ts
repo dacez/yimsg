@@ -96,7 +96,7 @@ export interface DisplayInfoFetchOptions<TInfo> {
 }
 
 /**
- * DataGateway — memory 和持久存储共用的数据读取接口。
+ * DataGateway — instant 和持久存储共用的数据读取接口。
  *
  * **核心约定：持久存储本地副本与服务端数据同步，
  * 所有读取方法的返回格式必须与服务端一致。**

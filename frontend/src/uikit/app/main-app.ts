@@ -12,7 +12,7 @@ import {
 } from './view-refresh';
 
 export async function initAfterAuth(app: AppInstance, options: {
-  requestedMode?: 'memory' | 'persistent';
+  requestedMode?: 'instant' | 'persistent';
   startSession?: () => Promise<void>;
 } = {}) {
   const mode = app.storage.getStoredMode();
@@ -24,7 +24,7 @@ export async function initAfterAuth(app: AppInstance, options: {
   try {
     if (options.startSession) await options.startSession();
     else await app.client.startSession({
-      storage: effectiveMode === 'persistent' ? 'persistent' : 'memory',
+      storage: effectiveMode === 'persistent' ? 'persistent' : 'instant',
       instanceId: app.runtime.instanceId,
     });
   } catch (error) {

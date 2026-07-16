@@ -2,7 +2,7 @@
  * 多端同步测试 — 同一用户在两个浏览器上下文中登录（模拟两台设备），
  * 验证消息、红点、通讯录变更在两端之间的实时同步。
  *
- * 注：持久存储模式在 headless Chromium 中不支持持久存储后端，因此仅测试 memory + memory 模式。
+ * 注：持久存储模式在 headless Chromium 中不支持持久存储后端，因此仅测试 instant + instant 模式。
  */
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, getMessageTexts } from './helpers';

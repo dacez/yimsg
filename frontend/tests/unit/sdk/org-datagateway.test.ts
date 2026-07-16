@@ -1,5 +1,5 @@
 /**
- * 组织域单测：action 映射、memory 基线（在线展开 + org:updated 重绘信号）、
+ * 组织域单测：action 映射、instant 基线（在线展开 + org:updated 重绘信号）、
  * persistent 本地副本（增量落盘、tombstone 即删、本地展开排序、离职清库、seq_too_old 重建）。
  *
  * org_info / tag_info 是无 seq 的展示字典（get_org_infos / get_tag_infos 走
@@ -36,8 +36,8 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// memory 基线用 BaseDataGateway 的具体子类。
-class MemoryGateway extends BaseDataGateway {}
+// instant 基线用 BaseDataGateway 的具体子类。
+class InstantGateway extends BaseDataGateway {}
 
 describe("组织 action 映射", () => {
   it("sync_tags 响应归一化：child_id/child_type、tombstone、游标", () => {
@@ -64,13 +64,13 @@ describe("组织 action 映射", () => {
   });
 });
 
-describe("组织 memory 基线", () => {
-  let gateway: MemoryGateway;
+describe("组织 instant 基线", () => {
+  let gateway: InstantGateway;
   let transport: WsTransport;
 
   beforeEach(() => {
     transport = mockTransport();
-    gateway = new MemoryGateway(transport);
+    gateway = new InstantGateway(transport);
   });
 
   it("get_tags 在线展开并透传排序结果", async () => {

@@ -159,10 +159,10 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
   if (options.onConversationOpen) eventBus.on('conversation:open', options.onConversationOpen as Parameters<WidgetOn>[1]);
   if (options.onError) eventBus.on('error', options.onError as Parameters<WidgetOn>[1]);
 
-  const requestedMode = options.mode ?? 'memory';
+  const requestedMode = options.mode ?? 'instant';
   const instanceId = resolveInstanceId(host, options);
   const storageAdapter = createEmbeddedStorage({
-    mode: requestedMode === 'memory' ? 'memory' : 'persistent',
+    mode: requestedMode === 'instant' ? 'instant' : 'persistent',
     layout: options.layout ?? 'auto',
     ...(options.token ? { token: options.token } : {}),
   });

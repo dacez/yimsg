@@ -503,7 +503,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       {
         sessionState: "destroyed",
         connectionState: "disconnected",
-        mode: "memory",
+        mode: "instant",
         currentUid: "",
       },
       "destroyed",
@@ -624,7 +624,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       {
         sessionState: "idle",
         connectionState: "disconnected",
-        mode: "memory",
+        mode: "instant",
         currentUid: "",
       },
       "logout",
@@ -637,9 +637,9 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     fileSystem?: SessionFileSystem;
   }): Promise<void> {
     const { uid } = this.requireAuthenticated("startSession");
-    if (options.mode !== "memory" && options.mode !== "persistent") {
+    if (options.mode !== "instant" && options.mode !== "persistent") {
       throw new ValidationError(
-        "startSession 只支持 memory 或 persistent 模式",
+        "startSession 只支持 instant 或 persistent 模式",
         {
           context: "startSession",
           details: { mode: options.mode },
@@ -674,10 +674,10 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     options: SessionStartOptions = {},
   ): Promise<SessionStartResult> {
     const { uid } = this.requireAuthenticated("startSession");
-    const requestedStorage = options.storage ?? "memory";
-    if (requestedStorage !== "memory" && requestedStorage !== "persistent") {
+    const requestedStorage = options.storage ?? "instant";
+    if (requestedStorage !== "instant" && requestedStorage !== "persistent") {
       throw new ValidationError(
-        "startSession 只支持 memory 或 persistent 存储",
+        "startSession 只支持 instant 或 persistent 存储",
         {
           context: "startSession",
           details: { storage: requestedStorage },
@@ -704,7 +704,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     let persistentStorageAvailable = true;
     let actualStorage = requestedStorage;
     let mode: SessionMode =
-      requestedStorage === "persistent" ? "persistent" : "memory";
+      requestedStorage === "persistent" ? "persistent" : "instant";
     let actualFileSystem: SessionFileSystem | null = null;
     let resetLocalDataError: Error | null = null;
 
@@ -713,8 +713,8 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         await this.resolvePersistentFileSystem(requestedFileSystem);
       persistentStorageAvailable = resolved.available;
       if (!persistentStorageAvailable) {
-        actualStorage = "memory";
-        mode = "memory";
+        actualStorage = "instant";
+        mode = "instant";
       } else {
         actualFileSystem = resolved.fileSystem;
       }
@@ -722,7 +722,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
 
     const shouldResetLocalData =
       resetLocalData !== "none" &&
-      !(requestedStorage === "persistent" && actualStorage === "memory");
+      !(requestedStorage === "persistent" && actualStorage === "instant");
     if (shouldResetLocalData) {
       try {
         const scope: Exclude<SessionLocalDataResetScope, "none"> =
@@ -1347,7 +1347,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
 
   /**
    * 展开某个 tag 节点的直接子项（子 tag 与人按绝对排序混合返回）；
-   * 展开组织根传 tagId=orgId；persistent 模式优先读本地副本，memory 模式在线展开。
+   * 展开组织根传 tagId=orgId；persistent 模式优先读本地副本，instant 模式在线展开。
    * 子项展示名（tag 名 / 人昵称）不内嵌在返回结果里，走 getTagInfos / getUserInfos 按需补齐。
    */
   async getTags(params: {

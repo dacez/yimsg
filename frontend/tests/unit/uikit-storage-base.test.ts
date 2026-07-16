@@ -26,19 +26,19 @@ describe('uikit storage-base', () => {
     expect(scope.getStoredLang()).toBe('en');
 
     scope.clearStoredToken();
-    scope.setStoredMode('memory');
+    scope.setStoredMode('instant');
     scope.clearStoredPersistentUid();
     scope.setStoredLayout('mobile');
     scope.setStoredLang('zh');
 
     expect(scope.getStoredToken()).toBeNull();
-    expect(scope.getStoredMode()).toBe('memory');
+    expect(scope.getStoredMode()).toBe('instant');
     expect(scope.getStoredPersistentUid()).toBeNull();
     expect(scope.getStoredLayout()).toBe('mobile');
     expect(scope.getStoredLang()).toBe('zh');
   });
 
-  it('falls back to memory when localStorage throws at runtime', () => {
+  it('falls back to instant when localStorage throws at runtime', () => {
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => {
         throw new Error('read failed');

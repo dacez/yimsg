@@ -35,8 +35,8 @@ export type SessionState =
   | "initializing"
   | "ready"
   | "destroyed";
-export type SessionMode = "memory" | "persistent";
-export type SessionStorageMode = "memory" | "persistent";
+export type SessionMode = "instant" | "persistent";
+export type SessionStorageMode = "instant" | "persistent";
 export type SessionFileSystem = "opfs" | "local";
 export type SessionLocalDataResetScope = "none" | "current-user" | "all";
 export interface SessionStartOptions {
@@ -389,7 +389,7 @@ export interface GroupMemberPage {
 /**
  * 后台同步就绪状态。
  *
- * - memory 模式下无后台同步，`firstSyncComplete` 恒为 `true`，`domains` 为空。
+ * - instant 模式下无后台同步，`firstSyncComplete` 恒为 `true`，`domains` 为空。
  * - persistent 模式下，`init()` 启动后台首轮同步后各域逐步完成；
  *   全部同步域（messages / conversations / contacts / blocklist / mutelist）
  *   至少完成过一次（status 为 success 或 failed）后 `firstSyncComplete` 变为 `true`，

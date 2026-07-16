@@ -7,7 +7,7 @@ import {
 } from "../../../src/sdk/internal/page-cursor";
 
 // 展示通道不透明 keyset 游标 codec：与服务端 internal/service/page.go 的
-// base64url("1" + 0x1f + parts...) 方案保持一致，保证 memory（服务端编码）与
+// base64url("1" + 0x1f + parts...) 方案保持一致，保证 instant（服务端编码）与
 // persistent（本地编码）两种模式下游标可互相解码、可在切换模式时透传。
 
 describe("page-cursor codec", () => {

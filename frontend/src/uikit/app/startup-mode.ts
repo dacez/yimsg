@@ -10,7 +10,7 @@ export function needsInitialModeSelection(token: string | null): boolean {
 }
 
 export function resolveModeAfterAuth(mode: ClientMode | null): ClientMode {
-  return mode ?? 'memory';
+  return mode ?? 'instant';
 }
 
 export function shouldResetPersistentStorage(mode: ClientMode, storedPersistentUid: string | null, currentUid: string): boolean {

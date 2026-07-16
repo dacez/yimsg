@@ -8,7 +8,7 @@ function makeSnapshot(): SessionSnapshot {
   return {
     sessionState: 'ready',
     connectionState: 'connected',
-    mode: 'memory',
+    mode: 'instant',
     currentUid: '100',
     isAuthenticated: true,
     isSessionInitialized: true,

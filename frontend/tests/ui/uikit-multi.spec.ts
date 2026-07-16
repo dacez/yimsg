@@ -105,7 +105,7 @@ test.describe('uikit multi instance', () => {
   test('网格内 widget 会按宿主尺寸自适应，认证卡完整显示', async ({ page }) => {
     await page.goto('/demo/embed-multi.html');
 
-    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-memory', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-memory', 'host-u5-persistent', 'host-u5-memory'];
+    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-instant', 'host-u5-persistent', 'host-u5-instant'];
     for (const hostId of hostIds) {
       await page.waitForFunction((id) => Boolean(document.getElementById(id)?.shadowRoot?.querySelector('.auth-card')), hostId);
     }
@@ -225,19 +225,19 @@ test.describe('uikit multi instance', () => {
 
     await page.goto('/demo/embed-multi.html');
 
-    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-memory', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-memory', 'host-u5-persistent', 'host-u5-memory'];
+    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-instant', 'host-u5-persistent', 'host-u5-instant'];
     for (const hostId of hostIds) {
       await page.waitForFunction((id) => Boolean(document.getElementById(id)?.shadowRoot), hostId);
     }
 
     await registerHost(page, 'host-u1-persistent', user1, password, 'User One');
     await loginHost(page, 'host-u1-persistent-2', user1, password);
-    await loginHost(page, 'host-u1-memory', user1, password);
+    await loginHost(page, 'host-u1-instant', user1, password);
     await registerHost(page, 'host-u2-persistent', user2, password, 'User Two');
     await registerHost(page, 'host-u3-persistent', user3, password, 'User Three');
-    await registerHost(page, 'host-u4-memory', user4, password, 'User Four');
+    await registerHost(page, 'host-u4-instant', user4, password, 'User Four');
     await registerHost(page, 'host-u5-persistent', user5, password, 'User Five');
-    await loginHost(page, 'host-u5-memory', user5, password);
+    await loginHost(page, 'host-u5-instant', user5, password);
 
     await searchAndAddFriend(page, 'host-u2-persistent', user1);
     await acceptFirstRequest(page, 'host-u1-persistent');
@@ -246,7 +246,7 @@ test.describe('uikit multi instance', () => {
     await openFriendChat(page, 'host-u2-persistent', 'User One');
     await sendShadowMessage(page, 'host-u2-persistent', 'hello multi grid');
 
-    for (const hostId of ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-memory']) {
+    for (const hostId of ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant']) {
       await openFriendChat(page, hostId, 'User Two');
       await page.waitForFunction(({ hostId, text }) => {
         const root = document.getElementById(hostId)?.shadowRoot;

@@ -22,7 +22,7 @@ interface StartSessionByModeOptions {
  * 行为矩阵：
  * | mode        | startSession 参数              |
  * |-------------|---------------------------------|
- * | `memory`    | `{ storage: 'memory' }`         |
+ * | `instant`   | `{ storage: 'instant' }`        |
  * | `persistent`| `{ storage: 'persistent' }`     |
  */
 export async function startSessionByMode(
@@ -33,11 +33,11 @@ export async function startSessionByMode(
   const resolved = typeof options === 'string' ? { mode: options } : options;
   const { mode, instanceId } = resolved;
   const result = await client.startSession({
-    storage: mode === 'memory' ? 'memory' : 'persistent',
+    storage: mode === 'instant' ? 'instant' : 'persistent',
     instanceId,
   });
 
   if (result.degraded) {
-    onError(new Error('持久化会话不可用，已降级为 memory 模式'), 'mode:persistent-fallback');
+    onError(new Error('持久化会话不可用，已降级为 instant 模式'), 'mode:persistent-fallback');
   }
 }

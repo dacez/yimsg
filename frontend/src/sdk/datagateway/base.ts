@@ -40,7 +40,7 @@ export interface BaseDataGatewayOptions {
 }
 
 /**
- * BaseDataGateway — shared logic for memory and 持久存储 modes.
+ * BaseDataGateway — shared logic for instant and 持久存储 modes.
  * Uses injected ClientTransport and typed action functions.
  */
 export abstract class BaseDataGateway implements DataGateway {
@@ -95,7 +95,7 @@ export abstract class BaseDataGateway implements DataGateway {
   init(
     _uid: string,
   ): Promise<{ lastMsgSeq: number; lastContactSeq: number }> {
-    // 默认（memory 基线）：不保存本地副本、不维护同步游标，读取一律直连后端。
+    // 默认（instant 基线）：不保存本地副本、不维护同步游标，读取一律直连后端。
     return Promise.resolve({ lastMsgSeq: 0, lastContactSeq: 0 });
   }
 
@@ -166,7 +166,7 @@ export abstract class BaseDataGateway implements DataGateway {
   }
 
   async get_tags(params: TagsPageParams): Promise<TagsPageResult> {
-    // memory 基线恒走在线展开；persistent 覆盖为本地副本优先。
+    // instant 基线恒走在线展开；persistent 覆盖为本地副本优先。
     return this.fetchTagsFromServer(params);
   }
 
@@ -363,7 +363,7 @@ export abstract class BaseDataGateway implements DataGateway {
 
   /**
    * 通知处理映射到的同步域：返回非 null 时，处理过程会包在 `session:sync`
-   * started/success/failed 事件里。memory 基线**不做任何同步操作**，因此一律返回 null
+   * started/success/failed 事件里。instant 基线**不做任何同步操作**，因此一律返回 null
    * （不发 session:sync、不显示"同步中"，也不触发 session:sync 驱动的重渲染）；
    * 只有 persistent 模式覆盖此方法返回真实域，因为只有它会把数据同步进本地副本。
    */
@@ -450,7 +450,7 @@ export abstract class BaseDataGateway implements DataGateway {
         );
         break;
       case "org:updated": {
-        // 轻通知只带 org_id：累积去重后按组织增量追平（persistent）或直接派发重拉信号（memory）。
+        // 轻通知只带 org_id：累积去重后按组织增量追平（persistent）或直接派发重拉信号（instant）。
         const orgId = n.org_id ? String(n.org_id) : "";
         if (orgId && orgId !== "0") this.pendingOrgIds.add(orgId);
         this.enqueue("org:updated", this.syncDomain("orgs"), () =>
@@ -549,7 +549,7 @@ export abstract class BaseDataGateway implements DataGateway {
 
   /**
    * 读取并清空 pendingMessageIds，按 msg_id 批量拉取内容后派发。
-   * memory 直接调用；persistent 在本地同步完成后调用，从本地读取。
+   * instant 直接调用；persistent 在本地同步完成后调用，从本地读取。
    * get_messages 按 msg_ids 取消息只认 uid、忽略 target，故无需会话目标。
    */
   protected async emitNotifiedMessages(): Promise<void> {
@@ -567,12 +567,12 @@ export abstract class BaseDataGateway implements DataGateway {
   }
 
   protected async handleMessagesReceived(): Promise<void> {
-    // 默认（memory 基线）：不维护游标、不扫描会话，按通知 msg_id 批量直读内容后派发。
+    // 默认（instant 基线）：不维护游标、不扫描会话，按通知 msg_id 批量直读内容后派发。
     await this.emitNotifiedMessages();
   }
 
   protected async handleContactChanged(): Promise<void> {
-    // 默认（memory 基线）：仅发出“通讯录已变更、请重拉”的重绘信号，与 block/mute 一致。
+    // 默认（instant 基线）：仅发出“通讯录已变更、请重拉”的重绘信号，与 block/mute 一致。
     this.emitContactsChanged([], true);
   }
 
@@ -582,19 +582,19 @@ export abstract class BaseDataGateway implements DataGateway {
 
   /**
    * 清除本地副本中某会话的未读计数（convKey 形如 `u:<uid>` / `g:<gid>`）。
-   * memory 模式无本地副本，为空操作；persistent 模式覆盖此方法直接改本地表。
+   * instant 模式无本地副本，为空操作；persistent 模式覆盖此方法直接改本地表。
    */
   protected async clearLocalUnread(_convKey: string): Promise<void> {}
 
   /**
    * 删除本地副本中某会话行（convKey 形如 `u:<uid>` / `g:<gid>`）。
-   * memory 模式无本地副本，为空操作；persistent 模式覆盖直接删本地表。
+   * instant 模式无本地副本，为空操作；persistent 模式覆盖直接删本地表。
    */
   protected async deleteLocalConversation(_convKey: string): Promise<void> {}
 
   /**
    * 删除本地副本中某条消息（按 msg_id）。
-   * memory 模式无本地副本，为空操作；persistent 模式覆盖直接删本地表。
+   * instant 模式无本地副本，为空操作；persistent 模式覆盖直接删本地表。
    */
   protected async deleteLocalMessage(_messageId: string): Promise<void> {}
 
@@ -610,7 +610,7 @@ export abstract class BaseDataGateway implements DataGateway {
   }
 
   protected async handleOrgsUpdated(): Promise<void> {
-    // 默认（memory 基线）：无本地副本，仅派发"组织已变更、请重拉"的重绘信号。
+    // 默认（instant 基线）：无本地副本，仅派发"组织已变更、请重拉"的重绘信号。
     const ids = this.takePendingOrgIds();
     if (ids.length > 0) this.emitOrgsChanged(ids);
   }

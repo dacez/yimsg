@@ -14,13 +14,13 @@ describe('startup-mode', () => {
   });
 
   it('resolves the final mode after auth without prompting again', () => {
-    expect(resolveModeAfterAuth('memory')).toBe('memory');
+    expect(resolveModeAfterAuth('instant')).toBe('instant');
     expect(resolveModeAfterAuth('persistent')).toBe('persistent');
-    expect(resolveModeAfterAuth(null)).toBe('memory');
+    expect(resolveModeAfterAuth(null)).toBe('instant');
   });
 
   it('resets persistent storage only when switching persistent users', () => {
-    expect(shouldResetPersistentStorage('memory', '100', '200')).toBe(false);
+    expect(shouldResetPersistentStorage('instant', '100', '200')).toBe(false);
     expect(shouldResetPersistentStorage('persistent', null, '200')).toBe(false);
     expect(shouldResetPersistentStorage('persistent', '200', '200')).toBe(false);
     expect(shouldResetPersistentStorage('persistent', '100', '200')).toBe(true);

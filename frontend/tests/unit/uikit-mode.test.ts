@@ -2,7 +2,7 @@
  * uikit mode 解析单元测试。
  *
  * 覆盖 `startSessionByMode` 的业务映射：
- * - `memory`：启动内存会话；
+ * - `instant`：启动内存会话；
  * - `persistent`：请求持久化会话；
  * - 持久化不可用：SDK 降级为内存会话，UIKit 报告 `mode:persistent-fallback`。
  *
@@ -17,17 +17,17 @@ function makeClient(opts: {
   degraded?: boolean;
 }) {
   const startSession = vi.fn(async (args: {
-    storage?: 'memory' | 'persistent';
+    storage?: 'instant' | 'persistent';
     instanceId?: string;
   }) => {
-    const requestedStorage = args.storage ?? 'memory';
+    const requestedStorage = args.storage ?? 'instant';
     const degraded = Boolean(opts.degraded && requestedStorage === 'persistent');
     return {
       requestedStorage,
-      actualStorage: degraded ? 'memory' : requestedStorage,
+      actualStorage: degraded ? 'instant' : requestedStorage,
       requestedFileSystem: requestedStorage === 'persistent' ? 'opfs' : null,
       actualFileSystem: degraded ? null : (requestedStorage === 'persistent' ? 'opfs' : null),
-      mode: degraded || requestedStorage === 'memory' ? 'memory' : 'persistent',
+      mode: degraded || requestedStorage === 'instant' ? 'instant' : 'persistent',
       degraded,
       persistentStorageAvailable: !degraded,
       resetLocalData: 'none',
@@ -38,13 +38,13 @@ function makeClient(opts: {
 }
 
 describe('startSessionByMode', () => {
-  it('memory：直接启动内存会话，不关心持久化能力', async () => {
+  it('instant：直接启动内存会话，不关心持久化能力', async () => {
     const client = makeClient({});
     const onError = vi.fn();
-    await startSessionByMode(client, 'memory', onError);
+    await startSessionByMode(client, 'instant', onError);
     expect(client.startSession).toHaveBeenCalledTimes(1);
     expect(client.startSession).toHaveBeenCalledWith({
-      storage: 'memory',
+      storage: 'instant',
       instanceId: undefined,
     });
     expect(onError).not.toHaveBeenCalled();

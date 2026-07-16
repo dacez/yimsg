@@ -92,12 +92,12 @@ export class StorageScope {
     this.storage.removeItem(TOKEN_KEY);
   }
 
-  getStoredMode(): 'memory' | 'persistent' | null {
+  getStoredMode(): 'instant' | 'persistent' | null {
     const mode = this.storage.getItem(MODE_KEY);
-    return mode === 'memory' || mode === 'persistent' ? mode : null;
+    return mode === 'instant' || mode === 'persistent' ? mode : null;
   }
 
-  setStoredMode(mode: 'memory' | 'persistent'): void {
+  setStoredMode(mode: 'instant' | 'persistent'): void {
     this.storage.setItem(MODE_KEY, mode);
   }
 

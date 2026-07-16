@@ -205,7 +205,7 @@ describe("SDK PersistentDataGateway", () => {
   });
 
   // persistent 模式覆盖 syncDomain 返回真实域：通知触发的同步会带域上报 session:sync
-  // started/success（与 memory 基线「不发 session:sync」相对）。
+  // started/success（与 instant 基线「不发 session:sync」相对）。
   it("contacts:updated 通知会带 contacts 域上报 session:sync", async () => {
     const events: Array<{ domain: string; status: string }> = [];
     ds.onSync((event) => events.push({ domain: event.domain, status: event.status }));

@@ -5,7 +5,7 @@ import {
   ValidationError,
   isYimsgError,
 } from "../../../src/sdk/errors";
-import { MemoryDataGateway } from "../../../src/sdk/datagateway/memory";
+import { InstantDataGateway } from "../../../src/sdk/datagateway/instant";
 import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_MARKDOWN,
@@ -53,21 +53,21 @@ function setupClientWithMocks(
 ) {
   // 获取 beforeEach 中设置的 sendBinary spy 引用，供测试自定义其行为
   const transportSendBinary = vi.mocked(WsTransport.prototype.sendBinary);
-  vi.spyOn(MemoryDataGateway.prototype, "init").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "init").mockResolvedValue({
     lastMsgSeq: 0,
     lastContactSeq: 0,
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_contacts").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "get_contacts").mockResolvedValue({
     offset: 0,
     total: 0,
     contacts: [],
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_conversations").mockResolvedValue({
+  vi.spyOn(InstantDataGateway.prototype, "get_conversations").mockResolvedValue({
     offset: 0,
     total: 0,
     conversations: [],
   });
-  vi.spyOn(MemoryDataGateway.prototype, "get_unread_count").mockResolvedValue(
+  vi.spyOn(InstantDataGateway.prototype, "get_unread_count").mockResolvedValue(
     0,
   );
 
@@ -153,9 +153,9 @@ describe("YimsgClient", () => {
   it("uses storage passed by the application during startSession", async () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
-    expect(client.getSessionSnapshot().mode).toBe("memory");
+    expect(client.getSessionSnapshot().mode).toBe("instant");
   });
 
   it("getClientConfig 认证前返回构造时传入的初始值", () => {
@@ -258,8 +258,8 @@ describe("YimsgClient", () => {
       },
     } as any);
     await client.login("alice", "password");
-    await client.startSession({ storage: "memory" });
-    const getSpy = MemoryDataGateway.prototype
+    await client.startSession({ storage: "instant" });
+    const getSpy = InstantDataGateway.prototype
       .get_conversations as unknown as ReturnType<typeof vi.fn>;
     getSpy.mockClear();
 
@@ -282,8 +282,8 @@ describe("YimsgClient", () => {
       action: "getUnreadCount",
     });
 
-    await client.startSession({ storage: "memory" });
-    const getUnreadCountSpy = MemoryDataGateway.prototype
+    await client.startSession({ storage: "instant" });
+    const getUnreadCountSpy = InstantDataGateway.prototype
       .get_unread_count as unknown as ReturnType<typeof vi.fn>;
     getUnreadCountSpy.mockResolvedValueOnce(3);
 
@@ -376,7 +376,7 @@ describe("YimsgClient", () => {
       isSessionInitialized: false,
     });
 
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
     expect(client.getSessionSnapshot()).toMatchObject({
       sessionState: "ready",
@@ -398,10 +398,10 @@ describe("YimsgClient", () => {
     const client = new YimsgClient();
 
     await expect(
-      client.startSession({ storage: "memory" }),
+      client.startSession({ storage: "instant" }),
     ).rejects.toBeInstanceOf(PreconditionError);
     await expect(
-      client.startSession({ storage: "memory" }),
+      client.startSession({ storage: "instant" }),
     ).rejects.toMatchObject({
       kind: "precondition",
       code: "AUTH_REQUIRED",
@@ -410,12 +410,12 @@ describe("YimsgClient", () => {
   });
 
   it("clears the previous datagateway before reinitializing a session", async () => {
-    const clearSpy = vi.spyOn(MemoryDataGateway.prototype, "clear");
+    const clearSpy = vi.spyOn(InstantDataGateway.prototype, "clear");
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
 
-    await client.startSession({ storage: "memory" });
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
+    await client.startSession({ storage: "instant" });
 
     expect(clearSpy).toHaveBeenCalledTimes(1);
   });
@@ -425,7 +425,7 @@ describe("YimsgClient", () => {
   it("destroy() clears transport and cache callbacks", async () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
     const transport = (
       client as unknown as {
@@ -459,10 +459,10 @@ describe("YimsgClient", () => {
   });
 
   it("destroy() clears dataGateway and store", async () => {
-    const clearSpy = vi.spyOn(MemoryDataGateway.prototype, "clear");
+    const clearSpy = vi.spyOn(InstantDataGateway.prototype, "clear");
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
     client.destroy();
 
@@ -478,7 +478,7 @@ describe("YimsgClient", () => {
 
     // Make first init slow so the second startSession can overtake it.
     let resolveFirstInit!: () => void;
-    const initMock = MemoryDataGateway.prototype.init as unknown as ReturnType<
+    const initMock = InstantDataGateway.prototype.init as unknown as ReturnType<
       typeof vi.fn
     >;
     initMock
@@ -492,10 +492,10 @@ describe("YimsgClient", () => {
       .mockResolvedValue({ lastMsgSeq: 0, lastContactSeq: 0 });
 
     // Start first startSession (will hang on data gateway init)
-    const p1 = client.startSession({ storage: "memory" });
+    const p1 = client.startSession({ storage: "instant" });
 
     // Start second startSession immediately
-    const p2 = client.startSession({ storage: "memory" });
+    const p2 = client.startSession({ storage: "instant" });
 
     await Promise.resolve();
 
@@ -505,7 +505,7 @@ describe("YimsgClient", () => {
     await p2;
 
     // The second session should be the active one
-    expect(client.getSessionSnapshot().mode).toBe("memory");
+    expect(client.getSessionSnapshot().mode).toBe("instant");
     // The conversations_updated event should have been emitted
     // (no crash from first session trying to use cleared dataGateway)
   });
@@ -625,7 +625,7 @@ describe("YimsgClient", () => {
   it("preserves ready session state when reconnect auth succeeds", async () => {
     const { client, transportSend, transport } = setupClientWithMocks();
     await client.authenticate("tok123");
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
     transportSend.mockResolvedValueOnce({ ok: true, uid: "100" });
     transport.onDisconnected?.();
@@ -710,7 +710,7 @@ describe("YimsgClient", () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
     const result = await client.startSession({
-      storage: "memory",
+      storage: "instant",
       resetLocalData: "all",
     });
 
@@ -720,22 +720,22 @@ describe("YimsgClient", () => {
     expect(result.resetLocalDataError).toBeNull();
   });
 
-  it("startSession starts memory session through the business API", async () => {
+  it("startSession starts instant session through the business API", async () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
 
-    const result = await client.startSession({ storage: "memory" });
+    const result = await client.startSession({ storage: "instant" });
 
     expect(result).toMatchObject({
-      requestedStorage: "memory",
-      actualStorage: "memory",
-      mode: "memory",
+      requestedStorage: "instant",
+      actualStorage: "instant",
+      mode: "instant",
       degraded: false,
       resetLocalData: "none",
       resetLocalDataError: null,
     });
     expect(Object.isFrozen(result)).toBe(true);
-    expect(client.getSessionSnapshot().mode).toBe("memory");
+    expect(client.getSessionSnapshot().mode).toBe("instant");
   });
 
   it("startSession resetLocalData=false 会规范化为 none", async () => {
@@ -743,7 +743,7 @@ describe("YimsgClient", () => {
     await client.authenticate("tok123");
 
     const result = await client.startSession({
-      storage: "memory",
+      storage: "instant",
       resetLocalData: false,
     });
 
@@ -751,7 +751,7 @@ describe("YimsgClient", () => {
     expect(result.resetLocalDataError).toBeNull();
   });
 
-  it("startSession 在指定 opfs 且不可用时降级到 memory", async () => {
+  it("startSession 在指定 opfs 且不可用时降级到 instant", async () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
     vi.stubGlobal("navigator", { storage: {} });
@@ -763,14 +763,14 @@ describe("YimsgClient", () => {
 
     expect(result).toMatchObject({
       requestedStorage: "persistent",
-      actualStorage: "memory",
+      actualStorage: "instant",
       requestedFileSystem: "opfs",
       actualFileSystem: null,
-      mode: "memory",
+      mode: "instant",
       degraded: true,
       persistentStorageAvailable: false,
     });
-    expect(client.getSessionSnapshot().mode).toBe("memory");
+    expect(client.getSessionSnapshot().mode).toBe("instant");
   });
 
   it("startSession 在 Node 环境可使用 local 持久化文件系统", async () => {
@@ -1025,7 +1025,7 @@ describe("YimsgClient", () => {
   it("getMessages 将服务端返回的 recall event 折叠为原消息占位", async () => {
     const { client, transportSend } = setupClientWithMocks();
     await client.authenticate("tok123");
-    await client.startSession({ storage: "memory" });
+    await client.startSession({ storage: "instant" });
 
     transportSend.mockResolvedValueOnce({
       ok: true,
