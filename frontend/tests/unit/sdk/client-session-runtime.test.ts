@@ -3,7 +3,7 @@ import { ClientSessionRuntime } from '../../../src/sdk/internal/client-session-r
 import { SessionLifecycleMachine } from '../../../src/sdk/state/lifecycle';
 import type { SyncDomain, SyncStatus } from '../../../src/sdk/types';
 
-function makeRuntime(mode: 'memory' | 'persistent' = 'memory') {
+function makeRuntime(mode: 'instant' | 'persistent' = 'instant') {
   let connected = false;
   const transport = {
     get connected() {
@@ -95,14 +95,14 @@ describe('ClientSessionRuntime', () => {
   });
 
   it('没有 DataGateway 时联系人写后通知不报错', () => {
-    const { runtime } = makeRuntime('memory');
+    const { runtime } = makeRuntime('instant');
 
     expect(() => runtime.notifyContactsChangedAfterMutation()).not.toThrow();
   });
 
   describe('getSyncReadiness', () => {
-    it('memory 模式 firstSyncComplete 恒为 true，domains 为空', () => {
-      const { runtime } = makeRuntime('memory');
+    it('instant 模式 firstSyncComplete 恒为 true，domains 为空', () => {
+      const { runtime } = makeRuntime('instant');
 
       const r = runtime.getSyncReadiness();
 

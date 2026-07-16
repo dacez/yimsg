@@ -138,10 +138,10 @@ describe("BaseDataGateway notification queue", () => {
     expect(order[1]).toBe("contact");
   });
 
-  // memory 基线：处理任何通知都不得发出 session:sync 事件（内存模式无同步操作，
+  // instant 基线：处理任何通知都不得发出 session:sync 事件（内存模式无同步操作，
   // 不显示"同步中"，也不触发 session:sync 驱动的会话列表重渲染）。只有 persistent 覆盖
   // syncDomain 后才会带域上报。
-  it("memory 基线处理通知不发出任何 session:sync 事件", async () => {
+  it("instant 基线处理通知不发出任何 session:sync 事件", async () => {
     const syncCb = vi.fn();
     ds.onSync(syncCb);
     ds.onMessagesReceived(() => {});

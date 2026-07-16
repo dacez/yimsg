@@ -55,9 +55,9 @@ export function createSettingsView(app: AppInstance) {
       if (result.resetLocalDataError) throw result.resetLocalDataError;
 
       if (result.degraded) {
-        app.storage.setStoredMode('memory');
+        app.storage.setStoredMode('instant');
         app.storage.clearStoredPersistentUid();
-        app.emitAppError(new Error('持久化会话不可用，已降级为 memory 模式'), 'mode:persistent-fallback');
+        app.emitAppError(new Error('持久化会话不可用，已降级为 instant 模式'), 'mode:persistent-fallback');
       } else {
         const uid = app.client.getSessionSnapshot().currentUid;
         if (uid) app.storage.setStoredPersistentUid(uid);
@@ -121,10 +121,10 @@ export function createSettingsView(app: AppInstance) {
     app.$('settings-uid').textContent = app.t('settings.uid') + myUid;
 
     const modeEl = app.$('settings-mode');
-    const isMemory = snapshot.mode === 'memory';
-    modeEl.textContent = isMemory ? 'Memory' : '持久存储';
-    modeEl.className = 'mode-badge ' + (isMemory ? 'mode-badge-memory' : 'mode-badge-persistent');
-    app.$('settings-storage-card').classList.toggle('hidden', isMemory);
+    const isInstant = snapshot.mode === 'instant';
+    modeEl.textContent = isInstant ? 'Instant' : '持久存储';
+    modeEl.className = 'mode-badge ' + (isInstant ? 'mode-badge-instant' : 'mode-badge-persistent');
+    app.$('settings-storage-card').classList.toggle('hidden', isInstant);
 
     (app.$('edit-nickname') as HTMLInputElement).value = ud.nickname || '';
 

@@ -98,11 +98,11 @@ describe('Session Init', () => {
     await makeFriends(alice, aliceUid, bob, bobUid);
 
     // Alice sends message to Bob
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
     await alice.sendText({ toUid: bobUid }, 'hello');
 
     // Bob inits session and should read the first conversation page.
-    await bob.startSession({ storage: 'memory' });
+    await bob.startSession({ storage: 'instant' });
     const page = await bob.getConversations({ offset: 0, limit: 20 });
     expect(page.conversations.length).toBeGreaterThanOrEqual(1);
   });
@@ -117,7 +117,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('msg_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const result = await alice.sendText({ toUid: bobUid }, 'test msg');
     expect(result.seq).toBeGreaterThan(0);
@@ -131,7 +131,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('msg_quote_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const origin = await alice.sendText({ toUid: bobUid }, 'origin');
     const result = await alice.sendQuotedTextMessage({ toUid: bobUid }, {
@@ -148,7 +148,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('msg_fwd_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const origin = await alice.sendText({ toUid: bobUid }, 'origin');
     const result = await alice.forwardMessages({ toUid: bobUid }, [origin.message], '转发给你');
@@ -162,7 +162,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('conv_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     await alice.sendText({ toUid: bobUid }, 'hi');
     const { conversations: convs } = await alice.getConversations({ offset: 0, limit: 10 });
@@ -175,7 +175,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('lcm_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     await alice.sendText({ toUid: bobUid }, 'msg1');
     await alice.sendText({ toUid: bobUid }, 'msg2');
@@ -193,7 +193,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('page_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     // Send 5 messages
     for (let i = 0; i < 5; i++) {
@@ -221,7 +221,7 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('page_after_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     for (let i = 0; i < 5; i++) {
       await alice.sendText({ toUid: bobUid }, `after-${i}`);
@@ -241,8 +241,8 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('mr_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     // Alice sends to Bob
     await alice.sendText({ toUid: bobUid }, 'read test');
@@ -260,8 +260,8 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('recall_unread_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     const sent = await alice.sendText({ toUid: bobUid }, 'read then recall');
     await delay(300);
@@ -288,8 +288,8 @@ describe('Messages', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('recall_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     const sent = await alice.sendText({ toUid: bobUid }, 'to be recalled');
     await delay(300);
@@ -311,8 +311,8 @@ describe('Contacts', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('ct_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('ct_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     await alice.addFriend(bobUid);
     await delay(300);
@@ -327,7 +327,7 @@ describe('Contacts', () => {
     const { client: alice } = await createAuthenticatedClient('shield_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('shield_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const blocklistSeq = await alice.blockUser(bobUid);
     expect(blocklistSeq).toBeGreaterThan(0);
@@ -348,8 +348,8 @@ describe('Contacts', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('selfacc_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('selfacc_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     // Alice 是申请方，向 Bob 发起请求。
     await alice.addFriend(bobUid);
@@ -373,8 +373,8 @@ describe('Contacts', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('rej_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('rej_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     await alice.addFriend(bobUid);
     await delay(300);
@@ -391,8 +391,8 @@ describe('Contacts', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('del_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('del_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     await alice.addFriend(bobUid);
     await delay(300);
@@ -410,8 +410,8 @@ describe('Contacts', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('rmk_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('rmk_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     await alice.addFriend(bobUid);
     await delay(300);
@@ -429,7 +429,7 @@ describe('Contacts', () => {
   it('searchUser returns profile', async () => {
     const { client: alice, username } = await createAuthenticatedClient('search');
     track(alice);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const profile = await alice.searchUser(username);
     expect(profile).toBeTruthy();
@@ -439,7 +439,7 @@ describe('Contacts', () => {
   it('searchUser not found', async () => {
     const { client: alice } = await createAuthenticatedClient('search_nf');
     track(alice);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const profile = await alice.searchUser('nonexistent_user_xyz_123');
     expect(profile).toBeNull();
@@ -454,7 +454,7 @@ describe('Org', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('org_add_a');
     const { client: bob, uid: bobUid, username: bobUsername } = await createAuthenticatedClient('org_add_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const orgId = await alice.createOrg('Org Add Test');
     // getTags 要求调用方本身是组织成员，先把自己挂进去（与 showCreateOrgModal 的建组织流程一致）。
@@ -468,7 +468,7 @@ describe('Org', () => {
   it('addOrgMemberByUsername rejects unknown username', async () => {
     const { client: alice } = await createAuthenticatedClient('org_add_nf');
     track(alice);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const orgId = await alice.createOrg('Org Add NF Test');
     await expect(alice.addOrgMemberByUsername(orgId, orgId, 'nonexistent_user_xyz_123')).rejects.toThrow();
@@ -478,7 +478,7 @@ describe('Org', () => {
     const { client: alice } = await createAuthenticatedClient('org_grant_a');
     const { client: bob, uid: bobUid, username: bobUsername } = await createAuthenticatedClient('org_grant_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const orgId = await alice.createOrg('Org Grant Test');
     await alice.grantOrgAdminByUsername(orgId, orgId, bobUsername);
@@ -490,7 +490,7 @@ describe('Org', () => {
   it('grantOrgAdminByUsername rejects unknown username', async () => {
     const { client: alice } = await createAuthenticatedClient('org_grant_nf');
     track(alice);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const orgId = await alice.createOrg('Org Grant NF Test');
     await expect(alice.grantOrgAdminByUsername(orgId, orgId, 'nonexistent_user_xyz_123')).rejects.toThrow();
@@ -505,7 +505,7 @@ describe('Groups', () => {
     const { client: alice } = await createAuthenticatedClient('grp_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('grp_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('TestGroup', [bobUid]);
     expect(groupId).toBeTruthy();
@@ -518,7 +518,7 @@ describe('Groups', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('gm_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('gm_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('MemberTest', [bobUid]);
     const memberPage = await alice.getGroupMembers(groupId);
@@ -533,7 +533,7 @@ describe('Groups', () => {
     const { client: alice } = await createAuthenticatedClient('gui_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('gui_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('OldName', [bobUid]);
     await alice.updateGroupInfo(groupId, { name: 'NewName' });
@@ -548,7 +548,7 @@ describe('Groups', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('arm_b');
     const { client: carol, uid: carolUid } = await createAuthenticatedClient('arm_c');
     track(alice); track(bob); track(carol);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('AddRemove', [bobUid]);
 
@@ -571,7 +571,7 @@ describe('User Profile', () => {
   it('getUserInfos returns own display info', async () => {
     const { client, uid } = await createAuthenticatedClient('prof');
     track(client);
-    await client.startSession({ storage: 'memory' });
+    await client.startSession({ storage: 'instant' });
 
     const initial = client.getUserInfos([uid]).get(uid)!;
     if (!initial.username) {
@@ -584,7 +584,7 @@ describe('User Profile', () => {
   it('updateUserInfo updates nickname', async () => {
     const { client, uid } = await createAuthenticatedClient('upd');
     track(client);
-    await client.startSession({ storage: 'memory' });
+    await client.startSession({ storage: 'instant' });
 
     await client.updateUserInfo({ nickname: 'NewNick' });
 
@@ -619,7 +619,7 @@ describe('DisplayInfoCache', () => {
     const { client: alice } = await createAuthenticatedClient('cache_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('cache_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     // First call: miss → empty
     const initial = alice.getUserInfos([bobUid]).get(bobUid)!;
@@ -637,7 +637,7 @@ describe('DisplayInfoCache', () => {
     const { client: alice } = await createAuthenticatedClient('gcache_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('gcache_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('CacheTest', [bobUid]);
 
@@ -658,7 +658,7 @@ describe('会话分页与未读状态', () => {
     track(alice); track(bob); track(carol);
     await makeFriends(alice, aliceUid, bob, bobUid);
     await makeFriends(alice, aliceUid, carol, carolUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     await alice.sendText({ toUid: bobUid }, 'first');
     await alice.sendText({ toUid: carolUid }, 'second');
@@ -674,8 +674,8 @@ describe('会话分页与未读状态', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('unrd_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     // Bob sends 3 messages to Alice
     for (let i = 0; i < 3; i++) {
@@ -698,8 +698,8 @@ describe('会话分页与未读状态', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('act_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     await bob.sendText({ toUid: aliceUid }, 'read by page');
     await delay(1000);
@@ -721,8 +721,8 @@ describe('Multi-client Notifications', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('notif_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     const msgPromise = waitEvent(bob, 'messages:received', 5000);
     await alice.sendText({ toUid: bobUid }, 'notification test');
@@ -735,8 +735,8 @@ describe('Multi-client Notifications', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('cce_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('cce_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     // Add friend first, then listen for contacts:updated on Bob's side when Alice adds
     await alice.addFriend(bobUid);
@@ -758,7 +758,7 @@ describe('Multi-client Notifications', () => {
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('cue_b');
     track(alice); track(bob);
     await makeFriends(alice, aliceUid, bob, bobUid);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     let changedKeys: ReadonlyArray<string> | null = null;
     alice.on('conversations:sent', (event) => { changedKeys = event.keys; });
@@ -776,7 +776,7 @@ describe('Edge Cases', () => {
   it('getConversations empty', async () => {
     const { client } = await createAuthenticatedClient('empty');
     track(client);
-    await client.startSession({ storage: 'memory' });
+    await client.startSession({ storage: 'instant' });
 
     const convs = await client.getConversations({ offset: 0, limit: 10 });
     expect(Array.isArray(convs.conversations)).toBe(true);
@@ -786,7 +786,7 @@ describe('Edge Cases', () => {
   it('getContacts empty', async () => {
     const { client } = await createAuthenticatedClient('empty_c');
     track(client);
-    await client.startSession({ storage: 'memory' });
+    await client.startSession({ storage: 'instant' });
 
     const contacts = await client.getContacts({ offset: 0, limit: 10 });
     expect(Array.isArray(contacts.contacts)).toBe(true);
@@ -796,8 +796,8 @@ describe('Edge Cases', () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('pend_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('pend_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
-    await bob.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
+    await bob.startSession({ storage: 'instant' });
 
     // Bob sends friend request to Alice
     await bob.addFriend(aliceUid);
@@ -812,7 +812,7 @@ describe('Edge Cases', () => {
     const { client: alice } = await createAuthenticatedClient('gm_conv_a');
     const { client: bob, uid: bobUid } = await createAuthenticatedClient('gm_conv_b');
     track(alice); track(bob);
-    await alice.startSession({ storage: 'memory' });
+    await alice.startSession({ storage: 'instant' });
 
     const groupId = await alice.createGroup('MsgGroup', [bobUid]);
     await alice.sendText({ groupId }, 'group hello');

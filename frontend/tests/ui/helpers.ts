@@ -6,7 +6,7 @@ export function uniqueUser(prefix = 'u') {
 }
 
 /**
- * Register a new user and land on the app (memory mode).
+ * Register a new user and land on the app (instant mode).
  * `layout` 可选：在启动模态框上顺带手动选择布局偏好（auto/desktop/mobile），
  * 用于覆盖“桌面鼠标环境下手动选择手机布局”这类场景，不传则保持自动检测。
  */
@@ -18,7 +18,7 @@ export async function register(
   layout?: 'auto' | 'desktop' | 'mobile',
 ) {
   await page.goto('/app/');
-  await ensureModeSelected(page, 'memory', layout);
+  await ensureModeSelected(page, 'instant', layout);
   await page.click('[data-tab="register"]');
   await page.fill('#reg-username', username);
   await page.fill('#reg-password', password);
@@ -30,7 +30,7 @@ export async function register(
 /** Login with existing credentials */
 export async function login(page: Page, username: string, password: string) {
   await page.goto('/app/');
-  await ensureModeSelected(page, 'memory');
+  await ensureModeSelected(page, 'instant');
   await page.fill('#login-username', username);
   await page.fill('#login-password', password);
   await page.click('#login-form button[type="submit"]');
@@ -43,15 +43,15 @@ async function waitForAppReady(page: Page) {
   await expect(page.locator('#view-chat')).toBeVisible({ timeout: 20_000 });
 }
 
-/** Select memory or 持久存储 mode when the startup modal is visible; 可选顺带手动选择布局偏好 */
+/** Select instant or 持久存储 mode when the startup modal is visible; 可选顺带手动选择布局偏好 */
 export async function ensureModeSelected(
   page: Page,
-  mode: 'memory' | 'persistent',
+  mode: 'instant' | 'persistent',
   layout?: 'auto' | 'desktop' | 'mobile',
 ) {
   const modal = page.locator('#modal-overlay:not(.hidden)');
   try {
-    await page.locator('#mode-opt-memory').waitFor({ state: 'visible', timeout: 1000 });
+    await page.locator('#mode-opt-instant').waitFor({ state: 'visible', timeout: 1000 });
   } catch (_) {
     if (await modal.count() === 0) return;
   }
@@ -59,7 +59,7 @@ export async function ensureModeSelected(
   if (layout) {
     await page.click(`.layout-option[data-layout="${layout}"]`);
   }
-  await page.click(mode === 'memory' ? '#mode-opt-memory' : '#mode-opt-persistent');
+  await page.click(mode === 'instant' ? '#mode-opt-instant' : '#mode-opt-persistent');
   await expect(modal).toHaveCount(0);
 }
 
@@ -150,11 +150,11 @@ export function seedPrefix(): string {
   return p;
 }
 
-/** Login as a test-seed user (e.g. {prefix}_Test1/test123) and select memory mode */
+/** Login as a test-seed user (e.g. {prefix}_Test1/test123) and select instant mode */
 export async function loginSeedUser(page: Page, username = 'Test1', password = 'test123') {
   const fullUsername = `${seedPrefix()}_${username}`;
   await page.goto('/app/');
-  await ensureModeSelected(page, 'memory');
+  await ensureModeSelected(page, 'instant');
   await page.fill('#login-username', fullUsername);
   await page.fill('#login-password', password);
   await page.click('#login-form button[type="submit"]');

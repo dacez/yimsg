@@ -207,7 +207,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .settings-header h2{font-size:var(--font-size-heading);font-weight:600}
 .settings-header p{color:var(--text-secondary);font-size:var(--font-size-caption);margin-top:var(--space-xs)}
 .mode-badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:var(--font-size-caption);font-weight:600;margin-top:var(--space-sm)}
-.mode-badge-memory{background:#fff3e0;color:#e65100}
+.mode-badge-instant{background:#fff3e0;color:#e65100}
 .mode-badge-pwa{background:#e8f5e9;color:#2e7d32}
 .settings-card{background:var(--bg-hover);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:var(--space-xl);margin-bottom:var(--space-lg)}
 .settings-card h3{font-size:var(--font-size-heading);font-weight:600;margin-bottom:var(--space-lg)}

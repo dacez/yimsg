@@ -11,7 +11,7 @@
 
 当前 SDK 是 UI 无关的 IM 客户端库，公开入口收敛在 `frontend/src/sdk/index.ts`。`YimsgClient` 是唯一公开类门面，调用方通过它完成认证、会话初始化、消息、会话、联系人、群、偏好、展示资料、上传和事件订阅。类型、错误类、常量和纯工具函数通过 `index.ts` 重导出。
 
-SDK 的核心设计成立：公开层不暴露 WebSocket 帧、本地 SQLite、同步游标和内部缓存；`DataGateway` 屏蔽 memory / persistent 两种读模型；`DisplayInfoCache` 用同步返回 + 后台刷新支持列表渲染；长期内存结构都有明确上限。当前主要约束是实现复杂度集中在 `YimsgClient` 和同步链路，协议变更需要同步维护 action builder、生成物、文档和测试；persistent 模式进入 `ready` 不代表首轮后台同步结束，调用方需要使用 `syncReadiness` 或 `session:sync` 判断同步状态。
+SDK 的核心设计成立：公开层不暴露 WebSocket 帧、本地 SQLite、同步游标和内部缓存；`DataGateway` 屏蔽 instant / persistent 两种读模型；`DisplayInfoCache` 用同步返回 + 后台刷新支持列表渲染；长期内存结构都有明确上限。当前主要约束是实现复杂度集中在 `YimsgClient` 和同步链路，协议变更需要同步维护 action builder、生成物、文档和测试；persistent 模式进入 `ready` 不代表首轮后台同步结束，调用方需要使用 `syncReadiness` 或 `session:sync` 判断同步状态。
 
 ## 2. 架构边界
 
@@ -48,7 +48,7 @@ flowchart TD
 | `generated/actions.gen.ts` | 由 protocolgen 生成的出方向 action 函数，只负责 `Type` + request/response codec + `transport.sendBinary`，不做整形 / 校验 / 归一化 |
 | `internal/action-mappers.ts` | 出方向 action 的无状态业务工具：target 映射、分页游标、状态校验、`msg_id` 生成等请求整形（`*Request`）与响应归一化（`normalize*` / `map*`），由 client 与 DataGateway 直接复用 |
 | `internal/codec.ts` | `MessageCodec` 类型与 `sendProtoAction` 底层发送点，被 `actions.gen.ts` 复用 |
-| `DataGateway` | 统一会话、消息、联系人、屏蔽、免打扰和展示资料读取接口，隐藏 memory / persistent 差异 |
+| `DataGateway` | 统一会话、消息、联系人、屏蔽、免打扰和展示资料读取接口，隐藏 instant / persistent 差异 |
 | `DisplayInfoCache` | 统一缓存用户 / 群展示资料，同步返回当前视图，后台合并加载缺失或过期 key |
 | `ClientEventBridge` | 把内部消息、同步和通知回调转换为公开事件，并冻结事件载荷 |
 | `ClientMessageFacade` | 处理会话 / 消息描述、引用消息、转发包加密上传和转发包下载解密 |
@@ -73,7 +73,7 @@ flowchart TD
 interface SessionSnapshot {
   readonly sessionState: 'idle' | 'authenticated' | 'initializing' | 'ready' | 'destroyed';
   readonly connectionState: 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
-  readonly mode: 'memory' | 'persistent';
+  readonly mode: 'instant' | 'persistent';
   readonly currentUid: string;
   readonly isAuthenticated: boolean;
   readonly isSessionInitialized: boolean;
@@ -85,7 +85,7 @@ interface SessionSnapshot {
 
 | 模式 | `syncReadiness` |
 |---|---|
-| `memory` | `{ domains: {}, firstSyncComplete: true }` |
+| `instant` | `{ domains: {}, firstSyncComplete: true }` |
 | `persistent` | `domains` 保存 `storage` 和业务同步域最近一次 `success` / `failed` 状态；`messages`、`conversations`、`contacts`、`blocklist`、`mutelist` 都至少完成一次后，`firstSyncComplete` 变为 `true` 且不回退 |
 
 ### 3.2 状态流转
@@ -149,20 +149,20 @@ sequenceDiagram
 
 | 参数 | 当前行为 |
 |---|---|
-| `storage` | 默认 `memory`；传 `persistent` 时先探测后端能力 |
+| `storage` | 默认 `instant`；传 `persistent` 时先探测后端能力 |
 | `fileSystem` | 可选 `opfs` / `local`；未传时 Node.js 优先 `local`，其他环境优先 `opfs` |
 | `instanceId` | 参与 persistent DB 名，默认 `default` |
 | `resetLocalData` | `false` / `undefined` 等价于 `none`；可传 `current-user` 或 `all` 在初始化前清理本地库 |
 
 | 场景 | 结果 |
 |---|---|
-| 请求 `memory` | 创建 `MemoryDataGateway` |
+| 请求 `instant` | 创建 `MemoryDataGateway` |
 | 请求 `persistent` 且有可用后端 | 创建 `PersistentDataGateway`，DB 名为 `yimsg-{uid}__{instanceId}.db` |
-| 请求 `persistent` 但无可用后端 | 自动降级为 `memory`，`SessionStartResult.degraded = true` |
+| 请求 `persistent` 但无可用后端 | 自动降级为 `instant`，`SessionStartResult.degraded = true` |
 | persistent 后端可用但打开或初始化失败 | `startSession()` 回到 `authenticated` 并抛 `StorageModeError(STORAGE_FAILED)` |
 | `resetLocalData` 清理失败 | 错误写入 `SessionStartResult.resetLocalDataError`，初始化继续执行 |
 
-降级到 memory 时不会执行 persistent 数据清理。
+降级到 instant 时不会执行 persistent 数据清理。
 
 ## 4. 配置
 
@@ -312,7 +312,7 @@ SDK 发送请求时使用 big-endian；解码响应和通知时按 codec endian 
 
 ### 7.3 MemoryDataGateway
 
-memory 模式不维护本地完整副本。它的全部行为恰好就是 `BaseDataGateway` 的基线默认（直读后端、不维护游标、消息通知按累积 `msg_id` 批量直读、联系人通知只发失效信号），因此 `MemoryDataGateway` 目前是一个不含任何额外逻辑的空壳类，保留独立文件只为将来 memory 专属逻辑预留落点。
+instant 模式不维护本地完整副本。它的全部行为恰好就是 `BaseDataGateway` 的基线默认（直读后端、不维护游标、消息通知按累积 `msg_id` 批量直读、联系人通知只发失效信号），因此 `MemoryDataGateway` 目前是一个不含任何额外逻辑的空壳类，保留独立文件只为将来 instant 专属逻辑预留落点。
 
 | 逻辑 | 当前实现（均继承自 Base 基线默认） |
 |---|---|
@@ -326,7 +326,7 @@ memory 模式不维护本地完整副本。它的全部行为恰好就是 `BaseD
 | 会话删除通知 | `conversations:delete` 经 `onConversationDeleted(convKey)` 发 SDK 事件 `conversations:delete({keys})`，UI 定向拉取后移除往上补齐；本地 `deleteConversation` 复用同一路径 |
 | 消息删除通知 | `messages:delete` 经 `onMessageDeleted(messageId, convKey)` 发 `messages:deleted({messageId,key})`，UI 就地删消息 + 定向刷新会话预览；本地 `deleteMessage` 复用同一路径 |
 
-memory 模式不再维护消息同步游标：消息内容按累积的通知 `msg_id` 批量直读，列表与会话由 UI 收到信号后用 `get_*` 重绘。
+instant 模式不再维护消息同步游标：消息内容按累积的通知 `msg_id` 批量直读，列表与会话由 UI 收到信号后用 `get_*` 重绘。
 
 ### 7.4 PersistentDataGateway
 
@@ -362,7 +362,7 @@ flowchart TD
   ReturnStale --> Merge[按 scope 合并窗口]
   ReturnEmpty --> Merge
   Merge --> DG[当前 DataGateway]
-  DG -->|memory| Remote[服务端 get_*_infos]
+  DG -->|instant| Remote[服务端 get_*_infos]
   DG -->|persistent| Local[displayinfo 表]
   Local --> Remote
   Remote --> Update[写内存缓存]
@@ -385,7 +385,7 @@ flowchart TD
 
 ### 9.1 读模型
 
-| 数据 | memory 模式 | persistent 模式 |
+| 数据 | instant 模式 | persistent 模式 |
 |---|---|---|
 | 会话列表 | 服务端 `get_conversations` 分页 | 本地 `conversations` 按 `seq DESC` 分页 |
 | 未读总数 | 服务端 `get_unread_count` | 本地 `conversations.unread_count` 汇总 |
@@ -422,7 +422,7 @@ storage(open DB + read meta)
 
 ### 9.3 notification 处理
 
-| 服务端 notification | memory 模式 | persistent 模式 | 公开事件 |
+| 服务端 notification | instant 模式 | persistent 模式 | 公开事件 |
 |---|---|---|---|
 | `messages:received` | 按累积的通知 `msg_id` 批量直读内容并派发重绘信号 | `sync_messages` 写消息表，再补跑 `sync_conversations` | `messages:received`、`session:sync` |
 | `contacts:updated` | 发联系人失效信号 | `sync_contacts` 写联系人表 | `contacts:updated`、`session:sync` |
@@ -558,7 +558,7 @@ totalBytes
 | 公开边界 | 清晰。调用方只依赖 `YimsgClient`、公开类型、错误类、常量和纯工具函数；公开面手写，保持稳定 | 单门面易学，但门面方法继续增长会降低可读性 |
 | 协议机械映射 | 成熟。`protocolgen` 以 `internal/protocol/yimsg.proto` 为唯一事实源生成出方向 action 与入方向通知分发 | 机械映射不写业务规则，避免生成代码变成第二套业务层 |
 | 业务编排 | 可控但偏重。`internal/action-mappers.ts` 做请求整形与响应归一化，门面层做认证、会话、缓存写后更新 | 业务语义手写更清楚，但要靠测试和文档同步防漂移 |
-| 读模型 | 合理。`memory` 轻量直连，`persistent` 负责本地副本和离线优先读取 | 两种模式必须保持同一公开语义，否则调用方心智成本会上升 |
+| 读模型 | 合理。`instant` 轻量直连，`persistent` 负责本地副本和离线优先读取 | 两种模式必须保持同一公开语义，否则调用方心智成本会上升 |
 | 同步模型 | 符合“轻通知 + 主动拉取”。通知只驱动同步或失效，UI 通过分页重读 | 最终一致简单稳定，但不提供 SDK 内置乐观 UI |
 | 展示资料 | 适合高频渲染。同步返回当前缓存，后台刷新后发事件 | 调用方必须接受短暂旧值或空值 |
 | 内存控制 | 边界明确。pending、分页、缓存、队列、同步批次和转发包都有上限 | 比无界缓存少一些命中率，换来可预测运行时 |

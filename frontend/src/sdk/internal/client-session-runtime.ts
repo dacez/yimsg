@@ -103,12 +103,12 @@ export class ClientSessionRuntime {
   /**
    * 返回当前同步就绪只读快照。
    *
-   * - memory 模式：无后台同步，`firstSyncComplete` 恒为 `true`。
+   * - instant 模式：无后台同步，`firstSyncComplete` 恒为 `true`。
    * - persistent 模式：全部同步域至少完成过一次（success 或 failed）后 `firstSyncComplete` 变为 `true`。
    */
   getSyncReadiness(): SyncReadiness {
     const mode = this.deps.lifecycle.getSnapshot().mode;
-    if (mode === "memory") {
+    if (mode === "instant") {
       return freezeObject({ domains: {}, firstSyncComplete: true });
     }
     return freezeObject({

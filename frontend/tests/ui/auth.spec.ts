@@ -4,11 +4,11 @@ import { ensureModeSelected, uniqueUser, register } from './helpers';
 test.describe('Auth', () => {
   test('first launch prompts for lite and persistent options', async ({ page }) => {
     await page.goto('/app/');
-    await expect(page.locator('#mode-opt-memory')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#mode-opt-instant')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#mode-opt-persistent')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#mode-opt-persistent-reset')).toHaveCount(0);
 
-    await ensureModeSelected(page, 'memory');
+    await ensureModeSelected(page, 'instant');
     await expect(page.locator('#login-form')).toBeVisible();
   });
 
@@ -30,7 +30,7 @@ test.describe('Auth', () => {
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
     const page2 = await ctx2.newPage();
     await page2.goto('/app/');
-    await ensureModeSelected(page2, 'memory');
+    await ensureModeSelected(page2, 'instant');
     await page2.click('[data-tab="register"]');
     await page2.fill('#reg-username', user);
     await page2.fill('#reg-password', '123456');
@@ -44,7 +44,7 @@ test.describe('Auth', () => {
 
   test('login with wrong password shows error', async ({ page }) => {
     await page.goto('/app/');
-    await ensureModeSelected(page, 'memory');
+    await ensureModeSelected(page, 'instant');
     await page.fill('#login-username', 'nonexistent_user_xyz');
     await page.fill('#login-password', 'wrongpass');
     await page.click('#login-form button[type="submit"]');

@@ -21,9 +21,9 @@ test.describe('Settings', () => {
     await page.click('[data-view="settings"]');
     const badge = page.locator('#settings-mode');
     await expect(badge).toBeVisible();
-    // Should show either Memory or 持久存储
+    // Should show either Instant or 持久存储
     const text = await badge.textContent();
-    expect(['Memory', '持久存储']).toContain(text?.trim());
+    expect(['Instant', '持久存储']).toContain(text?.trim());
   });
 
   test('update nickname updates settings display', async ({ page }) => {
@@ -161,9 +161,9 @@ test.describe('Settings', () => {
   });
 
   test('clear data button only shows in persistent mode', async ({ page }) => {
-    await register(page, uniqueUser('cdmem'), password, 'MemoryUser');
+    await register(page, uniqueUser('cdmem'), password, 'InstantUser');
     await page.click('[data-view="settings"]');
-    await expect(page.locator('#settings-mode')).toHaveText('Memory');
+    await expect(page.locator('#settings-mode')).toHaveText('Instant');
     await expect(page.locator('#clear-data-btn')).toBeHidden();
   });
 

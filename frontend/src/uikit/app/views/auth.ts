@@ -6,7 +6,7 @@ import { startSessionByMode } from '../../mode';
 import { initAfterAuth } from '../main-app';
 
 type ModeChoice = {
-  mode: 'memory' | 'persistent';
+  mode: 'instant' | 'persistent';
   layout: LayoutChoice;
 };
 
@@ -42,7 +42,7 @@ export function createAuthView(app: AppInstance) {
 
   async function initSelectedModeAfterAuth() {
     if (app.runtime.embedded) {
-      const requestedMode = app.runtime.requestedMode ?? 'memory';
+      const requestedMode = app.runtime.requestedMode ?? 'instant';
       await initAfterAuth(app, {
         requestedMode,
         startSession: () => startSessionByMode(app.client, {
@@ -59,7 +59,7 @@ export function createAuthView(app: AppInstance) {
     await initMode(resolveModeAfterAuth(savedMode));
   }
 
-  async function initMode(mode: 'memory' | 'persistent') {
+  async function initMode(mode: 'instant' | 'persistent') {
     const snapshot = app.client.getSessionSnapshot();
     const shouldResetStoredPersistentData = shouldResetPersistentStorage(mode, app.storage.getStoredPersistentUid(), snapshot.currentUid);
     const resetLocalData = mode === 'persistent' && shouldResetStoredPersistentData
@@ -74,7 +74,7 @@ export function createAuthView(app: AppInstance) {
       requestedMode: mode,
       startSession: async () => {
         sessionStart.result = await app.client.startSession({
-          storage: mode === 'persistent' ? 'persistent' : 'memory',
+          storage: mode === 'persistent' ? 'persistent' : 'instant',
           resetLocalData,
           instanceId: app.runtime.instanceId,
         });
@@ -83,9 +83,9 @@ export function createAuthView(app: AppInstance) {
 
     const startResult = sessionStart.result;
     if (startResult?.degraded) {
-      app.storage.setStoredMode('memory');
+      app.storage.setStoredMode('instant');
       app.storage.clearStoredPersistentUid();
-      app.emitAppError(new Error('持久化会话不可用，已降级为 memory 模式'), 'mode:persistent-fallback');
+      app.emitAppError(new Error('持久化会话不可用，已降级为 instant 模式'), 'mode:persistent-fallback');
     } else {
       app.storage.setStoredMode(mode);
     }
@@ -113,7 +113,7 @@ export function createAuthView(app: AppInstance) {
         <div class="mode-select">
           <h2 class="modal-title">${app.t('auth.chooseMode')}</h2>
           <div class="mode-options">
-            <div class="mode-option" id="mode-opt-memory">
+            <div class="mode-option" id="mode-opt-instant">
               <div class="mode-option-title">${app.t('auth.liteTitle')}</div>
               <div class="mode-option-desc">${app.t('auth.liteDesc')}</div>
             </div>
@@ -154,7 +154,7 @@ export function createAuthView(app: AppInstance) {
         resolve({ ...choice, layout: selectedLayout });
       };
 
-      app.$('mode-opt-memory').addEventListener('click', () => finish({ mode: 'memory' }));
+      app.$('mode-opt-instant').addEventListener('click', () => finish({ mode: 'instant' }));
       app.$('mode-opt-persistent').addEventListener('click', () => finish({ mode: 'persistent' }));
     });
   }

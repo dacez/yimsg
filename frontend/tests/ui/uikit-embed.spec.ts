@@ -86,7 +86,7 @@ test.describe('uikit embed', () => {
   });
 
   test('mount accepts mode option and widget bundle exposes UIKitMode-aware API', async ({ page }) => {
-    // 通过运行时加载 IIFE，然后动态构造一个隔离容器调用 mount({ mode: 'memory' })。
+    // 通过运行时加载 IIFE，然后动态构造一个隔离容器调用 mount({ mode: 'instant' })。
     // 目标：验证 `mode` 参数不会让 mount() 报错、widget 能正常渲染认证页。
     await page.goto('/demo/embed.html');
 
@@ -98,7 +98,7 @@ test.describe('uikit embed', () => {
       const w = window as unknown as { YimsgUIKit: { mount: (el: HTMLElement, opts: Record<string, unknown>) => { unmount: () => void; shadowRoot: ShadowRoot } } };
       const handle = w.YimsgUIKit.mount(host, {
         wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
-        mode: 'memory',
+        mode: 'instant',
       });
       const hasAuthCard = !!handle.shadowRoot.querySelector('.auth-card');
       handle.unmount();

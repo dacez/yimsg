@@ -31,13 +31,13 @@ describe('AppInstance', () => {
     const b = new AppStorageScope(createEmbeddedStorage());
 
     a.setStoredToken('token-a');
-    a.setStoredMode('memory');
+    a.setStoredMode('instant');
     b.setStoredToken('token-b');
     b.setStoredMode('persistent');
 
     expect(a.getStoredToken()).toBe('token-a');
     expect(b.getStoredToken()).toBe('token-b');
-    expect(a.getStoredMode()).toBe('memory');
+    expect(a.getStoredMode()).toBe('instant');
     expect(b.getStoredMode()).toBe('persistent');
   });
 

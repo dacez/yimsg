@@ -24,11 +24,11 @@ export type MountTarget = HTMLElement | string;
 
 /**
  * UIKit 存储模式。
- * - `memory`：纯内存 DataGateway，不落盘，刷新即丢失；所有环境都可用。
+ * - `instant`：纯内存 DataGateway，不落盘，刷新即丢失；所有环境都可用。
  * - `persistent`：请求持久化会话，具体本地存储实现由 SDK 内部决定；
  *   本地数据可在设置页通过「清除数据」按钮随时清空并重新追平，无需切换模式。
  */
-export type UIKitMode = 'memory' | 'persistent';
+export type UIKitMode = 'instant' | 'persistent';
 
 /**
  * UIKit 显示范围。
@@ -42,7 +42,7 @@ export type UIKitViewMode = 'full' | 'chat-only' | 'contacts-only';
 
 /** 宿主传入的装载参数。 */
 export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'reconnectNotifyThreshold' | 'heartbeatInterval' | 'recallWindowSeconds'> {
-  /** 当前挂载实例的唯一标识；用于 memory/persistent 状态与 持久存储 dbName 隔离。 */
+  /** 当前挂载实例的唯一标识；用于 instant/persistent 状态与 持久存储 dbName 隔离。 */
   readonly instanceId?: string;
   /** 宿主已持有的 token（SSO 场景），widget 会自动 authenticate。 */
   readonly token?: string;
@@ -53,10 +53,10 @@ export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' 
   /** 强制布局；默认根据容器宽度自动选择。 */
   readonly layout?: 'desktop' | 'mobile' | 'auto';
   /**
-  * 存储模式，默认 `memory`。
+  * 存储模式，默认 `instant`。
    *
-  * - `memory`：内存 DataGateway，始终可用；
-  * - `persistent`：请求持久化会话；不可用时自动降级为 `memory` 并通过 `onError` 通知宿主。
+  * - `instant`：内存 DataGateway，始终可用；
+  * - `persistent`：请求持久化会话；不可用时自动降级为 `instant` 并通过 `onError` 通知宿主。
    *
    * 当宿主通过 `client` 传入已经 ready 的实例时，UIKit 不会再次初始化，此参数不生效。
    */

@@ -14,7 +14,7 @@ vi.mock('../../src/uikit/app/layout', () => ({
 
 vi.mock('../../src/uikit/app/startup-mode', () => ({
   needsInitialModeSelection: vi.fn(() => false),
-  resolveModeAfterAuth: vi.fn(() => 'memory'),
+  resolveModeAfterAuth: vi.fn(() => 'instant'),
   shouldResetPersistentStorage: vi.fn(() => false),
 }));
 
@@ -71,11 +71,11 @@ function createApp() {
       register: vi.fn(async () => undefined),
       authenticate: vi.fn(async (_token: string) => ({ token: 'saved-token', uid: '1002' })),
       startSession: vi.fn(async () => ({
-        requestedStorage: 'memory',
-        actualStorage: 'memory',
+        requestedStorage: 'instant',
+        actualStorage: 'instant',
         requestedFileSystem: null,
         actualFileSystem: null,
-        mode: 'memory',
+        mode: 'instant',
         degraded: false,
         persistentStorageAvailable: true,
         resetLocalData: 'none',
@@ -87,7 +87,7 @@ function createApp() {
     storage: {
       setStoredToken: vi.fn(),
       clearStoredToken: vi.fn(),
-      getStoredMode: vi.fn(() => 'memory'),
+      getStoredMode: vi.fn(() => 'instant'),
       getStoredPersistentUid: vi.fn(() => null),
       clearStoredPersistentUid: vi.fn(),
       setStoredPersistentUid: vi.fn(),
