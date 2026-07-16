@@ -217,7 +217,9 @@ export class WsTransport implements ClientTransport {
       }
     };
 
-    socket.onerror = () => {};
+    socket.onerror = () => {
+      console.error(`[WsTransport] WebSocket 连接错误 url=${this.url} readyState=${socket.readyState}`);
+    };
   }
 
   disconnect(): void {
@@ -280,7 +282,10 @@ export class WsTransport implements ClientTransport {
     let frame;
     try {
       frame = decodeFrame(await websocketDataToBytes(raw));
-    } catch (_) {
+    } catch (err) {
+      console.warn(
+        `[WsTransport] 解码帧失败，已丢弃: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return;
     }
 

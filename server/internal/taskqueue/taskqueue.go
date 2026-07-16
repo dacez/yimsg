@@ -111,6 +111,7 @@ func (q *Queue) SetAsync(workers int) {
 	q.ch = make(chan item, 1024)
 	q.open = true
 	q.mu.Unlock()
+	log.Printf("task queue: starting %d async workers", workers)
 	for i := 0; i < workers; i++ {
 		q.wg.Add(1)
 		go func() {
@@ -158,6 +159,9 @@ func (q *Queue) Recover() error {
 	for _, it := range items {
 		log.Printf("task queue replay id=%d kind=%s", it.id, it.kind)
 		q.dispatch(it)
+	}
+	if len(items) > 0 {
+		log.Printf("task queue: recovered %d pending tasks", len(items))
 	}
 	return nil
 }
