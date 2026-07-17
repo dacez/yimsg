@@ -38,6 +38,28 @@ describe('uikit storage-base', () => {
     expect(scope.getStoredLang()).toBe('zh');
   });
 
+  it('falls back to the website language before navigator detection when lang is unset', () => {
+    const scope = new StorageScope(createSeededStorage({ 'yimsg-lang': 'en' }));
+    expect(scope.getStoredLang()).toBe('en');
+  });
+
+  it('prefers an already chosen in-app lang over the website lang', () => {
+    const scope = new StorageScope(createSeededStorage({ lang: 'zh', 'yimsg-lang': 'en' }));
+    expect(scope.getStoredLang()).toBe('zh');
+  });
+
+  it('falls back to navigator.language when neither app nor website lang is stored', () => {
+    vi.stubGlobal('navigator', { language: 'en-US' });
+    const scope = new StorageScope(createSeededStorage());
+    expect(scope.getStoredLang()).toBe('en');
+  });
+
+  it('defaults to zh when nothing is stored and navigator reports a non-English language', () => {
+    vi.stubGlobal('navigator', { language: 'zh-CN' });
+    const scope = new StorageScope(createSeededStorage());
+    expect(scope.getStoredLang()).toBe('zh');
+  });
+
   it('falls back to instant when localStorage throws at runtime', () => {
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => {

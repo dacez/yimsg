@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-17。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -116,6 +116,8 @@ UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 wa
 示例页面位于 `packages/uikit/examples/embed.html` 与 `packages/uikit/examples/embed-multi.html`；官网营销向体验 demo（含六宫格客服工作台）位于 `packages/uikit/examples/` 下的其余页面。
 
 demo 页面自身的标题 / 说明文案通过共享脚本 `packages/uikit/examples/demo-i18n.js` 跟随入口语言：优先读取官网 `website/index.html` 语言切换器写入的 `localStorage['yimsg-lang']`（官网首次加载即会写入当前语言，不需要手动切换过），未设置时按 `navigator.language` 回退判定，使从中文/英文官网点进 demo 的访客看到匹配语言的页面；`embed-multi.html` 用于验证多实例语言互相隔离，其内部每个 UIKit 实例的 `locale` 固定为 `zh-CN`，不随页面语言变化，仅页面自身文案跟随语言。
+
+主应用（`apps/web`，即官网「Open App」指向的 `/app/`）未显式传入 `locale` 时，语言解析走 `packages/uikit/src/app/storage-base.ts` 的 `StorageScope.getStoredLang()`：先看 App 内是否已单独选过语言（`localStorage['lang']`），没有则回退到同源共享的 `localStorage['yimsg-lang']`，再没有才按 `navigator.language` 探测，最后默认 `zh`，确保从官网任意语言点进 `/app/` 时首次进入的语言与官网一致。
 
 ## 6. 快速接入
 

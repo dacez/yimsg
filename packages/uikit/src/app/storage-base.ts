@@ -1,3 +1,5 @@
+import { detectLocale } from '../i18n';
+
 export interface StorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -9,6 +11,8 @@ const MODE_KEY = 'mode';
 const PERSISTENT_UID_KEY = 'persistent_uid';
 const LAYOUT_KEY = 'layout';
 const LANG_KEY = 'lang';
+/** 官网语言切换器（website/index.html #lang-toggle）写入的同源 key，App 首次访问时优先复用。 */
+const WEBSITE_LANG_KEY = 'yimsg-lang';
 
 function createMemoryStorage(): StorageAdapter {
   const store = new Map<string, string>();
@@ -126,9 +130,17 @@ export class StorageScope {
     this.storage.removeItem(LAYOUT_KEY);
   }
 
+  /**
+   * 语言未在 App 内选过时（`LANG_KEY` 未写入），依次回退到官网语言切换器写入的
+   * `yimsg-lang`（同源共享，保证从官网点「Open App」进入的语言与官网一致），
+   * 再回退到 `navigator.language` 探测，最后才默认 `zh`。
+   */
   getStoredLang(): 'zh' | 'en' {
     const raw = this.storage.getItem(LANG_KEY);
-    return raw === 'en' ? 'en' : 'zh';
+    if (raw === 'zh' || raw === 'en') return raw;
+    const websiteLang = this.storage.getItem(WEBSITE_LANG_KEY);
+    if (websiteLang === 'zh' || websiteLang === 'en') return websiteLang;
+    return detectLocale() === 'en' ? 'en' : 'zh';
   }
 
   setStoredLang(lang: 'zh' | 'en'): void {
