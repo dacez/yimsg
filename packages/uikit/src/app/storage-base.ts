@@ -1,5 +1,3 @@
-import { detectLocale } from '../i18n';
-
 export interface StorageAdapter {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -131,16 +129,15 @@ export class StorageScope {
   }
 
   /**
-   * 语言未在 App 内选过时（`LANG_KEY` 未写入），依次回退到官网语言切换器写入的
+   * 语言未在 App 内选过时（`LANG_KEY` 未写入），回退到官网语言切换器写入的
    * `yimsg-lang`（同源共享，保证从官网点「Open App」进入的语言与官网一致），
-   * 再回退到 `navigator.language` 探测，最后才默认 `zh`。
+   * 仍未设置时默认 `zh`。
    */
   getStoredLang(): 'zh' | 'en' {
     const raw = this.storage.getItem(LANG_KEY);
     if (raw === 'zh' || raw === 'en') return raw;
     const websiteLang = this.storage.getItem(WEBSITE_LANG_KEY);
-    if (websiteLang === 'zh' || websiteLang === 'en') return websiteLang;
-    return detectLocale() === 'en' ? 'en' : 'zh';
+    return websiteLang === 'en' ? 'en' : 'zh';
   }
 
   setStoredLang(lang: 'zh' | 'en'): void {

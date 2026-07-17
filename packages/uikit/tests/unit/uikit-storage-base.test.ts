@@ -38,7 +38,7 @@ describe('uikit storage-base', () => {
     expect(scope.getStoredLang()).toBe('zh');
   });
 
-  it('falls back to the website language before navigator detection when lang is unset', () => {
+  it('falls back to the website language when lang is unset', () => {
     const scope = new StorageScope(createSeededStorage({ 'yimsg-lang': 'en' }));
     expect(scope.getStoredLang()).toBe('en');
   });
@@ -48,14 +48,7 @@ describe('uikit storage-base', () => {
     expect(scope.getStoredLang()).toBe('zh');
   });
 
-  it('falls back to navigator.language when neither app nor website lang is stored', () => {
-    vi.stubGlobal('navigator', { language: 'en-US' });
-    const scope = new StorageScope(createSeededStorage());
-    expect(scope.getStoredLang()).toBe('en');
-  });
-
-  it('defaults to zh when nothing is stored and navigator reports a non-English language', () => {
-    vi.stubGlobal('navigator', { language: 'zh-CN' });
+  it('defaults to zh when neither app nor website lang is stored', () => {
     const scope = new StorageScope(createSeededStorage());
     expect(scope.getStoredLang()).toBe('zh');
   });
