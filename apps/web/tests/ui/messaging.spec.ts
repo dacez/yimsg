@@ -542,13 +542,21 @@ test.describe('Messaging', () => {
     await expect(fileMsg).toBeVisible({ timeout: 10_000 });
     // File name should be shown
     await expect(fileMsg.locator('.message-file-name')).toContainText('test-file.txt');
+    await expect(fileMsg).toHaveAttribute('download', 'test-file.txt');
+
+    const downloadPromise = page1.waitForEvent('download');
+    await fileMsg.click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('test-file.txt');
 
     // Receiver should also see the file
     await page2.click('[data-view="chat"]');
     const conv = page2.locator('#conversation-list .conversation-item', { hasText: 'FileSender' });
     await expect(conv).toBeVisible({ timeout: 10_000 });
     await conv.click();
-    await expect(page2.locator('#message-list .message-file')).toBeVisible({ timeout: 10_000 });
+    const receivedFileMsg = page2.locator('#message-list .message-file');
+    await expect(receivedFileMsg).toBeVisible({ timeout: 10_000 });
+    await expect(receivedFileMsg).toHaveAttribute('download', 'test-file.txt');
 
     await ctx1.close();
     await ctx2.close();

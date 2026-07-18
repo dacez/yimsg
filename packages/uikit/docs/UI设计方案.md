@@ -463,7 +463,7 @@ renderMessages():
 | 0 (TEXT) | 纯文本 `escapeHtml` | 防 XSS |
 | 1 (IMAGE) | `<img>` 标签 | 点击新标签页打开原图 |
 | 2 (SYSTEM) | 居中灰色文字 | 无气泡、无发送者 |
-| 3 (FILE) | 文件图标 + 名称 + 大小 + 下载链接 | content 为 JSON `{url, name, size}` |
+| 3 (FILE) | 文件图标 + 名称 + 大小 + 下载链接 | 下载链接使用消息中的原始文件名，避免以 `media_id` 作为保存文件名 |
 
 #### 进入会话流程
 

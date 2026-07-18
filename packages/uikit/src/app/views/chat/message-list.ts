@@ -262,6 +262,7 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
       bubble.textContent = file?.name || app.t('chat.file');
       return;
     }
+    anchor.download = file.name || app.t('chat.file');
     const icon = app.dom.ownerDocument.createElement('div');
     icon.className = 'message-file-icon';
     setSafeHtml(icon, safeHtml('<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'));
