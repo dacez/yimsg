@@ -91,7 +91,7 @@ export default async function globalSetup(_config: FullConfig) {
   execSync(`go run ./server/tools/cmd/test-seed -config "${CONFIG}"`, {
     cwd: ROOT,
     stdio: 'inherit',
-    timeout: 60_000,
+    timeout: 120_000,
   });
 
   // 复用全量测试脚本预先编译好的服务端二进制（同一份源码），避免重复 go build。
@@ -106,7 +106,7 @@ export default async function globalSetup(_config: FullConfig) {
     execSync(`go build -o "${SERVER_EXE}" ./server/cmd/yimsg-server`, {
       cwd: ROOT,
       stdio: 'inherit',
-      timeout: 60_000,
+      timeout: 120_000,
     });
   }
 

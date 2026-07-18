@@ -3,9 +3,10 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/ui',
   // UI E2E 会在全量脚本中与服务端和多浏览器上下文共同运行；
-  // 多端同步 / 多实例 UIKit 用例在低资源 CI 或沙箱下偶尔超过 30s，
-  // 因此使用 60s 作为单用例上限，避免把资源竞争误判为业务失败。
-  timeout: 60_000,
+  // 总预算覆盖 beforeEach、测试体和清理；各业务状态仍使用自身的 5-20s 断言超时。
+  // 多端同步 / 多实例 UIKit 在默认并发下会连续经历多段状态等待，因此总预算需高于
+  // 任意单段超时之和，避免所有业务状态均按时完成后在夹具清理阶段误判超时。
+  timeout: 120_000,
   retries: 0,
   // 默认按 CPU 核数并行运行 UI 用例（Playwright 默认仅用一半核数）。
   // 用例之间互不共享状态、各自创建独立用户，提升并行度只缩短耗时、不降低测试强度。

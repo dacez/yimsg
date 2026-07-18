@@ -74,28 +74,45 @@ export async function sendMessage(page: Page, text: string) {
  * After accepting, user1 clicks "Chat" on user2 from friends list to open DM.
  */
 export async function addFriend(page1: Page, page2: Page, username2: string) {
+  const requestSentToast = page1.locator('#toast-container .toast', {
+    hasText: /好友请求已发送|Friend request sent/,
+  });
+  // 同一页面可能连续添加多个好友；必须等上一笔成功提示退场，才能把后续 toast
+  // 明确归属于本次写入。
+  await expect(requestSentToast).toHaveCount(0, { timeout: 6_000 });
+
   // User1: contacts → search → add
   await page1.click('[data-view="contacts"]');
   await page1.click('[data-ctab="search"]');
   await page1.fill('#search-username', username2);
   await page1.click('#search-btn');
-  const addBtn = page1.locator('#search-results .btn').first();
-  await expect(addBtn).toBeVisible({ timeout: 5000 });
+  const targetResult = page1.locator('#search-results .search-result', { hasText: `@${username2}` });
+  await expect(targetResult).toBeVisible({ timeout: 5_000 });
+  const addBtn = targetResult.locator('#add-friend-btn');
   await addBtn.click();
   const remarkModal = page1.locator('#modal-overlay:not(.hidden)');
   if (await remarkModal.isVisible({ timeout: 1000 }).catch(() => false)) {
     await page1.click('#modal-confirm-btn');
   }
+  // 先确认发送接口已经提交成功，再让接收方追平，避免把“按钮已点击”误当成请求已落库。
+  await expect(requestSentToast).toBeVisible({ timeout: 10_000 });
 
-  // User2: contacts → requests → accept (with retry for notification delay)
-  await page2.click('[data-view="contacts"]');
-  await page2.click('[data-ctab="requests"]');
+  // User2: contacts → requests → accept. 通知只提示数据变化；每轮切出再切回通讯录，
+  // 主动触发 loadContacts 拉取服务端已提交的数据，不能只反复点击当前 requests tab。
   const acceptBtn = page2.locator('#requests-tab .btn-primary').first();
-  await expect(acceptBtn).toBeVisible({ timeout: 10_000 });
+  await expect(async () => {
+    await page2.click('[data-view="chat"]');
+    await page2.click('[data-view="contacts"]');
+    await page2.click('[data-ctab="requests"]');
+    await expect(acceptBtn).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  const friendAddedToast = page2.locator('#toast-container .toast', {
+    hasText: /已添加好友|Friend added/,
+  });
+  await expect(friendAddedToast).toHaveCount(0, { timeout: 6_000 });
   await acceptBtn.click();
-
-  // Wait for accept to complete
-  await page2.waitForTimeout(500);
+  await expect(friendAddedToast).toBeVisible({ timeout: 10_000 });
+  await expect(acceptBtn).toHaveCount(0, { timeout: 10_000 });
 }
 
 export async function setContactRemark(page: Page, currentName: string, remark: string) {
@@ -118,7 +135,10 @@ export async function openDMFromContacts(page: Page, friendNickname: string) {
   const item = page.locator('.contact-item', { hasText: friendNickname });
   await expect(item).toBeVisible({ timeout: 10_000 });
   await item.click();
-  const chatBtn = page.locator('#contacts-detail-panel [data-action="chat"]');
+  const detailPanel = page.locator('#contacts-detail-panel');
+  // 上一个联系人的详情按钮可能仍短暂可见；必须先等目标详情标题完成切换。
+  await expect(detailPanel.locator('.detail-name')).toHaveText(friendNickname, { timeout: 10_000 });
+  const chatBtn = detailPanel.locator('[data-action="chat"]');
   await expect(chatBtn).toBeVisible({ timeout: 10_000 });
   await chatBtn.click();
   // Should switch to chat view with the conversation open

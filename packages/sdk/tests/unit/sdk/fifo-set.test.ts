@@ -104,13 +104,17 @@ describe('FifoSet 容量与 FIFO 淘汰', () => {
     expect(s.values()).toEqual(expected);
   });
 
-  it('size 不变式：大量随机元素写入下 size 永不超过 capacity', () => {
+  it('size 不变式：大量确定性元素写入下 size 永不超过 capacity', () => {
     const s = new FifoSet<string>({ capacity: 32 });
+    let maxSize = 0;
+    let maxLoadFactor = 0;
     for (let i = 0; i < 100000; i++) {
       s.add(String(i % 500));
-      expect(s.size).toBeLessThanOrEqual(s.capacity);
-      expect(s.loadFactor).toBeLessThanOrEqual(1);
+      maxSize = Math.max(maxSize, s.size);
+      maxLoadFactor = Math.max(maxLoadFactor, s.loadFactor);
     }
+    expect(maxSize).toBeLessThanOrEqual(s.capacity);
+    expect(maxLoadFactor).toBeLessThanOrEqual(1);
   });
 
   it('capacity 非整数 / 负数在构造时被规范化（floor 且下限为 0）', () => {

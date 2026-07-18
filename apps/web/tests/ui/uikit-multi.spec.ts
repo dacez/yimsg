@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './test-fixtures';
 import { uniqueUser, seedPrefix } from './helpers';
 
 async function clickShadow(page: Page, hostId: string, selector: string) {

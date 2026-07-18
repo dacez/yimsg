@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { loginSeedUser, sendMessage, expectMessage } from './helpers';
 
 const convListScrollTop = (page: import('@playwright/test').Page) =>
@@ -83,20 +83,39 @@ test.describe('Conversation list bounded stream window', () => {
 
     await collectVisibleKeys();
 
-    // 逐步向下滚动半屏，收集沿途出现的全部会话 key，直到抵达稳定的底部。
-    for (let step = 0; step < 60; step++) {
-      const done = await page.evaluate(() => {
+    const bottomBoundary = page
+      .locator('#conversation-list .list-boundary-hint-bottom')
+      .filter({ hasText: /没有更多会话|No more conversations/ });
+
+    // 每次触底后等待窗口内容真正换页或出现数据集底部，再收集下一窗口。
+    // 不能用固定 sleep：并发运行时查询可能超过 sleep，旧流程会在发出加载后立即把
+    // “当前已在底部”误判为遍历完成，只收集到有界窗口上限（80）条。
+    let reachedDatasetEnd = false;
+    for (let step = 0; step < 12; step++) {
+      if (await bottomBoundary.isVisible()) {
+        reachedDatasetEnd = true;
+        break;
+      }
+
+      const beforeKeys = await page
+        .locator('#conversation-list .conversation-item')
+        .evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.key || '').join('|'));
+      await page.evaluate(() => {
         const el = document.getElementById('conversation-list') as HTMLElement;
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
-        el.scrollTop = Math.min(el.scrollTop + el.clientHeight / 2, el.scrollHeight);
+        el.scrollTop = el.scrollHeight;
         el.dispatchEvent(new Event('scroll'));
-        return atBottom;
       });
-      await page.waitForTimeout(120);
+
+      await expect.poll(async () => {
+        if (await bottomBoundary.isVisible()) return 'dataset-end';
+        return page
+          .locator('#conversation-list .conversation-item')
+          .evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.key || '').join('|'));
+      }, { timeout: 20_000 }).not.toBe(beforeKeys);
       await collectVisibleKeys();
-      if (done) break;
     }
 
+    expect(reachedDatasetEnd || await bottomBoundary.isVisible()).toBe(true);
     // 种子至少有 dmFanout(120) 个会话；旧 bug 下大量会话不可达。
     expect(seen.size).toBeGreaterThanOrEqual(120);
   });

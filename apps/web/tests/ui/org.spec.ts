@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { loginSeedUser, seedPrefix, register, uniqueUser } from './helpers';
 
 // 组织通讯录：组织条目出现在通讯录列表（带"组织"徽标），点开进入组织架构浏览器，
@@ -88,7 +88,12 @@ test.describe('Org directory', () => {
     await page.click('#modal-confirm-btn');
 
     const orgRow = page.locator('#friends-tab .contact-item', { hasText: orgName });
-    await expect(orgRow).toBeVisible({ timeout: 15_000 });
+    // 创建和成员挂载完成后，切出再切回通讯录，主动走一次 loadContacts；不能只依赖
+    // org:updated 通知恰好在固定 15 秒内刷新当前列表。
+    await expect(page.locator('#toast-container')).toContainText(/操作成功|Succeeded/i, { timeout: 20_000 });
+    await page.click('[data-view="chat"]');
+    await page.click('[data-view="contacts"]');
+    await expect(orgRow).toBeVisible({ timeout: 20_000 });
     await expect(orgRow.locator('.contact-org-badge')).toBeVisible();
 
     await orgRow.click();

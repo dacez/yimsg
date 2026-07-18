@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixtures';
 
 test.describe('home dashboard', () => {
   test('首页展示 9 宫格，并支持调尺寸、卸载、加载和清空数据', async ({ page }) => {

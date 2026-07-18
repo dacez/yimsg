@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { uniqueUser, register, login, sendMessage, addFriend, openDMFromContacts, openConversation, expectMessage, getMessageTexts, loginSeedUser, seedPrefix, ensureModeSelected } from './helpers';
 
 test.describe('Chat', () => {
@@ -75,9 +75,6 @@ test.describe('Chat', () => {
     expect(idx1).toBeGreaterThanOrEqual(0);
     expect(idx1).toBeLessThan(idx2);
     expect(idx2).toBeLessThan(idx3);
-
-    await ctx1.close();
-    await ctx2.close();
   });
 
   test('app ignores any pre-existing URL hash and always lands on empty chat view', async ({ page }) => {
@@ -145,8 +142,7 @@ test.describe('Chat', () => {
     await expect(page1.locator('#detail-user-mutelist-btn')).toHaveText('关闭免打扰');
     await expect(page1.locator('#conversation-list .conversation-item', { hasText: 'MuteUser2' })).not.toContainText('免打扰');
 
-    await ctx1.close();
-    await ctx2.close();
+    // context 由共享夹具统一清理，避免两个 Chromium context 同时关闭时互相等待。
   });
 });
 

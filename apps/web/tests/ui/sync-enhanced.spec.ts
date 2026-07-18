@@ -5,7 +5,7 @@
  * 3. 系统消息渲染
  * 4. 会话未读红点数字正确
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation } from './helpers';
 
 test.describe('Enhanced Sync Tests', () => {
@@ -154,8 +154,9 @@ test.describe('Enhanced Sync Tests', () => {
     await expect(conv).toBeVisible({ timeout: 10_000 });
     const badge = conv.locator('.unread-badge');
     await expect(badge).toBeVisible({ timeout: 5000 });
-    const badgeText = await badge.textContent();
-    expect(parseInt(badgeText || '0')).toBeGreaterThanOrEqual(3);
+    await expect.poll(async () => parseInt((await badge.textContent()) || '0'), {
+      timeout: 5000,
+    }).toBeGreaterThanOrEqual(3);
 
     // Click to open → badge should clear
     await conv.click();

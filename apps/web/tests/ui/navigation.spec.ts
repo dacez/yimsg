@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts } from './helpers';
 
 test.describe('Navigation', () => {

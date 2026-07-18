@@ -1,5 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from './test-fixtures';
 import { uniqueUser, register, login, addFriend, openDMFromContacts, getMessageTexts, loginSeedUser } from './helpers';
+
+async function expectResolvedSortedContactNames(page: Page): Promise<string[]> {
+  let names: string[] = [];
+  await expect(async () => {
+    names = await page.locator('#friends-tab .contact-item .contact-name').allTextContents();
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.every((name) => !/^\d+$/.test(name.trim()))).toBe(true);
+    expect(names.every((name) => !/loading|加载中/i.test(name))).toBe(true);
+    expect(names).toEqual([...names].sort());
+    expect(new Set(names).size).toBe(names.length);
+  }).toPass({ timeout: 20_000 });
+  return names;
+}
 
 test.describe('Contacts', () => {
   const password = '123456';
@@ -45,8 +58,7 @@ test.describe('Contacts', () => {
     await page2.click('[data-ctab="requests"]');
     await expect(page2.locator('#requests-tab')).toContainText('Sender', { timeout: 10_000 });
 
-    await ctx1.close();
-    await ctx2.close();
+    // context 由共享夹具统一清理，避免两个 Chromium context 同时关闭时互相等待。
   });
 
   // 回归用例：申请方自己在「请求」tab 不应该出现接受/拒绝按钮，避免误以为能对自己发出的
@@ -183,8 +195,7 @@ test.describe('Contacts', () => {
     // Friends list should no longer contain Deleted
     await expect(page1.locator('#friends-tab')).not.toContainText('Deleted', { timeout: 5000 });
 
-    await ctx1.close();
-    await ctx2.close();
+    // context 由共享夹具统一清理，避免两个 Chromium context 同时关闭时互相等待。
   });
 
   test('friend chat button opens DM', async ({ browser }) => {
@@ -227,15 +238,8 @@ test.describe('Contacts', () => {
       expect(count).toBeLessThanOrEqual(40);
     }).toPass({ timeout: 10_000 });
 
-    // Verify visible range is sorted by cache_name.
-    const items = page.locator('#friends-tab .contact-item');
-    const names = await items.locator('.contact-name').allTextContents();
-    const sorted = [...names].sort();
-    expect(names).toEqual(sorted);
-
-    // Verify no duplicates
-    const unique = new Set(names);
-    expect(unique.size).toBe(names.length);
+    // Display names are resolved asynchronously and can rerender the window.
+    await expectResolvedSortedContactNames(page);
   });
 
   test('contacts left panel can be resized by mouse', async ({ page }) => {
@@ -349,37 +353,27 @@ test.describe('Contacts', () => {
     expect(boundedMetrics.scrollHeight).toBeLessThan(10_000);
     expect(boundedMetrics.scrollHeight).toBeGreaterThan(boundedMetrics.clientHeight);
 
-    // Scroll the contacts content area to the bottom to trigger pagination
-    await page.evaluate(() => {
-      const el = document.querySelector('.contacts-content');
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-        el.dispatchEvent(new Event('scroll'));
-      }
+    const initialNames = await expectResolvedSortedContactNames(page);
+    const initialNameSet = new Set(initialNames);
+
+    // Display names have settled above, so issue exactly one scroll intent. Repeating
+    // the scroll inside the polling callback would request multiple pages and test a
+    // different scenario than one-step pagination.
+    await page.locator('.contacts-content').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event('scroll'));
     });
 
-    // After scrolling, DOM remains bounded and the range moves.
-    await expect(async () => {
-      const count = await page.locator('#friends-tab .contact-item').count();
-      expect(count).toBeGreaterThan(0);
-      expect(count).toBeLessThanOrEqual(80);
-      const scrollTop = await page.evaluate(() => (document.querySelector('.contacts-content') as HTMLElement | null)?.scrollTop ?? 0);
-      expect(scrollTop).toBeGreaterThan(0);
-    }).toPass({ timeout: 10_000 });
-
-    // Verify visible range is sorted and unique.
-    // 显示信息（昵称）异步加载，未命中缓存时 contact-name 会先回退为纯数字 uid，
-    // 此时与服务端按 sort_key（昵称）排序的 DOM 顺序短暂不一致。轮询等到可见行
-    // 全部加载出真实昵称（不再有纯数字回退）后再校验排序，消除竞态。
+    // Verify one-step pagination by observing new data rather than a transient offset.
     await expect(async () => {
       const names = await page.locator('#friends-tab .contact-item .contact-name').allTextContents();
       expect(names.length).toBeGreaterThan(0);
-      expect(names.every((n) => !/^\d+$/.test(n.trim()))).toBe(true);
-      const sorted = [...names].sort();
-      expect(names).toEqual(sorted);
-      const unique = new Set(names);
-      expect(unique.size).toBe(names.length);
-    }).toPass({ timeout: 10_000 });
+      expect(names.length).toBeLessThanOrEqual(80);
+      expect(names.some((name) => !initialNameSet.has(name))).toBe(true);
+    }).toPass({ timeout: 20_000 });
+
+    // Verify visible range is sorted and unique.
+    await expectResolvedSortedContactNames(page);
   });
 
   test('remark after pagination reorders contacts without duplicates', async ({ page }) => {

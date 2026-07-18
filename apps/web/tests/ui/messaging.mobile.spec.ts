@@ -1,4 +1,4 @@
-import { test, expect, devices } from '@playwright/test';
+import { test, expect, devices } from './test-fixtures';
 import { uniqueUser, register, addFriend, openDMFromContacts, sendMessage } from './helpers';
 
 // 使用 iPhone 13 的设备尺寸与 pointer: coarse，验证移动端布局与长按撤回路径。

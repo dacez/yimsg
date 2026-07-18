@@ -120,13 +120,17 @@ describe('FifoMap 容量与 FIFO 淘汰', () => {
     for (const k of expectedKeys) expect(m.has(k)).toBe(true);
   });
 
-  it('size 不变式：大量随机 key 写入下 size 永不超过 capacity', () => {
+  it('size 不变式：大量确定性 key 写入下 size 永不超过 capacity', () => {
     const m = new FifoMap<string, number>({ capacity: 32 });
+    let maxSize = 0;
+    let maxLoadFactor = 0;
     for (let i = 0; i < 100000; i++) {
       m.set(String(i % 500), i);
-      expect(m.size).toBeLessThanOrEqual(m.capacity);
-      expect(m.loadFactor).toBeLessThanOrEqual(1);
+      maxSize = Math.max(maxSize, m.size);
+      maxLoadFactor = Math.max(maxLoadFactor, m.loadFactor);
     }
+    expect(maxSize).toBeLessThanOrEqual(m.capacity);
+    expect(maxLoadFactor).toBeLessThanOrEqual(1);
   });
 
   it('capacity 非整数 / 负数在构造时被规范化（floor 且下限为 0）', () => {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './test-fixtures';
 import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, setContactRemark } from './helpers';
 
 test.describe('Profile Change Visibility', () => {
