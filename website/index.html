@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yimsg · Minimal Self-Hosted Private Instant Messaging</title>
-  <meta id="meta-description" name="description" content="yimsg is a minimal, self-hosted, fully data-sovereign private instant messaging framework: a palm-sized mini host on your LAN serves hundreds of people, and multiple hosts scale out freely. Embed chat into your website as a customer-service widget with one line of code, or run it as a standalone web IM app with local persistence." />
+  <title>yimsg · Deploy Once. Embed Anywhere. Customize Everything.</title>
+  <meta id="meta-description" name="description" content="yimsg is a self-hosted instant messaging system you deploy once — run it as a standalone IM, embed it into any website or product, and customize it with an open UIKit, SDK, and API. Your server, your domain, your data." />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
@@ -12,12 +12,12 @@
 
   <header class="site-header">
     <div class="container nav">
-      <a class="brand" href="/site/">
+      <a class="brand" href="/">
         <span class="brand-mark">yi</span>msg
       </a>
       <nav class="nav-links">
-        <a href="#hardware" data-i18n="navHardware">Mini Host</a>
-        <a href="#advantages" data-i18n="navAdvantages">Advantages</a>
+        <a href="#deploy" data-i18n="navCapabilities">Capabilities</a>
+        <a href="#box">yimsg Box</a>
         <a href="#scenarios" data-i18n="navScenarios">Use Cases</a>
         <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub</a>
         <a class="nav-cta" href="/app/" data-i18n="navOpenApp">Open App</a>
@@ -36,39 +36,200 @@
   <main>
     <section class="hero">
       <div class="container">
-        <span class="hero-badge" data-i18n="heroBadge">Minimal Self-Hosted · Full Data Sovereignty</span>
-        <h1 class="hero-title" data-i18n-html="heroTitle">
-          Your messages, <span class="grad-text">belong only to you</span>
-        </h1>
-        <p class="hero-sub" data-i18n="heroSub">
-          yimsg is a minimal, private instant messaging framework — one machine, up and running in minutes.
-          All your data stays on a machine in your own office, with no third-party cloud, fully under your control.
-        </p>
+        <span class="hero-badge" data-i18n="heroBadge">Self-Hosted IM Infrastructure</span>
+        <h1 class="hero-title">The easiest way to <span class="grad-text">own your IM infrastructure</span></h1>
+        <p class="hero-sub" data-i18n="heroSub">Deploy once. Run it standalone, or embed it anywhere.</p>
+        <p class="hero-sub-extra" data-i18n="heroSubExtra">On your own server, under your own domain — run a messaging system that's entirely yours.</p>
         <div class="hero-actions">
-          <a class="btn btn-primary" href="/demo/responsive.html" data-i18n="ctaTryNow">Try It Now</a>
-          <a class="btn btn-ghost" href="#advantages" data-i18n="ctaSeeAdvantages">See Advantages</a>
+          <a class="btn btn-primary" href="https://github.com/dacez/yimsg#quick-start" target="_blank" rel="noopener" data-i18n="ctaGetStarted">Get Started</a>
+          <a class="btn btn-ghost" href="/demo/responsive.html" data-i18n="ctaViewDemo">View Demo</a>
+          <a class="btn btn-ghost" href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub</a>
         </div>
-        <dl class="hero-stats">
+      </div>
+    </section>
+
+    <section id="deploy" class="section">
+      <div class="container">
+        <span class="section-eyebrow"><span class="pillar-step">01</span>Deploy Once</span>
+        <h2 class="section-title" data-i18n="deployTitle">部署一次，拥有完整的私有 IM 服务</h2>
+        <p class="section-lead" data-i18n="deployLead">
+          将 yimsg 部署到自己的服务器、云主机或本地环境中，即可运行一套完整的即时通讯系统。
+          无需依赖第三方 IM 平台，用户、消息、文件和数据全部由自己掌控。
+        </p>
+        <div class="pillar-grid">
+          <div class="pillar-visual">
+            <svg class="pillar-diagram" viewBox="0 0 480 150" role="img" aria-labelledby="deploySvgTitle">
+              <title id="deploySvgTitle" data-i18n="deploySvgTitle">示意图：一台服务器，同时支持自有域名访问、局域网 / 公网接入，并自主掌控全部数据</title>
+              <defs>
+                <linearGradient id="deployGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="var(--color-brand-500)" />
+                  <stop offset="1" stop-color="var(--color-brand-400)" />
+                </linearGradient>
+                <marker id="deployArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--color-brand-500)" />
+                </marker>
+              </defs>
+
+              <path d="M190,60 L72,32" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#deployArrow)" />
+              <rect x="14" y="14" width="120" height="34" rx="17" fill="var(--surface)" stroke="var(--line)" />
+              <text x="74" y="36" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink-soft)" data-i18n="deploySvgDomain">自有域名访问</text>
+
+              <path d="M290,60 L408,32" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#deployArrow)" />
+              <rect x="348" y="14" width="120" height="34" rx="17" fill="var(--surface)" stroke="var(--line)" />
+              <text x="408" y="36" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink-soft)" data-i18n="deploySvgNetwork">局域网 / 公网均可</text>
+
+              <rect x="190" y="50" width="100" height="56" rx="14" fill="url(#deployGrad)" />
+              <circle cx="278" cy="58" r="13" fill="#ffffff" />
+              <text x="278" y="63" text-anchor="middle" font-size="13">🔒</text>
+              <text x="240" y="124" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink-soft)" data-i18n="deploySvgServer">你的服务器</text>
+            </svg>
+          </div>
+          <div class="pillar-copy">
+            <ul class="check-list">
+              <li data-i18n="deployItem1">私有化部署</li>
+              <li data-i18n="deployItem2">完整 Web IM</li>
+              <li data-i18n="deployItem3">自有域名访问</li>
+              <li data-i18n="deployItem4">独立用户与组织体系</li>
+              <li data-i18n="deployItem5">数据自主掌控</li>
+              <li data-i18n="deployItem6">支持局域网与公网环境</li>
+            </ul>
+            <p class="pillar-highlight" data-i18n="deployHighlight">One deployment. Your complete IM system.</p>
+          </div>
+        </div>
+        <dl class="stat-strip">
           <div><dt data-i18n="statMachineDt">1 Machine</dt><dd data-i18n="statMachineDd">Minimal self-hosted, ready out of the box</dd></div>
           <div><dt data-i18n="statCoreDt">2-core 4GB</dt><dd data-i18n="statCoreDd">Easily supports 100+ concurrent users</dd></div>
           <div><dt data-i18n="statSizeDt">&lt; 32MB</dt><dd data-i18n="statSizeDd">Ultra-compact deployment package</dd></div>
-          <div><dt data-i18n="statCloudDt">0 Third-Party Cloud</dt><dd data-i18n="statCloudDd">All data stays in your own office</dd></div>
+          <div><dt data-i18n="statCloudDt">0 Third-Party Cloud</dt><dd data-i18n="statCloudDd">All data stays under your control</dd></div>
         </dl>
       </div>
     </section>
 
-    <section id="hardware" class="section">
+    <div class="pillar-divider" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13M6 12l6 6 6-6"/></svg>
+    </div>
+
+    <section id="embed" class="section section-alt">
       <div class="container">
-        <span class="section-eyebrow">Pocket Server</span>
-        <h2 class="section-title" data-i18n="hwTitle">A pocket-sized instant messaging system</h2>
+        <span class="section-eyebrow"><span class="pillar-step">02</span>Embed Anywhere</span>
+        <h2 class="section-title" data-i18n="embedTitle">一行代码，为任何网站增加即时通讯能力</h2>
+        <p class="section-lead" data-i18n="embedLead">
+          将 yimsg 嵌入现有网站、管理后台、SaaS 产品或企业业务系统。
+          无需重新开发消息连接、会话同步、联系人、群组、文件和消息状态。
+        </p>
+        <div class="pillar-grid pillar-grid--reverse">
+          <div class="pillar-copy">
+            <ul class="check-list">
+              <li data-i18n="embedItem1">Shadow DOM 样式隔离，不影响宿主页面</li>
+              <li data-i18n="embedItem2">支持浅色 / 深色 / 跟随系统主题</li>
+              <li data-i18n="embedItem3">多语言联动，跟随宿主页面语言切换</li>
+              <li data-i18n="embedItem4">一套服务，多个网站或业务系统同时复用</li>
+            </ul>
+            <pre class="code-block"><code>import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
+
+const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
+  wsUrl: 'wss://your-domain.com/ws',
+  uploadUrl: '/api/upload',
+  theme: 'auto',
+});</code></pre>
+            <p class="pillar-note" data-i18n="embedNote">示例代码，实际接入时请替换为你自己的域名、上传接口与容器节点；需先自行构建 UIKit 产物。</p>
+            <p class="pillar-highlight" data-i18n="embedHighlight">Deploy once. Embed everywhere.</p>
+          </div>
+          <div class="pillar-visual">
+            <svg class="pillar-diagram" viewBox="0 0 480 150" role="img" aria-labelledby="embedSvgTitle">
+              <title id="embedSvgTitle" data-i18n="embedSvgTitle">示意图：一套 yimsg 服务，同时嵌入到官网、后台系统和业务系统中</title>
+              <defs>
+                <linearGradient id="embedGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="var(--color-brand-500)" />
+                  <stop offset="1" stop-color="var(--color-brand-400)" />
+                </linearGradient>
+                <marker id="embedArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--color-brand-500)" />
+                </marker>
+              </defs>
+
+              <rect x="20" y="58" width="76" height="40" rx="12" fill="url(#embedGrad)" />
+              <text x="58" y="83" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">yimsg</text>
+
+              <path d="M96,66 L220,27" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#embedArrow)" />
+              <rect x="222" y="10" width="230" height="34" rx="10" fill="var(--surface)" stroke="var(--line)" />
+              <text x="337" y="32" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink-soft)" data-i18n="embedSvgSite1">你的官网</text>
+
+              <path d="M96,78 L220,75" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#embedArrow)" />
+              <rect x="222" y="58" width="230" height="34" rx="10" fill="var(--surface)" stroke="var(--line)" />
+              <text x="337" y="80" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink-soft)" data-i18n="embedSvgSite2">管理后台 / SaaS 产品</text>
+
+              <path d="M96,90 L220,123" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#embedArrow)" />
+              <rect x="222" y="106" width="230" height="34" rx="10" fill="var(--surface)" stroke="var(--line)" />
+              <text x="337" y="128" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink-soft)" data-i18n="embedSvgSite3">自己的业务系统</text>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="pillar-divider" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13M6 12l6 6 6-6"/></svg>
+    </div>
+
+    <section id="customize" class="section">
+      <div class="container">
+        <span class="section-eyebrow"><span class="pillar-step">03</span>Customize Everything</span>
+        <h2 class="section-title" data-i18n="customizeTitle">开放 UIKit、SDK 与 API，自由构建自己的 IM</h2>
+        <p class="section-lead" data-i18n="customizeLead">
+          用户可以直接使用 yimsg 提供的完整聊天界面，也可以基于开放能力构建自己的产品。
+        </p>
+        <div class="pillar-grid">
+          <div class="pillar-visual">
+            <svg class="pillar-diagram" viewBox="0 0 480 150" role="img" aria-labelledby="customizeSvgTitle">
+              <title id="customizeSvgTitle" data-i18n="customizeSvgTitle">示意图：使用 UIKit、SDK 或 API 构建属于你自己的产品</title>
+              <defs>
+                <marker id="customizeArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--color-brand-500)" />
+                </marker>
+              </defs>
+
+              <rect x="40" y="16" width="140" height="32" rx="8" fill="var(--color-brand-500)" />
+              <text x="110" y="37" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">UIKit</text>
+
+              <rect x="40" y="59" width="140" height="32" rx="8" fill="var(--color-brand-400)" />
+              <text x="110" y="80" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">SDK</text>
+
+              <rect x="40" y="102" width="140" height="32" rx="8" fill="var(--brand-3)" />
+              <text x="110" y="123" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">API</text>
+
+              <path d="M182,75 L262,75" stroke="var(--color-brand-500)" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#customizeArrow)" />
+              <rect x="264" y="50" width="180" height="50" rx="12" fill="var(--surface)" stroke="var(--line)" />
+              <text x="354" y="80" text-anchor="middle" font-size="13" font-weight="600" fill="var(--ink-soft)" data-i18n="customizeSvgProduct">你的产品</text>
+            </svg>
+          </div>
+          <div class="pillar-copy">
+            <ul class="check-list">
+              <li data-i18n="customizeItem1">使用 UIKit 快速接入完整聊天界面</li>
+              <li data-i18n="customizeItem2">使用 SDK 构建自定义客户端</li>
+              <li data-i18n-html="customizeItem3">使用 API 连接现有业务系统<span class="badge-roadmap">路线图</span></li>
+              <li data-i18n="customizeItem4">自定义品牌、主题和交互</li>
+              <li data-i18n-html="customizeItem5">扩展机器人、AI 和业务消息<span class="badge-roadmap">路线图</span></li>
+              <li data-i18n-html="customizeItem6">对接自己的登录和用户体系<span class="badge-roadmap">路线图</span></li>
+            </ul>
+            <p class="pillar-highlight" data-i18n="customizeHighlight">Use our UI, customize it, or build your own.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="box" class="section section-alt">
+      <div class="container">
+        <span class="section-eyebrow" data-i18n="boxKicker">Don't want to deploy a server?</span>
+        <h2 class="section-title" data-i18n="hwTitle">拥有一台 yimsg Box</h2>
         <p class="section-lead" data-i18n="hwLead">
-          One palm-sized mini host is your entire chat server.
-          Plug it into your LAN and go — your chat data always stays in your own hands.
+          插上设备，连接网络，立即拥有自己的 IM 系统。
+          yimsg Box 预装完整服务，适合不想购买云服务器或手动部署的用户。
         </p>
         <div class="hw-grid">
           <div class="hw-visual">
             <div class="hw-photo-wrap">
-              <img class="hw-photo-main" src="assets/minipc-hand.png" data-i18n-alt="hwPhotoAlt" alt="A yimsg mini host small enough to hold in one hand" />
+              <img class="hw-photo-main" src="assets/minipc-hand.png" data-i18n-alt="hwPhotoAlt" alt="A yimsg Box small enough to hold in one hand" />
               <span class="hw-chip hw-chip-a" data-i18n="hwChipA">🔌 Plug into your LAN · Ready to go</span>
             </div>
             <div class="hw-diagram-wrap">
@@ -115,72 +276,25 @@
             </div>
           </div>
           <div class="hw-copy">
-            <ul class="hw-list">
-              <li data-i18n-html="hwList1">
-                <strong>Small enough to carry with you</strong>
-                Fits in a pocket, a drawer, a corner of your desk — no server room, no rack needed.
-                Moving offices? Just pocket the whole system.
-              </li>
-              <li data-i18n-html="hwList2">
-                <strong>One host is enough for the whole company</strong>
-                A single host reliably supports hundreds of concurrent chatters.
-                Power it on, plug in the network cable, and the whole company is chatting in minutes.
-              </li>
-              <li data-i18n-html="hwList3">
-                <strong>More people? Add another host<span class="pro-badge">Pro</span></strong>
-                Cluster deployment, flexible scale-out: stack more hosts, fully interconnected,
-                growing naturally with your business.
-              </li>
-              <li data-i18n-html="hwList4">
-                <strong>Works entirely on your LAN</strong>
-                No public network or domain required — plug it into your office LAN and it just works,
-                with chat data never leaving your office.
-              </li>
+            <ul class="check-list">
+              <li data-i18n="hwList1">局域网开箱即用</li>
+              <li data-i18n="hwList2">数据保存在自己的设备中</li>
+              <li data-i18n="hwList3">无需单独准备服务器</li>
+              <li data-i18n="hwList4">无需公网 IP</li>
+              <li data-i18n="hwList5">支持通过自己的域名访问</li>
+              <li data-i18n-html="hwList6">可通过 Cloudflare Tunnel 安全发布到公网<span class="badge-roadmap">路线图</span></li>
             </ul>
+            <p class="pillar-highlight" data-i18n="hwHighlight">One Box. Your Own IM.</p>
             <div class="hw-actions">
-              <a class="btn btn-primary" href="/demo/responsive.html" data-i18n="ctaTryNow">Try It Now</a>
-              <a class="btn btn-ghost" href="#scenarios" data-i18n="ctaSeeWhat">See what you can build</a>
+              <a class="btn btn-primary" href="https://github.com/dacez/yimsg" target="_blank" rel="noopener" data-i18n="ctaLearnMore">Learn More</a>
+              <a class="btn btn-ghost" href="/demo/responsive.html" data-i18n="ctaViewDemo">View Demo</a>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="advantages" class="section">
-      <div class="container">
-        <span class="section-eyebrow">Why yimsg</span>
-        <h2 class="section-title" data-i18n="advTitle">Three core advantages built for business</h2>
-        <p class="section-lead" data-i18n="advLead">Data sovereignty, minimal deployment, and top performance — all packed into a machine that's entirely yours.</p>
-        <div class="grid">
-          <article class="card">
-            <div class="card-icon">🔒</div>
-            <h3 data-i18n="advCard1Title">Full data sovereignty</h3>
-            <p data-i18n="advCard1Body">
-              All your data stays in your own hands, centralized on a machine in your office,
-              with no third-party cloud involved, fully under your control. Wipe it clean with one click whenever you need to.
-            </p>
-          </article>
-          <article class="card">
-            <div class="card-icon">🚀</div>
-            <h3 data-i18n="advCard2Title">Minimal deployment</h3>
-            <p data-i18n="advCard2Body">
-              One machine, up and running in minutes, with no complex operations required.
-              Whether or not you have a domain or a public IP, there's a matching connection path — reliable even on the worst networks.
-            </p>
-          </article>
-          <article class="card">
-            <div class="card-icon">⚡</div>
-            <h3 data-i18n="advCard3Title">Top performance</h3>
-            <p data-i18n="advCard3Body">
-              A 2-core, 4GB machine supports hundreds of concurrent chatters, the deployment package is under 32MB,
-              and client memory usage is bounded — naturally suited to resource-constrained embedded scenarios.
-            </p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="scenarios" class="section section-alt">
+    <section id="scenarios" class="section">
       <div class="container">
         <span class="section-eyebrow">Use Cases</span>
         <h2 class="section-title" data-i18n="scTitle">One UIKit, many ways to use it</h2>
@@ -247,10 +361,10 @@
 
   <footer class="site-footer">
     <div class="container">
-      <span><span class="brand-mark">yi</span>msg · <span data-i18n="footerTagline">Minimal Self-Hosted Private Instant Messaging</span></span>
+      <span><span class="brand-mark">yi</span>msg · <span data-i18n="footerTagline">Deploy Once · Embed Anywhere · Customize Everything</span></span>
       <span data-i18n-html="footerLine2">
         <a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub repository</a>
-        · This is a static marketing site, served by the backend at <code>/site/</code>.
+        · This is a static marketing site, served by the backend at <code>/</code>.
       </span>
     </div>
   </footer>
@@ -275,18 +389,30 @@
     (function () {
       const translations = {
         en: {
-          pageTitle: 'yimsg · Minimal Self-Hosted Private Instant Messaging',
-          metaDescription: 'yimsg is a minimal, self-hosted, fully data-sovereign private instant messaging framework: a palm-sized mini host on your LAN serves hundreds of people, and multiple hosts scale out freely. Embed chat into your website as a customer-service widget with one line of code, or run it as a standalone web IM app with local persistence.',
+          pageTitle: 'yimsg · Deploy Once. Embed Anywhere. Customize Everything.',
+          metaDescription: "yimsg is a self-hosted instant messaging system you deploy once — run it as a standalone IM, embed it into any website or product, and customize it with an open UIKit, SDK, and API. Your server, your domain, your data.",
           navToggleLabel: 'Toggle menu',
-          navHardware: 'Mini Host',
-          navAdvantages: 'Advantages',
+          navCapabilities: 'Capabilities',
           navScenarios: 'Use Cases',
           navOpenApp: 'Open App',
-          heroBadge: 'Minimal Self-Hosted · Full Data Sovereignty',
-          heroTitle: 'Your messages, <span class="grad-text">belong only to you</span>',
-          heroSub: 'yimsg is a minimal, private instant messaging framework — one machine, up and running in minutes. All your data stays on a machine in your own office, with no third-party cloud, fully under your control.',
-          ctaTryNow: 'Try It Now',
-          ctaSeeAdvantages: 'See Advantages',
+          heroBadge: 'Self-Hosted IM Infrastructure',
+          heroSub: 'Deploy once. Run it standalone, or embed it anywhere.',
+          heroSubExtra: "On your own server, under your own domain — run a messaging system that's entirely yours.",
+          ctaGetStarted: 'Get Started',
+          ctaViewDemo: 'View Demo',
+          deployTitle: 'Deploy once, own a complete private IM service',
+          deployLead: 'Deploy yimsg to your own server, cloud instance, or local environment, and you get a complete instant messaging system. No third-party IM platform required — users, messages, files, and data are entirely under your control.',
+          deploySvgTitle: 'Diagram: one server serving domain access, LAN or public access, and full data control',
+          deploySvgDomain: 'Your own domain',
+          deploySvgNetwork: 'LAN or public network',
+          deploySvgServer: 'Your Server',
+          deployItem1: 'Private deployment',
+          deployItem2: 'Complete web IM',
+          deployItem3: 'Access via your own domain',
+          deployItem4: 'Independent users & org structure',
+          deployItem5: 'Full data ownership',
+          deployItem6: 'Works on LAN or public network',
+          deployHighlight: 'One deployment. Your complete IM system.',
           statMachineDt: '1 Machine',
           statMachineDd: 'Minimal self-hosted, ready out of the box',
           statCoreDt: '2-core 4GB',
@@ -294,10 +420,34 @@
           statSizeDt: '< 32MB',
           statSizeDd: 'Ultra-compact deployment package',
           statCloudDt: '0 Third-Party Cloud',
-          statCloudDd: 'All data stays in your own office',
-          hwTitle: 'A pocket-sized instant messaging system',
-          hwLead: 'One palm-sized mini host is your entire chat server. Plug it into your LAN and go — your chat data always stays in your own hands.',
-          hwPhotoAlt: 'A yimsg mini host small enough to hold in one hand',
+          statCloudDd: 'All data stays under your control',
+          embedTitle: 'Add real-time chat to any site, in one line',
+          embedLead: 'Embed yimsg into your existing website, admin panel, SaaS product, or business system. Skip rebuilding message transport, conversation sync, contacts, groups, files, and message state from scratch.',
+          embedItem1: 'Shadow DOM style isolation — no conflicts with your host page',
+          embedItem2: 'Light, dark, or auto theme',
+          embedItem3: 'Locale follows your host page',
+          embedItem4: 'One service, reused across multiple sites or systems',
+          embedNote: "Example integration — swap in your own domain, upload endpoint, and container element; requires building the UIKit bundle yourself first.",
+          embedHighlight: 'Deploy once. Embed everywhere.',
+          embedSvgTitle: 'Diagram: one yimsg service embedded into your website, admin panel, and business system',
+          embedSvgSite1: 'Your website',
+          embedSvgSite2: 'Admin panel / SaaS product',
+          embedSvgSite3: 'Your business system',
+          customizeTitle: 'Open UIKit, SDK, and API — build your own',
+          customizeLead: "Use yimsg's complete chat UI as-is, or build your own product on top of its open capabilities.",
+          customizeSvgTitle: 'Diagram: build your own product with UIKit, SDK, or API',
+          customizeSvgProduct: 'Your Product',
+          customizeItem1: 'Drop in the complete chat UI with UIKit',
+          customizeItem2: 'Build a fully custom client with the SDK',
+          customizeItem3: 'Connect existing business systems via API <span class="badge-roadmap">Roadmap</span>',
+          customizeItem4: 'Customize branding, theme, and interactions',
+          customizeItem5: 'Extend with bots, AI, and custom business messages <span class="badge-roadmap">Roadmap</span>',
+          customizeItem6: 'Integrate your own login and user system <span class="badge-roadmap">Roadmap</span>',
+          customizeHighlight: 'Use our UI, customize it, or build your own.',
+          boxKicker: "Don't want to deploy a server?",
+          hwTitle: 'Get a yimsg Box',
+          hwLead: "Plug it in, connect it to your network, and you have your own IM system right away. yimsg Box comes with the full service pre-installed — ideal if you'd rather not buy a cloud server or deploy it yourself.",
+          hwPhotoAlt: 'A yimsg Box small enough to hold in one hand',
           hwChipA: '🔌 Plug into your LAN · Ready to go',
           hwChipB: '📈 Cluster deployment · Scale flexibly',
           hwScaleTitle: 'Diagram: start with one host, stack more into a cluster that interconnects to support a larger headcount',
@@ -306,19 +456,14 @@
           svgMultiStack: 'Stack more hosts',
           svgMultiDeploy: 'Multiple hosts, interconnected',
           svgEnterpriseScale: 'Scales for larger organizations',
-          hwList1: '<strong>Small enough to carry with you</strong> Fits in a pocket, a drawer, a corner of your desk — no server room, no rack needed. Moving offices? Just pocket the whole system.',
-          hwList2: '<strong>One host is enough for the whole company</strong> A single host reliably supports hundreds of concurrent chatters. Power it on, plug in the network cable, and the whole company is chatting in minutes.',
-          hwList3: '<strong>More people? Add another host<span class="pro-badge">Pro</span></strong> Cluster deployment, flexible scale-out: stack more hosts, fully interconnected, growing naturally with your business.',
-          hwList4: '<strong>Works entirely on your LAN</strong> No public network or domain required — plug it into your office LAN and it just works, with chat data never leaving your office.',
-          ctaSeeWhat: 'See what you can build',
-          advTitle: 'Three core advantages built for business',
-          advLead: "Data sovereignty, minimal deployment, and top performance — all packed into a machine that's entirely yours.",
-          advCard1Title: 'Full data sovereignty',
-          advCard1Body: 'All your data stays in your own hands, centralized on a machine in your office, with no third-party cloud involved, fully under your control. Wipe it clean with one click whenever you need to.',
-          advCard2Title: 'Minimal deployment',
-          advCard2Body: "One machine, up and running in minutes, with no complex operations required. Whether or not you have a domain or a public IP, there's a matching connection path — reliable even on the worst networks.",
-          advCard3Title: 'Top performance',
-          advCard3Body: 'A 2-core, 4GB machine supports hundreds of concurrent chatters, the deployment package is under 32MB, and client memory usage is bounded — naturally suited to resource-constrained embedded scenarios.',
+          hwList1: 'Works out of the box on your LAN',
+          hwList2: 'Data stays on your own device',
+          hwList3: 'No separate server to set up',
+          hwList4: 'No public IP required',
+          hwList5: 'Access it via your own domain',
+          hwList6: 'Publish to the public internet via Cloudflare Tunnel <span class="badge-roadmap">Roadmap</span>',
+          hwHighlight: 'One Box. Your Own IM.',
+          ctaLearnMore: 'Learn More',
           scTitle: 'One UIKit, many ways to use it',
           scLead: 'The same chat capability works fully out of the box, embeds into your own product on demand, and adapts to both mobile and desktop.',
           scCard1Title: 'Customer service widget',
@@ -339,24 +484,36 @@
           scCard6Title: 'Mobile / desktop adaptive',
           scCard6Body: 'The same UIKit automatically adapts to mobile and desktop layouts: bottom navigation with single-column switching on mobile, sidebar navigation with multi-column layout on desktop — no separate build per device.',
           scCard6Link: 'Try the mobile / desktop views →',
-          footerTagline: 'Minimal Self-Hosted Private Instant Messaging',
-          footerLine2: '<a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub repository</a> · This is a static marketing site, served by the backend at <code>/site/</code>.',
+          footerTagline: 'Deploy Once · Embed Anywhere · Customize Everything',
+          footerLine2: '<a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub repository</a> · This is a static marketing site, served by the backend at <code>/</code>.',
           langToggleLabel: '中文',
           htmlLang: 'en',
         },
         zh: {
-          pageTitle: 'yimsg · 极简单机部署的私有化即时通讯',
-          metaDescription: 'yimsg 是极简单机部署、数据完全自主的私有化即时通讯框架：巴掌大的迷你主机接入内网即可使用，单台支撑数百人，多台叠加灵活扩容。一行代码即可把聊天能力嵌入官网做客服组件，也能作为独立网页应用直接使用，支持本地持久化。',
+          pageTitle: 'yimsg · 部署一次，嵌入任何产品，自由定制',
+          metaDescription: 'yimsg 是一套可私有部署的即时通讯系统：部署一次，既可独立运行，也可嵌入任何网站或产品；通过开放的 UIKit、SDK 与 API 自由定制。在自己的服务器和域名上，掌控完全属于自己的数据。',
           navToggleLabel: '打开菜单',
-          navHardware: '迷你主机',
-          navAdvantages: '核心优势',
+          navCapabilities: '核心能力',
           navScenarios: '应用场景',
           navOpenApp: '打开应用',
-          heroBadge: '极简单机部署 · 数据自主可控',
-          heroTitle: '你的消息，<span class="grad-text">只属于你自己</span>',
-          heroSub: 'yimsg 是一套极简的私有化即时通讯框架——一台机器、几分钟即可部署上线。所有数据就放在你自己的办公室里，不经任何第三方云，完全由你掌控。',
-          ctaTryNow: '立即体验',
-          ctaSeeAdvantages: '了解核心优势',
+          heroBadge: '私有化 IM 基础设施',
+          heroSub: '部署一次，既可独立运行，也可嵌入任何产品。',
+          heroSubExtra: '在自己的服务器上，用自己的域名，运行完全属于自己的即时通讯系统。',
+          ctaGetStarted: '开始使用',
+          ctaViewDemo: '查看演示',
+          deployTitle: '部署一次，拥有完整的私有 IM 服务',
+          deployLead: '将 yimsg 部署到自己的服务器、云主机或本地环境中，即可运行一套完整的即时通讯系统。无需依赖第三方 IM 平台，用户、消息、文件和数据全部由自己掌控。',
+          deploySvgTitle: '示意图：一台服务器，同时支持自有域名访问、局域网 / 公网接入，并自主掌控全部数据',
+          deploySvgDomain: '自有域名访问',
+          deploySvgNetwork: '局域网 / 公网均可',
+          deploySvgServer: '你的服务器',
+          deployItem1: '私有化部署',
+          deployItem2: '完整 Web IM',
+          deployItem3: '自有域名访问',
+          deployItem4: '独立用户与组织体系',
+          deployItem5: '数据自主掌控',
+          deployItem6: '支持局域网与公网环境',
+          deployHighlight: '一次部署，一套完整属于你的 IM 系统。',
           statMachineDt: '1 台机器',
           statMachineDd: '极简单机部署，开箱即用',
           statCoreDt: '2 核 4G',
@@ -364,10 +521,34 @@
           statSizeDt: '< 32MB',
           statSizeDd: '部署包极致精简',
           statCloudDt: '0 第三方云',
-          statCloudDd: '数据全留在你的办公室',
-          hwTitle: '超小迷你，放进口袋的即时通讯系统',
-          hwLead: '一台巴掌大的迷你主机，就是你的整套聊天服务器。接入内网即可使用，聊天数据始终留在你自己手里。',
-          hwPhotoAlt: '一只手就能托起的 yimsg 迷你主机',
+          statCloudDd: '数据全由你自己掌控',
+          embedTitle: '一行代码，为任何网站增加即时通讯能力',
+          embedLead: '将 yimsg 嵌入现有网站、管理后台、SaaS 产品或企业业务系统。无需重新开发消息连接、会话同步、联系人、群组、文件和消息状态。',
+          embedItem1: 'Shadow DOM 样式隔离，不影响宿主页面',
+          embedItem2: '支持浅色 / 深色 / 跟随系统主题',
+          embedItem3: '多语言联动，跟随宿主页面语言切换',
+          embedItem4: '一套服务，多个网站或业务系统同时复用',
+          embedNote: '示例代码，实际接入时请替换为你自己的域名、上传接口与容器节点；需先自行构建 UIKit 产物。',
+          embedHighlight: '部署一次，处处可嵌入。',
+          embedSvgTitle: '示意图：一套 yimsg 服务，同时嵌入到官网、后台系统和业务系统中',
+          embedSvgSite1: '你的官网',
+          embedSvgSite2: '管理后台 / SaaS 产品',
+          embedSvgSite3: '自己的业务系统',
+          customizeTitle: '开放 UIKit、SDK 与 API，自由构建自己的 IM',
+          customizeLead: '用户可以直接使用 yimsg 提供的完整聊天界面，也可以基于开放能力构建自己的产品。',
+          customizeSvgTitle: '示意图：使用 UIKit、SDK 或 API 构建属于你自己的产品',
+          customizeSvgProduct: '你的产品',
+          customizeItem1: '使用 UIKit 快速接入完整聊天界面',
+          customizeItem2: '使用 SDK 构建自定义客户端',
+          customizeItem3: '使用 API 连接现有业务系统<span class="badge-roadmap">路线图</span>',
+          customizeItem4: '自定义品牌、主题和交互',
+          customizeItem5: '扩展机器人、AI 和业务消息<span class="badge-roadmap">路线图</span>',
+          customizeItem6: '对接自己的登录和用户体系<span class="badge-roadmap">路线图</span>',
+          customizeHighlight: '用我们的界面，改造它，或者自己造一个。',
+          boxKicker: '不想自己部署服务器？',
+          hwTitle: '拥有一台 yimsg Box',
+          hwLead: '插上设备，连接网络，立即拥有自己的 IM 系统。yimsg Box 预装完整服务，适合不想购买云服务器或手动部署的用户。',
+          hwPhotoAlt: '一只手就能托起的 yimsg Box',
           hwChipA: '🔌 接入内网 · 即插即用',
           hwChipB: '📈 集群部署 · 灵活扩容',
           hwScaleTitle: '单台起步，多台叠加成集群，互联互通、支撑更大规模人数的示意图',
@@ -376,19 +557,14 @@
           svgMultiStack: '多台叠加',
           svgMultiDeploy: '多台部署，互联互通',
           svgEnterpriseScale: '支持更大规模的企业',
-          hwList1: '<strong>小到可以随身带走</strong> 口袋、抽屉、桌角都放得下，不用机房、不用机柜，搬办公室时装进口袋就能把整套系统带走。',
-          hwList2: '<strong>一台就够全公司用</strong> 单台即可稳定支撑数百人同时在线聊天，通电开机、接上网线，几分钟后全公司就能开聊。',
-          hwList3: '<strong>人多了，再加一台<span class="pro-badge">商业版</span></strong> 集群部署、灵活扩容：多台叠加，互联互通，规模随业务自然生长。',
-          hwList4: '<strong>接入内网即可使用</strong> 无需公网、无需域名，插进办公室内网就能用，聊天数据一步都不出你的办公室。',
-          ctaSeeWhat: '看看能做什么',
-          advTitle: '为企业而生的三大核心优势',
-          advLead: '把数据主权、极简部署与极致性能，全部装进一台属于你自己的机器。',
-          advCard1Title: '数据自主可控',
-          advCard1Body: '所有数据都掌握在自己手上，集中在办公室的一台机器里，不经过任何第三方云，完全由你掌控。需要时可一键删除，彻底清空。',
-          advCard2Title: '极简部署',
-          advCard2Body: '一台机器、几分钟即可上线，无需复杂运维。无论是否拥有域名或公网 IP，都有对应接入方式，最坏网络下也能稳定连通。',
-          advCard3Title: '极致性能',
-          advCard3Body: '2 核 4G 单机即可支撑百人聊天，部署包不到 32MB，客户端内存可控，天然适用于资源受限的嵌入式场景。',
+          hwList1: '局域网开箱即用',
+          hwList2: '数据保存在自己的设备中',
+          hwList3: '无需单独准备服务器',
+          hwList4: '无需公网 IP',
+          hwList5: '支持通过自己的域名访问',
+          hwList6: '可通过 Cloudflare Tunnel 安全发布到公网<span class="badge-roadmap">路线图</span>',
+          hwHighlight: '一台 Box，一套属于你的 IM。',
+          ctaLearnMore: '了解更多',
           scTitle: '一套 UIKit，多种玩法',
           scLead: '同一套聊天能力，既能整套开箱即用，也能按需嵌入到你自己的产品里，还能适配手机与桌面两种终端。',
           scCard1Title: '客服组件',
@@ -409,8 +585,8 @@
           scCard6Title: '手机 / PC 双端适配',
           scCard6Body: '同一套 UIKit 自动适配手机与桌面两种布局：手机端底部导航 + 单栏切换，桌面端侧栏导航 + 多栏并列，无需为不同设备单独开发。',
           scCard6Link: '体验手机 / PC 双端 →',
-          footerTagline: '极简单机部署的私有化即时通讯',
-          footerLine2: '<a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub 开源仓库</a> · 本页面为静态官网，由服务端 <code>/site/</code> 挂载。',
+          footerTagline: '部署一次 · 嵌入任何产品 · 自由定制',
+          footerLine2: '<a href="https://github.com/dacez/yimsg" target="_blank" rel="noopener">GitHub 开源仓库</a> · 本页面为静态官网，由服务端 <code>/</code> 挂载。',
           langToggleLabel: 'English',
           htmlLang: 'zh-CN',
         },
