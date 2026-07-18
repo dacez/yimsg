@@ -32,7 +32,13 @@ export default defineConfig({
       // 而非单独的 chrome-headless-shell 二进制：后者是一个额外的大体积下载，
       // 在受限代理 / 沙箱网络下最易被中断而导致整轮 UI 测试失败；
       // 完整 chromium 构建下载更稳定，且功能与无头能力完全一致。
-      use: { browserName: 'chromium', channel: 'chromium' },
+      // 部分沙箱环境预装的 chromium 版本与 @playwright/test 按 channel 解析出的
+      // 版本不一致（找不到对应 revision 的可执行文件），此时可通过
+      // PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH 显式指向已装好的可执行文件，跳过
+      // channel 解析；未设置该变量时行为与之前完全一致。
+      use: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        ? { browserName: 'chromium', executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+        : { browserName: 'chromium', channel: 'chromium' },
     },
   ],
 });
