@@ -114,6 +114,11 @@ jobs:
           )
           timeout --foreground 1800s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" '
             set -euo pipefail
+            # 同一台服务器可能同时被 GitHub Actions 和 tools/scripts/deploy-remote.sh（本机快速部署）
+            # 触发，用文件锁串行化这段临界区，避免两边同时 stop/replace/seed-demo 互相踩踏；
+            # 谁先抢到锁谁先跑完，后到的一方等前面跑完后照常执行（即后完成的部署最终生效）。
+            exec 200>/opt/yimsg/.deploy.lock
+            flock -w 1800 200
             # 项目处于演示/研发阶段：每次部署都清空 /opt/yimsg/data 并用 seed-demo 重建官网演示数据，
             # 不做旧数据兼容或迁移。先停服务，避免 systemd Restart=on-failure 在清空过程中把进程拉起来
             # 和 seed-demo 抢同一份数据目录。

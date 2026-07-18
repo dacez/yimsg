@@ -27,6 +27,18 @@ function createMemoryStorage(): StorageAdapter {
   };
 }
 
+/**
+ * App 自身也未选过语言、官网 `yimsg-lang` 也未设置时的兜底：只有 `.im` 域名
+ * （面向国际用户）默认英文，其余一律默认中文（含 `.cn` 域名、本地开发/测试环境、
+ * 非浏览器环境）——保持早先版本的广泛默认值不变，只为 `.im` 单独开一个例外，
+ * 避免影响大量假定"默认中文"的既有 UI 测试断言（历史教训见 storage-base.ts 的
+ * git 提交记录：曾因把 navigator.language 纳入回退链导致同类回归）。
+ */
+function detectHostLang(): 'zh' | 'en' {
+  if (typeof location === 'undefined' || typeof location.hostname !== 'string') return 'zh';
+  return location.hostname.endsWith('.im') ? 'en' : 'zh';
+}
+
 function isStorageAdapter(value: unknown): value is StorageAdapter {
   if (!value || typeof value !== 'object') return false;
   return (
@@ -131,13 +143,14 @@ export class StorageScope {
   /**
    * 语言未在 App 内选过时（`LANG_KEY` 未写入），回退到官网语言切换器写入的
    * `yimsg-lang`（同源共享，保证从官网点「Open App」进入的语言与官网一致），
-   * 仍未设置时默认 `zh`。
+   * 仍未设置时按域名兜底（见 `detectHostLang`）。
    */
   getStoredLang(): 'zh' | 'en' {
     const raw = this.storage.getItem(LANG_KEY);
     if (raw === 'zh' || raw === 'en') return raw;
     const websiteLang = this.storage.getItem(WEBSITE_LANG_KEY);
-    return websiteLang === 'en' ? 'en' : 'zh';
+    if (websiteLang === 'zh' || websiteLang === 'en') return websiteLang;
+    return detectHostLang();
   }
 
   setStoredLang(lang: 'zh' | 'en'): void {

@@ -446,7 +446,9 @@
 
       function currentLang() {
         const saved = localStorage.getItem(STORAGE_KEY);
-        return saved === 'zh' || saved === 'en' ? saved : 'en';
+        if (saved === 'zh' || saved === 'en') return saved;
+        // 未手动切换过语言时按域名区分默认值：.cn 域名（面向大陆用户）默认中文，其余（如 .im）默认英文。
+        return location.hostname.endsWith('.cn') ? 'zh' : 'en';
       }
 
       let lang = currentLang();

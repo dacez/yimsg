@@ -48,9 +48,21 @@ describe('uikit storage-base', () => {
     expect(scope.getStoredLang()).toBe('zh');
   });
 
-  it('defaults to zh when neither app nor website lang is stored', () => {
+  it('defaults to zh when neither app nor website lang is stored (no location, e.g. tests)', () => {
     const scope = new StorageScope(createSeededStorage());
     expect(scope.getStoredLang()).toBe('zh');
+  });
+
+  it('defaults to zh on a .cn hostname when neither app nor website lang is stored', () => {
+    vi.stubGlobal('location', { hostname: 'www.yimsg.cn' });
+    const scope = new StorageScope(createSeededStorage());
+    expect(scope.getStoredLang()).toBe('zh');
+  });
+
+  it('defaults to en on a non-.cn hostname when neither app nor website lang is stored', () => {
+    vi.stubGlobal('location', { hostname: 'yimsg.im' });
+    const scope = new StorageScope(createSeededStorage());
+    expect(scope.getStoredLang()).toBe('en');
   });
 
   it('falls back to instant when localStorage throws at runtime', () => {
