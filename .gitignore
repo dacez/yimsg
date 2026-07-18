@@ -58,3 +58,4 @@ test.crt
 test.key
 seed_data
 server-linux-amd64
+seed-demo-linux-amd64

@@ -35,6 +35,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
 SCP_TIMEOUT_SECONDS="${DEPLOY_SCP_TIMEOUT_SECONDS:-1800}"
+# 同一台服务器可能同时被 GitHub Actions 和本脚本触发；上传阶段用带这个 tag 的独立
+# 文件名/目录名，避免两边并发写同一个上传目标把内容写坏（历史教训：曾经两边同时
+# scp 到同一个 server.new，写出的文件大小相同但内容不同，服务器起不来）。
+RUN_TAG="local-$$"
 
 echo "==== [${alias_name}] 刷新协议生成物 ===="
 go run ./tools/cmd/protocolgen
@@ -49,26 +53,33 @@ echo "==== [${alias_name}] 交叉编译 seed-demo 二进制（Linux/amd64）====
 GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./server/tools/cmd/seed-demo
 
 echo "==== [${alias_name}] 上传二进制与前端 / 官网产物 ===="
-timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp server-linux-amd64 "${alias_name}:/opt/yimsg/server.new"
-timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp seed-demo-linux-amd64 "${alias_name}:/opt/yimsg/seed-demo.new"
-timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r web/. "${alias_name}:/opt/yimsg/web/"
-timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r website/. "${alias_name}:/opt/yimsg/website/"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp server-linux-amd64 "${alias_name}:/opt/yimsg/server.new.${RUN_TAG}"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp seed-demo-linux-amd64 "${alias_name}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r web/. "${alias_name}:/opt/yimsg/web.new.${RUN_TAG}/"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r website/. "${alias_name}:/opt/yimsg/website.new.${RUN_TAG}/"
 
 echo "==== [${alias_name}] 远程原子替换二进制、清空数据并用新构建的 seed-demo 重新初始化，最后重启服务 ===="
-timeout --foreground 1800s ssh "${alias_name}" '
+timeout --foreground 1800s ssh "${alias_name}" "
   set -euo pipefail
-  # 跟 .github/workflows/deploy.yml 共用同一把锁，避免和 CI 部署同时跑互相踩踏；
-  # 谁先抢到锁谁先跑完，后到的一方等前面跑完后照常执行（即后完成的部署最终生效）。
+  # 上一步上传阶段已经用 RUN_TAG 隔开了各自的上传目标，这里只需要给最终原子替换这段
+  # 临界区加文件锁（跟 .github/workflows/deploy.yml 共用同一把）：避免两边同时
+  # stop/replace/seed-demo 互相踩踏；谁先抢到锁谁先跑完，后到的一方等前面跑完后
+  # 照常执行（即后完成的部署最终生效）。
   exec 200>/opt/yimsg/.deploy.lock
   flock -w 1800 200
 
   systemctl stop yimsg
 
-  chmod +x /opt/yimsg/server.new
-  mv /opt/yimsg/server.new /opt/yimsg/server
+  chmod +x /opt/yimsg/server.new.${RUN_TAG}
+  mv /opt/yimsg/server.new.${RUN_TAG} /opt/yimsg/server
 
-  chmod +x /opt/yimsg/seed-demo.new
-  mv /opt/yimsg/seed-demo.new /opt/yimsg/seed-demo
+  chmod +x /opt/yimsg/seed-demo.new.${RUN_TAG}
+  mv /opt/yimsg/seed-demo.new.${RUN_TAG} /opt/yimsg/seed-demo
+
+  rm -rf /opt/yimsg/web
+  mv /opt/yimsg/web.new.${RUN_TAG} /opt/yimsg/web
+  rm -rf /opt/yimsg/website
+  mv /opt/yimsg/website.new.${RUN_TAG} /opt/yimsg/website
 
   chown -R yimsg:yimsg /opt/yimsg
   setcap -r /opt/yimsg/server 2>/dev/null || true
@@ -77,7 +88,7 @@ timeout --foreground 1800s ssh "${alias_name}" '
   chown -R yimsg:yimsg /opt/yimsg/data
 
   systemctl start yimsg
-'
+"
 
 echo "==== [${alias_name}] 验证部署结果 ===="
 ssh "${alias_name}" "systemctl status yimsg --no-pager"
