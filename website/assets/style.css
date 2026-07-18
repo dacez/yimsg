@@ -360,6 +360,11 @@ code {
   grid-template-columns: 1fr minmax(280px, 420px);
 }
 
+/* 网格子项默认 min-width:auto，含长代码行的 <pre> 会把列撑宽到超出视口；
+   显式清零后 .code-block 自身的 overflow-x:auto 才能在列宽内滚动，而不是
+   让整列（进而整页）被撑出可视区域。 */
+.pillar-grid > * { min-width: 0; }
+
 .pillar-visual {
   background: var(--surface);
   border: 1px solid var(--line);
