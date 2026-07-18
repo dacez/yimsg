@@ -53,6 +53,8 @@ echo "==== [${alias_name}] 交叉编译 seed-demo 二进制（Linux/amd64）====
 GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./server/tools/cmd/seed-demo
 
 echo "==== [${alias_name}] 上传二进制与前端 / 官网产物 ===="
+# scp -r 上传目录内容时目标目录必须已存在，先在远程建好本次运行专属的临时目录。
+ssh "${alias_name}" "mkdir -p /opt/yimsg/web.new.${RUN_TAG} /opt/yimsg/website.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp server-linux-amd64 "${alias_name}:/opt/yimsg/server.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp seed-demo-linux-amd64 "${alias_name}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r web/. "${alias_name}:/opt/yimsg/web.new.${RUN_TAG}/"

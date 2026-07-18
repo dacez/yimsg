@@ -90,12 +90,23 @@ jobs:
             -o ServerAliveCountMax=4
             -o TCPKeepAlive=yes
           )
+          SSH_OPTS=(
+            -i ~/.ssh/yimsg_deploy
+            -p "$PORT"
+            -o BatchMode=yes
+            -o ConnectTimeout=20
+            -o ServerAliveInterval=15
+            -o ServerAliveCountMax=4
+            -o TCPKeepAlive=yes
+          )
           timed_scp() {
             local label="$1"
             shift
             echo "Uploading ${label} with ${SCP_TIMEOUT_SECONDS}s timeout"
             timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp "${SCP_OPTS[@]}" "$@"
           }
+          # scp -r 上传目录内容时目标目录必须已存在，先在远程建好本次运行专属的临时目录。
+          timeout --foreground 20s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "mkdir -p /opt/yimsg/web.new.${RUN_TAG} /opt/yimsg/website.new.${RUN_TAG}"
           timed_scp "server binary" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new.${RUN_TAG}"
           timed_scp "seed-demo binary" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
           timed_scp "web assets" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web.new.${RUN_TAG}/"
