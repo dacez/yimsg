@@ -18,6 +18,8 @@ jobs:
         include:
           - name: se
             host_secret: SSH_HOST_SE
+          - name: gz
+            host_secret: SSH_HOST_GZ
     env:
       HOST: ${{ secrets[matrix.host_secret] }}
     steps:
