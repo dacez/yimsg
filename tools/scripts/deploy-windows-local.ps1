@@ -16,6 +16,27 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
+# Windows PowerShell 5.1 下，$ErrorActionPreference = "Stop" 会把外部命令写到 stderr 的
+# 每一行都当成终止性错误处理——即便该命令最终以退出码 0 成功（例如 vite 打印的
+# "Module externalized for browser compatibility" 之类的正常告警）。外部命令一律走
+# Invoke-Native，只认退出码，不被 stderr 输出误伤。
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory)][string]$Exe,
+        [string[]]$ExeArgs = @()
+    )
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Exe @ExeArgs
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "命令失败（退出码 $LASTEXITCODE）：$Exe $($ExeArgs -join ' ')"
+    }
+}
+
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Error "请在管理员（提权）PowerShell 中运行本脚本"
@@ -29,14 +50,14 @@ if (-not (Test-Path $configFile)) {
 Set-Location $repoRoot
 
 Write-Host "Step 1: 编译服务端与 seed-demo 二进制"
-go build -o server.exe .\server\cmd\yimsg-server
-go build -o seed-demo.exe .\server\tools\cmd\seed-demo
+Invoke-Native "go" @("build", "-o", "server.exe", ".\server\cmd\yimsg-server")
+Invoke-Native "go" @("build", "-o", "seed-demo.exe", ".\server\tools\cmd\seed-demo")
 
 Write-Host "Step 2: 刷新协议生成物"
-go run .\tools\cmd\protocolgen
+Invoke-Native "go" @("run", ".\tools\cmd\protocolgen")
 
 Write-Host "Step 3: 构建前端产物"
-npm run build
+Invoke-Native "npm" @("run", "build")
 
 Write-Host "Step 4: 停止 YimsgServer 计划任务"
 Stop-ScheduledTask -TaskName "YimsgServer" -ErrorAction SilentlyContinue
@@ -52,7 +73,7 @@ if (Test-Path "$DeployRoot\website") { Remove-Item "$DeployRoot\website" -Recurs
 Copy-Item "$repoRoot\website" "$DeployRoot\website" -Recurse -Force
 
 Write-Host "Step 6: 用新构建的 seed-demo 清空并重建 data/（含官网演示账号）"
-& "$DeployRoot\seed-demo.exe" -config $configFile
+Invoke-Native "$DeployRoot\seed-demo.exe" @("-config", $configFile)
 
 Write-Host "Step 7: 启动 YimsgServer 计划任务"
 Start-ScheduledTask -TaskName "YimsgServer"
