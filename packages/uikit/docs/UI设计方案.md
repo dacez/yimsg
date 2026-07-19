@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-19。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -140,13 +140,12 @@
 
 ### 3.3 聊天视图（#view-chat）三栏布局
 
+`#status-bar`（重连/同步提示条）挂在 `#app` 顶层、`#app-body`（导航栏 + 三栏内容）之上，跨聊天/通讯录/设置所有视图共享同一个全局提示条，不属于聊天视图三栏布局的一部分（详见 §7.3）。
+
 ```mermaid
 graph LR
     subgraph 左栏["#left-panel · 280px"]
-        direction TB
-        L1["#left-panel-header<br/>#status-bar 重连/同步提示条"]
         L2["#conversation-list<br/>滚动分页"]
-        L1 --- L2
     end
 
     subgraph 中栏["#center-panel · flex:1"]
@@ -219,8 +218,8 @@ initAfterAuth():
 
 | 事件 | 处理函数 | UI 行为 |
 |------|---------|---------|
-| `connection:connected` | — | 隐藏状态栏；若当前已处于已登录状态，则读 UI 层保存的 token 并调 `authenticate(token)` 重新认证 |
-| `connection:disconnected` | — | 显示 "Reconnecting..." 状态栏（每次断线/重连尝试都立即显示，不设失败次数阈值） |
+| `connection:connected` | — | 隐藏全局状态栏；若当前已处于已登录状态，则读 UI 层保存的 token 并调 `authenticate(token)` 重新认证；若此前确实断过线（`connection:disconnected`/`connection:reconnecting` 发生过）且会话已初始化过，广播 `app.invalidateBoundedLists()`（见 §4.5） |
+| `connection:disconnected` / `connection:reconnecting` | — | 显示 "Reconnecting..." 全局状态栏（每次断线/重连尝试都立即显示，不设失败次数阈值） |
 | `session:sync` | — | `started` / `reset` 时显示同步状态栏；对应域 `success` / `failed` 后隐藏或保留其他同步域状态，并按域刷新会话 / 联系人 |
 | `messages:received` | `handleMessagesReceived` | 重绘信号：`renderConversationList({force, keys})` + `refreshOpenConversation()` 重新拉取打开中会话；贴顶整列表 reset 重排，不贴顶则按 `event.conversationKeys` 定向刷新窗口内会话（不重排）；`event.messages` 仅用于 `onMessages`（角标/响铃），不直接追加 |
 | `conversations:clearunread` / `conversations:delete` | — | `refreshConversations(keys)`：对在窗口会话 `getConversations({targets})` 定向拉取并更新/移除 |
@@ -257,6 +256,30 @@ handleMessagesReceived(app, keys):     // main-app.ts — 重绘分发
 ```
 
 > 新消息提示条 `#new-message-pill` 的可见性与 `messagePageHasNewer` 同步（`renderMessages` 末尾 `syncNewMessagePill`），点击跳到最新一页并滚到底部，细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §5。
+
+### 4.5 有界列表 invalidate 契约
+
+`AppInstance` 提供一个跨列表的最小抽象（`app/bounded-list.ts`、`app/app-instance.ts`），把"某个有界列表需要追平"这件事和"谁来触发追平"解耦：
+
+```typescript
+interface BoundedListController {
+  readonly id: string;
+  invalidate(): void | Promise<void>;   // 语义等价于「收到一条属于本列表的新数据通知」
+}
+
+app.registerBoundedList(controller): () => void   // 注册，返回值用于注销
+app.invalidateBoundedLists(): void                // 广播给所有已注册控制器
+```
+
+`invalidate()` 内部要做什么完全由各列表自己决定——立即重拉追平还是推迟并点亮"有更新"提示，遵循的是各列表既有的贴顶/可见性规则，与收到 `messages:received`/`contacts:updated` 时一致。`startApp`（`main-app.ts`）注册了三个控制器，直接复用已有的重绘函数，不新增任何刷新逻辑：
+
+| id | invalidate 动作 | 等价于 |
+|---|---|---|
+| `conversations` | `renderConversationList({ force: true })` | 收到一条新消息/新会话通知 |
+| `open-conversation-messages` | `refreshOpenConversation()` | 当前打开会话收到新消息 |
+| `contacts` | `loadContacts({ background: true })` | 收到 `contacts:updated` |
+
+目前唯一的调用方是 §4.3 的 `connection:connected`：断线（`connection:disconnected` 或达到重试阈值的 `connection:reconnecting`）之后重连成功，且会话已初始化过，就调用 `app.invalidateBoundedLists()`——效果上等价于断线期间错过的每一类通知都被补发了一次，而不必等服务端真正重发。
 
 > `event.messages` 只承载按累积的通知 `msg_id` 批量取到的内容，用于 `onMessages`；会话列表与消息列表一律通过 `get_conversations` / `get_messages` 重新拉取重绘，不把通知 payload 当作完整集合。
 
@@ -858,7 +881,7 @@ showStatus(text: string, cls: string)   // 显示，cls = 'syncing' | 'reconnect
 hideStatus()                             // 隐藏
 ```
 
-内嵌在会话列表顶部 `#left-panel-header` 内的小提示条（非 fixed，不覆盖全局视口），移动端/桌面端布局共用同一实现。`syncing` → 浅蓝底 + 蓝字；`reconnecting` → 灰底 + 灰字（不使用红色，避免过度告警）。
+挂在 `#app` 顶层（`#status-bar`，`#app-body` 之上）的全局提示条（非 fixed，不覆盖全局视口，占用文档流内一行高度），聊天/通讯录/设置所有视图都能看到，移动端/桌面端布局共用同一实现。`syncing` → 浅蓝底 + 蓝字；`reconnecting` → 灰底 + 灰字（不使用红色，避免过度告警）。
 
 ### 7.4 Modal
 
@@ -1007,8 +1030,9 @@ checkReach():
 | 认证失败 | `#auth-error` 元素 | 内嵌表单下方，非 Toast |
 | 网络操作失败 | `showToast(msg, 'error')` | 4s 自动消失 |
 | 操作成功 | `showToast(msg, 'success')` | 4s 自动消失 |
-| 连接断开 | `connection:disconnected` → `showStatus('Reconnecting...', 'reconnecting')` | 会话列表顶部提示条（灰色）；每次断线/重连尝试都立即显示，不等待失败次数阈值，重连成功后隐藏 |
-| SDK 同步中 | `session:sync` → `showStatus('Syncing messages...', 'syncing')` | 会话列表顶部提示条（浅蓝色）；可覆盖启动后台同步和通知同步，所有同步域结束后隐藏 |
+| 连接断开 / 重连中 | `connection:disconnected` / `connection:reconnecting` → `showStatus('Reconnecting...', 'reconnecting')` | 全局提示条（灰色，跨所有视图可见）；每次断线/重连尝试都立即显示，不等待失败次数阈值 |
+| 重连成功 | `connection:connected` → `hideStatus()` + `app.invalidateBoundedLists()` | 隐藏全局提示条；若此前确实断过线，广播有界列表 invalidate（§4.5），让会话列表 / 当前会话消息 / 联系人列表各自追平 |
+| SDK 同步中 | `session:sync` → `showStatus('Syncing messages...', 'syncing')` | 全局提示条（浅蓝色）；可覆盖启动后台同步和通知同步，所有同步域结束后隐藏 |
 | 被踢下线 | Toast + 自动登出 | 跳转到登录页 |
 
 所有异步操作使用 `try/catch`，捕获后 Toast 显示错误信息。

@@ -107,6 +107,21 @@ test.describe('Navigation', () => {
     await ctx2.close();
   });
 
+  test('#status-bar is global: not nested inside any per-view container', async ({ page }) => {
+    await register(page, uniqueUser('statusbar'), password, 'StatusBarUser');
+
+    // #status-bar 挂在 #app 顶层（#app-body 之上），不应嵌套在 chat/contacts/settings
+    // 任一 .view 容器内——否则切到其它视图时会随该 .view 的 hidden 一起被隐藏。
+    const closestView = await page.locator('#status-bar').evaluate((el) => el.closest('.view')?.id ?? null);
+    expect(closestView).toBeNull();
+
+    // 切到通讯录 / 设置视图时，#status-bar 元素本身仍然存在于 DOM 中（不随 .view 一起被移除/隐藏）。
+    await page.click('[data-view="contacts"]');
+    await expect(page.locator('#status-bar')).toBeAttached();
+    await page.click('[data-view="settings"]');
+    await expect(page.locator('#status-bar')).toBeAttached();
+  });
+
   test('empty conversation list shows empty state', async ({ page }) => {
     await register(page, uniqueUser('empty'), password, 'EmptyUser');
     await page.click('[data-view="chat"]');

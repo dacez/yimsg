@@ -14,6 +14,7 @@ import type { LayoutChoice } from './session-storage';
 import { detectLocale } from '../i18n';
 import { translations, type Lang } from './i18n';
 import { APP_CONFIG } from '../app-config';
+import type { BoundedListController } from './bounded-list';
 import { BoundedPageWindow } from './bounded-page-window';
 import { conversationIdentity, contactIdentity } from './list-identity';
 import { createMessageWindow } from './views/chat/message-page';
@@ -240,6 +241,7 @@ export class AppInstance {
   };
   readonly views: Partial<AppViews> = {};
   private readonly disposers: Array<() => void> = [];
+  private readonly boundedLists = new Map<string, BoundedListController>();
   private lang: Lang;
   private overrides: Partial<Record<string, string>>;
 
@@ -294,6 +296,23 @@ export class AppInstance {
 
   hideStatus(): void {
     this.$('status-bar').className = 'status-bar hidden';
+  }
+
+  /** 注册一个有界列表控制器；返回值用于注销（同 id 重复注册会互相覆盖）。 */
+  registerBoundedList(controller: BoundedListController): () => void {
+    this.boundedLists.set(controller.id, controller);
+    return () => {
+      if (this.boundedLists.get(controller.id) === controller) this.boundedLists.delete(controller.id);
+    };
+  }
+
+  /** 广播给所有已注册的有界列表：视为各自收到一条"有新数据"通知，按各自规则追平或推迟。 */
+  invalidateBoundedLists(): void {
+    for (const controller of this.boundedLists.values()) {
+      void Promise.resolve()
+        .then(() => controller.invalidate())
+        .catch((error) => console.warn(`[yimsg/uikit] bounded list "${controller.id}" invalidate failed:`, error));
+    }
   }
 
   closeModal(): void {
