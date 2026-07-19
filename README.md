@@ -15,6 +15,7 @@ https://www.yimsg.im
 - [Implemented Capabilities](#implemented-capabilities)
   - [Server](#server)
   - [Frontend](#frontend)
+- [Download v0.1](#download-v01)
 - [Quick Start](#quick-start)
   - [1. Prepare the Environment](#1-prepare-the-environment)
   - [2. Install Frontend Dependencies and Build](#2-install-frontend-dependencies-and-build)
@@ -25,7 +26,7 @@ https://www.yimsg.im
 - [Documentation Index](#documentation-index)
 - [Maintenance Conventions](#maintenance-conventions)
 
-Yimsg is a **minimal, single-machine, fully data-sovereign** private instant messaging system: one machine goes live in minutes, and all chat data stays on your own machine — never passing through any third-party cloud. The same chat capability can be embedded into your website or admin panel with one line of code as a customer-service widget, or used directly as a standalone web IM app.
+Yimsg is a **minimal, single-machine, fully data-sovereign** private instant messaging system: one machine goes live in minutes, and all chat data stays on your own machine — never passing through any third-party cloud. One deployment can serve offices, branches, remote staff, and mobile devices while the same chat capability is embedded into multiple websites or business systems.
 
 ## Website
 
@@ -93,6 +94,18 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 - Lite (`mode: 'instant'`) / persistent-storage dual modes, local caching, event bridging, and profile/group display-info caching
 - Theming, i18n, responsive layout, manual mounting, and host callback capabilities
 
+## Download v0.1
+
+[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.0) provides packages for Windows x86-64, Linux x86-64 / ARM64, and macOS Apple Silicon. Download and fully extract an archive, then run `yimsg` (`yimsg.exe` on Windows). No configuration file is required by default; open `http://127.0.0.1:38081/` in a browser.
+
+To accept connections from other devices on a LAN or public network, use one command:
+
+```bash
+yimsg --listen 0.0.0.0:38081
+```
+
+Data is stored in the `data/` directory beside the executable. Copy and edit `config.example.toml` only for advanced settings such as production TLS, certificates, shard count, or resource limits.
+
 ## Memory Guarantees
 
 Every long-lived collection in the Yimsg SDK is a **bounded collection**: capacity is fixed at construction time and size never exceeds that capacity — unbounded Map / Set / Queue growth is prohibited. See [`packages/sdk/docs/有界集合方案.md`](packages/sdk/docs/有界集合方案.md) (Chinese) for details.
@@ -134,10 +147,10 @@ npm run build
 
 ### 3. Prepare the Server Configuration
 
-The repository ships a `config.toml` template with every option commented and left in its commented-out state; the server starts with the defaults from `server/internal/config/config.go`. To override any settings, copy it to a `config.local.toml` (not committed) and specify it explicitly:
+This step is optional. With no arguments, the server starts from the built-in defaults in `server/internal/config/config.go`. For advanced settings, copy the repository's `config.toml` to an uncommitted `config.local.toml` and uncomment only the values you need:
 
 ```bash
-go run ./server/cmd/yimsg-server config.local.toml
+go run ./server/cmd/yimsg-server --config config.local.toml
 ```
 
 For the meaning, defaults, and examples of each config option, see [`config.toml`](config.toml) and [`server/docs/服务器架构方案.md`](server/docs/服务器架构方案.md) (Chinese) — the root README does not duplicate the full config reference.
@@ -146,8 +159,10 @@ For the meaning, defaults, and examples of each config option, see [`config.toml
 
 ```bash
 cd /home/runner/work/yimsg/yimsg
-go run ./server/cmd/yimsg-server /path/to/config.toml
+go run ./server/cmd/yimsg-server
 ```
+
+The positional form `go run ./server/cmd/yimsg-server /path/to/config.toml` remains supported for compatibility.
 
 Once started:
 - WebSocket: `ws://127.0.0.1:38081/ws`

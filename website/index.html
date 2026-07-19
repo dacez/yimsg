@@ -54,14 +54,14 @@
     <section id="deploy" class="section">
       <div class="container">
         <span class="section-eyebrow" data-i18n-html="eyebrowDeploy"><span class="pillar-step">01</span>Deploy Once</span>
-        <h2 class="section-title" data-i18n="deployTitle">部署一次，拥有完整的私有 IM 服务</h2>
+        <h2 class="section-title" data-i18n="deployTitle">一次部署，多地、多端共用一套私有 IM</h2>
         <p class="section-lead" data-i18n="deployLead">
-          将 yimsg 部署到自己的服务器、云主机或本地环境中，即可运行一套完整的即时通讯系统。
-          无需依赖第三方 IM 平台，用户、消息、文件和数据全部由自己掌控。
+          只需将 yimsg 部署到一台自己的机器，办公室、分支机构、居家和移动端即可通过局域网或公网连接同一套服务；
+          多个网站或业务系统也能同时嵌入。用户、消息、文件和数据全部由自己掌控。
         </p>
         <div class="pillar-grid">
           <div class="pillar-visual">
-            <img class="product-illustration" src="assets/illustration-deploy.svg" data-i18n-alt="deploySvgTitle" alt="One private server serving web and mobile chat clients" loading="lazy" />
+            <img class="product-illustration" src="assets/illustration-deploy.svg" data-i18n-alt="deploySvgTitle" alt="One private server serving multiple locations and devices" loading="lazy" />
           </div>
           <div class="pillar-copy">
             <ul class="check-list">
@@ -70,9 +70,10 @@
               <li data-i18n="deployItem3">自有域名访问</li>
               <li data-i18n="deployItem4">独立用户与组织体系</li>
               <li data-i18n="deployItem5">数据自主掌控</li>
-              <li data-i18n="deployItem6">支持局域网与公网环境</li>
+              <li data-i18n="deployItem6">办公室、分支机构、居家与移动端共用</li>
+              <li data-i18n="deployItem7">支持局域网与公网访问</li>
             </ul>
-            <p class="pillar-highlight" data-i18n="deployHighlight">One deployment. Your complete IM system.</p>
+            <p class="pillar-highlight" data-i18n="deployHighlight">一台机器，一次部署，多地、多端、多个产品共用。</p>
           </div>
         </div>
         <dl class="stat-strip">
@@ -294,16 +295,17 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
           heroVisualAlt: 'yimsg private server, embedded chat interface, and responsive mobile layout',
           ctaGetStarted: 'Get Started',
           ctaViewDemo: 'View Demo',
-          deployTitle: 'Deploy once, own a complete private IM service',
-          deployLead: 'Deploy yimsg to your own server, cloud instance, or local environment, and you get a complete instant messaging system. No third-party IM platform required — users, messages, files, and data are entirely under your control.',
-          deploySvgTitle: 'One private server serving web and mobile chat clients',
+          deployTitle: 'Deploy once. Serve every location and device.',
+          deployLead: 'Run yimsg once on a machine you control. Offices, branches, remote staff, and mobile devices connect to the same service over LAN or the internet, while multiple websites or business systems can embed it at the same time. Users, messages, files, and data remain entirely under your control.',
+          deploySvgTitle: 'One private server serving multiple locations and devices',
           deployItem1: 'Private deployment',
           deployItem2: 'Complete web IM',
           deployItem3: 'Access via your own domain',
           deployItem4: 'Independent users & org structure',
           deployItem5: 'Full data ownership',
-          deployItem6: 'Works on LAN or public network',
-          deployHighlight: 'One deployment. Your complete IM system.',
+          deployItem6: 'One service across offices, branches, remote work, and mobile',
+          deployItem7: 'Available over LAN or the public internet',
+          deployHighlight: 'One machine. One deployment. Every location, device, and product.',
           statMachineDt: '1 Machine',
           statMachineDd: 'Minimal self-hosted, ready out of the box',
           statCoreDt: '2-core 4GB',
@@ -386,16 +388,17 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
           heroVisualAlt: 'yimsg 私有服务、嵌入式聊天界面与响应式移动端布局',
           ctaGetStarted: '开始使用',
           ctaViewDemo: '查看演示',
-          deployTitle: '部署一次，拥有完整的私有 IM 服务',
-          deployLead: '将 yimsg 部署到自己的服务器、云主机或本地环境中，即可运行一套完整的即时通讯系统。无需依赖第三方 IM 平台，用户、消息、文件和数据全部由自己掌控。',
-          deploySvgTitle: '一台私有服务器为网页端和移动端聊天客户端提供服务',
+          deployTitle: '一次部署，多地、多端共用一套私有 IM',
+          deployLead: '只需将 yimsg 部署到一台自己的服务器、云主机或本地设备，办公室、分支机构、居家和移动端即可通过局域网或公网连接同一套服务；多个网站或业务系统也能同时嵌入。用户、消息、文件和数据全部由自己掌控。',
+          deploySvgTitle: '一台私有服务器同时服务多个地点和多种终端',
           deployItem1: '私有化部署',
           deployItem2: '完整 Web IM',
           deployItem3: '自有域名访问',
           deployItem4: '独立用户与组织体系',
           deployItem5: '数据自主掌控',
-          deployItem6: '支持局域网与公网环境',
-          deployHighlight: '一次部署，一套完整属于你的 IM 系统。',
+          deployItem6: '办公室、分支机构、居家与移动端共用',
+          deployItem7: '支持局域网与公网访问',
+          deployHighlight: '一台机器，一次部署，多地、多端、多个产品共用。',
           statMachineDt: '1 台机器',
           statMachineDd: '极简单机部署，开箱即用',
           statCoreDt: '2 核 4G',

@@ -3,14 +3,17 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
-	"yimsg/server/internal/config"
 	"yimsg/server/internal/dal"
 	"yimsg/server/internal/plugin"
 	"yimsg/server/internal/service"
@@ -23,15 +26,23 @@ import (
 const taskQueueWorkers = 8
 
 func main() {
-	cfgPath := "config.toml"
-	if len(os.Args) > 1 {
-		cfgPath = os.Args[1]
+	opts, err := parseCommandOptions(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		log.Fatalf("parse command: %v", err)
+	}
+	if opts.showVersion {
+		fmt.Println(versionString())
+		return
 	}
 
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadCommandConfig(opts)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
+	log.Printf("starting %s", versionString())
 
 	// Ensure data and upload directories exist
 	if err := os.MkdirAll(cfg.Database.DataDir, 0o755); err != nil {
@@ -130,7 +141,7 @@ func main() {
 		}
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	addr := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: mux,

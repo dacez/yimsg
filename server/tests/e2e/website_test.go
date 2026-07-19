@@ -47,6 +47,8 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 		"data-i18n-html=\"customizeItem3\"",
 		"data-i18n-html=\"customizeItem5\"",
 		"data-i18n-html=\"customizeItem6\"",
+		"一台机器，一次部署，多地、多端、多个产品共用。",
+		"One machine. One deployment. Every location, device, and product.",
 	} {
 		if !strings.Contains(pageHTML, marker) {
 			t.Fatalf("expected official site HTML to contain %q", marker)

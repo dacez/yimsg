@@ -1,5 +1,6 @@
 # Binaries
 /bin/
+/dist/
 /server.exe
 /seed-data
 /seed-demo
