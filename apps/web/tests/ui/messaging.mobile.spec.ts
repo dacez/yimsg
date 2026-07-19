@@ -25,6 +25,9 @@ test.describe('Mobile layout & recall', () => {
     await addFriend(page1, page2, u2);
     await openDMFromContacts(page1, 'MobileReceiver');
 
+    // 触屏设备下消息输入框字号必须 >= 16px，否则 iOS Safari 聚焦时会自动放大整页且不会自动缩回
+    await expect(page1.locator('#msg-input')).toHaveCSS('font-size', '16px');
+
     // 发送一条消息
     await page1.fill('#msg-input', 'mobile hello');
     await page1.click('#msg-send');
