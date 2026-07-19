@@ -80,6 +80,21 @@ export function startApp(app: AppInstance): () => void {
     () => app.views.settings?.renderSettings(),
   );
 
+  // 三个有界列表的 invalidate 动作直接复用各自"收到新会话/新消息/新联系人通知"时的既有动作，
+  // 贴顶/可见则重拉追平，否则按各自规则推迟——语义与 handleMessagesReceived/handleContactsChanged 一致。
+  app.registerDisposer(app.registerBoundedList({
+    id: 'conversations',
+    invalidate: () => app.views.chat?.renderConversationList({ force: true }),
+  }));
+  app.registerDisposer(app.registerBoundedList({
+    id: 'open-conversation-messages',
+    invalidate: () => app.views.chat?.refreshOpenConversation(),
+  }));
+  app.registerDisposer(app.registerBoundedList({
+    id: 'contacts',
+    invalidate: () => app.views.contacts?.loadContacts({ background: true }),
+  }));
+
   app.dom.querySelectorAll<HTMLElement>('.nav-item[data-view]').forEach(item => {
     item.addEventListener('click', () => app.views.chat?.switchView(item.dataset.view!));
   });
@@ -93,13 +108,28 @@ export function startApp(app: AppInstance): () => void {
     app.registerDisposer(() => app.client.off(event, handler));
   };
 
+  // 断线期间（disconnected 或重试到阈值的 reconnecting）都点亮全局提示条；
+  // 重连成功（connected）后若此前确实断过线，且会话已初始化过，则广播有界列表 invalidate，
+  // 让会话列表/当前会话消息/联系人列表各自追平——效果等价于收到一次新会话/新消息/新联系人通知。
+  let disconnectedSinceLastConnect = false;
+
   bindClient('connection:connected', () => {
     app.hideStatus();
     const token = app.storage.getStoredToken();
     if (token && app.client.getSessionSnapshot().currentUid) void app.views.auth?.authenticate(token);
+    if (disconnectedSinceLastConnect && app.client.getSessionSnapshot().isSessionInitialized) {
+      app.invalidateBoundedLists();
+    }
+    disconnectedSinceLastConnect = false;
   });
 
   bindClient('connection:disconnected', () => {
+    disconnectedSinceLastConnect = true;
+    app.showStatus(app.t('status.reconnecting'), 'reconnecting');
+  });
+
+  bindClient('connection:reconnecting', () => {
+    disconnectedSinceLastConnect = true;
     app.showStatus(app.t('status.reconnecting'), 'reconnecting');
   });
 

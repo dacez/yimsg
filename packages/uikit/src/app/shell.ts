@@ -29,6 +29,8 @@ export const APP_SHELL_HTML = `
   </section>
 
   <div id="app" class="hidden">
+    <div id="status-bar" class="status-bar hidden"></div>
+    <div id="app-body">
     <nav id="navbar">
       <div class="nav-item active" data-view="chat" title="聊天">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -55,9 +57,6 @@ export const APP_SHELL_HTML = `
     <div id="main-content">
       <section id="view-chat" class="view">
         <div id="left-panel">
-          <div id="left-panel-header">
-            <div id="status-bar" class="status-bar hidden"></div>
-          </div>
           <div id="conversation-list"></div>
         </div>
         <div id="center-panel">
@@ -170,6 +169,7 @@ export const APP_SHELL_HTML = `
           <button class="btn btn-danger btn-block" id="logout-btn">退出登录</button>
         </div>
       </section>
+    </div>
     </div>
   </div>
   <div id="modal-overlay" class="modal-overlay hidden">
