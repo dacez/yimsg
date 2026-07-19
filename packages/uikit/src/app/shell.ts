@@ -30,7 +30,7 @@ export const APP_SHELL_HTML = `
 
   <div id="app" class="hidden">
     <div id="status-bar" class="status-bar hidden"></div>
-    <div id="app-body">
+    <div id="app-frame">
     <nav id="navbar">
       <div class="nav-item active" data-view="chat" title="聊天">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

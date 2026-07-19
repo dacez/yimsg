@@ -110,7 +110,7 @@ test.describe('Navigation', () => {
   test('#status-bar is global: not nested inside any per-view container', async ({ page }) => {
     await register(page, uniqueUser('statusbar'), password, 'StatusBarUser');
 
-    // #status-bar 挂在 #app 顶层（#app-body 之上），不应嵌套在 chat/contacts/settings
+    // #status-bar 挂在 #app 顶层（#app-frame 之上），不应嵌套在 chat/contacts/settings
     // 任一 .view 容器内——否则切到其它视图时会随该 .view 的 hidden 一起被隐藏。
     const closestView = await page.locator('#status-bar').evaluate((el) => el.closest('.view')?.id ?? null);
     expect(closestView).toBeNull();

@@ -225,6 +225,55 @@ test.describe('uikit embed', () => {
     expect(result.inlineStyle).not.toContain('--mc-bg');
   });
 
+  test('mobile layout bottom navbar renders below the conversation list inside an embedded widget', async ({ page }) => {
+    // 回归：内嵌样式表通过 rewriteAppStylesForShadow 里的 \bbody\b 正则把裸 body
+    // 选择器改写成 .mc-app-shell 以适配 Shadow DOM；该正则的单词边界会把连字符两侧
+    // 也当作边界，选择器名字里只要含有 "body" 这个子串（哪怕是像 "app-body" 这种
+    // 复合 id 的一部分）就会被错误命中、拆散成匹配不到任何元素的选择器，导致那条
+    // 规则在内嵌场景下完全失效。曾经的 #app-body 就踩过这个坑：手机布局本该把
+    // #navbar 排在会话列表下方（screen 底部 tab bar），内嵌场景下却因为规则失效
+    // 摆回文档流默认顺序，跑到了最上面。这里直接在真实 Shadow DOM 里量 navbar 和
+    // 会话列表的位置，锁死"手机布局下导航栏必须在下面"这条视觉约束。
+    const username = uniqueUser('navorder');
+    await page.goto('/demo/embed.html');
+
+    await page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'nav-order-host';
+      host.style.width = '340px';
+      host.style.height = '560px';
+      document.body.appendChild(host);
+      const w = window as unknown as {
+        __navOrderHandle?: MountHandle;
+        YimsgUIKit: { mount: (el: HTMLElement, opts: Record<string, unknown>) => MountHandle };
+      };
+      w.__navOrderHandle = w.YimsgUIKit.mount(host, {
+        wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
+        layout: 'mobile',
+      });
+    });
+
+    const shadow = () => page.locator('#nav-order-host');
+    await shadow().locator('.tab[data-tab="register"]').click();
+    await shadow().locator('#reg-username').fill(username);
+    await shadow().locator('#reg-password').fill('123456');
+    await shadow().locator('#reg-nickname').fill('NavOrderUser');
+    await shadow().locator('#register-form button[type="submit"]').click();
+    await expect(shadow().locator('#conversation-list')).toBeVisible({ timeout: 15_000 });
+
+    const navBox = await shadow().locator('#navbar').boundingBox();
+    const mainBox = await shadow().locator('#main-content').boundingBox();
+    expect(navBox).not.toBeNull();
+    expect(mainBox).not.toBeNull();
+    // 导航栏必须整个落在会话列表下方（允许 1px 误差），不是反过来。
+    expect(navBox!.y).toBeGreaterThanOrEqual(mainBox!.y + mainBox!.height - 1);
+
+    await page.evaluate(() => {
+      (window as any).__navOrderHandle?.unmount();
+      document.getElementById('nav-order-host')?.remove();
+    });
+  });
+
   test('auto layout reacts to host resize and keeps auth card usable', async ({ page }) => {
     await page.goto('/demo/embed.html');
 
