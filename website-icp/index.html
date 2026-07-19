@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>yimsg · 项目介绍</title>
+<meta name="description" content="yimsg 是一套可私有化部署的即时通讯系统项目介绍页面：架构说明、集成方式与技术特点。" />
+<style>
+  :root {
+    --color-bg: #0b0d17;
+    --color-bg-alt: #12142400;
+    --color-panel: #12142499;
+    --color-text: #e7e8f3;
+    --color-text-dim: #a6a9c4;
+    --color-border: #2a2d45;
+    --color-brand: #6366f1;
+    --color-brand-2: #818cf8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.7;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  header.hero {
+    text-align: center;
+    padding: 32px 0 16px;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 40px;
+  }
+  .brand {
+    font-size: 2.4rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    background: linear-gradient(90deg, var(--color-brand), var(--color-brand-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tagline {
+    color: var(--color-text-dim);
+    font-size: 1.05rem;
+    margin-top: 8px;
+  }
+  section {
+    margin-bottom: 48px;
+  }
+  h2 {
+    font-size: 1.35rem;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  p { color: var(--color-text-dim); }
+  ul { padding-left: 1.4em; color: var(--color-text-dim); }
+  li { margin-bottom: 8px; }
+  .panel {
+    background: var(--color-panel);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .diagram {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 8px 0 16px;
+  }
+  .diagram text { fill: var(--color-text); font-size: 15px; font-family: inherit; }
+  .diagram .dim { fill: var(--color-text-dim); font-size: 12.5px; }
+  .diagram rect { fill: var(--color-panel); stroke: var(--color-border); stroke-width: 1.5; }
+  .diagram .arrow { stroke: var(--color-brand-2); stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+  .kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 8px 20px;
+  }
+  .kv dt { color: var(--color-text); font-weight: 600; }
+  .kv dd { margin: 0; color: var(--color-text-dim); }
+  code {
+    background: #1a1c30;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.92em;
+  }
+  footer {
+    text-align: center;
+    color: var(--color-text-dim);
+    font-size: 0.9rem;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-border);
+  }
+  footer .icp-slot {
+    margin-top: 8px;
+    min-height: 1.2em;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="brand">yimsg</div>
+    <p class="tagline">可私有化部署的即时通讯系统</p>
+  </header>
+
+  <section id="intro">
+    <h2>项目简介</h2>
+    <p>
+      yimsg 是一套面向个人开发者与企业团队、可私有化部署的即时通讯（IM）系统。
+      使用者将 yimsg 部署到自己拥有或租用的一台服务器上，即可获得一套完整的聊天服务：
+      账号体系、单聊与群聊、联系人、消息同步与文件传输均在部署方自己的服务器上运行，
+      数据保存在部署方自己的存储介质中，不经过任何第三方云服务转发。
+    </p>
+    <p>
+      本页面仅用于介绍 yimsg 项目本身的定位、技术架构与集成方式，不提供在线购买、
+      注册引流或任何商业推广内容。
+    </p>
+  </section>
+
+  <section id="architecture">
+    <h2>系统架构</h2>
+    <p>yimsg 采用单体服务端架构：一个 Go 编写的服务进程，配合本地文件存储，不依赖任何外部数据库或缓存中间件。</p>
+    <div class="panel">
+      <svg class="diagram" viewBox="0 0 760 230" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#818cf8" />
+          </marker>
+        </defs>
+
+        <rect x="20" y="90" width="150" height="60" rx="10" />
+        <text x="95" y="115" text-anchor="middle">客户端</text>
+        <text class="dim" x="95" y="133" text-anchor="middle">SDK / UIKit</text>
+
+        <path class="arrow" d="M170,120 L262,120" />
+        <text class="dim" x="216" y="108" text-anchor="middle">二进制帧</text>
+
+        <rect x="270" y="90" width="150" height="60" rx="10" />
+        <text x="345" y="115" text-anchor="middle">服务端</text>
+        <text class="dim" x="345" y="133" text-anchor="middle">Go 单进程</text>
+
+        <path class="arrow" d="M420,120 L512,120" />
+        <text class="dim" x="466" y="108" text-anchor="middle">分片路由</text>
+
+        <rect x="520" y="90" width="150" height="60" rx="10" />
+        <text x="595" y="115" text-anchor="middle">本地存储</text>
+        <text class="dim" x="595" y="133" text-anchor="middle">文件型数据库</text>
+
+        <text class="dim" x="95" y="185" text-anchor="middle">网页 / 移动端 / 嵌入式组件</text>
+        <text class="dim" x="345" y="185" text-anchor="middle">单机部署，无外部依赖</text>
+        <text class="dim" x="595" y="185" text-anchor="middle">按用户与会话分片存放</text>
+      </svg>
+      <dl class="kv">
+        <dt>通信协议</dt>
+        <dd>客户端与服务端之间使用统一定义的二进制消息协议，一个连接内可并发处理多个请求。</dd>
+        <dt>服务进程</dt>
+        <dd>单个可执行文件常驻运行，负责账号鉴权、消息投递、在线状态与文件上传等全部业务逻辑。</dd>
+        <dt>数据存储</dt>
+        <dd>数据按账号等维度分散保存在多个本地文件型数据库中，不引入独立的数据库服务进程。</dd>
+        <dt>部署形态</dt>
+        <dd>单台机器即可完整运行一套服务；多台机器之间彼此独立，不共享数据，不做跨机集群同步。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="integration">
+    <h2>集成方式</h2>
+    <p>yimsg 面向不同使用场景提供三种接入层次，供开发者按需选择：</p>
+    <ul>
+      <li><strong>完整界面接入：</strong>直接使用项目自带的聊天界面组件，包含会话列表、消息区、联系人与群组管理等完整功能模块。</li>
+      <li><strong>软件开发工具包接入：</strong>使用面向界面无关的客户端工具包处理连接、鉴权、消息收发与本地状态同步，由使用者自行搭建界面。</li>
+      <li><strong>协议直连接入：</strong>直接按照公开的二进制消息协议规范与服务端通信，适合需要在非常规运行环境中自行实现客户端的场景。</li>
+    </ul>
+  </section>
+
+  <section id="tech">
+    <h2>技术特点</h2>
+    <ul>
+      <li>服务端使用 Go 语言实现，单个可执行文件即可运行，不依赖外部数据库或消息中间件。</li>
+      <li>本地文件型存储配合分片设计，降低单机部署的运维复杂度。</li>
+      <li>通信层采用统一二进制协议，收发消息与状态通知走同一连接。</li>
+      <li>界面组件支持样式隔离，可嵌入已有网站或系统页面中使用，也可作为独立网页应用运行。</li>
+      <li>支持局域网内部署与公网部署两种使用方式，具体网络开放范围由部署方自行决定。</li>
+    </ul>
+  </section>
+
+  <footer>
+    <div>yimsg · 项目介绍页面</div>
+    <div class="icp-slot"><!-- ICP 备案号：审核通过后在此处填写 --></div>
+  </footer>
+
+</div>
+</body>
+</html>
