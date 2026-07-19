@@ -40,6 +40,9 @@ import (
 // demoPassword 是所有 demo 账号统一密码，方便官网页面顶部直接展示。
 const demoPassword = "Demo@123456"
 
+// simpleTestPassword 是 z/d/c 三个简单测试账号的统一密码，仅供本地手动测试使用。
+const simpleTestPassword = "zdc"
+
 func main() {
 	configPath := flag.String("config", "config.toml", "配置文件路径")
 	flag.Parse()
@@ -85,12 +88,16 @@ func main() {
 	fmt.Println("\n=== Step 3: 通讯录 + 组织架构（挂在 demo_alice 名下） ===")
 	orgID, orgMemberCount := seedOrgDemo(state, alice.uid)
 
+	fmt.Println("\n=== Step 4: 简单测试账号（z/d/c，互为好友） ===")
+	seedSimpleTestUsers(state)
+
 	fmt.Println("\n=== 完成 ===")
 	fmt.Printf("完整体验 demo：demo_alice / demo_bob / demo_carol，密码 %s\n", demoPassword)
 	fmt.Printf("  群聊：产品体验群 group_id=%d；两两单聊已预置消息\n", alice.groupID)
 	fmt.Printf("客服 demo：%s，密码 %s（访客侧走临时注册 + 临时会话，无需预先加好友）\n", strings.Join(kfUsernames, " / "), demoPassword)
 	fmt.Printf("六宫格客服工作台 demo：以上 6 个客服账号已各预置一条待处理留言，密码同为 %s\n", demoPassword)
 	fmt.Printf("通讯录 demo：demo_alice，密码 %s；组织 org_id=%d，共 %d 名在职成员\n", demoPassword, orgID, orgMemberCount)
+	fmt.Printf("简单测试账号：z / d / c，密码 %s，三人互为好友\n", simpleTestPassword)
 	_ = bob
 	_ = carol
 	_ = kfUIDs
@@ -102,7 +109,11 @@ type demoUser struct {
 }
 
 func register(state *service.AppState, username, nickname string) int64 {
-	resp := state.Register(seedkit.BaseInfo(0), &pb.RegisterRequest{Username: username, Password: demoPassword, Nickname: nickname})
+	return registerWithPassword(state, username, nickname, demoPassword)
+}
+
+func registerWithPassword(state *service.AppState, username, nickname, password string) int64 {
+	resp := state.Register(seedkit.BaseInfo(0), &pb.RegisterRequest{Username: username, Password: password, Nickname: nickname})
 	if !seedkit.OK(resp.GetBase()) {
 		log.Fatalf("注册 %s 失败: %s", username, resp.GetBase().GetMsg())
 	}
@@ -169,6 +180,20 @@ func seedFullChatDemo(state *service.AppState) (alice, bob, carol demoUser) {
 	fmt.Println("  群聊、单聊消息已预置")
 
 	return demoUser{uid: aliceUID, groupID: groupID}, demoUser{uid: bobUID}, demoUser{uid: carolUID}
+}
+
+// seedSimpleTestUsers 构造 z/d/c 三个简单测试账号，密码统一为 simpleTestPassword，三人互为好友，
+// 供本地手动测试快速登录使用，不预置消息或群聊。
+func seedSimpleTestUsers(state *service.AppState) {
+	zUID := registerWithPassword(state, "z", "z", simpleTestPassword)
+	dUID := registerWithPassword(state, "d", "d", simpleTestPassword)
+	cUID := registerWithPassword(state, "c", "c", simpleTestPassword)
+	fmt.Println("  账号已注册：z / d / c")
+
+	makeFriends(state, zUID, dUID)
+	makeFriends(state, zUID, cUID)
+	makeFriends(state, dUID, cUID)
+	fmt.Println("  三人已互为好友")
 }
 
 // seedCustomerServiceDemo 构造客服 demo 用到的六个客服人设账号；访客侧走真实临时注册 + 临时会话，
