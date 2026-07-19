@@ -122,6 +122,29 @@ test.describe('Navigation', () => {
     await expect(page.locator('#status-bar')).toBeAttached();
   });
 
+  test('#status-bar stays visible above modal overlay and other floating layers', async ({ page }) => {
+    await register(page, uniqueUser('statusbarz'), password, 'StatusBarZUser');
+
+    // #status-bar 默认是普通文档流元素：没有自己的层叠上下文时，modal-overlay 这类
+    // fixed 悬浮层（z-index:1000）在绘制顺序上天然晚于它，会把它整个盖住——即"重连
+    // 提示在弹窗打开时看不见"。直接摆出 reconnecting 状态 + 打开 modal-overlay，
+    // 验证 status-bar 仍然处在最上层（elementFromPoint 命中的是 status-bar 而不是
+    // 被 modal-overlay 盖住），不需要真的断线重连也能验证这条 CSS 层叠约束。
+    await page.evaluate(() => {
+      const bar = document.getElementById('status-bar')!;
+      bar.textContent = 'Reconnecting...';
+      bar.className = 'status-bar reconnecting';
+      document.getElementById('modal-overlay')!.classList.remove('hidden');
+    });
+
+    const topElementId = await page.evaluate(() => {
+      const rect = document.getElementById('status-bar')!.getBoundingClientRect();
+      const el = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return el?.closest('#status-bar') ? 'status-bar' : el?.closest('#modal-overlay') ? 'modal-overlay' : (el?.id ?? null);
+    });
+    expect(topElementId).toBe('status-bar');
+  });
+
   test('empty conversation list shows empty state', async ({ page }) => {
     await register(page, uniqueUser('empty'), password, 'EmptyUser');
     await page.click('[data-view="chat"]');

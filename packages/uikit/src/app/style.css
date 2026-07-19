@@ -53,7 +53,13 @@ to{opacity:1;transform:translateY(0) scale(1)}
 @keyframes toast-in{0%{opacity:0;transform:translate(20px)}
 to{opacity:1;transform:translate(0)}
 }
-.status-bar{flex-shrink:0;padding:6px var(--space-lg);text-align:center;font-size:var(--font-size-caption);line-height:var(--line-height-caption);border-bottom:1px solid var(--border-light)}
+/* position+z-index：#status-bar 默认是普通文档流元素，不设置层叠上下文时会被
+   modal-overlay/msg-viewer-overlay（z-index:1000）、message-action-menu（z-index:1200）
+   等 fixed 悬浮层盖住——这些悬浮层在绘制顺序上天然晚于普通流内元素。这里给它建立
+   自己的层叠上下文并给到比这些悬浮层都高的 z-index，确保重连/同步提示在弹窗、
+   图片预览、右键菜单等任何"窗口"打开期间都不会被盖住；toast-container（2000）
+   仍在其上，瞬时提示不受影响。 */
+.status-bar{position:relative;z-index:1300;flex-shrink:0;padding:6px var(--space-lg);text-align:center;font-size:var(--font-size-caption);line-height:var(--line-height-caption);border-bottom:1px solid var(--border-light)}
 .status-bar.reconnecting{background:var(--bg-hover);color:var(--text-secondary)}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-placeholder);font-size:var(--font-size-body);text-align:center;padding:var(--space-xl)}
 .form-group{display:flex;flex-direction:column;gap:var(--space-sm);margin-bottom:var(--space-lg)}

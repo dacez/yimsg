@@ -883,6 +883,8 @@ hideStatus()                             // 隐藏
 
 挂在 `#app` 顶层（`#status-bar`，`#app-body` 之上）的全局提示条（非 fixed，不覆盖全局视口，占用文档流内一行高度），聊天/通讯录/设置所有视图都能看到，移动端/桌面端布局共用同一实现。`syncing` → 浅蓝底 + 蓝字；`reconnecting` → 灰底 + 灰字（不使用红色，避免过度告警）。
 
+`.status-bar` 显式设置 `position:relative;z-index:1300`：普通文档流元素默认会被 `.modal-overlay`/`.msg-viewer-overlay`（`z-index:1000`）、`.message-action-menu`（`z-index:1200`）这类 `position:fixed` 悬浮层盖住（这些悬浮层在绘制顺序上天然晚于普通流内元素，与 DOM 先后顺序无关），所以需要单独建立层叠上下文并给到比它们都高的 z-index，确保创建群组、图片预览、消息右键菜单等任何弹出层打开期间，重连/同步提示都不会被盖住；`#toast-container`（`z-index:2000`）仍在其上，瞬时 toast 提示不受影响。
+
 ### 7.4 Modal
 
 全局单例 `#modal-overlay` + `#modal-content`。每次使用时替换 `innerHTML`。
