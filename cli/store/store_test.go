@@ -200,3 +200,36 @@ func TestLastSyncedSeqPersistence(t *testing.T) {
 		t.Fatalf("last synced seq = %d, err=%v, want 77", seq, err)
 	}
 }
+
+func TestUserCacheRoundTrip(t *testing.T) {
+	s := openTestStore(t)
+
+	if _, ok, err := s.LookupUsername(100); err != nil || ok {
+		t.Fatalf("lookup username before cache: ok=%v err=%v, want ok=false", ok, err)
+	}
+	if _, ok, err := s.LookupUID("alice"); err != nil || ok {
+		t.Fatalf("lookup uid before cache: ok=%v err=%v, want ok=false", ok, err)
+	}
+
+	if err := s.CacheUser(100, "alice"); err != nil {
+		t.Fatalf("cache user: %v", err)
+	}
+
+	name, ok, err := s.LookupUsername(100)
+	if err != nil || !ok || name != "alice" {
+		t.Fatalf("lookup username = %q ok=%v err=%v, want alice/true", name, ok, err)
+	}
+	uid, ok, err := s.LookupUID("alice")
+	if err != nil || !ok || uid != 100 {
+		t.Fatalf("lookup uid = %d ok=%v err=%v, want 100/true", uid, ok, err)
+	}
+
+	// 同一 uid 改名后应覆盖旧记录，而不是报唯一约束冲突。
+	if err := s.CacheUser(100, "alice2"); err != nil {
+		t.Fatalf("re-cache user with new name: %v", err)
+	}
+	name, ok, err = s.LookupUsername(100)
+	if err != nil || !ok || name != "alice2" {
+		t.Fatalf("lookup username after rename = %q ok=%v err=%v, want alice2/true", name, ok, err)
+	}
+}

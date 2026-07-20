@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
 	key TEXT PRIMARY KEY,
 	value INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS users (
+	uid INTEGER PRIMARY KEY,
+	username TEXT NOT NULL UNIQUE
+);
 `
 
 const (
@@ -173,6 +178,45 @@ func (s *Store) setState(key string, value int64) error {
 		return fmt.Errorf("write state %s: %w", key, err)
 	}
 	return nil
+}
+
+// CacheUser 记录一次确定的 uid<->username 映射（来自 login 自身、search_user、
+// get_user_infos），供后续按用户名解析发消息 / 查历史目标，以及给 history/pending
+// 输出的消息补上 from_username/to_username，避免每次都回源服务端。
+func (s *Store) CacheUser(uid int64, username string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO users (uid, username) VALUES (?, ?)
+		ON CONFLICT(uid) DO UPDATE SET username=excluded.username
+	`, uid, username)
+	if err != nil {
+		return fmt.Errorf("cache user uid=%d: %w", uid, err)
+	}
+	return nil
+}
+
+// LookupUsername 返回本地缓存的 uid 对应用户名；ok=false 表示尚未缓存过。
+func (s *Store) LookupUsername(uid int64) (username string, ok bool, err error) {
+	err = s.db.QueryRow("SELECT username FROM users WHERE uid = ?", uid).Scan(&username)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("lookup username uid=%d: %w", uid, err)
+	}
+	return username, true, nil
+}
+
+// LookupUID 返回本地缓存的用户名对应 uid；ok=false 表示尚未缓存过，调用方需要
+// 回源服务端（例如 search_user）解析后再 CacheUser。
+func (s *Store) LookupUID(username string) (uid int64, ok bool, err error) {
+	err = s.db.QueryRow("SELECT uid FROM users WHERE username = ?", username).Scan(&uid)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("lookup uid username=%s: %w", username, err)
+	}
+	return uid, true, nil
 }
 
 // StoredMessage 是本地库读出的一条消息，Body 已解码为结构化 MessageBody。

@@ -71,8 +71,10 @@ func bodyToJSON(b *pb.MessageBody) map[string]any {
 	}
 }
 
-// storedMessageJSON 把本地库读出的一条消息展开为 JSON 友好结构。
-func storedMessageJSON(m store.StoredMessage) map[string]any {
+// storedMessageJSON 把本地库读出的一条消息展开为 JSON 友好结构，尽量按本地已知的
+// uid<->username 缓存（cli/store 的 users 表）补上 from_username/to_username；
+// 未缓存过对应 uid 时不强行发起网络解析，只输出裸 uid（history/pending 保持离线可用）。
+func storedMessageJSON(st *store.Store, m store.StoredMessage) (map[string]any, error) {
 	out := map[string]any{
 		"seq":       m.Seq,
 		"msg_id":    m.MsgID,
@@ -80,18 +82,32 @@ func storedMessageJSON(m store.StoredMessage) map[string]any {
 		"send_time": m.SendTime,
 		"body":      bodyToJSON(m.Body),
 	}
+	if name, ok, err := st.LookupUsername(m.FromUID); err != nil {
+		return nil, err
+	} else if ok {
+		out["from_username"] = name
+	}
 	if m.GroupID > 0 {
 		out["group_id"] = m.GroupID
 	} else {
 		out["to_uid"] = m.ToUID
+		if name, ok, err := st.LookupUsername(m.ToUID); err != nil {
+			return nil, err
+		} else if ok {
+			out["to_username"] = name
+		}
 	}
-	return out
+	return out, nil
 }
 
-func storedMessagesJSON(msgs []store.StoredMessage) []map[string]any {
+func storedMessagesJSON(st *store.Store, msgs []store.StoredMessage) ([]map[string]any, error) {
 	out := make([]map[string]any, len(msgs))
 	for i, m := range msgs {
-		out[i] = storedMessageJSON(m)
+		j, err := storedMessageJSON(st, m)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = j
 	}
-	return out
+	return out, nil
 }

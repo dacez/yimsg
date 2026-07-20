@@ -160,6 +160,12 @@ func (c *Client) SyncMessages(req *pb.SyncMessagesRequest) (*pb.SyncMessagesResp
 	return call(c, uint16(pb.Type_TYPE_ACTION_SYNC_MESSAGES), req, &pb.SyncMessagesResponse{}, DefaultTimeout)
 }
 
+// SearchUser 按用户名精确查找一个用户资料；CLI 用它把人类可读的用户名解析为 uid，
+// 群没有用户名，只能继续用 group_id。
+func (c *Client) SearchUser(req *pb.SearchUserRequest) (*pb.SearchUserResponse, error) {
+	return call(c, uint16(pb.Type_TYPE_ACTION_SEARCH_USER), req, &pb.SearchUserResponse{}, DefaultTimeout)
+}
+
 // GetContacts 分页读取通讯录（好友 / 收藏群）。
 func (c *Client) GetContacts(req *pb.GetContactsRequest) (*pb.GetContactsResponse, error) {
 	return call(c, uint16(pb.Type_TYPE_ACTION_GET_CONTACTS), req, &pb.GetContactsResponse{}, DefaultTimeout)

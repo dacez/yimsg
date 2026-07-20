@@ -12,26 +12,84 @@ import (
 	"yimsg/protocol/generated/go/pb"
 )
 
-// connectAuthed 读取本地登录态、拨号并用保存的 token 恢复会话。token 失效时
-// 提示重新 login，而不是自动退化为静默失败。
-func connectAuthed(dir string, uid int64, insecure bool) (*client.Client, account.Session, error) {
-	sess, err := account.Load(dir, uid)
-	if err != nil {
-		return nil, sess, err
-	}
+// connectAuthedSession 拨号并用 sess 保存的 token 恢复会话。token 失效时提示
+// 重新 login，而不是自动退化为静默失败。
+func connectAuthedSession(sess account.Session, insecure bool) (*client.Client, error) {
 	c, err := client.Dial(sess.ServerURL, insecure)
 	if err != nil {
-		return nil, sess, err
+		return nil, err
 	}
 	if _, err := c.Authenticate(sess.Token); err != nil {
 		c.Close()
-		return nil, sess, fmt.Errorf("token 鉴权失败（可能已过期，请重新执行 login）: %w", err)
+		return nil, fmt.Errorf("token 鉴权失败（可能已过期，请重新执行 login）: %w", err)
+	}
+	return c, nil
+}
+
+// connectCurrent 读取当前账号并拨号鉴权，是绝大多数子命令的通用入口：调用方
+// 不需要知道也不需要传自己的 uid，只需要先 login（或 switch-user）过一次。
+func connectCurrent(dir string, insecure bool) (*client.Client, account.Session, error) {
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
+		return nil, sess, err
+	}
+	c, err := connectAuthedSession(sess, insecure)
+	if err != nil {
+		return nil, sess, err
 	}
 	return c, sess, nil
 }
 
-func openAccountStore(dir string, uid int64) (*store.Store, error) {
-	return store.Open(account.DataPath(dir, uid))
+// openCurrentStore 打开当前账号的本地同步库，并顺手把自己的 uid<->username
+// 缓存一次（这个映射反正已知，不需要额外网络调用）。
+func openCurrentStore(dir string, sess account.Session) (*store.Store, error) {
+	st, err := store.Open(account.DataPath(dir, sess.UID))
+	if err != nil {
+		return nil, err
+	}
+	if err := st.CacheUser(sess.UID, sess.Username); err != nil {
+		st.Close()
+		return nil, err
+	}
+	return st, nil
+}
+
+// resolveUsername 把用户名解析为 uid：本地缓存命中直接返回，否则回源 search_user
+// 并缓存结果。群没有用户名，不适用本函数，继续用数字 group_id。
+func resolveUsername(c *client.Client, st *store.Store, username string) (int64, error) {
+	if uid, ok, err := st.LookupUID(username); err != nil {
+		return 0, err
+	} else if ok {
+		return uid, nil
+	}
+	resp, err := c.SearchUser(&pb.SearchUserRequest{Username: username})
+	if err != nil {
+		return 0, fmt.Errorf("查找用户名 %q 失败: %w", username, err)
+	}
+	profile := resp.GetProfile()
+	if profile.GetUid() == 0 {
+		return 0, fmt.Errorf("用户名 %q 不存在", username)
+	}
+	if err := st.CacheUser(profile.GetUid(), profile.GetUsername()); err != nil {
+		return 0, err
+	}
+	return profile.GetUid(), nil
+}
+
+// resolveUsernameOffline 优先用本地缓存解析用户名，只有缓存未命中时才临时拨号，
+// 让 history 之类的查询在会话对方已经打过交道的情况下保持纯本地、不发起网络请求。
+func resolveUsernameOffline(sess account.Session, st *store.Store, username string, insecure bool) (int64, error) {
+	if uid, ok, err := st.LookupUID(username); err != nil {
+		return 0, err
+	} else if ok {
+		return uid, nil
+	}
+	c, err := connectAuthedSession(sess, insecure)
+	if err != nil {
+		return 0, err
+	}
+	defer c.Close()
+	return resolveUsername(c, st, username)
 }
 
 func cmdLogin(args []string) error {
@@ -81,8 +139,58 @@ func cmdLogin(args []string) error {
 	if err := account.Save(dir, sess); err != nil {
 		return err
 	}
+	// login 即切换为当前账号，后续命令无需再传任何身份信息。
+	if err := account.SetCurrent(dir, sess); err != nil {
+		return err
+	}
 
 	emitOK(map[string]any{"uid": sess.UID, "username": sess.Username, "dir": account.Dir(dir, sess.UID)})
+	return nil
+}
+
+func cmdSwitchUser(args []string) error {
+	fs := newFlagSet("switch-user")
+	dirFlag := fs.String("dir", "", "根目录")
+	username := fs.String("username", "", "要切换到的用户名（必须是本地已 login 过的账号）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	dir, err := resolveDir(*dirFlag)
+	if err != nil {
+		return err
+	}
+	if *username == "" {
+		return fmt.Errorf("缺少 --username")
+	}
+
+	sess, err := account.FindByUsername(dir, *username)
+	if err != nil {
+		return err
+	}
+	if err := account.SetCurrent(dir, sess); err != nil {
+		return err
+	}
+
+	emitOK(map[string]any{"uid": sess.UID, "username": sess.Username})
+	return nil
+}
+
+func cmdCurrent(args []string) error {
+	fs := newFlagSet("current")
+	dirFlag := fs.String("dir", "", "根目录")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	dir, err := resolveDir(*dirFlag)
+	if err != nil {
+		return err
+	}
+
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
+		return err
+	}
+	emitOK(map[string]any{"uid": sess.UID, "username": sess.Username, "server_url": sess.ServerURL})
 	return nil
 }
 
@@ -101,9 +209,17 @@ func cmdAccounts(args []string) error {
 	if err != nil {
 		return err
 	}
+	currentUID := int64(0)
+	if cur, err := account.LoadCurrent(dir); err == nil {
+		currentUID = cur.UID
+	}
+
 	out := make([]map[string]any, len(sessions))
 	for i, s := range sessions {
-		out[i] = map[string]any{"uid": s.UID, "username": s.Username, "server_url": s.ServerURL, "login_at": s.LoginAt}
+		out[i] = map[string]any{
+			"uid": s.UID, "username": s.Username, "server_url": s.ServerURL,
+			"login_at": s.LoginAt, "current": s.UID == currentUID,
+		}
 	}
 	emitOK(map[string]any{"accounts": out})
 	return nil
@@ -112,7 +228,6 @@ func cmdAccounts(args []string) error {
 func cmdSync(args []string) error {
 	fs := newFlagSet("sync")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	limit := fs.Int64("limit", 200, "单批同步条数")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
 	if err := fs.Parse(args); err != nil {
@@ -122,17 +237,14 @@ func cmdSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
 
-	c, sess, err := connectAuthed(dir, *uid, *insecure)
+	c, sess, err := connectCurrent(dir, *insecure)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	st, err := openAccountStore(dir, *uid)
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
@@ -172,9 +284,8 @@ func cmdSync(args []string) error {
 func cmdSend(args []string) error {
 	fs := newFlagSet("send")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
-	toUser := fs.Int64("to-user", 0, "接收用户 uid")
-	toGroup := fs.Int64("to-group", 0, "接收群 group_id")
+	toUser := fs.String("to-user", "", "接收方用户名")
+	toGroup := fs.Int64("to-group", 0, "接收群 group_id（群没有用户名，只能用数字 ID）")
 	text := fs.String("text", "", "文本消息内容")
 	markdown := fs.String("markdown", "", "Markdown 消息内容")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
@@ -185,19 +296,32 @@ func cmdSend(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
-	if (*toUser > 0) == (*toGroup > 0) {
+	if (*toUser != "") == (*toGroup > 0) {
 		return fmt.Errorf("必须且只能指定 --to-user 或 --to-group 之一")
 	}
 	if (*text != "") == (*markdown != "") {
 		return fmt.Errorf("必须且只能指定 --text 或 --markdown 之一")
 	}
 
+	c, sess, err := connectCurrent(dir, *insecure)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	st, err := openCurrentStore(dir, sess)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
 	target := &pb.ConversationTarget{}
-	if *toUser > 0 {
-		target.Kind = &pb.ConversationTarget_Uid{Uid: *toUser}
+	if *toUser != "" {
+		uid, err := resolveUsername(c, st, *toUser)
+		if err != nil {
+			return err
+		}
+		target.Kind = &pb.ConversationTarget_Uid{Uid: uid}
 	} else {
 		target.Kind = &pb.ConversationTarget_GroupId{GroupId: *toGroup}
 	}
@@ -210,12 +334,6 @@ func cmdSend(args []string) error {
 		msgType = pb.MessageType_MESSAGE_TYPE_MARKDOWN
 		body = &pb.MessageBody{Kind: &pb.MessageBody_Markdown{Markdown: &pb.MarkdownBody{Markdown: *markdown}}}
 	}
-
-	c, _, err := connectAuthed(dir, *uid, *insecure)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
 
 	msgID := msgid.Generate()
 	resp, err := c.SendMessage(&pb.SendMessageRequest{Target: target, MsgType: msgType, Body: body, MsgId: msgID})
@@ -230,11 +348,11 @@ func cmdSend(args []string) error {
 func cmdHistory(args []string) error {
 	fs := newFlagSet("history")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
-	withUser := fs.Int64("with-user", 0, "会话对方 uid")
+	withUser := fs.String("with-user", "", "会话对方用户名")
 	withGroup := fs.Int64("with-group", 0, "会话群 group_id")
 	afterSeq := fs.Int64("after-seq", 0, "只返回 seq 大于此值的消息")
 	limit := fs.Int("limit", 50, "最多返回条数")
+	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验（仅在需要临时解析未见过的用户名时用到）")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -242,30 +360,42 @@ func cmdHistory(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
-	if (*withUser > 0) == (*withGroup > 0) {
+	if (*withUser != "") == (*withGroup > 0) {
 		return fmt.Errorf("必须且只能指定 --with-user 或 --with-group 之一")
 	}
 
-	st, err := openAccountStore(dir, *uid)
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
+		return err
+	}
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 
 	var msgs []store.StoredMessage
-	if *withUser > 0 {
-		msgs, err = st.HistoryWithUser(*withUser, *afterSeq, *limit)
+	if *withUser != "" {
+		peerUID, err := resolveUsernameOffline(sess, st, *withUser, *insecure)
+		if err != nil {
+			return err
+		}
+		msgs, err = st.HistoryWithUser(peerUID, *afterSeq, *limit)
+		if err != nil {
+			return err
+		}
 	} else {
 		msgs, err = st.HistoryWithGroup(*withGroup, *afterSeq, *limit)
+		if err != nil {
+			return err
+		}
 	}
+
+	out, err := storedMessagesJSON(st, msgs)
 	if err != nil {
 		return err
 	}
-
-	emitOK(map[string]any{"messages": storedMessagesJSON(msgs), "count": len(msgs)})
+	emitOK(map[string]any{"messages": out, "count": len(msgs)})
 	return nil
 }
 
@@ -274,7 +404,6 @@ func cmdHistory(args []string) error {
 func cmdPending(args []string) error {
 	fs := newFlagSet("pending")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	afterSeq := fs.Int64("after-seq", -1, "起始 seq；不传则使用已记录的 ai-cursor")
 	limit := fs.Int("limit", 50, "最多返回条数")
 	includeSelf := fs.Bool("include-self", false, "是否包含本账号自己发出的消息")
@@ -285,11 +414,12 @@ func cmdPending(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
+
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
 		return err
 	}
-
-	st, err := openAccountStore(dir, *uid)
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
@@ -303,7 +433,7 @@ func cmdPending(args []string) error {
 		}
 	}
 
-	msgs, err := st.Pending(*uid, since, *limit, *includeSelf)
+	msgs, err := st.Pending(sess.UID, since, *limit, *includeSelf)
 	if err != nil {
 		return err
 	}
@@ -315,7 +445,11 @@ func cmdPending(args []string) error {
 		}
 	}
 
-	emitOK(map[string]any{"messages": storedMessagesJSON(msgs), "count": len(msgs), "since": since, "max_seq": maxSeq})
+	out, err := storedMessagesJSON(st, msgs)
+	if err != nil {
+		return err
+	}
+	emitOK(map[string]any{"messages": out, "count": len(msgs), "since": since, "max_seq": maxSeq})
 	return nil
 }
 
@@ -336,7 +470,6 @@ func cmdAICursor(args []string) error {
 func cmdAICursorGet(args []string) error {
 	fs := newFlagSet("ai-cursor get")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -344,11 +477,12 @@ func cmdAICursorGet(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
+
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
 		return err
 	}
-
-	st, err := openAccountStore(dir, *uid)
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
@@ -365,7 +499,6 @@ func cmdAICursorGet(args []string) error {
 func cmdAICursorSet(args []string) error {
 	fs := newFlagSet("ai-cursor set")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	seq := fs.Int64("seq", -1, "要记录的 seq")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -374,14 +507,15 @@ func cmdAICursorSet(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
 	if *seq < 0 {
 		return fmt.Errorf("缺少或非法的 --seq")
 	}
 
-	st, err := openAccountStore(dir, *uid)
+	sess, err := account.LoadCurrent(dir)
+	if err != nil {
+		return err
+	}
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
@@ -397,8 +531,7 @@ func cmdAICursorSet(args []string) error {
 func cmdUserInfo(args []string) error {
 	fs := newFlagSet("user-info")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
-	targets := fs.String("targets", "", "逗号分隔的目标 uid 列表")
+	usernames := fs.String("usernames", "", "逗号分隔的用户名列表")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -407,27 +540,33 @@ func cmdUserInfo(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
-	uids, err := parseInt64List(*targets)
+	names, err := parseStringList(*usernames)
 	if err != nil {
-		return fmt.Errorf("--targets: %w", err)
+		return fmt.Errorf("--usernames: %w", err)
 	}
 
-	c, _, err := connectAuthed(dir, *uid, *insecure)
+	c, sess, err := connectCurrent(dir, *insecure)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 
-	resp, err := c.GetUserInfos(&pb.GetUserInfosRequest{Uids: uids})
+	st, err := openCurrentStore(dir, sess)
 	if err != nil {
 		return err
 	}
+	defer st.Close()
 
-	out := make([]map[string]any, 0, len(resp.GetProfiles()))
-	for _, p := range resp.GetProfiles() {
+	out := make([]map[string]any, 0, len(names))
+	for _, name := range names {
+		resp, err := c.SearchUser(&pb.SearchUserRequest{Username: name})
+		if err != nil {
+			return fmt.Errorf("查询用户名 %q 失败: %w", name, err)
+		}
+		p := resp.GetProfile()
+		if err := st.CacheUser(p.GetUid(), p.GetUsername()); err != nil {
+			return err
+		}
 		out = append(out, map[string]any{
 			"uid": p.GetUid(), "username": p.GetUsername(), "nickname": p.GetNickname(), "avatar": p.GetAvatar(),
 		})
@@ -439,7 +578,6 @@ func cmdUserInfo(args []string) error {
 func cmdGroupInfo(args []string) error {
 	fs := newFlagSet("group-info")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	groups := fs.String("groups", "", "逗号分隔的目标 group_id 列表")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
 	if err := fs.Parse(args); err != nil {
@@ -449,15 +587,12 @@ func cmdGroupInfo(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
 	groupIDs, err := parseInt64List(*groups)
 	if err != nil {
 		return fmt.Errorf("--groups: %w", err)
 	}
 
-	c, _, err := connectAuthed(dir, *uid, *insecure)
+	c, _, err := connectCurrent(dir, *insecure)
 	if err != nil {
 		return err
 	}
@@ -491,10 +626,12 @@ func parseContactStatus(s string) (pb.ContactStatus, error) {
 	}
 }
 
+// cmdContacts 列出好友 / 收藏群，并批量回源用户资料 / 群资料把 username（用户）
+// 或 name（群）一并附上：Contact 本身只有 remark_name，不含 username，AI 之后要
+// send/history 用的用户名靠这里一次性拿到，避免逐条再查一次。
 func cmdContacts(args []string) error {
 	fs := newFlagSet("contacts")
 	dirFlag := fs.String("dir", "", "根目录")
-	uid := fs.Int64("uid", 0, "账号 uid")
 	statusFlag := fs.String("status", "friend", "friend|pending_incoming|pending_outgoing")
 	limit := fs.Int64("limit", 100, "单批分页条数")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
@@ -505,19 +642,22 @@ func cmdContacts(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := requireUID(*uid); err != nil {
-		return err
-	}
 	status, err := parseContactStatus(*statusFlag)
 	if err != nil {
 		return err
 	}
 
-	c, _, err := connectAuthed(dir, *uid, *insecure)
+	c, sess, err := connectCurrent(dir, *insecure)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
+
+	st, err := openCurrentStore(dir, sess)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
 
 	var all []*pb.Contact
 	cursor := ""
@@ -537,6 +677,40 @@ func cmdContacts(args []string) error {
 		cursor = page.GetEndCursor()
 	}
 
+	var userUIDs, groupIDs []int64
+	for _, ct := range all {
+		switch k := ct.GetTarget().GetKind().(type) {
+		case *pb.ContactTarget_Uid:
+			userUIDs = append(userUIDs, k.Uid)
+		case *pb.ContactTarget_GroupId:
+			groupIDs = append(groupIDs, k.GroupId)
+		}
+	}
+
+	usernames := make(map[int64]string, len(userUIDs))
+	if len(userUIDs) > 0 {
+		resp, err := c.GetUserInfos(&pb.GetUserInfosRequest{Uids: userUIDs})
+		if err != nil {
+			return err
+		}
+		for _, p := range resp.GetProfiles() {
+			usernames[p.GetUid()] = p.GetUsername()
+			if err := st.CacheUser(p.GetUid(), p.GetUsername()); err != nil {
+				return err
+			}
+		}
+	}
+	groupNames := make(map[int64]string, len(groupIDs))
+	if len(groupIDs) > 0 {
+		resp, err := c.GetGroupInfos(&pb.GetGroupInfosRequest{GroupIds: groupIDs})
+		if err != nil {
+			return err
+		}
+		for _, g := range resp.GetGroups() {
+			groupNames[g.GetGroupId()] = g.GetName()
+		}
+	}
+
 	out := make([]map[string]any, 0, len(all))
 	for _, ct := range all {
 		entry := map[string]any{"status": ct.GetStatus().String(), "seq": ct.GetSeq(), "remark_name": ct.GetRemarkName()}
@@ -544,9 +718,15 @@ func cmdContacts(args []string) error {
 		case *pb.ContactTarget_Uid:
 			entry["kind"] = "user"
 			entry["uid"] = k.Uid
+			if name, ok := usernames[k.Uid]; ok {
+				entry["username"] = name
+			}
 		case *pb.ContactTarget_GroupId:
 			entry["kind"] = "group"
 			entry["group_id"] = k.GroupId
+			if name, ok := groupNames[k.GroupId]; ok {
+				entry["name"] = name
+			}
 		case *pb.ContactTarget_OrgId:
 			entry["kind"] = "org"
 			entry["org_id"] = k.OrgId
