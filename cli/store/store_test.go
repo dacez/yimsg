@@ -100,34 +100,6 @@ func TestHistoryWithGroup(t *testing.T) {
 	}
 }
 
-func TestAICursorPersistence(t *testing.T) {
-	s := openTestStore(t)
-	seq, err := s.AICursor()
-	if err != nil {
-		t.Fatalf("ai cursor: %v", err)
-	}
-	if seq != 0 {
-		t.Fatalf("initial ai cursor = %d, want 0", seq)
-	}
-	if err := s.SetAICursor(42); err != nil {
-		t.Fatalf("set ai cursor: %v", err)
-	}
-	seq, err = s.AICursor()
-	if err != nil {
-		t.Fatalf("ai cursor: %v", err)
-	}
-	if seq != 42 {
-		t.Fatalf("ai cursor = %d, want 42", seq)
-	}
-	if err := s.SetAICursor(100); err != nil {
-		t.Fatalf("set ai cursor again: %v", err)
-	}
-	seq, _ = s.AICursor()
-	if seq != 100 {
-		t.Fatalf("ai cursor after update = %d, want 100", seq)
-	}
-}
-
 func TestPendingExcludesSelfByDefault(t *testing.T) {
 	s := openTestStore(t)
 	const myUID, peerUID = int64(100), int64(200)
@@ -186,15 +158,22 @@ func TestSaveMessagesIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestLastSyncedSeqPersistence(t *testing.T) {
+// TestLastSyncedSeqFromMessages 验证 LastSyncedSeq 直接反映 messages 表的
+// MAX(seq)：空库为 0，写入消息后随之推进，不依赖任何单独持久化的游标状态。
+func TestLastSyncedSeqFromMessages(t *testing.T) {
 	s := openTestStore(t)
 	seq, err := s.LastSyncedSeq()
 	if err != nil || seq != 0 {
 		t.Fatalf("initial last synced seq = %d, err=%v", seq, err)
 	}
-	if err := s.SetLastSyncedSeq(77); err != nil {
-		t.Fatalf("set last synced seq: %v", err)
+
+	const myUID, peerUID = int64(100), int64(200)
+	if _, err := s.SaveMessages(myUID, []*pb.Message{
+		textMsg(77, myUID, peerUID, 0, "lsaaaaaaaaaaaaaaaaaaaa", "hi"),
+	}); err != nil {
+		t.Fatalf("save messages: %v", err)
 	}
+
 	seq, err = s.LastSyncedSeq()
 	if err != nil || seq != 77 {
 		t.Fatalf("last synced seq = %d, err=%v, want 77", seq, err)

@@ -268,9 +268,6 @@ func cmdSync(args []string) error {
 		total += n
 		if resp.GetCursorSeq() > 0 {
 			lastSeq = resp.GetCursorSeq()
-			if err := st.SetLastSyncedSeq(lastSeq); err != nil {
-				return err
-			}
 		}
 		if !resp.GetHasMore() {
 			break
@@ -399,12 +396,12 @@ func cmdHistory(args []string) error {
 	return nil
 }
 
-// cmdPending 列出本地已同步、seq 大于给定游标的消息，默认排除本账号自己发出的消息、
-// 默认起点为已记录的 ai-cursor，用于驱动"取新消息 -> 处理 -> 推进 ai-cursor"的自动回复轮询。
+// cmdPending 列出本地已同步、seq 大于给定游标的消息，默认排除本账号自己发出的消息；
+// 起点 --after-seq 必须由调用方显式指定（调用方自行维护处理进度），不提供默认值。
 func cmdPending(args []string) error {
 	fs := newFlagSet("pending")
 	dirFlag := fs.String("dir", "", "根目录")
-	afterSeq := fs.Int64("after-seq", -1, "起始 seq；不传则使用已记录的 ai-cursor")
+	afterSeq := fs.Int64("after-seq", -1, "起始 seq（必填）；只返回 seq 大于此值的消息")
 	limit := fs.Int("limit", 50, "最多返回条数")
 	includeSelf := fs.Bool("include-self", false, "是否包含本账号自己发出的消息")
 	if err := fs.Parse(args); err != nil {
@@ -413,6 +410,9 @@ func cmdPending(args []string) error {
 	dir, err := resolveDir(*dirFlag)
 	if err != nil {
 		return err
+	}
+	if *afterSeq < 0 {
+		return fmt.Errorf("缺少 --after-seq")
 	}
 
 	sess, err := account.LoadCurrent(dir)
@@ -426,12 +426,6 @@ func cmdPending(args []string) error {
 	defer st.Close()
 
 	since := *afterSeq
-	if since < 0 {
-		since, err = st.AICursor()
-		if err != nil {
-			return err
-		}
-	}
 
 	msgs, err := st.Pending(sess.UID, since, *limit, *includeSelf)
 	if err != nil {
@@ -450,81 +444,6 @@ func cmdPending(args []string) error {
 		return err
 	}
 	emitOK(map[string]any{"messages": out, "count": len(msgs), "since": since, "max_seq": maxSeq})
-	return nil
-}
-
-func cmdAICursor(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("ai-cursor 需要子命令 get 或 set")
-	}
-	switch args[0] {
-	case "get":
-		return cmdAICursorGet(args[1:])
-	case "set":
-		return cmdAICursorSet(args[1:])
-	default:
-		return fmt.Errorf("未知 ai-cursor 子命令: %s", args[0])
-	}
-}
-
-func cmdAICursorGet(args []string) error {
-	fs := newFlagSet("ai-cursor get")
-	dirFlag := fs.String("dir", "", "根目录")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	dir, err := resolveDir(*dirFlag)
-	if err != nil {
-		return err
-	}
-
-	sess, err := account.LoadCurrent(dir)
-	if err != nil {
-		return err
-	}
-	st, err := openCurrentStore(dir, sess)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-
-	seq, err := st.AICursor()
-	if err != nil {
-		return err
-	}
-	emitOK(map[string]any{"seq": seq})
-	return nil
-}
-
-func cmdAICursorSet(args []string) error {
-	fs := newFlagSet("ai-cursor set")
-	dirFlag := fs.String("dir", "", "根目录")
-	seq := fs.Int64("seq", -1, "要记录的 seq")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	dir, err := resolveDir(*dirFlag)
-	if err != nil {
-		return err
-	}
-	if *seq < 0 {
-		return fmt.Errorf("缺少或非法的 --seq")
-	}
-
-	sess, err := account.LoadCurrent(dir)
-	if err != nil {
-		return err
-	}
-	st, err := openCurrentStore(dir, sess)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-
-	if err := st.SetAICursor(*seq); err != nil {
-		return err
-	}
-	emitOK(map[string]any{"seq": *seq})
 	return nil
 }
 

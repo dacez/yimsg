@@ -48,14 +48,11 @@
 
 **会话对方推导（非显而易见，需特别说明）**：服务端 `Message.target` 字段语义是"这条消息的收件人"，单聊场景下无论这条消息存在发送者还是接收者自己的收件箱副本里，`target.uid` 都恒为原始收件人。因此不能直接拿 `target.uid` 当"会话对方"——如果 `from_uid` 就是我自己，会话对方才是 `target.uid`；否则会话对方就是 `from_uid` 本身。`SaveMessages` 在写入时用当前账号的 uid 完成这一推导，写入 `peer_uid`，`history --with-user` 直接按 `peer_uid` 查询。群消息没有这个问题，`group_id` 在所有副本里恒定。
 
-### 3.2 `sync_state`
+### 3.2 增量同步游标
 
-`key/value` 表，两个 key：
+`sync` 命令已追平的 `sync_messages` 游标不单独持久化，直接取 `messages` 表的 `MAX(seq)`：`sync_messages` 响应的 `cursor_seq` 恒等于当次返回消息（含 tombstone）里的最大 `seq`，落库后二者天然一致，无需再维护一份独立的同步状态表。
 
-- `last_synced_seq`：`sync` 命令已追平的 `sync_messages` 游标。
-- `ai_cursor_seq`：AI 上次处理完成的最大 seq，由 `ai-cursor set` 写入、`pending`/`ai-cursor get` 读取，用于驱动"取新消息 → 处理 → 推进游标"的轮询，重启后从这里继续，不重复处理。
-
-两个游标都是账号级（跟 `sync_messages` 的 seq 域一致），不是按会话分别维护。
+`pending` 命令用于取本地已同步、`seq` 大于给定游标的增量消息，游标（`--after-seq`）必须由调用方显式传入，CLI 不再代为持久化"AI 处理到哪了"；调用方（AI 或驱动它的自动化脚本）自行记录上一次 `pending` 返回的 `max_seq`，下次调用时原样传回即可实现"取新消息 → 处理 → 推进游标"的轮询。
 
 ### 3.3 `users`
 
@@ -76,8 +73,7 @@
 | `sync` | 增量同步消息到本地（循环 `sync_messages` 直至追平） |
 | `send` | 给好友（`--to-user USERNAME`）或群（`--to-group GROUP_ID`）发文本或 Markdown 消息 |
 | `history` | 从本地同步库查询与某人（`--with-user USERNAME`）或某群（`--with-group GROUP_ID`）的聊天记录 |
-| `pending` | 查询本地同步库中 seq 大于给定游标（默认取 `ai-cursor`）的消息，默认排除自己发出的消息 |
-| `ai-cursor get` / `ai-cursor set` | 查询 / 记录 AI 上次处理到的最大 seq |
+| `pending` | 查询本地同步库中 seq 大于给定游标（`--after-seq`，必填）的消息，默认排除自己发出的消息 |
 | `user-info` | 按 `--usernames` 查询用户展示资料（内部用 `search_user`，逐个精确匹配） |
 | `group-info` | 按 `--groups`（group_id）查询群展示资料 |
 | `contacts` | 列出好友 / 收藏群（默认 `status=friend`，支持分页读取待处理好友申请），用户条目附带 `username`、群条目附带 `name` |
@@ -91,4 +87,4 @@
 ## 6. 测试
 
 - `cli/wire`、`cli/store`、`cli/account`：纯 Go 单元测试，不依赖网络。`cli/wire` 额外用与 `server/internal/ws`、TypeScript SDK 相同的 golden vector 验证帧字节完全一致。
-- `cli/tests/e2e`：对已启动的真实服务端，编译并以子进程方式驱动 `yimsg-cli` 二进制本身（而非直接调用内部包），覆盖 login 落盘 token 复用与自动置为当前账号、switch-user/current 切换、按用户名 send/history（含本地缓存未命中时的一次性回源解析）、sync/pending/ai-cursor 全链路、user-info/group-info/contacts、非法参数与未登录场景本地拒绝。运行方式与 `server/tests/e2e` 一致，由 `tools/run_all_tests.sh` 统一启动服务端后执行。
+- `cli/tests/e2e`：对已启动的真实服务端，编译并以子进程方式驱动 `yimsg-cli` 二进制本身（而非直接调用内部包），覆盖 login 落盘 token 复用与自动置为当前账号、switch-user/current 切换、按用户名 send/history（含本地缓存未命中时的一次性回源解析）、sync/pending（含缺失 `--after-seq` 时的本地拒绝）全链路、user-info/group-info/contacts、非法参数与未登录场景本地拒绝。运行方式与 `server/tests/e2e` 一致，由 `tools/run_all_tests.sh` 统一启动服务端后执行。

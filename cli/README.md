@@ -1,6 +1,6 @@
 # yimsg-cli
 
-供 AI 调用的 yimsg 命令行客户端：登录并保存 token（下次无需再登录）、把消息增量同步到本地、按会话查询本地聊天记录、记录/查询 AI 上次处理到的消息 seq、查询好友或群资料、给好友或群发送消息。设计方案见 [`docs/cli方案.md`](docs/cli方案.md)。
+供 AI 调用的 yimsg 命令行客户端：登录并保存 token（下次无需再登录）、把消息增量同步到本地、按会话查询本地聊天记录、按调用方指定的游标查询待处理增量消息、查询好友或群资料、给好友或群发送消息。设计方案见 [`docs/cli方案.md`](docs/cli方案.md)。
 
 除 `login`/`switch-user` 外，所有命令都不需要（也不接受）传自己的 uid——协议本身也不需要，身份永远来自已鉴权连接的 token。CLI 维护一个"当前账号"指针，`login` 会自动把新登录的账号设为当前账号；要同时管理多个账号时用 `switch-user` 切换。跟其他人互动一律用用户名（没人记得住 uid），群没有用户名，只能继续用数字 `group_id`。
 
@@ -24,16 +24,16 @@ go build -o yimsg-cli ./cli/cmd/yimsg-cli
 ./yimsg-cli current --dir ./data
 ./yimsg-cli sync --dir ./data
 
-# 查询自己上次处理到的消息 seq，取本地已同步、seq 更大的新消息（默认排除自己发的）
-./yimsg-cli ai-cursor get --dir ./data
-./yimsg-cli pending --dir ./data
+# 取本地已同步、seq 大于给定游标的新消息（默认排除自己发的）；--after-seq 必须
+# 显式指定，调用方自行维护"处理到哪了"，例如上一次调用返回的 max_seq
+./yimsg-cli pending --dir ./data --after-seq 0
 
 # 给某个好友或某个群回复：人用用户名，群没有用户名只能用 group_id
 ./yimsg-cli send --dir ./data --to-user alice --text "已收到"
 ./yimsg-cli send --dir ./data --to-group 789 --markdown "**收到**"
 
-# 处理完这批消息后推进游标，下次从这里继续
-./yimsg-cli ai-cursor set --dir ./data --seq 42
+# 处理完这批消息后，下次 pending 从上一次返回的 max_seq 继续
+./yimsg-cli pending --dir ./data --after-seq 42
 
 # 查询与某人或某群的历史聊天记录（优先来自本地同步库；--with-user 若是第一次
 # 提到这个用户名，会临时回源解析一次 uid 并缓存，之后同一用户名不再联网）
