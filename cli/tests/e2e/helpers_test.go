@@ -146,7 +146,15 @@ type cliResult struct {
 
 func runCLI(t *testing.T, args ...string) cliResult {
 	t.Helper()
+	return runCLIIn(t, "", args...)
+}
+
+// runCLIIn 与 runCLI 相同，但可以指定子进程的工作目录（workDir 为空则继承测试
+// 进程自身的工作目录），用于验证 --dir 缺省时默认落在"当前目录"下的 cli_data。
+func runCLIIn(t *testing.T, workDir string, args ...string) cliResult {
+	t.Helper()
 	cmd := exec.Command(cliBinary, args...)
+	cmd.Dir = workDir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -186,6 +194,16 @@ func runCLIErr(t *testing.T, args ...string) cliResult {
 	r := runCLI(t, args...)
 	if r.ExitCode == 0 || r.JSON["ok"] != false {
 		t.Fatalf("yimsg-cli %v 期望失败，实际 exit=%d json=%v", args, r.ExitCode, r.JSON)
+	}
+	return r
+}
+
+// runCLIInOK 是 runCLIIn 的成功断言版本。
+func runCLIInOK(t *testing.T, workDir string, args ...string) cliResult {
+	t.Helper()
+	r := runCLIIn(t, workDir, args...)
+	if r.ExitCode != 0 || r.JSON["ok"] != true {
+		t.Fatalf("yimsg-cli %v (workDir=%s) 期望成功，实际 exit=%d json=%v stderr=%s", args, workDir, r.ExitCode, r.JSON, r.Stderr)
 	}
 	return r
 }

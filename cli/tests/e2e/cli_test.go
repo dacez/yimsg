@@ -210,7 +210,6 @@ func TestUserInfoGroupInfoContacts(t *testing.T) {
 func TestCLIRejectsInvalidArguments(t *testing.T) {
 	dir := newCLIDir(t)
 
-	runCLIErr(t, "accounts")
 	runCLIErr(t, "current", "--dir", dir)
 	runCLIErr(t, "switch-user", "--dir", dir, "--username", "nobody")
 	runCLIErr(t, "send", "--dir", dir, "--text", "hi")
@@ -218,4 +217,32 @@ func TestCLIRejectsInvalidArguments(t *testing.T) {
 	runCLIErr(t, "send", "--dir", dir, "--to-user", "alice", "--text", "hi", "--markdown", "hi")
 	runCLIErr(t, "history", "--dir", dir)
 	runCLIErr(t, "sync", "--dir", dir)
+}
+
+// TestDefaultDirUnderCWD 验证 --dir 与 YIMSG_CLI_DIR 都缺省时，CLI 默认使用
+// 当前工作目录下的 cli_data，且目录不存在时自动创建。
+func TestDefaultDirUnderCWD(t *testing.T) {
+	uidA, _, userA, _, passA, _ := setupFriendPair(t)
+	workDir := newCLIDir(t)
+
+	if _, err := os.Stat(filepath.Join(workDir, "cli_data")); err == nil {
+		t.Fatalf("cli_data should not exist before the first call")
+	}
+
+	r := runCLIInOK(t, workDir, "login", "--server", wsURL, "--insecure",
+		"--username", userA, "--password", passA)
+	if got := jsonNumber(t, r.JSON["uid"]); got != uidA {
+		t.Fatalf("login uid = %d, want %d", got, uidA)
+	}
+
+	sessionPath := filepath.Join(workDir, "cli_data", fmtUID(uidA), "session.json")
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("expected session.json under ./cli_data (relative to cwd): %v", err)
+	}
+
+	// 之后同一工作目录下的命令，同样不传 --dir 也应该找到刚才登录的账号。
+	cur := runCLIInOK(t, workDir, "current")
+	if cur.JSON["username"] != userA {
+		t.Fatalf("current (default dir) = %v, want username=%s", cur.JSON, userA)
+	}
 }

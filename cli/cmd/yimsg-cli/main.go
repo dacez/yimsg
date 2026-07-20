@@ -2,9 +2,10 @@
 // 无需再登录）、把消息增量同步到本地、按会话查询本地聊天记录、记录/查询 AI 上次
 // 处理到的消息 seq、查询好友或群资料、给好友或群发送消息。
 //
-// 使用方指定一个根目录（--dir 或环境变量 YIMSG_CLI_DIR），目录的二级目录固定
-// 为用户 uid（见 cli/account），因此同一个根目录下可以同时管理多个账号，无需
-// 为不同账号切换不同文件夹。
+// 使用方指定一个根目录（--dir 或环境变量 YIMSG_CLI_DIR；都不传则默认使用当前
+// 目录下的 cli_data，不存在会自动创建），目录的二级目录固定为用户 uid（见
+// cli/account），因此同一个根目录下可以同时管理多个账号，无需为不同账号切换
+// 不同文件夹。
 //
 // 除 login/switch-user 外，其它子命令一律不接受自己的 uid 作为参数——协议本身
 // 也不需要（身份永远来自已鉴权连接的 token），CLI 只维护一个"当前账号"指针：
@@ -73,30 +74,39 @@ func main() {
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `yimsg-cli 子命令（除 login/switch-user 外均对"当前账号"操作，无需传自己的 uid）：
-  login       --dir DIR --server WS_URL --username U --password P   登录并保存 token，同时设为当前账号
-  switch-user --dir DIR --username U                                切换当前账号（须是本地已 login 过的账号）
-  current     --dir DIR                                             查看当前账号
-  accounts    --dir DIR                                             列出目录下已登录账号，标出当前账号
-  sync        --dir DIR [--limit N]                                 增量同步消息到本地
-  send        --dir DIR (--to-user USERNAME|--to-group GROUP_ID) (--text T|--markdown M)
-  history     --dir DIR (--with-user USERNAME|--with-group GROUP_ID) [--after-seq N] [--limit N]
-  pending     --dir DIR [--after-seq N] [--limit N] [--include-self]
-  ai-cursor   get --dir DIR
-  ai-cursor   set --dir DIR --seq N
-  user-info   --dir DIR --usernames U1,U2,...
-  group-info  --dir DIR --groups G1,G2,...
-  contacts    --dir DIR [--status friend|pending_incoming|pending_outgoing] [--limit N]`)
+  login       [--dir DIR] --server WS_URL --username U --password P   登录并保存 token，同时设为当前账号
+  switch-user [--dir DIR] --username U                                切换当前账号（须是本地已 login 过的账号）
+  current     [--dir DIR]                                             查看当前账号
+  accounts    [--dir DIR]                                             列出目录下已登录账号，标出当前账号
+  sync        [--dir DIR] [--limit N]                                 增量同步消息到本地
+  send        [--dir DIR] (--to-user USERNAME|--to-group GROUP_ID) (--text T|--markdown M)
+  history     [--dir DIR] (--with-user USERNAME|--with-group GROUP_ID) [--after-seq N] [--limit N]
+  pending     [--dir DIR] [--after-seq N] [--limit N] [--include-self]
+  ai-cursor   get [--dir DIR]
+  ai-cursor   set [--dir DIR] --seq N
+  user-info   [--dir DIR] --usernames U1,U2,...
+  group-info  [--dir DIR] --groups G1,G2,...
+  contacts    [--dir DIR] [--status friend|pending_incoming|pending_outgoing] [--limit N]`)
 }
 
-// resolveDir 优先取 --dir，其次取 YIMSG_CLI_DIR 环境变量。
+// defaultDirName 是 --dir 与 YIMSG_CLI_DIR 都未提供时使用的根目录：当前目录下的
+// cli_data，让最简单的调用不需要显式指定目录。
+const defaultDirName = "cli_data"
+
+// resolveDir 优先取 --dir，其次取 YIMSG_CLI_DIR 环境变量，都未提供时默认使用
+// defaultDirName；目录不存在则自动创建。
 func resolveDir(flagVal string) (string, error) {
-	if flagVal != "" {
-		return flagVal, nil
+	dir := flagVal
+	if dir == "" {
+		dir = os.Getenv("YIMSG_CLI_DIR")
 	}
-	if env := os.Getenv("YIMSG_CLI_DIR"); env != "" {
-		return env, nil
+	if dir == "" {
+		dir = defaultDirName
 	}
-	return "", fmt.Errorf("缺少 --dir（或环境变量 YIMSG_CLI_DIR）")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("create dir %s: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // readPassword 优先取 --password；为空时从 stdin 读一行，避免密码出现在进程参数列表里。

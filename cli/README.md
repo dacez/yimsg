@@ -12,9 +12,10 @@ go build -o yimsg-cli ./cli/cmd/yimsg-cli
 
 ## 使用示例
 
-一个根目录（`--dir`，或设置环境变量 `YIMSG_CLI_DIR` 免去每次传参）可以同时管理多个账号，账号之间用 uid 区分子目录，无需手动切换文件夹；命令行上只需要用户名，不需要知道 uid。
+一个根目录（`--dir`，或设置环境变量 `YIMSG_CLI_DIR` 免去每次传参；都不传则默认使用当前工作目录下的 `cli_data`，不存在会自动创建）可以同时管理多个账号，账号之间用 uid 区分子目录，无需手动切换文件夹；命令行上只需要用户名，不需要知道 uid。
 
 ```bash
+# 不传 --dir 时默认用 ./cli_data；这里显式指定 --dir 只是为了示例更清楚。
 # 登录，token 保存在 <dir>/<uid>/session.json 下，同时设为当前账号
 ./yimsg-cli login --dir ./data --server ws://127.0.0.1:8080/ws --username bot --password '******'
 # => {"ok":true,"uid":123,"username":"bot","dir":"./data/123"}
