@@ -307,9 +307,10 @@ run_tests() {
   run_step "docs consistency" bash "${ROOT_DIR}/tools/scripts/check_docs_consistency.sh"
   # 禁用 go test 缓存，确保任何回归都能在本次执行中被检测到。
   local go_pkgs=()
-  read_lines_into_array go_pkgs "go list ./... | grep -v '^yimsg/server/tests/e2e$'"
-  run_step "go test (excluding server/tests/e2e)" go test -count=1 ${go_pkgs[@]+"${go_pkgs[@]}"}
+  read_lines_into_array go_pkgs "go list ./... | grep -v -E '^yimsg/(server|cli)/tests/e2e$'"
+  run_step "go test (excluding server/tests/e2e, cli/tests/e2e)" go test -count=1 ${go_pkgs[@]+"${go_pkgs[@]}"}
   run_step "go test ./server/tests/e2e/... -tls=false" go test -count=1 -v -timeout=3m ./server/tests/e2e/... -tls=false -host="${SERVER_HOST}" -port="${SERVER_PORT}" -config="${CONFIG_FILE}"
+  run_step "go test ./cli/tests/e2e/... -tls=false" go test -count=1 -v -timeout=3m ./cli/tests/e2e/... -tls=false -host="${SERVER_HOST}" -port="${SERVER_PORT}"
   (
     cd "${ROOT_DIR}"
     run_step "frontend sdk test:unit" npm run test:unit
