@@ -1,6 +1,6 @@
 // Package e2e 针对已经启动的真实 yimsg 服务端，端到端驱动 cli/cmd/yimsg-cli
 // 编译出的二进制（而不是直接调用 cli 内部包），验证 AI 实际会调用的命令行接口本身
-// 可用：login 保存 token、sync 落库、send/history/pending/ai-cursor/user-info/
+// 可用：login 保存 token、sync 落库、send/history/pending/user-info/
 // group-info/contacts 均按 JSON 输出契约工作。与 server/tests/e2e 的运行方式一致：
 // 由 tools/scripts/run_all_tests.sh 先启动服务端，再传入 -host/-port/-tls 运行本包。
 package e2e

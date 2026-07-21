@@ -80,11 +80,10 @@ func TestLoginSwitchUserAndCurrent(t *testing.T) {
 	runCLIErr(t, "switch-user", "--dir", dir, "--username", "nobody-has-logged-in-as-this")
 }
 
-// TestSendSyncHistoryPendingAICursor 端到端跑通"用用户名发消息 -> 同步到本地
-// -> 按会话查历史 -> 按 AI 游标取待处理增量 -> 记录 / 查询 AI 游标"的完整链路，
-// 全程不出现任何一方自己的 uid，人对人 / 人对群都用调用方能记住的标识
-// （用户名 / group_id）。
-func TestSendSyncHistoryPendingAICursor(t *testing.T) {
+// TestSendSyncHistoryPending 端到端跑通"用用户名发消息 -> 同步到本地 -> 按
+// 会话查历史 -> 按调用方指定的游标取待处理增量"的完整链路，全程不出现任何
+// 一方自己的 uid，人对人 / 人对群都用调用方能记住的标识（用户名 / group_id）。
+func TestSendSyncHistoryPending(t *testing.T) {
 	uidA, uidB, userA, userB, passA, passB := setupFriendPair(t)
 
 	group := dialRaw(t)
@@ -136,29 +135,26 @@ func TestSendSyncHistoryPendingAICursor(t *testing.T) {
 		t.Fatalf("history with-group count = %d, want 2: %v", len(groupMsgs), groupMsgs)
 	}
 
-	// pending / ai-cursor 都对"当前账号"操作，切回 B。
+	// pending 对"当前账号"操作，切回 B。
 	runCLIOK(t, "switch-user", "--dir", dir, "--username", userB)
+
+	// pending 不再提供默认游标，调用方必须显式传 --after-seq；不传应报错。
+	runCLIErr(t, "pending", "--dir", dir)
 
 	// pending 默认排除自己发出的消息：B 自己一条都没发，三条（建群系统消息 from_uid=0、
 	// A 发的 DM、A 发的群消息）的 from_uid 都不是 B，因此全部保留。
-	pendingB := runCLIOK(t, "pending", "--dir", dir)
+	pendingB := runCLIOK(t, "pending", "--dir", dir, "--after-seq", "0")
 	pendingMsgs := pendingB.JSON["messages"].([]any)
 	if len(pendingMsgs) != 3 {
 		t.Fatalf("pending(exclude self) count = %d, want 3: %v", len(pendingMsgs), pendingMsgs)
 	}
 	maxSeq := jsonNumber(t, pendingB.JSON["max_seq"])
 
-	// 记录 AI 游标为本轮已处理到的最大 seq，下次 pending 应为空。
-	runCLIOK(t, "ai-cursor", "set", "--dir", dir, "--seq", fmtUID(maxSeq))
-	cursorGet := runCLIOK(t, "ai-cursor", "get", "--dir", dir)
-	if jsonNumber(t, cursorGet.JSON["seq"]) != maxSeq {
-		t.Fatalf("ai-cursor get = %v, want %d", cursorGet.JSON["seq"], maxSeq)
-	}
-
-	pendingAfterCursor := runCLIOK(t, "pending", "--dir", dir)
+	// 调用方自行把游标推进到本轮已处理到的最大 seq，下次 pending 从这里继续应为空。
+	pendingAfterCursor := runCLIOK(t, "pending", "--dir", dir, "--after-seq", fmtUID(maxSeq))
 	if got := pendingAfterCursor.JSON["messages"]; got != nil {
 		if arr, ok := got.([]any); !ok || len(arr) != 0 {
-			t.Fatalf("pending after advancing ai-cursor should be empty, got %v", got)
+			t.Fatalf("pending after advancing cursor should be empty, got %v", got)
 		}
 	}
 }

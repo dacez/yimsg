@@ -1,6 +1,6 @@
 // Command yimsg-cli 是给 AI 调用的 yimsg 命令行客户端：登录并保存 token（下次
-// 无需再登录）、把消息增量同步到本地、按会话查询本地聊天记录、记录/查询 AI 上次
-// 处理到的消息 seq、查询好友或群资料、给好友或群发送消息。
+// 无需再登录）、把消息增量同步到本地、按会话查询本地聊天记录、按调用方指定的
+// 游标查询待处理增量消息、查询好友或群资料、给好友或群发送消息。
 //
 // 使用方指定一个根目录（--dir 或环境变量 YIMSG_CLI_DIR；都不传则默认使用当前
 // 目录下的 cli_data，不存在会自动创建），目录的二级目录固定为用户 uid（见
@@ -53,8 +53,6 @@ func main() {
 		err = cmdHistory(args)
 	case "pending":
 		err = cmdPending(args)
-	case "ai-cursor":
-		err = cmdAICursor(args)
 	case "user-info":
 		err = cmdUserInfo(args)
 	case "group-info":
@@ -81,9 +79,7 @@ func printUsage() {
   sync        [--dir DIR] [--limit N]                                 增量同步消息到本地
   send        [--dir DIR] (--to-user USERNAME|--to-group GROUP_ID) (--text T|--markdown M)
   history     [--dir DIR] (--with-user USERNAME|--with-group GROUP_ID) [--after-seq N] [--limit N]
-  pending     [--dir DIR] [--after-seq N] [--limit N] [--include-self]
-  ai-cursor   get [--dir DIR]
-  ai-cursor   set [--dir DIR] --seq N
+  pending     [--dir DIR] --after-seq N [--limit N] [--include-self]
   user-info   [--dir DIR] --usernames U1,U2,...
   group-info  [--dir DIR] --groups G1,G2,...
   contacts    [--dir DIR] [--status friend|pending_incoming|pending_outgoing] [--limit N]`)

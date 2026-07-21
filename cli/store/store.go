@@ -1,6 +1,8 @@
 // Package store 是 yimsg-cli 的本地同步库：每个账号目录下一个 SQLite 文件
-// （见 cli/account），保存 sync_messages 拉取到的消息副本、增量同步游标与
-// AI 已处理游标，供 history / pending 等命令离线查询，不需要每次都回源服务端。
+// （见 cli/account），保存 sync_messages 拉取到的消息副本，供 history / pending
+// 等命令离线查询，不需要每次都回源服务端。增量同步游标不单独持久化，直接从
+// messages 表取 MAX(seq)：sync_messages 返回的 cursor_seq 恒等于当次响应中
+// messages 的最大 seq（含 tombstone），落库后二者天然一致，无需再维护一份状态表。
 //
 // 会话归属推导（非显而易见，需特别说明）：服务端 Message.target 字段语义是
 // "消息的收件人"（DM 时恒为 to_uid，无论这条消息存在发送者还是接收者自己的收件箱
@@ -40,21 +42,11 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_peer_uid_seq ON messages(peer_uid, seq);
 CREATE INDEX IF NOT EXISTS idx_messages_group_id_seq ON messages(group_id, seq);
 
-CREATE TABLE IF NOT EXISTS sync_state (
-	key TEXT PRIMARY KEY,
-	value INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS users (
 	uid INTEGER PRIMARY KEY,
 	username TEXT NOT NULL UNIQUE
 );
 `
-
-const (
-	keyLastSyncedSeq = "last_synced_seq"
-	keyAICursorSeq   = "ai_cursor_seq"
-)
 
 // Open 打开（不存在则创建）path 处的本地同步库。研发阶段不做 schema 迁移：
 // 版本不匹配时直接删除文件重新同步（见 CLAUDE.md 项目不变量）。
@@ -137,47 +129,15 @@ func (s *Store) SaveMessages(myUID int64, messages []*pb.Message) (int, error) {
 	return len(messages), nil
 }
 
-// LastSyncedSeq 返回本地已追平的 sync_messages 游标，未同步过时为 0。
+// LastSyncedSeq 返回本地已追平的 sync_messages 游标：messages 表中的 MAX(seq)，
+// 空库时为 0。sync_messages 响应的 cursor_seq 恒等于当次返回消息（含 tombstone）
+// 的最大 seq，落库后直接查 MAX(seq) 即为游标，不需要额外持久化一份同步状态。
 func (s *Store) LastSyncedSeq() (int64, error) {
-	return s.getState(keyLastSyncedSeq)
-}
-
-// SetLastSyncedSeq 更新本地已追平的 sync_messages 游标。
-func (s *Store) SetLastSyncedSeq(seq int64) error {
-	return s.setState(keyLastSyncedSeq, seq)
-}
-
-// AICursor 返回 AI 上次处理到的最大 seq，未设置过时为 0。
-func (s *Store) AICursor() (int64, error) {
-	return s.getState(keyAICursorSeq)
-}
-
-// SetAICursor 记录 AI 已处理到的最大 seq，供下次调用从此继续。
-func (s *Store) SetAICursor(seq int64) error {
-	return s.setState(keyAICursorSeq, seq)
-}
-
-func (s *Store) getState(key string) (int64, error) {
-	var value int64
-	err := s.db.QueryRow("SELECT value FROM sync_state WHERE key = ?", key).Scan(&value)
-	if err == sql.ErrNoRows {
-		return 0, nil
+	var value sql.NullInt64
+	if err := s.db.QueryRow("SELECT MAX(seq) FROM messages").Scan(&value); err != nil {
+		return 0, fmt.Errorf("read last synced seq: %w", err)
 	}
-	if err != nil {
-		return 0, fmt.Errorf("read state %s: %w", key, err)
-	}
-	return value, nil
-}
-
-func (s *Store) setState(key string, value int64) error {
-	_, err := s.db.Exec(`
-		INSERT INTO sync_state (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value=excluded.value
-	`, key, value)
-	if err != nil {
-		return fmt.Errorf("write state %s: %w", key, err)
-	}
-	return nil
+	return value.Int64, nil
 }
 
 // CacheUser 记录一次确定的 uid<->username 映射（来自 login 自身、search_user、
