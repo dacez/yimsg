@@ -16,6 +16,21 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
+# 强制 UTF-8 输出，避免本机控制台默认代码页（如 GBK）与 go/npm/vite 等外部命令的
+# UTF-8 输出不一致导致中文乱码；同时让 Out-File/Tee-Object/Set-Content/Add-Content
+# 默认写 UTF-8，避免本脚本输出被重定向到日志文件后，因编码不一致（Windows PowerShell
+# 早期版本默认写 UTF-16 LE）导致跨工具（PowerShell/Bash 等）读取时乱码。
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {
+    # 输出被重定向到非控制台目标时，设置控制台代码页可能失败，忽略即可
+}
+$PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Tee-Object:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Set-Content:Encoding'] = 'utf8'
+$PSDefaultParameterValues['Add-Content:Encoding'] = 'utf8'
+
 # Windows PowerShell 5.1 下，$ErrorActionPreference = "Stop" 会把外部命令写到 stderr 的
 # 每一行都当成终止性错误处理——即便该命令最终以退出码 0 成功（例如 vite 打印的
 # "Module externalized for browser compatibility" 之类的正常告警）。外部命令一律走

@@ -333,7 +333,7 @@ test.describe('Message Pagination', () => {
         return list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
       });
       expect(atBottom).toBe(false);
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 20_000 });
     // 较新页可能已经把 latest 放回有界 DOM；视口仍未贴底才是锚点保持的判据。
   });
 

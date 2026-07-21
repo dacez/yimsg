@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +64,14 @@ func buildCLI() (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	binPath := filepath.Join(tmpDir, "yimsg-cli")
+	binName := "yimsg-cli"
+	if runtime.GOOS == "windows" {
+		// go build -o 显式给出不带扩展名的路径时不会自动补 .exe；os/exec 在 Windows
+		// 下即使传入完整路径也会按 PATHEXT 校验扩展名，缺少 .exe 会报
+		// "executable file not found in %PATH%"，因此这里必须显式加上。
+		binName += ".exe"
+	}
+	binPath := filepath.Join(tmpDir, binName)
 	cmd := exec.Command("go", "build", "-o", binPath, "./cli/cmd/yimsg-cli")
 	cmd.Dir = repoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
