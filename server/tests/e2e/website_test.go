@@ -43,7 +43,7 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 		"assets/illustration-deploy.svg",
 		"assets/illustration-embed.svg",
 		"assets/illustration-customize.svg",
-		"assets/illustration-box.svg",
+		"assets/minipc-hand.png",
 		"data-i18n-html=\"customizeItem3\"",
 		"data-i18n-html=\"customizeItem5\"",
 		"data-i18n-html=\"customizeItem6\"",
@@ -83,7 +83,6 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 		"illustration-deploy.svg",
 		"illustration-embed.svg",
 		"illustration-customize.svg",
-		"illustration-box.svg",
 	} {
 		assetResp, err := httpClient.Get(httpBaseURL + "/assets/" + assetName)
 		if err != nil {
@@ -103,6 +102,27 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 		if !strings.Contains(string(assetBody), "<svg") {
 			t.Fatalf("expected /assets/%s to contain SVG markup", assetName)
 		}
+	}
+
+	// yimsg Box 硬件版块使用实拍照片，同样必须被根路径静态服务正确提供。
+	photoResp, err := httpClient.Get(httpBaseURL + "/assets/minipc-hand.png")
+	if err != nil {
+		t.Fatalf("GET /assets/minipc-hand.png: %v", err)
+	}
+	photoBody, readErr := io.ReadAll(photoResp.Body)
+	photoResp.Body.Close()
+	if readErr != nil {
+		t.Fatalf("read /assets/minipc-hand.png: %v", readErr)
+	}
+	if photoResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from /assets/minipc-hand.png, got %d", photoResp.StatusCode)
+	}
+	if !strings.Contains(photoResp.Header.Get("Content-Type"), "image/png") {
+		t.Fatalf("expected PNG content type from /assets/minipc-hand.png, got %q", photoResp.Header.Get("Content-Type"))
+	}
+	pngMagic := []byte{0x89, 'P', 'N', 'G'}
+	if len(photoBody) < len(pngMagic) || !strings.HasPrefix(string(photoBody), string(pngMagic)) {
+		t.Fatalf("expected /assets/minipc-hand.png to contain PNG magic bytes")
 	}
 
 	// 真正需要注册登录的聊天 App 挂载在 /app/，不被官网覆盖。

@@ -31,7 +31,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 ## Website
 
 - Website source: [`website/`](website/) (a pure static marketing site — open `website/index.html` directly in a browser for a local preview)
-- The home page presents the implemented product in three layers — single-machine deployment, embeddable UIKit, and customizable SDK/protocol — with language-neutral SVG artwork under [`website/assets/`](website/assets/); roadmap capabilities are labeled separately from features available today
+- The home page presents the implemented product in three layers — single-machine deployment, embeddable UIKit, and customizable SDK/protocol — with language-neutral SVG artwork and a real product photo of the yimsg Box under [`website/assets/`](website/assets/); roadmap capabilities are labeled separately from features available today
 - In production, the website is mounted at the server's root path `/` as the home page by default, while the chat app that requires sign-up/login is mounted at `/app/`: visitors see the product landing page first, then click "Open App" to enter the chat UI (the mount paths are configured under `[website]` / `[frontend]` in [`config.toml`](config.toml))
 - For the full steps to deploy on your own server, see [`docs/deployment/部署方案.md`](docs/deployment/部署方案.md) (Chinese)
 
