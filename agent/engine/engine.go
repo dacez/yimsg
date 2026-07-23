@@ -15,7 +15,8 @@ import (
 // decisionGuidance 追加在调用方传入的角色设定之后，指导模型选择直接回答还是提交计划。
 const decisionGuidance = `你可以直接用文本回答；如果这个问题需要多个步骤才能完成（例如需要先查证多份资料、
 分点推理、逐项核实），才调用 submit_plan 提交一个有序步骤列表，不要不必要地拆分步骤。
-需要查阅工作目录内的资料时可以调用 list_md_files / read_md_file，工作目录之外没有任何可用信息。`
+需要查阅工作目录内的资料时可以调用 list_md_files / read_md_file，文件较多或较长时先用 search_md_files
+定位包含关键字的位置再精读，工作目录之外没有任何可用信息。`
 
 // summaryInstruction 是步骤全部执行完之后，要求模型给出最终回复的提示。
 const summaryInstruction = "以上所有步骤都已完成。请基于每一步的结论，给用户一个完整、简洁的最终回复（不需要逐条复述每一步过程，只需要给出结论性的回答）。"
@@ -72,7 +73,7 @@ func (e *Engine) Run(ctx context.Context, req Request, notify Notifier) (*Result
 		{Role: "user", Content: buildUserMessage(req.MemorySummary, req.UserText)},
 	}
 
-	decisionTools := []deepseek.Tool{listMarkdownTool(), readMarkdownTool(), submitPlanTool()}
+	decisionTools := []deepseek.Tool{listMarkdownTool(), readMarkdownTool(), searchMarkdownTool(), submitPlanTool()}
 	finalText, steps, transcript, err := e.toolLoop(ctx, transcript, decisionTools)
 	if err != nil {
 		return nil, fmt.Errorf("决策阶段失败: %w", err)
@@ -87,7 +88,7 @@ func (e *Engine) Run(ctx context.Context, req Request, notify Notifier) (*Result
 		truncated = true
 	}
 
-	stepTools := []deepseek.Tool{listMarkdownTool(), readMarkdownTool()}
+	stepTools := []deepseek.Tool{listMarkdownTool(), readMarkdownTool(), searchMarkdownTool()}
 	for i, step := range steps {
 		prompt := fmt.Sprintf(
 			"当前执行第 %d/%d 步：%s\n\n请只完成这一步，不要提前做后面的步骤。完成后用纯文本给出这一步的结论，"+

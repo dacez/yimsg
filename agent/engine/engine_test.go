@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"yimsg/agent/deepseek"
+	"yimsg/agent/fsread"
 )
 
 // scriptedCompleter 按预先注入的顺序回放响应，供测试断言引擎在每一轮实际发出的
@@ -50,8 +51,17 @@ func assistantToolCall(id, name string, args any) deepseek.ChatResponse {
 }
 
 type fakeFS struct {
-	readResult map[string]string
-	readCalls  []string
+	readResult   map[string]string
+	readCalls    []string
+	searchResult []fsread.SearchMatch
+	searchTrunc  bool
+	searchCalls  []fakeSearchCall
+}
+
+type fakeSearchCall struct {
+	pattern      string
+	subdir       string
+	contextChars int
 }
 
 func (f *fakeFS) ListMarkdown(subdir string) ([]string, error) {
@@ -64,6 +74,11 @@ func (f *fakeFS) ReadMarkdown(relPath string) (string, error) {
 		return v, nil
 	}
 	return "", fmt.Errorf("not found: %s", relPath)
+}
+
+func (f *fakeFS) Search(pattern, subdir string, contextChars int) ([]fsread.SearchMatch, bool, error) {
+	f.searchCalls = append(f.searchCalls, fakeSearchCall{pattern: pattern, subdir: subdir, contextChars: contextChars})
+	return f.searchResult, f.searchTrunc, nil
 }
 
 func TestRunDirectAnswer(t *testing.T) {
@@ -156,6 +171,47 @@ func TestRunStepCanCallReadMarkdownTool(t *testing.T) {
 		t.Errorf("notified = %v", notified)
 	}
 }
+
+func TestRunStepCanCallSearchMarkdownToolWithModelChosenContext(t *testing.T) {
+	sc := &scriptedCompleter{t: t, responses: []deepseek.ChatResponse{
+		assistantToolCall("call_1", toolSubmitPlan, planArgs{Steps: []string{"搜索关键字"}}),
+		assistantToolCall("call_2", toolSearchMarkdown, searchArgs{Pattern: "TODO", ContextChars: intPtr(50)}),
+		assistantText("找到了相关的 TODO"),
+		assistantText("最终回复"),
+	}}
+	fs := &fakeFS{searchResult: []fsread.SearchMatch{{Path: "a.md", Before: "before", Match: "TODO", After: "after"}}}
+	e := New(sc, fs, 6, 4)
+
+	_, err := e.Run(context.Background(), Request{SystemPrompt: "你是助手", UserText: "帮我找找 TODO"}, func(text string) error { return nil })
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(fs.searchCalls) != 1 {
+		t.Fatalf("searchCalls = %v", fs.searchCalls)
+	}
+	got := fs.searchCalls[0]
+	if got.pattern != "TODO" || got.contextChars != 50 {
+		t.Errorf("search call = %+v, want pattern=TODO contextChars=50", got)
+	}
+}
+
+func TestRunSearchDefaultsContextCharsWhenOmitted(t *testing.T) {
+	sc := &scriptedCompleter{t: t, responses: []deepseek.ChatResponse{
+		assistantToolCall("call_1", toolSearchMarkdown, searchArgs{Pattern: "TODO"}),
+		assistantText("直接回答"),
+	}}
+	fs := &fakeFS{}
+	e := New(sc, fs, 6, 4)
+
+	if _, err := e.Run(context.Background(), Request{SystemPrompt: "sys", UserText: "u"}, nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(fs.searchCalls) != 1 || fs.searchCalls[0].contextChars != defaultSearchContextChars {
+		t.Errorf("searchCalls = %v, want contextChars=%d", fs.searchCalls, defaultSearchContextChars)
+	}
+}
+
+func intPtr(v int) *int { return &v }
 
 func TestRunTruncatesPlanExceedingMaxSteps(t *testing.T) {
 	sc := &scriptedCompleter{t: t, responses: []deepseek.ChatResponse{
