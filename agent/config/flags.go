@@ -24,6 +24,7 @@ type FlagOptions struct {
 	DeepSeekBaseURL     string
 	DeepSeekModel       string
 	DeepSeekAPIKey      string
+	DeepSeekAPIKeyFile  string
 	DeepSeekAPIKeyEnv   string
 	PollIntervalSeconds int
 	MaxPull             int
@@ -36,10 +37,11 @@ type FlagOptions struct {
 func (o FlagOptions) ToFile() *File {
 	return &File{
 		DeepSeek: DeepSeekFile{
-			BaseURL:   o.DeepSeekBaseURL,
-			Model:     o.DeepSeekModel,
-			APIKey:    o.DeepSeekAPIKey,
-			APIKeyEnv: o.DeepSeekAPIKeyEnv,
+			BaseURL:    o.DeepSeekBaseURL,
+			Model:      o.DeepSeekModel,
+			APIKey:     o.DeepSeekAPIKey,
+			APIKeyFile: o.DeepSeekAPIKeyFile,
+			APIKeyEnv:  o.DeepSeekAPIKeyEnv,
 		},
 		Agent: AgentDefaultsFile{
 			Server:              o.Server,

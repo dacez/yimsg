@@ -125,6 +125,94 @@ func TestResolveCreatesPerAccountPrivateResourcesDir(t *testing.T) {
 	}
 }
 
+// TestResolveReadsAPIKeyFromFile 校验 deepseek.api_key_file 指向的文件内容会被
+// 读取并去除首尾空白（典型的 echo "sk-xxx" > file 会带一个换行符）作为 api_key。
+func TestResolveReadsAPIKeyFromFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	keyPath := filepath.Join(dir, "deepseek_api_key")
+	writeFile(t, keyPath, "sk-from-file\n")
+
+	f := &File{
+		DeepSeek: DeepSeekFile{APIKeyFile: keyPath},
+		Agent:    AgentDefaultsFile{Server: "ws://127.0.0.1:8080/ws"},
+		Accounts: []AccountFile{{Username: "bot1", Password: "pw1"}},
+	}
+	cfg, err := Resolve(f, dir)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if cfg.DeepSeek.APIKey != "sk-from-file" {
+		t.Errorf("api key from file = %q, want %q", cfg.DeepSeek.APIKey, "sk-from-file")
+	}
+}
+
+// TestResolveAPIKeyFileRelativeToBaseDir 校验相对路径的 api_key_file 按 baseDir
+// 解析，与 data_dir 的相对路径解析方式保持一致。
+func TestResolveAPIKeyFileRelativeToBaseDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	writeFile(t, filepath.Join(dir, "deepseek_api_key"), "sk-relative")
+
+	f := &File{
+		DeepSeek: DeepSeekFile{APIKeyFile: "deepseek_api_key"},
+		Agent:    AgentDefaultsFile{Server: "ws://127.0.0.1:8080/ws"},
+		Accounts: []AccountFile{{Username: "bot1", Password: "pw1"}},
+	}
+	cfg, err := Resolve(f, dir)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if cfg.DeepSeek.APIKey != "sk-relative" {
+		t.Errorf("api key from relative file = %q", cfg.DeepSeek.APIKey)
+	}
+}
+
+// TestResolveRejectsMissingAPIKeyFile 校验 api_key_file 指向的文件不存在时应该
+// 直接拒绝启动并给出清楚的错误信息，而不是静默回退到环境变量。
+func TestResolveRejectsMissingAPIKeyFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	f := &File{
+		DeepSeek: DeepSeekFile{APIKeyFile: filepath.Join(dir, "no-such-file")},
+		Agent:    AgentDefaultsFile{Server: "ws://127.0.0.1:8080/ws"},
+		Accounts: []AccountFile{{Username: "bot1", Password: "pw1"}},
+	}
+	if _, err := Resolve(f, dir); err == nil {
+		t.Fatal("expected error for missing api_key_file")
+	}
+}
+
+// TestResolveAPIKeyPrecedence 校验优先级：明文 api_key > api_key_file > api_key_env。
+func TestResolveAPIKeyPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "sk-from-env")
+	keyPath := filepath.Join(dir, "deepseek_api_key")
+	writeFile(t, keyPath, "sk-from-file")
+
+	f := &File{
+		DeepSeek: DeepSeekFile{APIKey: "sk-inline", APIKeyFile: keyPath},
+		Agent:    AgentDefaultsFile{Server: "ws://127.0.0.1:8080/ws"},
+		Accounts: []AccountFile{{Username: "bot1", Password: "pw1"}},
+	}
+	cfg, err := Resolve(f, dir)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if cfg.DeepSeek.APIKey != "sk-inline" {
+		t.Errorf("api key = %q, want inline api_key to win", cfg.DeepSeek.APIKey)
+	}
+
+	f.DeepSeek.APIKey = ""
+	cfg, err = Resolve(f, dir)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if cfg.DeepSeek.APIKey != "sk-from-file" {
+		t.Errorf("api key = %q, want api_key_file to win over api_key_env", cfg.DeepSeek.APIKey)
+	}
+}
+
 func TestResolvePollIntervalClampedToMinimum(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("DEEPSEEK_API_KEY", "sk-test")

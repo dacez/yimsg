@@ -94,8 +94,9 @@ systemctl enable yimsg
 # 跟浏览器客户端走同一条 Cloudflare 代理链路，避免直连本机 IP 时 Origin CA 证书
 # 校验不过的问题。demo_kf_1~3 密码固定为 server/tools/cmd/seed-demo 里已公开的
 # demoPassword，不是需要保密的凭证，因此直接写在 agent.toml 里；DeepSeek API Key
-# 是真正的密钥，只放在 agent.env（不进版本库），由部署 workflow 用 GitHub Secret
-# 写入，这里只保证文件存在、权限正确。
+# 是真正的密钥，参考 tls_cert/tls_key 的文件路径做法，只放在 /opt/yimsg/deepseek_api_key
+# （不进版本库、部署 workflow 不会碰这个文件），首次创建后需要人工 SSH 写入真实
+# 内容，一次写好长期有效，不需要每次部署都重新设置。
 mkdir -p /opt/yimsg/agent_data
 chown -R yimsg:yimsg /opt/yimsg/agent_data
 chmod 700 /opt/yimsg/agent_data
@@ -104,7 +105,7 @@ cat > /opt/yimsg/agent.toml <<'EOF'
 [deepseek]
 base_url = "https://api.deepseek.com"
 model = "deepseek-chat"
-api_key_env = "DEEPSEEK_API_KEY"
+api_key_file = "/opt/yimsg/deepseek_api_key"
 
 [agent]
 server = "wss://yimsg.im/ws"
@@ -128,11 +129,11 @@ EOF
 chown yimsg:yimsg /opt/yimsg/agent.toml
 chmod 640 /opt/yimsg/agent.toml
 
-if [[ ! -f /opt/yimsg/agent.env ]]; then
-  printf 'DEEPSEEK_API_KEY=\n' > /opt/yimsg/agent.env
+if [[ ! -f /opt/yimsg/deepseek_api_key ]]; then
+  : > /opt/yimsg/deepseek_api_key
 fi
-chown yimsg:yimsg /opt/yimsg/agent.env
-chmod 600 /opt/yimsg/agent.env
+chown yimsg:yimsg /opt/yimsg/deepseek_api_key
+chmod 600 /opt/yimsg/deepseek_api_key
 
 cat > /etc/systemd/system/yimsg-agent.service <<'EOF'
 [Unit]
@@ -144,7 +145,6 @@ Type=simple
 User=yimsg
 Group=yimsg
 WorkingDirectory=/opt/yimsg
-EnvironmentFile=/opt/yimsg/agent.env
 ExecStart=/opt/yimsg/agent -config /opt/yimsg/agent.toml
 Restart=on-failure
 RestartSec=5
@@ -183,7 +183,7 @@ id yimsg
 getent passwd yimsg
 getent group yimsg
 ls -ld /opt/yimsg /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data /opt/yimsg/data/media /opt/yimsg/agent_data
-ls -l /opt/yimsg/config.toml /opt/yimsg/agent.toml /opt/yimsg/agent.env /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
+ls -l /opt/yimsg/config.toml /opt/yimsg/agent.toml /opt/yimsg/deepseek_api_key /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
 systemctl is-enabled yimsg
 systemctl is-enabled yimsg-agent
 REMOTE

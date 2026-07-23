@@ -52,10 +52,11 @@ flowchart LR
 
 ```toml
 [deepseek]
-base_url = "https://api.deepseek.com"   # 官方地址，OpenAI 兼容 Chat Completions
+base_url = "https://api.deepseek.com"        # 官方地址，OpenAI 兼容 Chat Completions
 model = "deepseek-chat"
-api_key_env = "DEEPSEEK_API_KEY"        # 从该环境变量读取 key；不建议用下面这项明文写库
-# api_key = ""
+api_key_file = "/opt/yimsg/deepseek_api_key" # 从该文件读取 key（推荐的生产部署方式，参考 tls_cert/tls_key 的文件路径做法）
+# api_key = ""                               # 明文写库，仅本地联调用
+# api_key_env = "DEEPSEEK_API_KEY"           # 从该环境变量读取 key
 temperature = 0.7
 request_timeout_seconds = 60
 
@@ -355,7 +356,7 @@ stateDiagram-v2
 ## 8. DeepSeek 集成(`agent/deepseek`)
 
 - 官方 Chat Completions 接口,`POST {base_url}/chat/completions`,`Authorization: Bearer <api_key>`,请求体是标准 OpenAI 兼容格式(`model`/`messages`/`tools`/`tool_choice`/`temperature`),响应解析 `choices[0].message`(含 `content` 或 `tool_calls`)。
-- `api_key` 优先从配置里的 `api_key_env` 指定的环境变量读取,`api_key` 明文字段仅用于本地联调,两者都为空则启动失败(拒绝用空 key 静默运行)。
+- `api_key` 的来源按 `api_key`(明文,仅本地联调)> `api_key_file`(文件路径,推荐的生产部署方式,参考 server 的 `tls_cert`/`tls_key`——密钥内容不进版本库、不进部署流水线,一次性人工写好后长期有效)> `api_key_env`(环境变量)依次尝试,取第一个非空值,三者都为空则启动失败(拒绝用空 key 静默运行)。
 - 网络层重试:对连接失败、超时、`5xx`、`429` 做指数退避重试(默认最多 3 次),对 `4xx`(除 `429`)不重试(通常是请求本身有问题,重试没有意义)。
 - 请求超时 `request_timeout_seconds`(默认 60s),防止一次调用卡住整个账号的轮询循环。
 
@@ -369,7 +370,7 @@ stateDiagram-v2
 
 ## 10. 测试策略
 
-- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/DeepSeek key 时的拒绝逻辑、共享 `resources/` 目录与每账号私有 `<username>/resources/` 目录的自动创建(且互不相同),纯 Go 单测。
+- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/DeepSeek key 时的拒绝逻辑、共享 `resources/` 目录与每账号私有 `<username>/resources/` 目录的自动创建(且互不相同)、`api_key`/`api_key_file`/`api_key_env` 三者的优先级与 `api_key_file` 的相对路径解析/文件不存在报错,纯 Go 单测。
 - `agent/fsread`:`Sandbox` 覆盖合法读取、`..` 穿越拒绝、绝对路径拒绝、符号链接逃逸拒绝、非 `.md` 后缀拒绝、大文件截断,以及 `Search` 的正则匹配、多字节字符上下文边界、非法正则拒绝、`context_chars` clamp、命中数截断、跨文件/子目录范围;`LayeredSandbox` 额外覆盖私有/共享合并列出与搜索时私有排在前面、按 `private/`/`shared/` 前缀路由到对应一侧、不带前缀时拒绝、私有与共享是隔离的两棵目录树(一侧读不到另一侧内容),纯 Go 单测。
 - `agent/state`:游标推进、记忆按 peer 分桶读写、超过 `memory_max_peers` 的 LRU 淘汰、超过 `memory_max_chars_per_peer` 的硬截断、原子写入(模拟中途失败不损坏已有文件),纯 Go 单测。
 - `agent/deepseek`:用 `httptest.Server` 模拟 DeepSeek 接口,校验请求体格式、鉴权头、重试退避策略、超时,纯 Go 单测。

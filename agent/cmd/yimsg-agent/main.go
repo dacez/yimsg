@@ -43,6 +43,7 @@ func run() error {
 	deepseekBaseURL := fs.String("deepseek-base-url", "", "DeepSeek base_url，默认官方地址")
 	deepseekModel := fs.String("deepseek-model", "", "DeepSeek model，默认 deepseek-chat")
 	deepseekAPIKey := fs.String("deepseek-api-key", "", "DeepSeek api key（会出现在进程参数里，不推荐）")
+	deepseekAPIKeyFile := fs.String("deepseek-api-key-file", "", "读取 DeepSeek api key 的文件路径（推荐的生产部署方式，参考 tls_cert/tls_key 的文件路径做法）")
 	deepseekAPIKeyEnv := fs.String("deepseek-api-key-env", "", "读取 DeepSeek api key 的环境变量名，默认 DEEPSEEK_API_KEY")
 	var accountFlags multiFlag
 	fs.Var(&accountFlags, "account", "多账号命令行模式，重复传入 username:password")
@@ -55,7 +56,7 @@ func run() error {
 		pollInterval: *pollInterval, maxPull: *maxPull,
 		username: *username, password: *password,
 		deepseekBaseURL: *deepseekBaseURL, deepseekModel: *deepseekModel,
-		deepseekAPIKey: *deepseekAPIKey, deepseekAPIKeyEnv: *deepseekAPIKeyEnv,
+		deepseekAPIKey: *deepseekAPIKey, deepseekAPIKeyFile: *deepseekAPIKeyFile, deepseekAPIKeyEnv: *deepseekAPIKeyEnv,
 		accountFlags: accountFlags,
 	})
 	if err != nil {
@@ -74,13 +75,13 @@ func run() error {
 }
 
 type loadConfigInput struct {
-	configPath, server, dataDir       string
-	insecure                          bool
-	pollInterval, maxPull             int
-	username, password                string
-	deepseekBaseURL, deepseekModel    string
-	deepseekAPIKey, deepseekAPIKeyEnv string
-	accountFlags                      multiFlag
+	configPath, server, dataDir                           string
+	insecure                                              bool
+	pollInterval, maxPull                                 int
+	username, password                                    string
+	deepseekBaseURL, deepseekModel                        string
+	deepseekAPIKey, deepseekAPIKeyFile, deepseekAPIKeyEnv string
+	accountFlags                                          multiFlag
 }
 
 // loadConfig 归一化 -config 与命令行两种互斥输入方式，最终都调用同一套
@@ -101,7 +102,7 @@ func loadConfig(in loadConfigInput) (*config.Config, error) {
 		Server: in.server, DataDir: in.dataDir, InsecureSkipVerify: in.insecure,
 		PollIntervalSeconds: in.pollInterval, MaxPull: in.maxPull,
 		DeepSeekBaseURL: in.deepseekBaseURL, DeepSeekModel: in.deepseekModel,
-		DeepSeekAPIKey: in.deepseekAPIKey, DeepSeekAPIKeyEnv: in.deepseekAPIKeyEnv,
+		DeepSeekAPIKey: in.deepseekAPIKey, DeepSeekAPIKeyFile: in.deepseekAPIKeyFile, DeepSeekAPIKeyEnv: in.deepseekAPIKeyEnv,
 	}
 	if in.username != "" {
 		password := in.password

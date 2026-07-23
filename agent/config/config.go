@@ -34,9 +34,13 @@ const (
 
 // DeepSeekFile 是 TOML [deepseek] 段的原始结构。
 type DeepSeekFile struct {
-	BaseURL               string  `toml:"base_url"`
-	Model                 string  `toml:"model"`
-	APIKey                string  `toml:"api_key"`
+	BaseURL string `toml:"base_url"`
+	Model   string `toml:"model"`
+	APIKey  string `toml:"api_key"`
+	// APIKeyFile 指向一个只包含 key 本身的文件，用法参考 server 的 tls_cert/tls_key：
+	// 部署时把真正的密钥文件放在部署流程不会碰的路径，配置文件里只留路径，密钥内容
+	// 不进版本库、不进部署流水线，一次性人工写好后长期有效，不需要每次部署都重新设置。
+	APIKeyFile            string  `toml:"api_key_file"`
 	APIKeyEnv             string  `toml:"api_key_env"`
 	Temperature           float64 `toml:"temperature"`
 	RequestTimeoutSeconds int     `toml:"request_timeout_seconds"`
@@ -145,7 +149,7 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 		return nil, fmt.Errorf("创建 resources 目录 %s 失败: %w", resourcesDir, err)
 	}
 
-	ds, err := resolveDeepSeek(f.DeepSeek)
+	ds, err := resolveDeepSeek(f.DeepSeek, baseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +251,12 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 	}, nil
 }
 
-func resolveDeepSeek(f DeepSeekFile) (DeepSeekSettings, error) {
+// resolveDeepSeek 归一化 [deepseek] 段；baseDir 用于把 api_key_file 的相对路径
+// 解析成绝对路径（与 data_dir 的解析方式一致）。api_key 的来源按 api_key（明文，
+// 仅本地联调）> api_key_file（文件路径，推荐的生产部署方式）> api_key_env（环境
+// 变量，未显式配置 api_key_env 时仍会兜底检查 DefaultDeepSeekAPIKeyEnv）依次尝试，
+// 命中第一个非空值即用，全部为空则拒绝启动。
+func resolveDeepSeek(f DeepSeekFile, baseDir string) (DeepSeekSettings, error) {
 	baseURL := f.BaseURL
 	if baseURL == "" {
 		baseURL = DefaultDeepSeekBaseURL
@@ -266,6 +275,14 @@ func resolveDeepSeek(f DeepSeekFile) (DeepSeekSettings, error) {
 	}
 
 	apiKey := f.APIKey
+	if apiKey == "" && f.APIKeyFile != "" {
+		path := resolvePath(baseDir, f.APIKeyFile)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return DeepSeekSettings{}, fmt.Errorf("读取 deepseek.api_key_file %s 失败: %w", path, err)
+		}
+		apiKey = strings.TrimSpace(string(data))
+	}
 	if apiKey == "" {
 		envName := f.APIKeyEnv
 		if envName == "" {
@@ -274,7 +291,7 @@ func resolveDeepSeek(f DeepSeekFile) (DeepSeekSettings, error) {
 		apiKey = os.Getenv(envName)
 	}
 	if apiKey == "" {
-		return DeepSeekSettings{}, fmt.Errorf("DeepSeek api_key 未配置：请设置 deepseek.api_key 或 deepseek.api_key_env 指向的环境变量")
+		return DeepSeekSettings{}, fmt.Errorf("DeepSeek api_key 未配置：请设置 deepseek.api_key、deepseek.api_key_file 或 deepseek.api_key_env 指向的环境变量")
 	}
 
 	return DeepSeekSettings{
