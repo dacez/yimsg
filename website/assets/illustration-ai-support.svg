@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" role="img" aria-labelledby="title desc">
+<title id="title">AI customer service</title><desc id="desc">Three specialized AI customer service agents, each backed by its own private knowledge base, all connected to one knowledge base shared by every agent.</desc>
+<defs>
+  <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#5B5BF0"/>
+    <stop offset="1" stop-color="#7B61FF"/>
+  </linearGradient>
+  <linearGradient id="brandCyan" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#6C63FF"/>
+    <stop offset="1" stop-color="#22C2D6"/>
+  </linearGradient>
+  <linearGradient id="brandPink" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FF6FAE"/>
+    <stop offset="1" stop-color="#FF8F6B"/>
+  </linearGradient>
+  <linearGradient id="softBg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FBFBFF"/>
+    <stop offset="0.55" stop-color="#F6F5FF"/>
+    <stop offset="1" stop-color="#F1FBFC"/>
+  </linearGradient>
+  <filter id="shadowLg" x="-40%" y="-40%" width="180%" height="180%">
+    <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#18203A" flood-opacity="0.16"/>
+  </filter>
+  <filter id="shadowMd" x="-40%" y="-40%" width="180%" height="180%">
+    <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#18203A" flood-opacity="0.12"/>
+  </filter>
+  <filter id="shadowSm" x="-40%" y="-40%" width="180%" height="180%">
+    <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#18203A" flood-opacity="0.10"/>
+  </filter>
+  <pattern id="dotPattern" width="28" height="28" patternUnits="userSpaceOnUse">
+    <circle cx="2" cy="2" r="1.4" fill="#5B5BF0" opacity="0.10"/>
+  </pattern>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+    <path d="M0 0 L10 5 L0 10 Z" fill="#6B6DF5"/>
+  </marker>
+</defs>
+
+<rect x="16" y="16" width="928" height="688" rx="48" fill="url(#softBg)"/>
+<rect x="16" y="16" width="928" height="688" rx="48" fill="url(#dotPattern)"/>
+<ellipse cx="480" cy="380" rx="230" ry="120" fill="#5B5BF0" opacity=".07"/>
+
+<!-- connectors: each agent to the shared knowledge base -->
+<path d="M300 232 C 372 268, 410 300, 448 332" fill="none" stroke="#6B6DF5" stroke-width="3" stroke-dasharray="8 9" marker-end="url(#arrow)"/>
+<path d="M660 232 C 588 268, 550 300, 512 332" fill="none" stroke="#6B6DF5" stroke-width="3" stroke-dasharray="8 9" marker-end="url(#arrow)"/>
+<path d="M480 498 C 480 470, 480 452, 480 438" fill="none" stroke="#6B6DF5" stroke-width="3" stroke-dasharray="8 9" marker-end="url(#arrow)"/>
+
+<!-- shared knowledge base (hub) -->
+<g filter="url(#shadowMd)">
+  <rect x="408" y="322" width="144" height="46" fill="url(#brandCyan)"/>
+  <ellipse cx="480" cy="322" rx="72" ry="22" fill="#3FD8E6"/>
+  <ellipse cx="480" cy="368" rx="72" ry="22" fill="#22C2D6"/>
+</g>
+<g filter="url(#shadowSm)">
+  <rect x="398" y="380" width="164" height="34" rx="17" fill="#FFFFFF" stroke="#E7EAF3"/>
+</g>
+<text x="480" y="402" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="700" fill="#1B2542">Shared KB</text>
+
+<!-- agent card A (top-left) -->
+<g filter="url(#shadowLg)">
+  <rect x="88" y="88" width="248" height="140" rx="24" fill="#FFFFFF" stroke="#E7EAF3"/>
+</g>
+<circle cx="132" cy="134" r="22" fill="url(#brandGrad)"/>
+<path d="M132 126a8 8 0 1 1 0.01 0" fill="none" stroke="#fff" stroke-width="3"/>
+<circle cx="132" cy="128" r="6" fill="#fff"/>
+<path d="M118 146c3-8 25-8 28 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+<rect x="166" y="122" width="130" height="11" rx="5.5" fill="#1B2542" opacity="0.75"/>
+<rect x="166" y="142" width="98" height="8" rx="4" fill="#8B93A8" opacity="0.5"/>
+<rect x="108" y="178" width="208" height="9" rx="4.5" fill="#F0F1F8"/>
+<rect x="108" y="196" width="150" height="9" rx="4.5" fill="#F0F1F8"/>
+<g filter="url(#shadowSm)">
+  <circle cx="324" cy="96" r="18" fill="url(#brandPink)"/>
+  <rect x="316" y="90" width="16" height="13" rx="2.5" fill="none" stroke="#fff" stroke-width="2"/>
+  <path d="M316 96h16" stroke="#fff" stroke-width="2"/>
+</g>
+
+<!-- agent card B (top-right) -->
+<g filter="url(#shadowLg)">
+  <rect x="624" y="88" width="248" height="140" rx="24" fill="#FFFFFF" stroke="#E7EAF3"/>
+</g>
+<circle cx="668" cy="134" r="22" fill="url(#brandCyan)"/>
+<path d="M660 126 l-8 8 l8 8 M676 126 l8 8 l-8 8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="702" y="122" width="130" height="11" rx="5.5" fill="#1B2542" opacity="0.75"/>
+<rect x="702" y="142" width="98" height="8" rx="4" fill="#8B93A8" opacity="0.5"/>
+<rect x="644" y="178" width="208" height="9" rx="4.5" fill="#F0F1F8"/>
+<rect x="644" y="196" width="150" height="9" rx="4.5" fill="#F0F1F8"/>
+<g filter="url(#shadowSm)">
+  <circle cx="860" cy="96" r="18" fill="url(#brandPink)"/>
+  <rect x="852" y="90" width="16" height="13" rx="2.5" fill="none" stroke="#fff" stroke-width="2"/>
+  <path d="M852 96h16" stroke="#fff" stroke-width="2"/>
+</g>
+
+<!-- agent card C (bottom-center) -->
+<g filter="url(#shadowLg)">
+  <rect x="356" y="498" width="248" height="150" rx="24" fill="#FFFFFF" stroke="#E7EAF3"/>
+</g>
+<circle cx="400" cy="546" r="22" fill="url(#brandGrad)"/>
+<path d="M391 537 l18 18 M409 537 l-18 18" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
+<circle cx="400" cy="546" r="6" fill="none" stroke="#fff" stroke-width="2.4"/>
+<rect x="434" y="534" width="130" height="11" rx="5.5" fill="#1B2542" opacity="0.75"/>
+<rect x="434" y="554" width="98" height="8" rx="4" fill="#8B93A8" opacity="0.5"/>
+<rect x="376" y="590" width="208" height="9" rx="4.5" fill="#F0F1F8"/>
+<rect x="376" y="608" width="150" height="9" rx="4.5" fill="#F0F1F8"/>
+<g filter="url(#shadowSm)">
+  <circle cx="592" cy="506" r="18" fill="url(#brandPink)"/>
+  <rect x="584" y="500" width="16" height="13" rx="2.5" fill="none" stroke="#fff" stroke-width="2"/>
+  <path d="M584 506h16" stroke="#fff" stroke-width="2"/>
+</g>
+
+<!-- extensible: ghost card for "add more roles" -->
+<rect x="672" y="514" width="164" height="90" rx="20" fill="none" stroke="#B9BEF5" stroke-width="2.4" stroke-dasharray="7 8"/>
+<path d="M754 542v34M737 559h34" stroke="url(#brandGrad)" stroke-width="4.4" stroke-linecap="round"/>
+</svg>

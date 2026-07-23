@@ -107,7 +107,8 @@
             </ul>
             <pre class="code-block"><code>import * as YimsgUIKit from '/uikit/yimsg-uikit.js';
 
-const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
+const host = document.getElementById('chat-host');
+const handle = YimsgUIKit.mount(host, {
   wsUrl: 'wss://your-domain.com/ws',
   uploadUrl: '/api/upload',
   theme: 'auto',
@@ -134,15 +135,22 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
           Give each agent identity its own private knowledge base, plus a knowledge base shared by every agent — yimsg-agent
           polls for new messages around the clock and replies automatically, no extra frontend code required.
         </p>
-        <ul class="check-list ai-support-list">
-          <li><strong data-i18n="aiSupportItem1Title">👩‍💼 账号客服-小美</strong><span data-i18n="aiSupportItem1Body">账号与登录相关问题：找回密码、多端登录、拉黑与屏蔽。</span></li>
-          <li><strong data-i18n="aiSupportItem2Title">🧑‍💻 接入客服-小林</strong><span data-i18n="aiSupportItem2Body">开发者接入相关问题：UIKit 嵌入、SDK 集成。</span></li>
-          <li><strong data-i18n="aiSupportItem3Title">🛠️ 值班客服-阿强</strong><span data-i18n="aiSupportItem3Body">故障处理相关问题，需要时可升级给人工技术支持。</span></li>
-          <li><strong data-i18n="aiSupportItem4Title">➕ 支持自定义客服角色</strong><span data-i18n="aiSupportItem4Body">按业务需要新增任意多个专精角色，各自配置独立私有知识库。</span></li>
-        </ul>
-        <p class="pillar-highlight" data-i18n="aiSupportHighlight">Private knowledge base + shared knowledge base — add as many specialized agents as you need.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="/demo/customer-service.html" target="_blank" rel="noopener" data-i18n="aiSupportCta">Try the intelligent customer service widget →</a>
+        <div class="pillar-grid">
+          <div class="pillar-visual">
+            <img class="product-illustration" src="assets/illustration-ai-support.svg" data-i18n-alt="aiSupportSvgTitle" alt="Three AI customer service agents, each with a private knowledge base, connected to one shared knowledge base" loading="lazy" />
+          </div>
+          <div class="pillar-copy">
+            <ul class="check-list">
+              <li><strong data-i18n="aiSupportItem1Title">👩‍💼 账号客服-小美</strong><span data-i18n="aiSupportItem1Body">账号与登录相关问题：找回密码、多端登录、拉黑与屏蔽。</span></li>
+              <li><strong data-i18n="aiSupportItem2Title">🧑‍💻 接入客服-小林</strong><span data-i18n="aiSupportItem2Body">开发者接入相关问题：UIKit 嵌入、SDK 集成。</span></li>
+              <li><strong data-i18n="aiSupportItem3Title">🛠️ 值班客服-阿强</strong><span data-i18n="aiSupportItem3Body">故障处理相关问题，需要时可升级给人工技术支持。</span></li>
+              <li><strong data-i18n="aiSupportItem4Title">➕ 支持自定义客服角色</strong><span data-i18n="aiSupportItem4Body">按业务需要新增任意多个专精角色，各自配置独立私有知识库。</span></li>
+            </ul>
+            <p class="pillar-highlight" data-i18n="aiSupportHighlight">Private knowledge base + shared knowledge base — add as many specialized agents as you need.</p>
+            <div class="hw-actions">
+              <a class="btn btn-primary" href="/demo/customer-service.html" target="_blank" rel="noopener" data-i18n="aiSupportCta">Try the intelligent customer service widget →</a>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -158,10 +166,7 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
         <p class="section-lead" data-i18n="customizeLead">
           用户可以直接使用 yimsg 提供的完整聊天界面，也可以基于开放能力构建自己的产品。
         </p>
-        <div class="pillar-grid">
-          <div class="pillar-visual">
-            <img class="product-illustration" src="assets/illustration-customize.svg" data-i18n-alt="customizeSvgTitle" alt="UIKit, SDK, and WebSocket building blocks customized into multiple chat experiences" loading="lazy" />
-          </div>
+        <div class="pillar-grid pillar-grid--reverse">
           <div class="pillar-copy">
             <ul class="check-list">
               <li data-i18n="customizeItem1">使用 UIKit 快速接入完整聊天界面</li>
@@ -172,6 +177,9 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
               <li data-i18n-html="customizeItem6">对接自己的登录和用户体系<span class="badge-roadmap">路线图</span></li>
             </ul>
             <p class="pillar-highlight" data-i18n="customizeHighlight">Use our UI, customize it, or build your own.</p>
+          </div>
+          <div class="pillar-visual">
+            <img class="product-illustration" src="assets/illustration-customize.svg" data-i18n-alt="customizeSvgTitle" alt="UIKit, SDK, and WebSocket building blocks customized into multiple chat experiences" loading="lazy" />
           </div>
         </div>
       </div>
@@ -326,6 +334,7 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
           aiSupportItem4Body: 'Add as many specialized roles as your business needs, each with its own private knowledge base.',
           aiSupportHighlight: 'Private knowledge base + shared knowledge base — add as many specialized agents as you need.',
           aiSupportCta: 'Try the intelligent customer service widget →',
+          aiSupportSvgTitle: 'Three AI customer service agents, each with a private knowledge base, connected to one shared knowledge base',
           eyebrowScenarios: 'Use Cases',
           heroBadge: 'Self-Hosted IM Infrastructure',
           heroTitle: 'The easiest way to <span class="grad-text">own your IM infrastructure</span>',
@@ -432,6 +441,7 @@ const handle = YimsgUIKit.mount(document.getElementById('chat-host'), {
           aiSupportItem4Body: '按业务需要新增任意多个专精角色，各自配置独立私有知识库。',
           aiSupportHighlight: '私有知识库 + 共享知识库，按需扩展任意多个专精角色。',
           aiSupportCta: '体验智能客服组件 →',
+          aiSupportSvgTitle: '三位智能客服，各自拥有私有知识库，并共同连接同一个共享知识库',
           eyebrowScenarios: '应用场景',
           heroBadge: '私有化 IM 基础设施',
           heroTitle: '最简单的方式，<span class="grad-text">拥有你自己的 IM 基础设施</span>',
