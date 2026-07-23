@@ -89,6 +89,74 @@ EOF
 systemctl daemon-reload
 systemctl enable yimsg
 
+# yimsg-agent：客服 demo_kf_1~3 自动回复常驻进程，见 agent/README.md、
+# docs/deployment/部署方案.md 第 13 节。server 走公网域名（wss://yimsg.im/ws），
+# 跟浏览器客户端走同一条 Cloudflare 代理链路，避免直连本机 IP 时 Origin CA 证书
+# 校验不过的问题。demo_kf_1~3 密码固定为 server/tools/cmd/seed-demo 里已公开的
+# demoPassword，不是需要保密的凭证，因此直接写在 agent.toml 里；DeepSeek API Key
+# 是真正的密钥，只放在 agent.env（不进版本库），由部署 workflow 用 GitHub Secret
+# 写入，这里只保证文件存在、权限正确。
+mkdir -p /opt/yimsg/agent_data
+chown -R yimsg:yimsg /opt/yimsg/agent_data
+chmod 700 /opt/yimsg/agent_data
+
+cat > /opt/yimsg/agent.toml <<'EOF'
+[deepseek]
+base_url = "https://api.deepseek.com"
+model = "deepseek-chat"
+api_key_env = "DEEPSEEK_API_KEY"
+
+[agent]
+server = "wss://yimsg.im/ws"
+data_dir = "/opt/yimsg/agent_data"
+poll_interval_seconds = 2
+max_pull = 30
+
+[[accounts]]
+username = "demo_kf_1"
+password = "Demo@123456"
+
+[[accounts]]
+username = "demo_kf_2"
+password = "Demo@123456"
+
+[[accounts]]
+username = "demo_kf_3"
+password = "Demo@123456"
+EOF
+
+chown yimsg:yimsg /opt/yimsg/agent.toml
+chmod 640 /opt/yimsg/agent.toml
+
+if [[ ! -f /opt/yimsg/agent.env ]]; then
+  printf 'DEEPSEEK_API_KEY=\n' > /opt/yimsg/agent.env
+fi
+chown yimsg:yimsg /opt/yimsg/agent.env
+chmod 600 /opt/yimsg/agent.env
+
+cat > /etc/systemd/system/yimsg-agent.service <<'EOF'
+[Unit]
+Description=Yimsg Agent (demo_kf_1~3 customer-service auto-reply)
+After=network.target yimsg.service
+
+[Service]
+Type=simple
+User=yimsg
+Group=yimsg
+WorkingDirectory=/opt/yimsg
+EnvironmentFile=/opt/yimsg/agent.env
+ExecStart=/opt/yimsg/agent -config /opt/yimsg/agent.toml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable yimsg-agent
+
 test -r /etc/ssl/certs/yimsg.pem
 test -r /etc/ssl/certs/yimsg.key
 chown root:root /etc/ssl/certs/yimsg.pem
@@ -105,12 +173,17 @@ if [[ -f /opt/yimsg/seed-demo ]]; then
   chmod 755 /opt/yimsg/seed-demo
   chown yimsg:yimsg /opt/yimsg/seed-demo
 fi
+if [[ -f /opt/yimsg/agent ]]; then
+  chmod 755 /opt/yimsg/agent
+  chown yimsg:yimsg /opt/yimsg/agent
+fi
 
 echo "Yimsg server environment initialized."
 id yimsg
 getent passwd yimsg
 getent group yimsg
-ls -ld /opt/yimsg /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data /opt/yimsg/data/media
-ls -l /opt/yimsg/config.toml /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
+ls -ld /opt/yimsg /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data /opt/yimsg/data/media /opt/yimsg/agent_data
+ls -l /opt/yimsg/config.toml /opt/yimsg/agent.toml /opt/yimsg/agent.env /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
 systemctl is-enabled yimsg
+systemctl is-enabled yimsg-agent
 REMOTE
