@@ -1,7 +1,7 @@
 # yimsg-cli 方案
 
 > 主要对照：`cli/` 目录下的 Go 实现与 `cli/cmd/yimsg-cli/main.go` 的子命令列表。
-> 最后复核：2026-07-20。
+> 最后复核：2026-07-23。
 > 触发更新：新增/修改子命令、本地存储 schema 或账号目录布局时同步更新。
 > 入口关系：本文件是 `cli/` 的组件专属方案文档；跨组件文档导航见 [`../../docs/README.md`](../../docs/README.md)。
 
@@ -13,19 +13,19 @@
 
 ## 2. 账号目录布局与"当前账号"
 
-调用方指定一个根目录（`--dir` 或环境变量 `YIMSG_CLI_DIR`；都不传则默认使用当前工作目录下的 `cli_data`，不存在会自动创建），不需要为不同账号切换不同文件夹——根目录的二级目录固定为账号 `uid`：
+调用方指定一个根目录（`--dir` 或环境变量 `YIMSG_CLI_DIR`；都不传则默认使用当前工作目录下的 `cli_data`，不存在会自动创建），不需要为不同账号切换不同文件夹——根目录的二级目录固定为账号**用户名**（不是 `uid`：用户名登录前就已知、目录名对人类可读，方便直接在文件系统上分辨账号；`yimsg-agent` 复用同一套 `cli/account`，也是同样的布局，见 `agent/docs/agent方案.md` 第 3 节）：
 
 ```text
 <dir>/
   current.json    # {uid, username} 指针：未显式 switch-user 时默认操作哪个账号
-  <uid>/
+  <username>/
     session.json   # {uid, username, token, server_url, login_at}
     data.db        # 本地同步库（SQLite），见第 3 节
 ```
 
-`login` 命令负责创建 `<dir>/<uid>/` 并写入 `session.json`，同时把这个账号写进 `current.json` 设为当前账号。`switch-user --username U` 把 `current.json` 指向本地已经 `login` 过的另一个账号。除 `login`/`switch-user` 外，其它子命令一律不接受、也不需要自己的 uid 作为参数——这不只是图方便：协议本身也不需要（身份永远来自已鉴权连接的 token，业务代码不信任 body 里的身份字段，见根 `CLAUDE.md` 项目不变量），子命令读取 `current.json` 找到 `<uid>/session.json` 里保存的 token 完成鉴权即可，token 失效时报错提示重新执行 `login`，不做静默降级。
+`login` 命令负责创建 `<dir>/<username>/` 并写入 `session.json`，同时把这个账号写进 `current.json` 设为当前账号。`switch-user --username U` 把 `current.json` 指向本地已经 `login` 过的另一个账号。除 `login`/`switch-user` 外，其它子命令一律不接受、也不需要自己的 uid 作为参数——这不只是图方便：协议本身也不需要（身份永远来自已鉴权连接的 token，业务代码不信任 body 里的身份字段，见根 `CLAUDE.md` 项目不变量），子命令读取 `current.json` 找到 `<username>/session.json` 里保存的 token 完成鉴权即可，token 失效时报错提示重新执行 `login`，不做静默降级。
 
-`current.json` 只存 `{uid, username}` 指针，token 永远以 `<uid>/session.json` 为唯一权威来源，避免出现两份可能不一致的 token 副本（例如 `switch-user` 切走又切回来之后，读到的还是最新 token）。
+`current.json` 只存 `{uid, username}` 指针，token 永远以 `<username>/session.json` 为唯一权威来源，避免出现两份可能不一致的 token 副本（例如 `switch-user` 切走又切回来之后，读到的还是最新 token）。研发阶段不处理"同一用户名先后在不同服务器注册出不同 uid"这种极端场景：目录按用户名直接复用/覆盖，与仓库其余本地状态"不做迁移"的一贯做法一致。
 
 **并发注意**：`current.json` 是同一个根目录下所有进程共享的单个指针。如果要在同一个根目录下并发运行多个进程分别扮演不同账号，需要各自在操作前 `switch-user` 且避免互相竞争，否则可能读到对方刚切换过去的账号；更简单可靠的做法是每个机器人账号各用一个独立的根目录。
 

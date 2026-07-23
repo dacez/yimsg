@@ -18,7 +18,7 @@
 | `cli/store` | 本地 SQLite 消息镜像：`sync_messages` 增量同步、按账号 `Pending` 查询未处理消息 |
 | `cli/msgid` | 发消息时生成 `msg_id`（UUIDv7 base64url） |
 
-`agent/` 新增的是 `cli/` 没有的部分：多账号配置与文件夹隔离、固定节奏的轮询循环、AI 处理进度（seq）持久化、按账号隔离的记忆、计划-执行引擎、只读 Markdown 文件工具沙箱、DeepSeek 客户端。
+`agent/` 新增的是 `cli/` 没有的部分：多账号配置与共享只读知识库目录、固定节奏的轮询循环、AI 处理进度（seq）持久化、按账号隔离的记忆、计划-执行引擎、只读 Markdown 文件工具沙箱、DeepSeek 客户端。
 
 ```mermaid
 flowchart LR
@@ -37,16 +37,16 @@ flowchart LR
     ENG -- "HTTPS Chat Completions" --> DS[("DeepSeek 官方 API")]
 ```
 
-## 2. 账号配置与文件夹隔离
+## 2. 账号配置与共享知识库目录
 
 ### 2.1 输入方式
 
 同时支持配置文件和命令行两种输入方式（互斥，二选一）：
 
 - **配置文件**（推荐，用于多账号）：`yimsg-agent -config agent.toml`，见 §2.2 的 TOML 结构。
-- **命令行**（用于单账号快速启动或临时调试）：`yimsg-agent -server ws://... -username U -password P -workspace ./ws -deepseek-api-key-env DEEPSEEK_API_KEY`；也可以重复 `-account "username:password:workspace_dir"` 传入多个账号，但密码会出现在进程参数列表里，仅建议本地调试使用，生产场景一律用配置文件。
+- **命令行**（用于单账号快速启动或临时调试）：`yimsg-agent -server ws://... -username U -password P -deepseek-api-key-env DEEPSEEK_API_KEY`；也可以重复 `-account "username:password"` 传入多个账号，但密码会出现在进程参数列表里，仅建议本地调试使用，生产场景一律用配置文件。
 
-两种输入方式最终都被 `config.Load` / `config.FromFlags` 归一化成同一个内部 `*config.Config` 结构，后续所有逻辑不区分来源。
+两种输入方式最终都被 `config.Load` / `config.Resolve` 归一化成同一个内部 `*config.Config` 结构，后续所有逻辑不区分来源。
 
 ### 2.2 配置文件结构
 
@@ -61,7 +61,7 @@ request_timeout_seconds = 60
 
 [agent]
 server = "ws://127.0.0.1:8080/ws"
-data_dir = "./agent_data"               # agent 自己的本地状态根目录，见第 3 节
+data_dir = "./agent_data"               # 全部账号共享的本地状态根目录，见第 3 节
 poll_interval_seconds = 2               # 会被 clamp 到 >= 1（需求硬性下限）
 max_pull = 30                           # 每轮最多拉取的未处理消息数，默认 30
 max_plan_steps = 6
@@ -73,36 +73,47 @@ insecure_skip_verify = false
 [[accounts]]
 username = "bot1"
 password_env = "YIMSG_AGENT_BOT1_PASSWORD"
-workspace_dir = "./workspaces/bot1"     # 该账号唯一允许读取 md 文件的文件夹
 
 [[accounts]]
 username = "bot2"
 password_env = "YIMSG_AGENT_BOT2_PASSWORD"
-workspace_dir = "./workspaces/bot2"
 poll_interval_seconds = 1               # 单账号可覆盖 [agent] 的全局默认值
 max_pull = 10
 ```
 
-`[agent]` 下的轮询间隔、拉取上限等是全局默认值；每个 `[[accounts]]` 条目可以单独覆盖（未覆盖则继承全局默认）。密码优先从 `password_env` 指向的环境变量读取，配置文件里只留一个环境变量名，避免明文密码进库；`password` 字段仍然保留，仅用于本地联调，两者都未设置则拒绝启动。
+`[agent]` 下的轮询间隔、拉取上限等是全局默认值；每个 `[[accounts]]` 条目可以单独覆盖（未覆盖则继承全局默认）。密码优先从 `password_env` 指向的环境变量读取，配置文件里只留一个环境变量名，避免明文密码进库；`password` 字段仍然保留，仅用于本地联调，两者都未设置则拒绝启动。账号不再单独配置文件夹——多步执行时能读到什么由 §2.3 的共享目录统一决定。
 
-### 2.3 文件夹隔离（workspace_dir）
+### 2.3 共享只读知识库（`<data_dir>/resources/`）
 
-每个账号一个 `workspace_dir`，是该账号在多步执行时唯一允许**只读**访问的文件夹（见第 7 节的沙箱实现）：
+`agent_data/` 是**全部账号共用的同一个数据文件夹**，二级目录布局与 `cli/account`（`yimsg-cli` 复用的同一个包）完全一致，按用户名分子目录，例如：
 
-- 路径在启动时归一化为绝对路径并确认存在、是目录；不存在不会自动创建（这是"只能操作的文件夹"，创建目录的权限不属于 agent）。
+```text
+agent_data/
+  user1/       # 账号 user1 的私有状态（session、同步库、游标+记忆）
+  user2/       # 账号 user2 的私有状态，与 user1 完全隔离
+  resources/   # 全部账号共享的只读 Markdown 知识库
+```
+
+`resources/` 是多步执行引擎在决策阶段和每个步骤里唯一允许**只读**访问的目录（见第 7 节的沙箱实现），v1 是**全部账号共享同一份**，不再按账号单独隔离知识库：
+
+- 路径固定为 `<data_dir>/resources`，由 `config.Resolve` 在启动时自动创建（`os.MkdirAll`），不需要用户提前准备，也不是可单独配置的路径。
 - 沙箱层禁止任何形式越出该目录：不接受绝对路径参数、拒绝 `..` 穿越、对最终路径做 `EvalSymlinks` 后再校验前缀，见 §7.2。
-- 沙箱只暴露"列出 / 读取 `.md` 文件"，没有写、删、执行能力——第 5 条需求原文就是"读操作"，因此 v1 不提供任何写权限，即使是同一文件夹内。
-- `workspace_dir` 与 `data_dir/<uid>/`（agent 自己的 token、同步库、记忆、游标状态）严格分开：前者是"AI 能读到什么"，后者是"AI 引擎自己的运行状态"，语义不同、访问路径也不同，AI 侧工具调用只能触达前者。
+- 沙箱只暴露"列出 / 读取 / 正则搜索 `.md` 文件"，没有写、删、执行能力——第 5 条需求原文就是"读操作"，因此 v1 不提供任何写权限。
+- `resources/` 与 `<data_dir>/<username>/`（每个账号自己的 token、同步库、记忆、游标状态）严格分开：前者是"AI 能读到什么"（所有账号共享、只读），后者是"AI 引擎自己的运行状态"（按账号私有、agent 内部读写），语义不同、访问路径也不同，AI 侧工具调用只能触达前者。
+- v1 是有意的简化：单个共享知识库覆盖不了"不同账号需要看到不同资料"的场景，后续如果出现这类需求，可以在 `resources/` 下按账号再分子目录、由 fsread 按账号选择子目录根，而不需要改变整体目录布局。
 
 ## 3. 目录与本地状态布局
 
 ```text
 <data_dir>/
-  <uid>/
+  resources/         # 全部账号共享的只读知识库，见 §2.3
+  <username>/
     session.json      # 复用 cli/account：{uid, username, token, server_url, login_at}
     data.db           # 复用 cli/store：sync_messages 落地的本地镜像，用于计算 Pending
     agent_state.json  # agent 自己的状态：AI 处理进度游标 + 按对端分桶的记忆，见第 4、5 节
 ```
+
+账号目录以**用户名**命名而不是 `uid`：用户名在登录前就已知、目录名对人类可读，方便直接在文件系统上分辨账号；这与 `cli/account` 的布局完全一致（`agent/` 直接复用同一个包），研发阶段不处理"同一用户名先后在不同服务器注册出不同 uid"这种极端场景，目录按用户名直接复用/覆盖。
 
 `agent_state.json` 与 `data.db` 是两套独立的"游标"，不能混用：
 
@@ -145,7 +156,7 @@ sequenceDiagram
 
 ### 5.1 隔离粒度
 
-"每个用户需要有单独的记忆"在本项目场景下对应"每个账号（每个 bot 身份）"：不同账号的记忆物理隔离在不同的 `<data_dir>/<uid>/agent_state.json` 文件里，永不互相读取。账号内部按对端（peer：好友 uid 或群 group_id）再分桶存储，避免同一账号同时跟多个好友/群聊天时记忆互相串场：
+"每个用户需要有单独的记忆"在本项目场景下对应"每个账号（每个 bot 身份）"：不同账号的记忆物理隔离在不同的 `<data_dir>/<username>/agent_state.json` 文件里，永不互相读取。账号内部按对端（peer：好友 uid 或群 group_id）再分桶存储，避免同一账号同时跟多个好友/群聊天时记忆互相串场：
 
 ```json
 {
@@ -183,8 +194,8 @@ sequenceDiagram
 
 | 工具名 | 阶段 | 作用 |
 |---|---|---|
-| `list_md_files` | 决策阶段 + 每个步骤 | 列出 workspace 内某子目录下的 `.md` 文件 |
-| `read_md_file` | 决策阶段 + 每个步骤 | 读取 workspace 内一个 `.md` 文件的完整内容 |
+| `list_md_files` | 决策阶段 + 每个步骤 | 列出共享知识库（`resources/`）内某子目录下的 `.md` 文件 |
+| `read_md_file` | 决策阶段 + 每个步骤 | 读取共享知识库内一个 `.md` 文件的完整内容 |
 | `search_md_files` | 决策阶段 + 每个步骤 | 类似 grep 的正则搜索（纯文本匹配,不用向量库),返回每处命中前后 `context_chars` 个字符的上下文;`context_chars` 由模型每次调用时自行决定,用于在通读整份文件之前先定位相关内容,见 §6.6 |
 | `submit_plan` | 仅决策阶段 | 模型认为需要分步执行时,提交一个有序步骤描述列表,不直接调用即代表选择"直接回答" |
 
@@ -228,10 +239,10 @@ stateDiagram-v2
 
 对应需求"类似 grep 的搜索文件能力,返回前后 n 个字符,不用向量数据库"。实现在 `agent/fsread.Sandbox.Search(pattern, subdir string, contextChars int)`:
 
-- **纯文本匹配,不做语义检索**:`pattern` 是标准 Go 正则表达式(`regexp` 标准库),对 `workspace_dir/subdir` 下每个 `.md`/`.markdown` 文件的**全文**做 `FindAllStringIndex`,不引入任何向量库/embedding/相似度检索,命中即字面匹配。
+- **纯文本匹配,不做语义检索**:`pattern` 是标准 Go 正则表达式(`regexp` 标准库),对沙箱根目录(`resources/`)下 `subdir` 里每个 `.md`/`.markdown` 文件的**全文**做 `FindAllStringIndex`,不引入任何向量库/embedding/相似度检索,命中即字面匹配。
 - **上下文长度由模型决定**:每处命中返回其前后各 `context_chars` 个字符的原文,`context_chars` 是模型在这次工具调用里自己传入的参数,不是固定配置;模型没有传时默认给 200,更精确的检索可以传更小的值,需要更完整上下文时可以传更大的值,上限被 clamp 到 `MaxContextChars`(2000),防止一次检索把过多内容塞进模型上下文。
 - **按字符(rune)切片而不是按字节**:上下文边界按 Unicode 字符计数,不会把中文等多字节字符从中间切断。
-- **命中数量上限**:单次调用最多返回 `MaxSearchMatches`(50)条命中,超过时 `truncated=true`,提示模型缩小 `pattern` 或指定 `subdir` 再搜一次,而不是一次性把整个 workspace 的命中都塞进模型上下文。
+- **命中数量上限**:单次调用最多返回 `MaxSearchMatches`(50)条命中,超过时 `truncated=true`,提示模型缩小 `pattern` 或指定 `subdir` 再搜一次,而不是一次性把整个 `resources/` 的命中都塞进模型上下文。
 - **与 `read_md_file` 的关系**:`search_md_files` 用于"文件较多或较长时先定位关键字所在位置",定位后再用 `read_md_file` 读整份文件确认完整上下文;两者不互相替代。
 
 ### 6.6 每次处理的 DeepSeek 调用次数
@@ -242,11 +253,11 @@ stateDiagram-v2
 
 ### 7.1 能力边界
 
-只提供三个只读能力,不提供任何写、删、执行、目录穿越到 workspace 之外的能力:
+只提供三个只读能力,不提供任何写、删、执行、目录穿越到 `resources/` 之外的能力:
 
-- `ListMarkdown(subdir string) ([]string, error)`:列出 `workspace_dir/subdir` 下的 `.md`/`.markdown` 文件相对路径(递归,数量上限防止超大目录拖垮响应)。
+- `ListMarkdown(subdir string) ([]string, error)`:列出沙箱根目录(`resources/`)下 `subdir` 里的 `.md`/`.markdown` 文件相对路径(递归,数量上限防止超大目录拖垮响应)。
 - `ReadMarkdown(relPath string) (string, error)`:读取一个 `.md`/`.markdown` 文件全文,单文件大小上限(默认 200KB),超出截断并附加截断提示。
-- `Search(pattern, subdir string, contextChars int) (matches []SearchMatch, truncated bool, err error)`:对 `workspace_dir/subdir` 下每个 `.md`/`.markdown` 文件做类似 grep 的正则搜索(不用向量库),返回每处命中前后 `contextChars` 个字符的上下文,`contextChars` 由调用方(模型)决定;内部基于 `ListMarkdown` + `ReadMarkdown` 实现,因此天然复用同一套越界防御与单文件大小上限,不是独立的文件访问路径。细节见 §6.5。
+- `Search(pattern, subdir string, contextChars int) (matches []SearchMatch, truncated bool, err error)`:对沙箱根目录(`resources/`)下 `subdir` 里每个 `.md`/`.markdown` 文件做类似 grep 的正则搜索(不用向量库),返回每处命中前后 `contextChars` 个字符的上下文,`contextChars` 由调用方(模型)决定;内部基于 `ListMarkdown` + `ReadMarkdown` 实现,因此天然复用同一套越界防御与单文件大小上限,不是独立的文件访问路径。细节见 §6.5。
 
 ### 7.2 越界防御
 
@@ -254,8 +265,8 @@ stateDiagram-v2
 
 1. 拒绝绝对路径输入(`filepath.IsAbs`)。
 2. `filepath.Join(root, relPath)` 后 `filepath.Clean`,校验结果仍然以 `root` 为前缀(处理 `..` 穿越)。
-3. 对最终路径调用 `filepath.EvalSymlinks`(文件存在时),再次校验解析后的真实路径仍然以 `root` 的真实路径为前缀,防止 workspace 内部放一个指向外部的符号链接绕过前两步的字符串前缀校验。
-4. 只接受 `.md`/`.markdown` 后缀,其余一律拒绝(即使路径本身在 workspace 内)。
+3. 对最终路径调用 `filepath.EvalSymlinks`(文件存在时),再次校验解析后的真实路径仍然以 `root` 的真实路径为前缀,防止 `resources/` 内部放一个指向外部的符号链接绕过前两步的字符串前缀校验。
+4. 只接受 `.md`/`.markdown` 后缀,其余一律拒绝(即使路径本身在 `resources/` 内)。
 
 ## 8. DeepSeek 集成(`agent/deepseek`)
 
@@ -274,7 +285,7 @@ stateDiagram-v2
 
 ## 10. 测试策略
 
-- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/workspace 时的拒绝逻辑,纯 Go 单测。
+- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/DeepSeek key 时的拒绝逻辑、共享 `resources/` 目录的自动创建,纯 Go 单测。
 - `agent/fsread`:合法读取、`..` 穿越拒绝、绝对路径拒绝、符号链接逃逸拒绝、非 `.md` 后缀拒绝、大文件截断,以及 `Search` 的正则匹配、多字节字符上下文边界、非法正则拒绝、`context_chars` clamp、命中数截断、跨文件/子目录范围,纯 Go 单测。
 - `agent/state`:游标推进、记忆按 peer 分桶读写、超过 `memory_max_peers` 的 LRU 淘汰、超过 `memory_max_chars_per_peer` 的硬截断、原子写入(模拟中途失败不损坏已有文件),纯 Go 单测。
 - `agent/deepseek`:用 `httptest.Server` 模拟 DeepSeek 接口,校验请求体格式、鉴权头、重试退避策略、超时,纯 Go 单测。

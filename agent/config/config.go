@@ -22,6 +22,7 @@ const (
 	DefaultTemperature           = 0.7
 	DefaultRequestTimeoutSecs    = 60
 	DefaultDataDir               = "./agent_data"
+	ResourcesDirName             = "resources"
 	DefaultPollIntervalSeconds   = 2
 	MinPollIntervalSeconds       = 1 // 需求硬性下限："最小间隔一秒"
 	DefaultMaxPull               = 30
@@ -59,7 +60,6 @@ type AccountFile struct {
 	Username            string `toml:"username"`
 	Password            string `toml:"password"`
 	PasswordEnv         string `toml:"password_env"`
-	WorkspaceDir        string `toml:"workspace_dir"`
 	PollIntervalSeconds int    `toml:"poll_interval_seconds"`
 	MaxPull             int    `toml:"max_pull"`
 }
@@ -80,20 +80,21 @@ type DeepSeekSettings struct {
 	RequestTimeout time.Duration
 }
 
-// Account 是归一化后的单账号配置：密码已解析、workspace_dir 已转绝对路径、
-// 轮询参数已套上账号级覆盖 + 全局默认值。
+// Account 是归一化后的单账号配置：密码已解析、轮询参数已套上账号级覆盖 + 全局默认值。
 type Account struct {
 	Username     string
 	Password     string
-	WorkspaceDir string
 	PollInterval time.Duration
 	MaxPull      int
 }
 
 // Config 是归一化后供 runtime 直接使用的最终配置。
 type Config struct {
-	Server                string
-	DataDir               string
+	Server  string
+	DataDir string
+	// ResourcesDir 是 <DataDir>/resources：全部账号共享的只读 Markdown 知识库，
+	// 由 Resolve 自动创建，不是用户可配置项（见 agent方案.md §2.3）。
+	ResourcesDir          string
 	InsecureSkipVerify    bool
 	DeepSeek              DeepSeekSettings
 	MaxPlanSteps          int
@@ -104,7 +105,7 @@ type Config struct {
 }
 
 // Load 从 TOML 配置文件路径加载并归一化配置。baseDir 用于把配置文件里的相对
-// 路径（data_dir、workspace_dir）解析成绝对路径，传入配置文件所在目录。
+// 路径（data_dir）解析成绝对路径，传入配置文件所在目录。
 func Load(path string) (*Config, error) {
 	var f File
 	if _, err := toml.DecodeFile(path, &f); err != nil {
@@ -132,6 +133,10 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 	dataDir = resolvePath(baseDir, dataDir)
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("创建 data_dir %s 失败: %w", dataDir, err)
+	}
+	resourcesDir := filepath.Join(dataDir, ResourcesDirName)
+	if err := os.MkdirAll(resourcesDir, 0o700); err != nil {
+		return nil, fmt.Errorf("创建 resources 目录 %s 失败: %w", resourcesDir, err)
 	}
 
 	ds, err := resolveDeepSeek(f.DeepSeek)
@@ -189,18 +194,6 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 			return nil, fmt.Errorf("账号 %q 未提供 password 或 password_env", username)
 		}
 
-		if af.WorkspaceDir == "" {
-			return nil, fmt.Errorf("账号 %q 缺少 workspace_dir", username)
-		}
-		workspaceDir := resolvePath(baseDir, af.WorkspaceDir)
-		info, statErr := os.Stat(workspaceDir)
-		if statErr != nil {
-			return nil, fmt.Errorf("账号 %q 的 workspace_dir %s 不存在: %w", username, workspaceDir, statErr)
-		}
-		if !info.IsDir() {
-			return nil, fmt.Errorf("账号 %q 的 workspace_dir %s 不是目录", username, workspaceDir)
-		}
-
 		poll := af.PollIntervalSeconds
 		if poll == 0 {
 			poll = defaultPoll
@@ -220,7 +213,6 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 		accounts = append(accounts, Account{
 			Username:     username,
 			Password:     password,
-			WorkspaceDir: workspaceDir,
 			PollInterval: time.Duration(poll) * time.Second,
 			MaxPull:      maxPull,
 		})
@@ -229,6 +221,7 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 	return &Config{
 		Server:                server,
 		DataDir:               dataDir,
+		ResourcesDir:          resourcesDir,
 		InsecureSkipVerify:    f.Agent.InsecureSkipVerify,
 		DeepSeek:              ds,
 		MaxPlanSteps:          maxPlanSteps,

@@ -18,7 +18,6 @@ import (
 func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 	uidAlice, uidBot, userAlice, userBot, passAlice, passBot := setupFriendPair(t)
 
-	workspaceDir := t.TempDir()
 	dataDir := t.TempDir()
 	deepseekURL := startFakeDeepSeek(t)
 
@@ -26,7 +25,6 @@ func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 		"-server", wsURL,
 		"-username", userBot,
 		"-password", passBot,
-		"-workspace", workspaceDir,
 		"-data-dir", dataDir,
 		"-deepseek-base-url", deepseekURL,
 		"-deepseek-api-key", "sk-e2e-test",
@@ -46,7 +44,8 @@ func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 		t.Fatal("超时未收到 agent 的自动回复")
 	}
 
-	statePath := filepath.Join(dataDir, strconv.FormatInt(uidBot, 10), "agent_state.json")
+	// 账号目录以用户名命名（与 cli/account 共用的布局，见 agent方案.md 第 3 节），不是 uid。
+	statePath := filepath.Join(dataDir, userBot, "agent_state.json")
 	st, ok := waitForAgentState(t, statePath, 10*time.Second)
 	if !ok {
 		t.Fatalf("超时未看到 agent_state.json 落盘: %s", statePath)
@@ -64,6 +63,15 @@ func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 	}
 	if peer.Turns != 1 {
 		t.Errorf("peer turns = %d, want 1", peer.Turns)
+	}
+
+	// 全部账号共享的只读知识库目录应该由 agent 启动时自动创建，不需要用户提前准备。
+	resourcesInfo, err := os.Stat(filepath.Join(dataDir, "resources"))
+	if err != nil {
+		t.Fatalf("共享 resources 目录未自动创建: %v", err)
+	}
+	if !resourcesInfo.IsDir() {
+		t.Errorf("resources 不是目录")
 	}
 }
 

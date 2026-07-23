@@ -59,16 +59,13 @@ func bootstrapSession(dataDir, username, password, server string, insecure bool)
 	return sess, c, nil
 }
 
-// findLocalSession 在 dataDir 下按 username 查找本地已保存的登录态，不发起网络请求。
+// findLocalSession 在 dataDir 下查找 username 对应的本地已保存登录态，不发起
+// 网络请求。账号目录本身就以 username 命名（见 cli/account 包注释），因此直接
+// 尝试 Load 即可；未 login 过时 Load 报错，视为"未找到"而不是失败。
 func findLocalSession(dataDir, username string) (account.Session, bool, error) {
-	sessions, err := account.List(dataDir)
+	sess, err := account.Load(dataDir, username)
 	if err != nil {
-		return account.Session{}, false, err
+		return account.Session{}, false, nil
 	}
-	for _, s := range sessions {
-		if s.Username == username {
-			return s, true, nil
-		}
-	}
-	return account.Session{}, false, nil
+	return sess, true, nil
 }

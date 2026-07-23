@@ -1,11 +1,12 @@
 // Command yimsg-agent 是多账号自动回复常驻进程：登录多个 yimsg 账号，循环拉取
 // 每个账号收到的消息（最小间隔 1 秒），调用 DeepSeek 官方 API 生成回复——可以
 // 直接回答，也可以先规划再分步执行，每步执行完发一条纯文本进度消息，执行过程
-// 中可以只读访问该账号专属文件夹下的 Markdown 文件。方案见 agent/docs/agent方案.md。
+// 中可以只读访问全部账号共享的 <data_dir>/resources 知识库（不能越出该目录）。
+// 方案见 agent/docs/agent方案.md。
 //
-// 支持配置文件（-config，推荐用于多账号）或命令行（单账号 -username/-password/
-// -workspace，或重复 -account username:password:workspace_dir 传入多账号）两种
-// 互斥的输入方式，见 agent/README.md。
+// 支持配置文件（-config，推荐用于多账号）或命令行（单账号 -username/-password，
+// 或重复 -account username:password 传入多账号）两种互斥的输入方式，见
+// agent/README.md。
 package main
 
 import (
@@ -33,19 +34,18 @@ func run() error {
 	fs := flag.NewFlagSet("yimsg-agent", flag.ExitOnError)
 	configPath := fs.String("config", "", "配置文件路径（TOML）；与下面的命令行账号参数互斥")
 	server := fs.String("server", "", "yimsg WebSocket 地址，例如 ws://127.0.0.1:8080/ws")
-	dataDir := fs.String("data-dir", "", "agent 本地状态根目录")
+	dataDir := fs.String("data-dir", "", "agent 本地状态根目录（含全部账号共享的 resources/ 知识库）")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验（自签名证书部署使用）")
 	pollInterval := fs.Int("poll-interval", 0, "全局默认轮询间隔（秒），最终会被 clamp 到 >= 1")
 	maxPull := fs.Int("max-pull", 0, "全局默认单轮最大拉取条数，默认 30")
 	username := fs.String("username", "", "单账号模式：用户名")
 	password := fs.String("password", "", "单账号模式：密码；留空则从 stdin 读取一行")
-	workspace := fs.String("workspace", "", "单账号模式：workspace_dir")
 	deepseekBaseURL := fs.String("deepseek-base-url", "", "DeepSeek base_url，默认官方地址")
 	deepseekModel := fs.String("deepseek-model", "", "DeepSeek model，默认 deepseek-chat")
 	deepseekAPIKey := fs.String("deepseek-api-key", "", "DeepSeek api key（会出现在进程参数里，不推荐）")
 	deepseekAPIKeyEnv := fs.String("deepseek-api-key-env", "", "读取 DeepSeek api key 的环境变量名，默认 DEEPSEEK_API_KEY")
 	var accountFlags multiFlag
-	fs.Var(&accountFlags, "account", "多账号命令行模式，重复传入 username:password:workspace_dir")
+	fs.Var(&accountFlags, "account", "多账号命令行模式，重复传入 username:password")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func run() error {
 	cfg, err := loadConfig(loadConfigInput{
 		configPath: *configPath, server: *server, dataDir: *dataDir, insecure: *insecure,
 		pollInterval: *pollInterval, maxPull: *maxPull,
-		username: *username, password: *password, workspace: *workspace,
+		username: *username, password: *password,
 		deepseekBaseURL: *deepseekBaseURL, deepseekModel: *deepseekModel,
 		deepseekAPIKey: *deepseekAPIKey, deepseekAPIKeyEnv: *deepseekAPIKeyEnv,
 		accountFlags: accountFlags,
@@ -65,7 +65,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	runtime.New(cfg).Run(ctx)
+	r, err := runtime.New(cfg)
+	if err != nil {
+		return err
+	}
+	r.Run(ctx)
 	return nil
 }
 
@@ -73,7 +77,7 @@ type loadConfigInput struct {
 	configPath, server, dataDir       string
 	insecure                          bool
 	pollInterval, maxPull             int
-	username, password, workspace     string
+	username, password                string
 	deepseekBaseURL, deepseekModel    string
 	deepseekAPIKey, deepseekAPIKeyEnv string
 	accountFlags                      multiFlag
@@ -100,9 +104,6 @@ func loadConfig(in loadConfigInput) (*config.Config, error) {
 		DeepSeekAPIKey: in.deepseekAPIKey, DeepSeekAPIKeyEnv: in.deepseekAPIKeyEnv,
 	}
 	if in.username != "" {
-		if in.workspace == "" {
-			return nil, fmt.Errorf("单账号模式需要 -workspace")
-		}
 		password := in.password
 		if password == "" {
 			p, err := readPasswordFromStdin()
@@ -111,7 +112,7 @@ func loadConfig(in loadConfigInput) (*config.Config, error) {
 			}
 			password = p
 		}
-		opts.Accounts = append(opts.Accounts, config.AccountFile{Username: in.username, Password: password, WorkspaceDir: in.workspace})
+		opts.Accounts = append(opts.Accounts, config.AccountFile{Username: in.username, Password: password})
 	}
 	for _, spec := range in.accountFlags {
 		af, err := config.ParseAccountFlag(spec)

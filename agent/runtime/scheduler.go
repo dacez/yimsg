@@ -5,12 +5,14 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"yimsg/agent/config"
 	"yimsg/agent/deepseek"
+	"yimsg/agent/fsread"
 	"yimsg/agent/pipeline"
 )
 
@@ -19,18 +21,24 @@ const (
 	maxBackoff     = 16 * time.Second
 )
 
-// Runner 持有所有账号共用的 DeepSeek 客户端与全局配置，Run 启动全部账号的
-// 处理循环并阻塞直到 ctx 被取消。
+// Runner 持有所有账号共用的 DeepSeek 客户端、共享只读知识库沙箱与全局配置，
+// Run 启动全部账号的处理循环并阻塞直到 ctx 被取消。
 type Runner struct {
-	cfg *config.Config
-	ai  *deepseek.Client
+	cfg     *config.Config
+	ai      *deepseek.Client
+	sandbox *fsread.Sandbox
 }
 
-// New 构造一个 Runner。
-func New(cfg *config.Config) *Runner {
+// New 构造一个 Runner：DeepSeek 客户端与 <data_dir>/resources 只读知识库沙箱
+// 都是全部账号共用的单例（见 agent方案.md §2.3），这里只构建一次。
+func New(cfg *config.Config) (*Runner, error) {
 	ds := cfg.DeepSeek
 	ai := deepseek.New(ds.BaseURL, ds.APIKey, ds.Model, ds.Temperature, ds.RequestTimeout)
-	return &Runner{cfg: cfg, ai: ai}
+	sandbox, err := fsread.NewSandbox(cfg.ResourcesDir)
+	if err != nil {
+		return nil, fmt.Errorf("构建共享 resources 沙箱失败: %w", err)
+	}
+	return &Runner{cfg: cfg, ai: ai, sandbox: sandbox}, nil
 }
 
 // Run 为每个账号启动一个独立 goroutine，阻塞直到 ctx 被取消且所有账号的当前
@@ -94,7 +102,7 @@ func (r *Runner) runAccount(ctx context.Context, acc config.Account) {
 func (r *Runner) newRunnerWithRetry(ctx context.Context, acc config.Account) *pipeline.AccountRunner {
 	backoff := initialBackoff
 	for {
-		runner, err := pipeline.New(r.cfg, acc, r.ai)
+		runner, err := pipeline.New(r.cfg, acc, r.ai, r.sandbox)
 		if err == nil {
 			return runner
 		}

@@ -43,7 +43,7 @@ func connectCurrent(dir string, insecure bool) (*client.Client, account.Session,
 // openCurrentStore 打开当前账号的本地同步库，并顺手把自己的 uid<->username
 // 缓存一次（这个映射反正已知，不需要额外网络调用）。
 func openCurrentStore(dir string, sess account.Session) (*store.Store, error) {
-	st, err := store.Open(account.DataPath(dir, sess.UID))
+	st, err := store.Open(account.DataPath(dir, sess.Username))
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func cmdLogin(args []string) error {
 		return err
 	}
 
-	emitOK(map[string]any{"uid": sess.UID, "username": sess.Username, "dir": account.Dir(dir, sess.UID)})
+	emitOK(map[string]any{"uid": sess.UID, "username": sess.Username, "dir": account.Dir(dir, sess.Username)})
 	return nil
 }
 

@@ -1,6 +1,6 @@
 # yimsg-agent
 
-多账号自动回复常驻进程：登录多个 yimsg 账号，循环拉取每个账号收到的消息（最小间隔 1 秒，每轮最多拉取 `max_pull` 条，默认 30），调用 DeepSeek 官方 API 生成回复——可以直接回答，也可以先规划再分步执行，每步执行完发一条纯文本进度消息，执行过程中可以只读访问该账号专属文件夹下的 Markdown 文件（不能越出该文件夹），文件较多或较长时可以先用类似 grep 的正则搜索定位关键字（纯文本匹配，不用向量数据库），命中前后各返回多少字符的上下文由模型自己决定。每个账号有独立的处理进度游标和独立的记忆，处理完一批消息后回写。设计方案见 [`docs/agent方案.md`](docs/agent方案.md)。
+多账号自动回复常驻进程：登录多个 yimsg 账号，循环拉取每个账号收到的消息（最小间隔 1 秒，每轮最多拉取 `max_pull` 条，默认 30），调用 DeepSeek 官方 API 生成回复——可以直接回答，也可以先规划再分步执行，每步执行完发一条纯文本进度消息，执行过程中可以只读访问全部账号共享的知识库目录（`<data_dir>/resources/`，不能越出该目录），文件较多或较长时可以先用类似 grep 的正则搜索定位关键字（纯文本匹配，不用向量数据库），命中前后各返回多少字符的上下文由模型自己决定。每个账号有独立的处理进度游标和独立的记忆，处理完一批消息后回写；账号目录布局与 `cli/`（`yimsg-cli`）复用同一套 `cli/account`，按用户名分子目录。设计方案见 [`docs/agent方案.md`](docs/agent方案.md)。
 
 ## 构建
 
@@ -24,21 +24,28 @@ poll_interval_seconds = 2
 max_pull = 30
 
 [[accounts]]
-username = "bot1"
-password_env = "YIMSG_AGENT_BOT1_PASSWORD"
-workspace_dir = "./workspaces/bot1"
+username = "user1"
+password_env = "YIMSG_AGENT_USER1_PASSWORD"
 
 [[accounts]]
-username = "bot2"
-password_env = "YIMSG_AGENT_BOT2_PASSWORD"
-workspace_dir = "./workspaces/bot2"
+username = "user2"
+password_env = "YIMSG_AGENT_USER2_PASSWORD"
 ```
 
 ```bash
 export DEEPSEEK_API_KEY=sk-xxx
-export YIMSG_AGENT_BOT1_PASSWORD='******'
-export YIMSG_AGENT_BOT2_PASSWORD='******'
+export YIMSG_AGENT_USER1_PASSWORD='******'
+export YIMSG_AGENT_USER2_PASSWORD='******'
 ./yimsg-agent -config agent.toml
+```
+
+多个账号共用同一个 `data_dir`，目录按用户名分子目录，另有一个全部账号共享的只读知识库目录，例如：
+
+```text
+agent_data/
+  user1/       # user1 的私有状态：session、本地同步库、处理进度游标+记忆
+  user2/       # user2 的私有状态，与 user1 完全隔离
+  resources/   # 全部账号共享的只读 Markdown 知识库，自动创建，不需要提前准备
 ```
 
 ## 命令行方式（单账号快速启动 / 调试）
@@ -46,17 +53,16 @@ export YIMSG_AGENT_BOT2_PASSWORD='******'
 ```bash
 ./yimsg-agent \
   -server ws://127.0.0.1:8080/ws \
-  -username bot1 --password "$YIMSG_AGENT_BOT1_PASSWORD" \
-  -workspace ./workspaces/bot1 \
+  -username user1 --password "$YIMSG_AGENT_USER1_PASSWORD" \
   -deepseek-api-key-env DEEPSEEK_API_KEY \
   -data-dir ./agent_data
 ```
 
-也可以用重复的 `-account "username:password:workspace_dir"` 一次传入多个账号；密码会出现在进程参数列表里，仅建议本地调试使用，生产场景请用配置文件 + `password_env`。
+也可以用重复的 `-account "username:password"` 一次传入多个账号；密码会出现在进程参数列表里，仅建议本地调试使用，生产场景请用配置文件 + `password_env`。
 
 ## 完整配置项、目录布局、计划/执行引擎、记忆结构
 
-见 [`docs/agent方案.md`](docs/agent方案.md)，尤其是第 6 节"计划与多步执行引擎"和第 11 节"与业内通用执行引擎的差距"。
+见 [`docs/agent方案.md`](docs/agent方案.md)，尤其是第 2、3 节的目录布局、第 6 节"计划与多步执行引擎"和第 11 节"与业内通用执行引擎的差距"。
 
 ## 测试
 

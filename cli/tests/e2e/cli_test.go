@@ -25,8 +25,8 @@ func loginCLI(t *testing.T, dir, username, password string, wantUID int64) {
 	if got := jsonNumber(t, r.JSON["uid"]); got != wantUID {
 		t.Fatalf("login uid = %d, want %d", got, wantUID)
 	}
-	// session.json 必须落在 <dir>/<uid>/ 下（二级目录固定为 uid）。
-	if _, err := os.Stat(filepath.Join(dir, fmtUID(wantUID), "session.json")); err != nil {
+	// session.json 必须落在 <dir>/<username>/ 下（二级目录固定为用户名）。
+	if _, err := os.Stat(filepath.Join(dir, username, "session.json")); err != nil {
 		t.Fatalf("session.json not found under account dir: %v", err)
 	}
 }
@@ -231,7 +231,7 @@ func TestDefaultDirUnderCWD(t *testing.T) {
 		t.Fatalf("login uid = %d, want %d", got, uidA)
 	}
 
-	sessionPath := filepath.Join(workDir, "cli_data", fmtUID(uidA), "session.json")
+	sessionPath := filepath.Join(workDir, "cli_data", userA, "session.json")
 	if _, err := os.Stat(sessionPath); err != nil {
 		t.Fatalf("expected session.json under ./cli_data (relative to cwd): %v", err)
 	}

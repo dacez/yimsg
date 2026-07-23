@@ -43,16 +43,17 @@ type AccountRunner struct {
 	engine *engine.Engine
 }
 
-// New 建立账号的首次连接（复用本地已保存 token 或全新登录）、按解析出的 uid 打开
-// 本地同步库与 agent 状态文件、构建文件沙箱与计划执行引擎。ai 是共享的 DeepSeek
-// 客户端（无状态，所有账号可以共用同一个）。
-func New(cfg *config.Config, acc config.Account, ai *deepseek.Client) (*AccountRunner, error) {
+// New 建立账号的首次连接（复用本地已保存 token 或全新登录）、按用户名打开本地
+// 同步库与 agent 状态文件。ai 是共享的 DeepSeek 客户端，sandbox 是全部账号共享
+// 的只读知识库沙箱（<data_dir>/resources，由 runtime 统一构建一次后传入，见
+// agent方案.md §2.3），两者都无状态，所有账号可以共用同一份。
+func New(cfg *config.Config, acc config.Account, ai *deepseek.Client, sandbox *fsread.Sandbox) (*AccountRunner, error) {
 	sess, conn, err := bootstrapSession(cfg.DataDir, acc.Username, acc.Password, cfg.Server, cfg.InsecureSkipVerify)
 	if err != nil {
 		return nil, fmt.Errorf("账号 %q 建立连接失败: %w", acc.Username, err)
 	}
 
-	st, err := clistore.Open(account.DataPath(cfg.DataDir, sess.UID))
+	st, err := clistore.Open(account.DataPath(cfg.DataDir, sess.Username))
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -63,15 +64,8 @@ func New(cfg *config.Config, acc config.Account, ai *deepseek.Client) (*AccountR
 		return nil, err
 	}
 
-	statePath := filepath.Join(account.Dir(cfg.DataDir, sess.UID), "agent_state.json")
+	statePath := filepath.Join(account.Dir(cfg.DataDir, sess.Username), "agent_state.json")
 	stateStore, err := state.Open(statePath, cfg.MemoryMaxCharsPerPeer, cfg.MemoryMaxPeers)
-	if err != nil {
-		conn.Close()
-		st.Close()
-		return nil, err
-	}
-
-	sandbox, err := fsread.NewSandbox(acc.WorkspaceDir)
 	if err != nil {
 		conn.Close()
 		st.Close()
