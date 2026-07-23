@@ -1,7 +1,15 @@
-// seed-resources 清空并重建 yimsg-agent 的知识库目录：全部客服共享的 <data_dir>/resources/
-// 与各客服账号私有的 <data_dir>/<username>/resources/。内容随代码版本管理、内置在本工具里，
-// 不再依赖人工 SSH 到服务器手工维护 .md 文件；跟 server/tools/cmd/seed-demo 每次部署清空并
-// 重建 /opt/yimsg/data 是同一套思路。目录结构见 agent/docs/agent方案.md §2.3。
+// seed-resources 清空并重建整个 yimsg-agent 数据根目录（data_dir），然后写入内置的知识库
+// 内容：全部客服共享的 <data_dir>/resources/ 与各客服账号私有的 <data_dir>/<username>/resources/。
+// 知识库内容随代码版本管理、内置在本工具里，不再依赖人工 SSH 到服务器手工维护 .md 文件；跟
+// server/tools/cmd/seed-demo 每次部署清空并重建 /opt/yimsg/data 是同一套思路。目录结构见
+// agent/docs/agent方案.md §2.3。
+//
+// data_dir 下除知识库外还有每个账号的 session.json/data.db/agent_state.json（本地 session、
+// 消息同步镜像、uid<->username 缓存）。这些状态必须和知识库一起整体清空：yimsg 侧的
+// seed-demo 每次部署都会重新注册 demo_kf_1~3，分配全新的 uid，如果只清空知识库、保留旧的
+// data.db，cli/store.CacheUser 会因为同一个 username 对应了新旧两个不同的 uid 而触发
+// users 表的 UNIQUE(username) 冲突，导致 yimsg-agent 初始化死循环重试（见
+// docs/deployment/部署方案.md §13.7 的教训记录）。
 //
 // 用法:
 //
@@ -33,6 +41,15 @@ const (
 func main() {
 	dataDir := flag.String("data-dir", "./agent_data", "yimsg-agent 数据根目录（对应 agent.toml 的 agent.data_dir）")
 	flag.Parse()
+
+	// 整体清空 data_dir：连同每个账号的 session.json/data.db/agent_state.json 一起重置，
+	// 不能只清知识库子目录，见上面包注释里 UNIQUE(username) 冲突的教训。
+	if err := os.RemoveAll(*dataDir); err != nil {
+		log.Fatalf("清空 data_dir %s 失败: %v", *dataDir, err)
+	}
+	if err := os.MkdirAll(*dataDir, 0o700); err != nil {
+		log.Fatalf("创建 data_dir %s 失败: %v", *dataDir, err)
+	}
 
 	entries, err := fs.ReadDir(contentFS, contentRoot)
 	if err != nil {
