@@ -45,7 +45,7 @@
 - `packages/uikit/src/`：主应用 / 嵌入式 UIKit 的视图、组件和挂载入口。
 - `server/tests/e2e/`：服务端 WebSocket/HTTP 端到端测试；`packages/sdk/tests/`、`packages/uikit/tests/`、`apps/web/tests/` 分别承载 SDK、UIKit 与官方 Web App 测试。
 - `tools/scripts/`：仓库级 shell 脚本真实实现；`tools/*.sh` 仅作为兼容入口。
-- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`server/tools/cmd/seed-data/`、`server/tools/cmd/test-seed/`、`server/tools/cmd/seed-demo/`：Go 工具命令目录。
+- `tools/cmd/protocolgen/`、`tools/cmd/check-docs-consistency/`、`server/tools/cmd/seed-data/`、`server/tools/cmd/test-seed/`、`server/tools/cmd/seed-demo/`、`agent/tools/cmd/seed-resources/`：Go 工具命令目录。
 - `server/tools/internal/seedkit/`：seed-data / test-seed / seed-demo 共用的 service 层调用样板（BaseInfo 构造、响应判定、常见 ConversationTarget/MessageBody 构造）。
 - `tools/protocolgen/`：protocolgen 的 proto 解析、manifest 与 Go / TS / Markdown 生成库；协议机械映射生成物落在 `server/internal/ws/*_gen.go` 与 `packages/sdk/src/generated/{actions,notifications}.gen.ts`。
 - `docs/`：跨组件长期设计文档；生成类协议速查位于 `protocol/docs/`，过期文档放 `docs/archive/`。

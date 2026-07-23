@@ -65,6 +65,9 @@ jobs:
       - name: 交叉编译 yimsg-agent 二进制（Linux/amd64，客服 demo_kf_1~3 自动回复）
         run: GOOS=linux GOARCH=amd64 go build -o agent-linux-amd64 ./agent/cmd/yimsg-agent
 
+      - name: 交叉编译 seed-resources 二进制（Linux/amd64，每次部署都从当前代码全新构建，重建 yimsg-agent 知识库）
+        run: GOOS=linux GOARCH=amd64 go build -o seed-resources-linux-amd64 ./agent/tools/cmd/seed-resources
+
       - name: 配置部署密钥
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -113,6 +116,7 @@ jobs:
           timed_scp "server binary" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new.${RUN_TAG}"
           timed_scp "seed-demo binary" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
           timed_scp "yimsg-agent binary" agent-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/agent.new.${RUN_TAG}"
+          timed_scp "seed-resources binary" seed-resources-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-resources.new.${RUN_TAG}"
           timed_scp "web assets" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web.new.${RUN_TAG}/"
           timed_scp "website assets" -r website/. "${SSH_USER}@${HOST}:/opt/yimsg/website.new.${RUN_TAG}/"
 
@@ -172,11 +176,19 @@ jobs:
               systemctl stop yimsg-agent 2>/dev/null || true
               chmod +x /opt/yimsg/agent.new.${RUN_TAG}
               mv /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/agent
-              chown yimsg:yimsg /opt/yimsg/agent
+
+              chmod +x /opt/yimsg/seed-resources.new.${RUN_TAG}
+              mv /opt/yimsg/seed-resources.new.${RUN_TAG} /opt/yimsg/seed-resources
+              # 项目处于演示/研发阶段：每次部署都清空 /opt/yimsg/agent_data（session、同步库、
+              # 游标+记忆、知识库）并用 seed-resources 重新写入公共 + 各客服私有知识库，跟上面
+              # yimsg 侧清空 /opt/yimsg/data 重跑 seed-demo 是同一套思路，不做旧状态兼容。
+              /opt/yimsg/seed-resources -data-dir /opt/yimsg/agent_data
+
+              chown -R yimsg:yimsg /opt/yimsg/agent /opt/yimsg/seed-resources /opt/yimsg/agent_data
               systemctl start yimsg-agent
             else
               echo 'yimsg-agent.service 不存在，跳过启动（需先手动运行 tools/scripts/init_server_env.sh 完成标准化初始化）'
-              rm -f /opt/yimsg/agent.new.${RUN_TAG}
+              rm -f /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/seed-resources.new.${RUN_TAG}
             fi
           "
 

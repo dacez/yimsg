@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>yimsg 客服组件 demo</title>
+  <title>yimsg 智能客服组件 demo</title>
   <link rel="stylesheet" href="common.css">
   <style>
     .tip { margin-bottom: 8px; }
@@ -18,8 +18,8 @@
   </style>
 </head>
 <body>
-  <h1 data-i18n="h1">yimsg · 客服组件 demo</h1>
-  <p class="tip" data-i18n-html="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。</p>
+  <h1 data-i18n="h1">yimsg · 智能客服组件 demo</h1>
+  <p class="tip" data-i18n-html="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，下方每位客服由 yimsg-agent 依据其私有知识库自动回复，选择任意一位即可发起临时会话。</p>
   <div class="cred" id="cred" data-i18n="registering">正在注册访客账号…</div>
   <div class="agents" id="agents"></div>
   <p class="quick-questions-label" data-i18n="quickQuestionsLabel">示例问题（点击直接发送给对应客服）：</p>
@@ -32,17 +32,17 @@
 
     const TRANSLATIONS = {
       zh: {
-        pageTitle: 'yimsg 客服组件 demo',
-        h1: 'yimsg · 客服组件 demo',
-        tip: "页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。",
+        pageTitle: 'yimsg 智能客服组件 demo',
+        h1: 'yimsg · 智能客服组件 demo',
+        tip: "页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，下方每位客服由 yimsg-agent 依据其私有知识库自动回复，选择任意一位即可发起临时会话。",
         registering: '正在注册访客账号…',
         guestNickname: '访客',
         cred: (username, password) => `访客账号：${username}　密码：${password}`,
         initFailed: (msg) => `初始化失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
         agents: [
-          { username: 'demo_kf_1', label: '客服-小美' },
-          { username: 'demo_kf_2', label: '客服-小林' },
-          { username: 'demo_kf_3', label: '客服-阿强' },
+          { username: 'demo_kf_1', label: '账号客服-小美' },
+          { username: 'demo_kf_2', label: '接入客服-小林' },
+          { username: 'demo_kf_3', label: '值班客服-阿强' },
         ],
         quickQuestionsLabel: '示例问题（点击直接发送给对应客服）：',
         quickQuestions: [
@@ -59,17 +59,17 @@
         ],
       },
       en: {
-        pageTitle: 'yimsg customer service widget demo',
-        h1: 'yimsg · Customer service widget demo',
-        tip: "This page auto-registers and signs in a random guest account, showing only the conversation list + chat view (<code>viewMode: 'chat-only'</code>). Direct chat doesn't require a friend relationship — pick any agent below to start a temporary conversation.",
+        pageTitle: 'yimsg intelligent customer service widget demo',
+        h1: 'yimsg · Intelligent customer service widget demo',
+        tip: "This page auto-registers and signs in a random guest account, showing only the conversation list + chat view (<code>viewMode: 'chat-only'</code>). Direct chat doesn't require a friend relationship — each agent below is auto-replied by yimsg-agent using its own private knowledge base, pick any one to start a temporary conversation.",
         registering: 'Registering guest account…',
         guestNickname: 'Guest',
         cred: (username, password) => `Guest account: ${username}  Password: ${password}`,
         initFailed: (msg) => `Init failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
         agents: [
-          { username: 'demo_kf_1', label: 'Agent Mei' },
-          { username: 'demo_kf_2', label: 'Agent Lin' },
-          { username: 'demo_kf_3', label: 'Agent Qiang' },
+          { username: 'demo_kf_1', label: 'Agent Mei · Accounts' },
+          { username: 'demo_kf_2', label: 'Agent Lin · Integrations' },
+          { username: 'demo_kf_3', label: 'Agent Qiang · On-call' },
         ],
         quickQuestionsLabel: 'Sample questions (click to send to the matching agent):',
         quickQuestions: [

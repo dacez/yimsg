@@ -49,7 +49,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 ## Use Cases
 
-- **Customer service widget**: embed the Yimsg UIKit into your website or admin panel with one line of code and have a complete live-chat support entry point within minutes
+- **Intelligent customer service widget**: embed the Yimsg UIKit into your website or admin panel with one line of code and have a complete live-chat support entry point within minutes; each agent identity can carry its own private knowledge base, auto-replied by yimsg-agent
 - **Standalone web app**: use it directly as a complete, standalone web IM app — log in to send messages and manage contacts and groups
 - **Local persistence**: the client supports local persistent caching so refreshing the page or reconnecting after a dropped connection never loses your conversations; an instant mode (pure in-memory) is also available that leaves no data on the local machine
 

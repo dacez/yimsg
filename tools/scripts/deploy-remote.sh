@@ -11,9 +11,10 @@ Examples:
 
 本机快速部署：交叉编译 + 本机上传，跳过 GitHub Actions 的排队等待，适合上传带宽
 较好、想更快看到效果的场景（如广州服务器）。跟 .github/workflows/deploy.yml 的
-后半段（远程原子替换、清空 data 并用 seed-demo 重建、重启 systemd）完全一致，
-两边通过服务器上的 /opt/yimsg/.deploy.lock 文件锁互斥：可以和 GitHub Actions 部署
-同时对同一台机器触发，谁先抢到锁谁先跑，后完成的一方最终生效，不会互相踩踏。
+后半段（远程原子替换、清空 yimsg 的 data 并用 seed-demo 重建、清空 yimsg-agent 的
+agent_data 并用 seed-resources 重建知识库、重启 systemd）完全一致，两边通过服务器上的
+/opt/yimsg/.deploy.lock 文件锁互斥：可以和 GitHub Actions 部署同时对同一台机器触发，
+谁先抢到锁谁先跑，后完成的一方最终生效，不会互相踩踏。
 
 目标机器必须已按 tools/scripts/init_server_env.sh 完成标准化环境初始化，且本机
 ~/.ssh/config 里已配置好对应别名（host/user/port/私钥）。
@@ -52,11 +53,19 @@ GOOS=linux GOARCH=amd64 go build -o server-linux-amd64 ./server/cmd/yimsg-server
 echo "==== [${alias_name}] 交叉编译 seed-demo 二进制（Linux/amd64）===="
 GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./server/tools/cmd/seed-demo
 
+echo "==== [${alias_name}] 交叉编译 yimsg-agent 二进制（Linux/amd64，客服 demo_kf_1~3 自动回复）===="
+GOOS=linux GOARCH=amd64 go build -o agent-linux-amd64 ./agent/cmd/yimsg-agent
+
+echo "==== [${alias_name}] 交叉编译 seed-resources 二进制（Linux/amd64，重建 yimsg-agent 知识库）===="
+GOOS=linux GOARCH=amd64 go build -o seed-resources-linux-amd64 ./agent/tools/cmd/seed-resources
+
 echo "==== [${alias_name}] 上传二进制与前端 / 官网产物 ===="
 # scp -r 上传目录内容时目标目录必须已存在，先在远程建好本次运行专属的临时目录。
 ssh "${alias_name}" "mkdir -p /opt/yimsg/web.new.${RUN_TAG} /opt/yimsg/website.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp server-linux-amd64 "${alias_name}:/opt/yimsg/server.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp seed-demo-linux-amd64 "${alias_name}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp agent-linux-amd64 "${alias_name}:/opt/yimsg/agent.new.${RUN_TAG}"
+timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp seed-resources-linux-amd64 "${alias_name}:/opt/yimsg/seed-resources.new.${RUN_TAG}"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r web/. "${alias_name}:/opt/yimsg/web.new.${RUN_TAG}/"
 timeout --foreground "${SCP_TIMEOUT_SECONDS}s" scp -r website/. "${alias_name}:/opt/yimsg/website.new.${RUN_TAG}/"
 
@@ -90,6 +99,29 @@ timeout --foreground 1800s ssh "${alias_name}" "
   chown -R yimsg:yimsg /opt/yimsg/data
 
   systemctl start yimsg
+
+  # yimsg-agent（客服 demo_kf_1~3 自动回复）依赖 tools/scripts/init_server_env.sh 提前
+  # 创建好 systemd unit；机器还没跑过这个初始化脚本时这里只跳过，不影响 yimsg 本身的
+  # 部署结果，跟 .github/workflows/deploy.yml 的判断逻辑一致。
+  if [[ -f /etc/systemd/system/yimsg-agent.service ]]; then
+    systemctl stop yimsg-agent 2>/dev/null || true
+
+    chmod +x /opt/yimsg/agent.new.${RUN_TAG}
+    mv /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/agent
+
+    chmod +x /opt/yimsg/seed-resources.new.${RUN_TAG}
+    mv /opt/yimsg/seed-resources.new.${RUN_TAG} /opt/yimsg/seed-resources
+    # 每次部署都清空 /opt/yimsg/agent_data（session、同步库、游标+记忆、知识库）并用
+    # seed-resources 重新写入公共 + 各客服私有知识库，跟上面 yimsg 侧清空 /opt/yimsg/data
+    # 重跑 seed-demo 是同一套思路，不做旧状态兼容。
+    /opt/yimsg/seed-resources -data-dir /opt/yimsg/agent_data
+
+    chown -R yimsg:yimsg /opt/yimsg/agent /opt/yimsg/seed-resources /opt/yimsg/agent_data
+    systemctl start yimsg-agent
+  else
+    echo 'yimsg-agent.service 不存在，跳过启动（需先手动运行 tools/scripts/init_server_env.sh 完成标准化初始化）'
+    rm -f /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/seed-resources.new.${RUN_TAG}
+  fi
 "
 
 echo "==== [${alias_name}] 验证部署结果 ===="
