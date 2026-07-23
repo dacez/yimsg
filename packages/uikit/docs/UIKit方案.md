@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`。
-> 最后复核：2026-07-19。
+> 最后复核：2026-07-23。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -113,7 +113,7 @@ npm run build -w @yimsg/uikit       # 仅构建 UIKit ESM 包
 
 UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 warning 会被视为失败，避免重新引入不可运行产物。
 
-示例页面位于 `packages/uikit/examples/embed.html` 与 `packages/uikit/examples/embed-multi.html`；官网营销向体验 demo（含六宫格客服工作台）位于 `packages/uikit/examples/` 下的其余页面。
+示例页面位于 `packages/uikit/examples/embed.html` 与 `packages/uikit/examples/embed-multi.html`；官网营销向体验 demo（含人工客服工作台）位于 `packages/uikit/examples/` 下的其余页面。
 
 demo 页面自身的标题 / 说明文案通过共享脚本 `packages/uikit/examples/demo-i18n.js` 跟随入口语言：优先读取官网 `website/index.html` 语言切换器写入的 `localStorage['yimsg-lang']`（官网首次加载即会写入当前语言，不需要手动切换过），未设置时按 `navigator.language` 回退判定，使从中文/英文官网点进 demo 的访客看到匹配语言的页面；`embed-multi.html` 用于验证多实例语言互相隔离，其内部每个 UIKit 实例的 `locale` 固定为 `zh-CN`，不随页面语言变化，仅页面自身文案跟随语言。
 

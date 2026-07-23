@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>yimsg 六宫格客服工作台 demo</title>
+  <title>yimsg 人工客服工作台 demo</title>
   <link rel="stylesheet" href="common.css">
   <style>
     body { padding: 20px 16px 40px; }
@@ -50,7 +50,7 @@
   </style>
 </head>
 <body>
-  <h1 data-i18n="h1">yimsg · 六宫格客服工作台 demo</h1>
+  <h1 data-i18n="h1">yimsg · 人工客服工作台 demo</h1>
   <p class="tip" data-i18n="tip">模拟一位客服值班人员身兼 6 个客服账号、同屏坐镇 6 路会话的真实场景——小团队多店铺、多渠道客服共用同一坐席时，一个人也能同时盯住全部客户消息，逐格直接回复即可，无需在多个账号间来回切换登录。</p>
   <div class="cred" data-i18n="cred">统一密码：Demo@123456（账号 demo_kf_1 ~ demo_kf_6，每格已预置一条待处理的客户留言）</div>
   <div class="grid" id="grid"></div>
@@ -63,8 +63,8 @@
 
     const TRANSLATIONS = {
       zh: {
-        pageTitle: 'yimsg 六宫格客服工作台 demo',
-        h1: 'yimsg · 六宫格客服工作台 demo',
+        pageTitle: 'yimsg 人工客服工作台 demo',
+        h1: 'yimsg · 人工客服工作台 demo',
         tip: '模拟一位客服值班人员身兼 6 个客服账号、同屏坐镇 6 路会话的真实场景——小团队多店铺、多渠道客服共用同一坐席时，一个人也能同时盯住全部客户消息，逐格直接回复即可，无需在多个账号间来回切换登录。',
         cred: '统一密码：Demo@123456（账号 demo_kf_1 ~ demo_kf_6，每格已预置一条待处理的客户留言）',
         loginFailed: (msg) => `登录失败：${msg}。请先运行 go run ./tools/cmd/seed-demo 构造演示数据。`,
@@ -78,8 +78,8 @@
         ],
       },
       en: {
-        pageTitle: 'yimsg six-panel support workbench demo',
-        h1: 'yimsg · Six-panel support workbench demo',
+        pageTitle: 'yimsg human agent workbench demo',
+        h1: 'yimsg · Human agent workbench demo',
         tip: "Simulates one agent on duty staffing 6 support accounts and 6 conversations on one screen — when a small team shares one seat across multiple stores or channels, one person can watch every customer message and reply directly panel by panel, with no switching logins between accounts.",
         cred: `Shared password: ${PASSWORD} (accounts demo_kf_1 ~ demo_kf_6, each pre-seeded with one pending customer message)`,
         loginFailed: (msg) => `Sign-in failed: ${msg}. Please run "go run ./tools/cmd/seed-demo" first to seed demo data.`,
