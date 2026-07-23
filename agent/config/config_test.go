@@ -83,6 +83,48 @@ func TestResolveCreatesSharedResourcesDir(t *testing.T) {
 	}
 }
 
+// TestResolveCreatesPerAccountPrivateResourcesDir 校验每个账号独享的私有知识库
+// 目录 <data_dir>/<username>/resources 由 Resolve 自动创建，且与共享目录、
+// 其它账号的私有目录都是不同的路径（互相隔离，见 agent方案.md §2.3）。
+func TestResolveCreatesPerAccountPrivateResourcesDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DEEPSEEK_API_KEY", "sk-test")
+
+	f := &File{
+		Agent: AgentDefaultsFile{Server: "ws://127.0.0.1:8080/ws", DataDir: "data"},
+		Accounts: []AccountFile{
+			{Username: "bot1", Password: "pw1"},
+			{Username: "bot2", Password: "pw2"},
+		},
+	}
+	cfg, err := Resolve(f, dir)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	want1 := filepath.Join(dir, "data", "bot1", "resources")
+	want2 := filepath.Join(dir, "data", "bot2", "resources")
+	if cfg.Accounts[0].ResourcesDir != want1 {
+		t.Errorf("bot1 ResourcesDir = %q, want %q", cfg.Accounts[0].ResourcesDir, want1)
+	}
+	if cfg.Accounts[1].ResourcesDir != want2 {
+		t.Errorf("bot2 ResourcesDir = %q, want %q", cfg.Accounts[1].ResourcesDir, want2)
+	}
+	if cfg.Accounts[0].ResourcesDir == cfg.ResourcesDir {
+		t.Error("账号私有目录不应该和共享目录相同")
+	}
+
+	for _, p := range []string{want1, want2} {
+		info, statErr := os.Stat(p)
+		if statErr != nil {
+			t.Fatalf("私有 resources 目录未创建: %v", statErr)
+		}
+		if !info.IsDir() {
+			t.Errorf("%s 不是目录", p)
+		}
+	}
+}
+
 func TestResolvePollIntervalClampedToMinimum(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("DEEPSEEK_API_KEY", "sk-test")

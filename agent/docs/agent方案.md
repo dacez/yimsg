@@ -83,24 +83,35 @@ max_pull = 10
 
 `[agent]` 下的轮询间隔、拉取上限等是全局默认值；每个 `[[accounts]]` 条目可以单独覆盖（未覆盖则继承全局默认）。密码优先从 `password_env` 指向的环境变量读取，配置文件里只留一个环境变量名，避免明文密码进库；`password` 字段仍然保留，仅用于本地联调，两者都未设置则拒绝启动。账号不再单独配置文件夹——多步执行时能读到什么由 §2.3 的共享目录统一决定。
 
-### 2.3 共享只读知识库（`<data_dir>/resources/`）
+### 2.3 私有 + 共享知识库（`<data_dir>/<username>/resources/` 与 `<data_dir>/resources/`）
 
 `agent_data/` 是**全部账号共用的同一个数据文件夹**，二级目录布局与 `cli/account`（`yimsg-cli` 复用的同一个包）完全一致，按用户名分子目录，例如：
 
 ```text
 agent_data/
-  user1/       # 账号 user1 的私有状态（session、同步库、游标+记忆）
-  user2/       # 账号 user2 的私有状态，与 user1 完全隔离
-  resources/   # 全部账号共享的只读 Markdown 知识库
+  user1/
+    session.json / data.db / agent_state.json  # 账号 user1 的私有状态
+    resources/     # user1 独享的私有知识库
+  user2/
+    ...
+    resources/     # user2 独享的私有知识库，与 user1 完全隔离
+  resources/       # 全部账号共享的公用知识库
 ```
 
-`resources/` 是多步执行引擎在决策阶段和每个步骤里唯一允许**只读**访问的目录（见第 7 节的沙箱实现），v1 是**全部账号共享同一份**，不再按账号单独隔离知识库：
+多步执行引擎在决策阶段和每个步骤里只允许**只读**访问知识库（见第 7 节的沙箱实现），知识库分两层：
 
-- 路径固定为 `<data_dir>/resources`，由 `config.Resolve` 在启动时自动创建（`os.MkdirAll`），不需要用户提前准备，也不是可单独配置的路径。
-- 沙箱层禁止任何形式越出该目录：不接受绝对路径参数、拒绝 `..` 穿越、对最终路径做 `EvalSymlinks` 后再校验前缀，见 §7.2。
-- 沙箱只暴露"列出 / 读取 / 正则搜索 `.md` 文件"，没有写、删、执行能力——第 5 条需求原文就是"读操作"，因此 v1 不提供任何写权限。
-- `resources/` 与 `<data_dir>/<username>/`（每个账号自己的 token、同步库、记忆、游标状态）严格分开：前者是"AI 能读到什么"（所有账号共享、只读），后者是"AI 引擎自己的运行状态"（按账号私有、agent 内部读写），语义不同、访问路径也不同，AI 侧工具调用只能触达前者。
-- v1 是有意的简化：单个共享知识库覆盖不了"不同账号需要看到不同资料"的场景，后续如果出现这类需求，可以在 `resources/` 下按账号再分子目录、由 fsread 按账号选择子目录根，而不需要改变整体目录布局。
+- **私有（账号独享）**：`<data_dir>/<username>/resources/`，只有该账号自己能读到，与该账号的 `session.json`/`data.db`/`agent_state.json` 同级。
+- **共享（全部账号）**：`<data_dir>/resources/`，全部账号都能读到，是原有的单层设计。
+
+两条路径都由 `config.Resolve` 在启动时自动创建（`os.MkdirAll`），不需要用户提前准备，也都不是可单独配置的路径。两者是**两棵完全独立的目录树**（私有目录不嵌套在共享目录之下，共享目录也不嵌套在任何账号目录之下），刻意这样设计是为了让沙箱层不需要任何"排除账号子目录"之类的过滤逻辑就能天然保证隔离：一个账号的私有资料不会因为共享知识库的列出/搜索是递归的而被其它账号读到。
+
+引擎侧通过 `agent/fsread.LayeredSandbox`（组合一个私有 `*Sandbox` 和一个共享 `*Sandbox`）把两层暴露成同一个 `FileTool`：
+
+- `list_md_files`/`search_md_files` 的 `subdir` 留空时**同时**列出/搜索私有和共享两层，私有结果排在共享结果前面（"先看私有的，再看公用的"）；传 `private/xxx` 或 `shared/xxx` 可以只操作其中一层。
+- `read_md_file` 的 `path` **必须**带 `private/` 或 `shared/` 前缀（就是 `list_md_files`/`search_md_files` 返回的路径），不接受不带前缀的路径——两层里可能存在同名文件，前缀是唯一的消歧手段。
+- 沙箱层本身（`Sandbox.resolve`）不变：仍然是不接受绝对路径参数、拒绝 `..` 穿越、对最终路径做 `EvalSymlinks` 后再校验前缀，见 §7.2；`LayeredSandbox` 只是在两个独立 `Sandbox` 实例之上加一层前缀路由，不改变底层越界防御。
+- 沙箱只暴露"列出 / 读取 / 正则搜索 `.md` 文件"，没有写、删、执行能力——第 5 条需求原文就是"读操作"，因此不提供任何写权限。
+- 知识库（无论私有还是共享）与 `<data_dir>/<username>/` 下的 `session.json`/`data.db`/`agent_state.json`（每个账号自己的 token、同步库、记忆、游标状态）严格分开：前者是"AI 能读到什么"，后者是"AI 引擎自己的运行状态"，语义不同、访问路径也不同，AI 侧工具调用只能触达前者。
 
 ## 3. 目录与本地状态布局
 
@@ -111,6 +122,7 @@ agent_data/
     session.json      # 复用 cli/account：{uid, username, token, server_url, login_at}
     data.db           # 复用 cli/store：sync_messages 落地的本地镜像，用于计算 Pending
     agent_state.json  # agent 自己的状态：AI 处理进度游标 + 按对端分桶的记忆，见第 4、5 节
+    resources/         # 该账号独享的只读知识库，见 §2.3
 ```
 
 账号目录以**用户名**命名而不是 `uid`：用户名在登录前就已知、目录名对人类可读，方便直接在文件系统上分辨账号；这与 `cli/account` 的布局完全一致（`agent/` 直接复用同一个包），研发阶段不处理"同一用户名先后在不同服务器注册出不同 uid"这种极端场景，目录按用户名直接复用/覆盖。
@@ -194,9 +206,9 @@ sequenceDiagram
 
 | 工具名 | 阶段 | 作用 |
 |---|---|---|
-| `list_md_files` | 决策阶段 + 每个步骤 | 列出共享知识库（`resources/`）内某子目录下的 `.md` 文件 |
-| `read_md_file` | 决策阶段 + 每个步骤 | 读取共享知识库内一个 `.md` 文件的完整内容 |
-| `search_md_files` | 决策阶段 + 每个步骤 | 类似 grep 的正则搜索（纯文本匹配,不用向量库),返回每处命中前后 `context_chars` 个字符的上下文;`context_chars` 由模型每次调用时自行决定,用于在通读整份文件之前先定位相关内容,见 §6.6 |
+| `list_md_files` | 决策阶段 + 每个步骤 | 列出知识库内某子目录下的 `.md` 文件；`subdir` 留空同时列出私有（`private/`）+ 共享（`shared/`）两层，私有排在前面 |
+| `read_md_file` | 决策阶段 + 每个步骤 | 读取知识库内一个 `.md` 文件的完整内容；`path` 必须带 `private/` 或 `shared/` 前缀 |
+| `search_md_files` | 决策阶段 + 每个步骤 | 类似 grep 的正则搜索（纯文本匹配,不用向量库),返回每处命中前后 `context_chars` 个字符的上下文;`context_chars` 由模型每次调用时自行决定,用于在通读整份文件之前先定位相关内容,见 §6.6;`subdir` 留空同时搜私有 + 共享两层 |
 | `submit_plan` | 仅决策阶段 | 模型认为需要分步执行时,提交一个有序步骤描述列表,不直接调用即代表选择"直接回答" |
 
 ```mermaid
@@ -237,9 +249,9 @@ stateDiagram-v2
 
 ### 6.5 关键字/正则检索(`search_md_files`)
 
-对应需求"类似 grep 的搜索文件能力,返回前后 n 个字符,不用向量数据库"。实现在 `agent/fsread.Sandbox.Search(pattern, subdir string, contextChars int)`:
+对应需求"类似 grep 的搜索文件能力,返回前后 n 个字符,不用向量数据库"。核心实现在 `agent/fsread.Sandbox.Search(pattern, subdir string, contextChars int)`,`agent/fsread.LayeredSandbox.Search` 在此之上加一层私有/共享路由(见 §2.3):
 
-- **纯文本匹配,不做语义检索**:`pattern` 是标准 Go 正则表达式(`regexp` 标准库),对沙箱根目录(`resources/`)下 `subdir` 里每个 `.md`/`.markdown` 文件的**全文**做 `FindAllStringIndex`,不引入任何向量库/embedding/相似度检索,命中即字面匹配。
+- **纯文本匹配,不做语义检索**:`pattern` 是标准 Go 正则表达式(`regexp` 标准库),对沙箱根目录下 `subdir` 里每个 `.md`/`.markdown` 文件的**全文**做 `FindAllStringIndex`,不引入任何向量库/embedding/相似度检索,命中即字面匹配。
 - **上下文长度由模型决定**:每处命中返回其前后各 `context_chars` 个字符的原文,`context_chars` 是模型在这次工具调用里自己传入的参数,不是固定配置;模型没有传时默认给 200,更精确的检索可以传更小的值,需要更完整上下文时可以传更大的值,上限被 clamp 到 `MaxContextChars`(2000),防止一次检索把过多内容塞进模型上下文。
 - **按字符(rune)切片而不是按字节**:上下文边界按 Unicode 字符计数,不会把中文等多字节字符从中间切断。
 - **命中数量上限**:单次调用最多返回 `MaxSearchMatches`(50)条命中,超过时 `truncated=true`,提示模型缩小 `pattern` 或指定 `subdir` 再搜一次,而不是一次性把整个 `resources/` 的命中都塞进模型上下文。
@@ -249,15 +261,87 @@ stateDiagram-v2
 
 一次 peer 分组处理最坏情况下的调用次数 = 决策阶段(1 + 最多 `max_tool_calls_per_step`) + 步骤执行阶段(`max_plan_steps` × (1 + 最多 `max_tool_calls_per_step`)) + 汇总(1) + 记忆回填(1)。默认参数下上限是 `1+4 + 6×(1+4) + 1 + 1 = 37` 次;这是刻意的、可配置的成本/延迟上限,而不是无界循环,第 11 节会说明这与业内方案的取舍差异。`search_md_files` 与 `list_md_files`/`read_md_file` 共享同一个 `max_tool_calls_per_step` 预算,不会额外增加调用次数上限。
 
+### 6.7 提示词清单
+
+按调用顺序列出代码里出现的全部提示词原文，并逐一说明作用（分两类：一类是拼进 Chat Completions `messages` 的 system/user 文本；一类是 `tools` 里的 function-calling 描述与参数说明，本质上同样是喂给模型、影响其决策的指令文本）。
+
+**1. 角色设定（`pipeline.systemPromptFor`，`agent/pipeline/runner.go`）**
+
+> 你是 yimsg 平台上账号 %s 的自动回复助手，请用简洁、礼貌的中文回答对方的问题；不清楚的信息不要编造。
+
+由 pipeline 在处理每个 peer 分组前按账号名（`%s`）生成，作为 `engine.Request.SystemPrompt` 传入，是模型的角色人设：约束语气（简洁礼貌）和真实性（不清楚不要编造），是防止模型幻觉编造信息的第一道提示。
+
+**2. 决策阶段指导（`decisionGuidance`，`agent/engine/engine.go`）**
+
+> 你可以直接用文本回答；如果这个问题需要多个步骤才能完成（例如需要先查证多份资料、分点推理、逐项核实），才调用 submit_plan 提交一个有序步骤列表，不要不必要地拆分步骤。需要查阅资料时可以调用 list_md_files / read_md_file，文件较多或较长时先用 search_md_files 定位包含关键字的位置再精读；知识库分两层，路径以 private/ 开头的是你独享的私有资料，以 shared/ 开头的是全部客服共享的公用资料，请先看私有资料，私有里没有再看公用的，除此之外没有任何可用信息。
+
+拼接在第 1 条角色设定之后，组成决策阶段完整的 system 消息。作用有三点：(a) 给出"直接回答 vs 分步执行"的判断标准，并要求不要不必要地拆分步骤，控制成本；(b) 提示先用 `search_md_files` 定位关键字位置、再用 `read_md_file` 精读的检索顺序；(c) 声明私有/共享知识库的查找顺序（先私有后共享）以及"除此之外没有任何可用信息"的边界，防止模型引用知识库之外的内容。
+
+**3. 记忆摘要 + 用户消息拼接（`buildUserMessage`，`agent/engine/engine.go`）**
+
+> 以下是你和对方过去对话的记忆摘要：
+> {记忆摘要，为空则整段省略}
+>
+> 对方现在发来的消息：
+> {本轮用户消息}
+
+把 §5 的 peer 记忆摘要和本轮用户消息拼成一条 user 消息，用两句引导文本分隔"背景信息"和"当前请求"，避免模型把过去的记忆内容误当成用户本轮说的话。
+
+**4. 步骤执行提示（`Engine.Run` 内联生成，`agent/engine/engine.go`）**
+
+> 当前执行第 %d/%d 步：%s
+>
+> 请只完成这一步，不要提前做后面的步骤。完成后用纯文本给出这一步的结论，这段文本会直接作为进度通知发给用户，请保持简洁清楚。
+
+步骤执行阶段（§6.3）每一步都会生成一条这样的 user 消息追加进对话历史；`%d/%d` 是当前步数/总步数，`%s` 是该步的描述（来自 `submit_plan` 提交的 `steps`）。作用是限定模型"只做当前这一步"、不要抢跑后续步骤，并提前告知模型这段输出会被 `Notifier` 直接转发给用户、不是内部推理草稿，因此要求简洁清楚——直接决定了每步进度通知的语气和长度。
+
+**5. 汇总阶段提示（`summaryInstruction`，`agent/engine/engine.go`）**
+
+> 以上所有步骤都已完成。请基于每一步的结论，给用户一个完整、简洁的最终回复（不需要逐条复述每一步过程，只需要给出结论性的回答）。
+
+全部步骤执行完后追加的最后一条 user 消息，这次调用不提供任何工具，要求模型把此前每步的结论收敛成一段面向用户的总回复，而不是逐条复述过程，对应 `Result.FinalAnswer` 的生成。
+
+**6. 记忆压缩角色设定（`Engine.Reflect`，`agent/engine/engine.go`）**
+
+> 你是一个负责压缩对话记忆的助手，只输出摘要文本本身，不要有任何额外说明。
+
+`Reflect`（§6.4）发起的是一次独立于主对话、不带工具的新请求，这是它的 system 消息，限定模型只能输出摘要正文本身、不要寒暄或解释，方便返回值直接落盘保存为 peer 的新 `summary`。
+
+**7. 记忆压缩指令（`Engine.Reflect` 内联生成，`agent/engine/engine.go`）**
+
+> 请把下面的"旧记忆摘要"与"本轮对话"合并压缩成一段不超过 %d 字符的新摘要，只保留后续对话可能用得上的关键信息（例如对方的诉求、已经达成的结论、尚未解决的问题），不要输出除摘要本身以外的任何内容。
+>
+> 旧记忆摘要：
+> %s
+>
+> 本轮用户消息：
+> %s
+>
+> 本轮最终回复：
+> %s
+
+配合第 6 条一起发送的 user 消息。`%d` 是 pipeline 传入的 `memory_max_chars_per_peer`；把"旧摘要 + 本轮用户消息 + 本轮最终回复"一起交给模型，要求生成合并压缩后的新摘要，并明确列出应该保留的信息类型（诉求/结论/未解决问题），是 §5.3 滚动摘要机制里"控制长度"优先依赖 prompt 自律、`state.Store` 落盘前硬截断只是兜底的直接体现。
+
+**8~11. 工具（function-calling）描述与参数说明（`agent/engine/tools.go`）**
+
+四个工具的 `description`/参数 `description` 本质上也是喂给模型、决定它何时调用哪个工具的提示词，§6.1 表格给出了简述，这里给出逐字原文：
+
+- `list_md_files`："列出知识库内某个子目录下的 .md/.markdown 文件，返回相对路径列表；路径以 private/ 开头表示你独享的私有知识库，以 shared/ 开头表示全部客服共享的公用知识库。subdir 留空表示同时列出两者（私有排在前面）；传 private/xxx 或 shared/xxx 可以只列出其中一棵下的子目录。"（`subdir` 参数说明："留空表示同时列出私有与公用知识库；否则必须以 private/ 或 shared/ 开头"）
+- `read_md_file`："读取知识库内一个 .md/.markdown 文件的完整内容。"（`path` 参数说明："必须是 list_md_files/search_md_files 返回的完整路径（以 private/ 或 shared/ 开头），例如 private/faq.md 或 shared/product.md"）——强调 `path` 必须来自前序工具调用的返回值，防止模型凭空编造路径。
+- `search_md_files`："在知识库内的 .md/.markdown 文件中做类似 grep 的正则搜索（纯文本匹配，不依赖向量库/语义检索），返回每处命中前后 context_chars 个字符的原文上下文；适合在通读整份文件之前，先定位包含关键字/正则的位置，再按需用 read_md_file 读取完整内容。subdir 留空表示同时搜索你独享的私有知识库（private/）和全部客服共享的公用知识库（shared/），私有命中排在前面；也可以传 private/xxx 或 shared/xxx 只搜其中一棵。"（`pattern`/`subdir`/`context_chars` 参数说明分别是搜索用的正则或关键字、留空/加前缀的搜索范围、"每处命中前后各返回多少个字符的上下文，由你自己根据需要决定；不传默认 200，最多 2000"）——明确告诉模型这是纯文本匹配而非语义检索，且 `context_chars` 由模型自行权衡精确度与上下文完整度。
+- `submit_plan`："当这个请求需要多个步骤才能完成（例如需要先查证多份资料、分点推理）时调用本工具提交一个有序步骤计划；能够直接回答的问题不要调用本工具，直接以文本回复即可。"（`steps` 参数说明："按执行顺序排列的步骤描述列表"）——与第 2 条 `decisionGuidance` 互相呼应，是决策阶段"直接回答 vs 分步执行"这个二选一判断在工具层面的直接依据。
+
 ## 7. 文件读取沙箱工具(`agent/fsread`)
 
 ### 7.1 能力边界
 
-只提供三个只读能力,不提供任何写、删、执行、目录穿越到 `resources/` 之外的能力:
+只提供三个只读能力,不提供任何写、删、执行、目录穿越到沙箱根目录之外的能力:
 
-- `ListMarkdown(subdir string) ([]string, error)`:列出沙箱根目录(`resources/`)下 `subdir` 里的 `.md`/`.markdown` 文件相对路径(递归,数量上限防止超大目录拖垮响应)。
+- `ListMarkdown(subdir string) ([]string, error)`:列出沙箱根目录下 `subdir` 里的 `.md`/`.markdown` 文件相对路径(递归,数量上限防止超大目录拖垮响应)。
 - `ReadMarkdown(relPath string) (string, error)`:读取一个 `.md`/`.markdown` 文件全文,单文件大小上限(默认 200KB),超出截断并附加截断提示。
-- `Search(pattern, subdir string, contextChars int) (matches []SearchMatch, truncated bool, err error)`:对沙箱根目录(`resources/`)下 `subdir` 里每个 `.md`/`.markdown` 文件做类似 grep 的正则搜索(不用向量库),返回每处命中前后 `contextChars` 个字符的上下文,`contextChars` 由调用方(模型)决定;内部基于 `ListMarkdown` + `ReadMarkdown` 实现,因此天然复用同一套越界防御与单文件大小上限,不是独立的文件访问路径。细节见 §6.5。
+- `Search(pattern, subdir string, contextChars int) (matches []SearchMatch, truncated bool, err error)`:对沙箱根目录下 `subdir` 里每个 `.md`/`.markdown` 文件做类似 grep 的正则搜索(不用向量库),返回每处命中前后 `contextChars` 个字符的上下文,`contextChars` 由调用方(模型)决定;内部基于 `ListMarkdown` + `ReadMarkdown` 实现,因此天然复用同一套越界防御与单文件大小上限,不是独立的文件访问路径。细节见 §6.5。
+
+以上是单一目录树的 `Sandbox`;`agent/fsread.LayeredSandbox`(§2.3)组合一个私有 `Sandbox` 和一个共享 `Sandbox`,对外暴露同样的三个方法,内部按 `private/`/`shared/` 前缀路由到对应的 `Sandbox`,本身不做任何额外的路径校验——越界防御始终只发生在 `Sandbox.resolve` 这一处,`LayeredSandbox` 只是路由层。
 
 ### 7.2 越界防御
 
@@ -285,12 +369,12 @@ stateDiagram-v2
 
 ## 10. 测试策略
 
-- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/DeepSeek key 时的拒绝逻辑、共享 `resources/` 目录的自动创建,纯 Go 单测。
-- `agent/fsread`:合法读取、`..` 穿越拒绝、绝对路径拒绝、符号链接逃逸拒绝、非 `.md` 后缀拒绝、大文件截断,以及 `Search` 的正则匹配、多字节字符上下文边界、非法正则拒绝、`context_chars` clamp、命中数截断、跨文件/子目录范围,纯 Go 单测。
+- `agent/config`:TOML 解析、默认值填充、`poll_interval_seconds` 下限 clamp、缺少账号/密码/DeepSeek key 时的拒绝逻辑、共享 `resources/` 目录与每账号私有 `<username>/resources/` 目录的自动创建(且互不相同),纯 Go 单测。
+- `agent/fsread`:`Sandbox` 覆盖合法读取、`..` 穿越拒绝、绝对路径拒绝、符号链接逃逸拒绝、非 `.md` 后缀拒绝、大文件截断,以及 `Search` 的正则匹配、多字节字符上下文边界、非法正则拒绝、`context_chars` clamp、命中数截断、跨文件/子目录范围;`LayeredSandbox` 额外覆盖私有/共享合并列出与搜索时私有排在前面、按 `private/`/`shared/` 前缀路由到对应一侧、不带前缀时拒绝、私有与共享是隔离的两棵目录树(一侧读不到另一侧内容),纯 Go 单测。
 - `agent/state`:游标推进、记忆按 peer 分桶读写、超过 `memory_max_peers` 的 LRU 淘汰、超过 `memory_max_chars_per_peer` 的硬截断、原子写入(模拟中途失败不损坏已有文件),纯 Go 单测。
 - `agent/deepseek`:用 `httptest.Server` 模拟 DeepSeek 接口,校验请求体格式、鉴权头、重试退避策略、超时,纯 Go 单测。
 - `agent/engine`:注入实现同一接口的 fake `ChatCompleter`(不经 HTTP),按脚本化的多轮响应验证:直接回答分支、计划分支的步骤顺序与进度通知时机、工具调用次数上限、超过 `max_plan_steps` 时的截断行为、`search_md_files` 的调用参数透传与 `context_chars` 默认值,纯 Go 单测。
-- `agent/tests/e2e`:对已启动的真实 `yimsg-server` + 一个模拟 DeepSeek 接口的 `httptest.Server`,编译并驱动 `yimsg-agent` 二进制,验证完整链路:两个真实账号互为好友、一个账号给 agent 账号发消息、agent 轮询拉到消息、调用(模拟)DeepSeek、通过真实 WebSocket 把回复发回去、`agent_state.json` 的游标与记忆按预期落盘。运行方式与 `cli/tests/e2e`/`server/tests/e2e` 一致,由 `tools/scripts/run_all_tests.sh` 统一启动服务端后执行。
+- `agent/tests/e2e`:对已启动的真实 `yimsg-server` + 一个模拟 DeepSeek 接口的 `httptest.Server`,编译并驱动 `yimsg-agent` 二进制,验证完整链路:两个真实账号互为好友、一个账号给 agent 账号发消息、agent 轮询拉到消息、调用(模拟)DeepSeek、通过真实 WebSocket 把回复发回去、`agent_state.json` 的游标与记忆按预期落盘、共享 `resources/` 与账号私有 `<username>/resources/` 都自动创建。运行方式与 `cli/tests/e2e`/`server/tests/e2e` 一致,由 `tools/scripts/run_all_tests.sh` 统一启动服务端后执行。
 
 ## 11. 与业内通用执行引擎的差距,以及后续要如何完善
 

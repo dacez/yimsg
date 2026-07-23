@@ -11,6 +11,10 @@
     .agents { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .agents button { padding: 6px 14px; border-radius: 999px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 13px; }
     .agents button.active { background: #5b5bf0; color: #fff; border-color: #5b5bf0; }
+    .quick-questions-label { margin: 4px 0; font-size: 13px; color: #666; }
+    .quick-questions { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .quick-questions button { padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; background: #f7f7fb; cursor: pointer; font-size: 12px; color: #333; }
+    .quick-questions button:hover { background: #ecebff; border-color: #c9c8f5; }
   </style>
 </head>
 <body>
@@ -18,6 +22,8 @@
   <p class="tip" data-i18n-html="tip">页面已自动注册一个随机访客账号并登录，只显示会话列表 + 聊天视图（<code>viewMode: 'chat-only'</code>）。私聊不要求好友关系，选择下方任意客服即可发起临时会话。</p>
   <div class="cred" id="cred" data-i18n="registering">正在注册访客账号…</div>
   <div class="agents" id="agents"></div>
+  <p class="quick-questions-label" data-i18n="quickQuestionsLabel">示例问题（点击直接发送给对应客服）：</p>
+  <div class="quick-questions" id="quick-questions"></div>
   <div id="chat-host" class="host"></div>
   <script type="module">
     // 单独的小模块，只依赖本地 demo-i18n.js：让文案尽快跟随语言渲染，
@@ -38,6 +44,19 @@
           { username: 'demo_kf_2', label: '客服-小林' },
           { username: 'demo_kf_3', label: '客服-阿强' },
         ],
+        quickQuestionsLabel: '示例问题（点击直接发送给对应客服）：',
+        quickQuestions: [
+          { agent: 'demo_kf_1', text: '忘记密码怎么办？' },
+          { agent: 'demo_kf_1', text: '可以同时在多个设备登录吗？' },
+          { agent: 'demo_kf_1', text: '可以拉黑或屏蔽骚扰我的人吗？' },
+          { agent: 'demo_kf_2', text: '怎么把客服组件嵌入到我自己的网站？' },
+          { agent: 'demo_kf_2', text: '有没有可以直接调用的 SDK 或 API？' },
+          { agent: 'demo_kf_3', text: '系统故障时要怎么联系人工升级处理？' },
+          { agent: 'demo_kf_3', text: '系统维护会不会影响我正在进行的对话？' },
+          { agent: 'demo_kf_1', text: '你们支持退款吗？' },
+          { agent: 'demo_kf_1', text: '聊天记录能保存多久？' },
+          { agent: 'demo_kf_1', text: '群聊最多能拉多少人？' },
+        ],
       },
       en: {
         pageTitle: 'yimsg customer service widget demo',
@@ -51,6 +70,19 @@
           { username: 'demo_kf_1', label: 'Agent Mei' },
           { username: 'demo_kf_2', label: 'Agent Lin' },
           { username: 'demo_kf_3', label: 'Agent Qiang' },
+        ],
+        quickQuestionsLabel: 'Sample questions (click to send to the matching agent):',
+        quickQuestions: [
+          { agent: 'demo_kf_1', text: 'What do I do if I forgot my password?' },
+          { agent: 'demo_kf_1', text: 'Can I log in on multiple devices at the same time?' },
+          { agent: 'demo_kf_1', text: 'Can I block someone who is harassing me?' },
+          { agent: 'demo_kf_2', text: 'How do I embed the customer service widget on my own website?' },
+          { agent: 'demo_kf_2', text: 'Is there an SDK or API I can call directly?' },
+          { agent: 'demo_kf_3', text: 'How do I escalate to a human when there is a system outage?' },
+          { agent: 'demo_kf_3', text: 'Will scheduled maintenance affect my ongoing conversation?' },
+          { agent: 'demo_kf_1', text: 'Do you offer refunds?' },
+          { agent: 'demo_kf_1', text: 'How long is chat history retained?' },
+          { agent: 'demo_kf_1', text: "What's the member limit for a group chat?" },
         ],
       },
     };
@@ -87,22 +119,53 @@
       const handle = mount(host, { client, token: auth.token, viewMode: 'chat-only', theme: 'light', locale: demoLocale(lang) });
 
       const agentsEl = document.getElementById('agents');
-      let activeUid = null;
+      const quickEl = document.getElementById('quick-questions');
+      const agentButtons = new Map(); // username -> 客服切换按钮，供 openAgent 高亮当前客服
+      const uidByUsername = new Map(); // username -> uid，避免重复 searchUser
+      let activeUsername = null;
+
+      // openAgent 是"切到某个客服的临时会话"的唯一入口，客服切换按钮和示例问题按钮
+      // 共用同一套逻辑：按用户名查 uid（查过的缓存住）、高亮对应按钮、切换会话。
+      async function openAgent(username) {
+        let uid = uidByUsername.get(username);
+        if (uid == null) {
+          const info = await client.searchUser(username);
+          if (!info) return null;
+          uid = info.uid;
+          uidByUsername.set(username, uid);
+        }
+        if (activeUsername !== username) {
+          activeUsername = username;
+          for (const b of agentsEl.querySelectorAll('button')) b.classList.remove('active');
+          agentButtons.get(username)?.classList.add('active');
+          await handle.openConversation({ friendUid: uid });
+        }
+        return uid;
+      }
+
       for (const agent of dict.agents) {
         const btn = document.createElement('button');
         btn.textContent = agent.label;
-        btn.addEventListener('click', async () => {
-          const info = await client.searchUser(agent.username);
-          if (!info) return;
-          activeUid = info.uid;
-          for (const b of agentsEl.querySelectorAll('button')) b.classList.remove('active');
-          btn.classList.add('active');
-          await handle.openConversation({ friendUid: info.uid });
-        });
+        btn.addEventListener('click', () => openAgent(agent.username));
         agentsEl.appendChild(btn);
+        agentButtons.set(agent.username, btn);
       }
+
+      // 示例问题：点击即切到对应客服的会话并直接把问题文本发送出去，复用 UIKit
+      // 挂载时暴露出来的同一个 client，不重新拼协议（见 packages/uikit/src/embed.ts）。
+      for (const q of dict.quickQuestions) {
+        const btn = document.createElement('button');
+        btn.textContent = q.text;
+        btn.addEventListener('click', async () => {
+          const uid = await openAgent(q.agent);
+          if (uid == null) return;
+          await client.sendText({ toUid: uid }, q.text);
+        });
+        quickEl.appendChild(btn);
+      }
+
       // 默认打开第一个客服的临时会话。
-      agentsEl.querySelector('button')?.click();
+      await openAgent(dict.agents[0]?.username);
     }
 
     main().catch((err) => {

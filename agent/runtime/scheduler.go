@@ -22,15 +22,17 @@ const (
 )
 
 // Runner 持有所有账号共用的 DeepSeek 客户端、共享只读知识库沙箱与全局配置，
-// Run 启动全部账号的处理循环并阻塞直到 ctx 被取消。
+// Run 启动全部账号的处理循环并阻塞直到 ctx 被取消。每个账号自己独享的知识库沙箱
+// 按账号单独构建（见 newAccountRunner），不是这里的单例。
 type Runner struct {
-	cfg     *config.Config
-	ai      *deepseek.Client
-	sandbox *fsread.Sandbox
+	cfg           *config.Config
+	ai            *deepseek.Client
+	sharedSandbox *fsread.Sandbox
 }
 
-// New 构造一个 Runner：DeepSeek 客户端与 <data_dir>/resources 只读知识库沙箱
-// 都是全部账号共用的单例（见 agent方案.md §2.3），这里只构建一次。
+// New 构造一个 Runner：DeepSeek 客户端与 <data_dir>/resources 共享只读知识库
+// 沙箱都是全部账号共用的单例（见 agent方案.md §2.3），这里只构建一次；每个账号
+// 自己的私有知识库沙箱在 newAccountRunner 里按账号各自构建。
 func New(cfg *config.Config) (*Runner, error) {
 	ds := cfg.DeepSeek
 	ai := deepseek.New(ds.BaseURL, ds.APIKey, ds.Model, ds.Temperature, ds.RequestTimeout)
@@ -38,7 +40,7 @@ func New(cfg *config.Config) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("构建共享 resources 沙箱失败: %w", err)
 	}
-	return &Runner{cfg: cfg, ai: ai, sandbox: sandbox}, nil
+	return &Runner{cfg: cfg, ai: ai, sharedSandbox: sandbox}, nil
 }
 
 // Run 为每个账号启动一个独立 goroutine，阻塞直到 ctx 被取消且所有账号的当前
@@ -96,13 +98,13 @@ func (r *Runner) runAccount(ctx context.Context, acc config.Account) {
 	}
 }
 
-// newRunnerWithRetry 反复尝试 pipeline.New 直到成功或 ctx 被取消。账号在完全
+// newRunnerWithRetry 反复尝试 newAccountRunner 直到成功或 ctx 被取消。账号在完全
 // 建立起身份（登录/token 校验）之前无法做任何事，因此这里的重试没有上限，只受
 // ctx 控制。
 func (r *Runner) newRunnerWithRetry(ctx context.Context, acc config.Account) *pipeline.AccountRunner {
 	backoff := initialBackoff
 	for {
-		runner, err := pipeline.New(r.cfg, acc, r.ai, r.sandbox)
+		runner, err := r.newAccountRunner(acc)
 		if err == nil {
 			return runner
 		}
@@ -112,6 +114,17 @@ func (r *Runner) newRunnerWithRetry(ctx context.Context, acc config.Account) *pi
 		}
 		backoff = nextBackoff(backoff)
 	}
+}
+
+// newAccountRunner 为账号构建私有 resources 沙箱，与 Runner 持有的共享沙箱组合
+// 成一个"先私有后共享"的 LayeredSandbox（见 agent方案.md §2.3），再交给 pipeline.New。
+func (r *Runner) newAccountRunner(acc config.Account) (*pipeline.AccountRunner, error) {
+	private, err := fsread.NewSandbox(acc.ResourcesDir)
+	if err != nil {
+		return nil, fmt.Errorf("构建账号 %q 的私有 resources 沙箱失败: %w", acc.Username, err)
+	}
+	fs := &fsread.LayeredSandbox{Private: private, Shared: r.sharedSandbox}
+	return pipeline.New(r.cfg, acc, r.ai, fs)
 }
 
 func nextBackoff(cur time.Duration) time.Duration {

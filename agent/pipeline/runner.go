@@ -13,7 +13,6 @@ import (
 	"yimsg/agent/config"
 	"yimsg/agent/deepseek"
 	"yimsg/agent/engine"
-	"yimsg/agent/fsread"
 	"yimsg/agent/state"
 	"yimsg/cli/account"
 	"yimsg/cli/client"
@@ -44,10 +43,10 @@ type AccountRunner struct {
 }
 
 // New 建立账号的首次连接（复用本地已保存 token 或全新登录）、按用户名打开本地
-// 同步库与 agent 状态文件。ai 是共享的 DeepSeek 客户端，sandbox 是全部账号共享
-// 的只读知识库沙箱（<data_dir>/resources，由 runtime 统一构建一次后传入，见
-// agent方案.md §2.3），两者都无状态，所有账号可以共用同一份。
-func New(cfg *config.Config, acc config.Account, ai *deepseek.Client, sandbox *fsread.Sandbox) (*AccountRunner, error) {
+// 同步库与 agent 状态文件。ai 是共享的 DeepSeek 客户端；fs 是该账号的知识库文件
+// 工具，通常是 runtime 组装好的 *fsread.LayeredSandbox（账号私有 + 全部账号共享，
+// 见 agent方案.md §2.3），接口类型是为了让单元测试可以注入假实现。
+func New(cfg *config.Config, acc config.Account, ai *deepseek.Client, fs engine.FileTool) (*AccountRunner, error) {
 	sess, conn, err := bootstrapSession(cfg.DataDir, acc.Username, acc.Password, cfg.Server, cfg.InsecureSkipVerify)
 	if err != nil {
 		return nil, fmt.Errorf("账号 %q 建立连接失败: %w", acc.Username, err)
@@ -84,7 +83,7 @@ func New(cfg *config.Config, acc config.Account, ai *deepseek.Client, sandbox *f
 		conn:           conn,
 		store:          st,
 		state:          stateStore,
-		engine:         engine.New(ai, sandbox, cfg.MaxPlanSteps, cfg.MaxToolCallsPerStep),
+		engine:         engine.New(ai, fs, cfg.MaxPlanSteps, cfg.MaxToolCallsPerStep),
 	}, nil
 }
 

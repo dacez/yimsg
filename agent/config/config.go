@@ -86,6 +86,11 @@ type Account struct {
 	Password     string
 	PollInterval time.Duration
 	MaxPull      int
+	// ResourcesDir 是 <DataDir>/<Username>/resources：该账号独享的只读知识库，
+	// 由 Resolve 自动创建，与 Config.ResourcesDir（全部账号共享）是两棵独立的
+	// 目录树，互不递归（避免账号之间通过"共享兜底"读到彼此的私有资料），查找顺序
+	// 先私有后共享见 agent方案.md §2.3。
+	ResourcesDir string
 }
 
 // Config 是归一化后供 runtime 直接使用的最终配置。
@@ -93,7 +98,8 @@ type Config struct {
 	Server  string
 	DataDir string
 	// ResourcesDir 是 <DataDir>/resources：全部账号共享的只读 Markdown 知识库，
-	// 由 Resolve 自动创建，不是用户可配置项（见 agent方案.md §2.3）。
+	// 由 Resolve 自动创建，不是用户可配置项（见 agent方案.md §2.3）。每个账号自己
+	// 独享的知识库见 Account.ResourcesDir。
 	ResourcesDir          string
 	InsecureSkipVerify    bool
 	DeepSeek              DeepSeekSettings
@@ -210,11 +216,20 @@ func Resolve(f *File, baseDir string) (*Config, error) {
 			return nil, fmt.Errorf("账号 %q 的 max_pull 必须 >= 1", username)
 		}
 
+		// 账号私有知识库：<data_dir>/<username>/resources，与账号自己的 session/同步库/
+		// agent_state.json 同级（cli/account 的目录布局），和共享 resources/ 是两棵完全
+		// 独立的目录树，不嵌套在彼此之下，避免共享侧递归列出/搜索时读到其它账号的私有资料。
+		accResourcesDir := filepath.Join(dataDir, username, ResourcesDirName)
+		if err := os.MkdirAll(accResourcesDir, 0o700); err != nil {
+			return nil, fmt.Errorf("创建账号 %q 的私有 resources 目录 %s 失败: %w", username, accResourcesDir, err)
+		}
+
 		accounts = append(accounts, Account{
 			Username:     username,
 			Password:     password,
 			PollInterval: time.Duration(poll) * time.Second,
 			MaxPull:      maxPull,
+			ResourcesDir: accResourcesDir,
 		})
 	}
 

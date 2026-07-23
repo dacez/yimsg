@@ -1,7 +1,7 @@
 // Package engine 实现 yimsg-agent 的计划与多步执行引擎：先决策"直接回答"还是
-// "分步执行"，分步执行时逐步调用模型、按需读取工作目录内的 Markdown 文件、每步
-// 完成后通过 Notifier 发一条纯文本进度通知，最后生成汇总回复；处理完一轮后再
-// 用 Reflect 生成新的记忆摘要。方案见 agent/docs/agent方案.md 第 6 节。
+// "分步执行"，分步执行时逐步调用模型、按需读取知识库内的 Markdown 文件（私有优先、
+// 共享兜底）、每步完成后通过 Notifier 发一条纯文本进度通知，最后生成汇总回复；
+// 处理完一轮后再用 Reflect 生成新的记忆摘要。方案见 agent/docs/agent方案.md 第 6 节。
 package engine
 
 import (
@@ -15,8 +15,9 @@ import (
 // decisionGuidance 追加在调用方传入的角色设定之后，指导模型选择直接回答还是提交计划。
 const decisionGuidance = `你可以直接用文本回答；如果这个问题需要多个步骤才能完成（例如需要先查证多份资料、
 分点推理、逐项核实），才调用 submit_plan 提交一个有序步骤列表，不要不必要地拆分步骤。
-需要查阅工作目录内的资料时可以调用 list_md_files / read_md_file，文件较多或较长时先用 search_md_files
-定位包含关键字的位置再精读，工作目录之外没有任何可用信息。`
+需要查阅资料时可以调用 list_md_files / read_md_file，文件较多或较长时先用 search_md_files
+定位包含关键字的位置再精读；知识库分两层，路径以 private/ 开头的是你独享的私有资料，以 shared/
+开头的是全部客服共享的公用资料，请先看私有资料，私有里没有再看公用的，除此之外没有任何可用信息。`
 
 // summaryInstruction 是步骤全部执行完之后，要求模型给出最终回复的提示。
 const summaryInstruction = "以上所有步骤都已完成。请基于每一步的结论，给用户一个完整、简洁的最终回复（不需要逐条复述每一步过程，只需要给出结论性的回答）。"

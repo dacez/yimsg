@@ -73,6 +73,16 @@ func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 	if !resourcesInfo.IsDir() {
 		t.Errorf("resources 不是目录")
 	}
+
+	// 账号自己独享的私有知识库目录同样应该自动创建，且与共享目录是不同的路径
+	// （见 agent方案.md §2.3：私有 + 共享是两棵独立目录树）。
+	privateResourcesInfo, err := os.Stat(filepath.Join(dataDir, userBot, "resources"))
+	if err != nil {
+		t.Fatalf("账号私有 resources 目录未自动创建: %v", err)
+	}
+	if !privateResourcesInfo.IsDir() {
+		t.Errorf("账号私有 resources 不是目录")
+	}
 }
 
 // TestAgentRejectsInvalidFlagsWithoutAccount 校验没有任何账号来源（既无 -config
