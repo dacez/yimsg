@@ -490,6 +490,14 @@ code {
 @media (max-width: 700px) {
   .ai-support-list { grid-template-columns: 1fr; }
 }
+
+/* 引述与 CTA 按钮需与上方两列清单同宽并居中，否则会比清单更靠左，视觉上不对齐 */
+#ai-support .pillar-highlight,
+#ai-support .hero-actions {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
 .check-list li {
   position: relative;
   padding-left: 36px;
