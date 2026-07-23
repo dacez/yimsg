@@ -477,6 +477,19 @@ code {
   display: grid;
   gap: 16px;
 }
+
+/* AI 智能客服版块：与 pillar-copy 内的单列 check-list 不同，这里没有配图，
+   独占整个容器宽度会太空旷，改成两列且限制最大宽度，让卡片替换后的清单更集中。 */
+.ai-support-list {
+  max-width: 720px;
+  margin: 0 auto;
+  grid-template-columns: repeat(2, 1fr);
+  column-gap: 32px;
+}
+
+@media (max-width: 700px) {
+  .ai-support-list { grid-template-columns: 1fr; }
+}
 .check-list li {
   position: relative;
   padding-left: 36px;
