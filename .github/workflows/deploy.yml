@@ -62,6 +62,16 @@ jobs:
       - name: 交叉编译 seed-demo 二进制（Linux/amd64，每次部署都从当前代码全新构建）
         run: GOOS=linux GOARCH=amd64 go build -o seed-demo-linux-amd64 ./server/tools/cmd/seed-demo
 
+      - name: 交叉编译 yimsg-agent 二进制（Linux/amd64，客服 demo_kf_1~3 自动回复）
+        run: GOOS=linux GOARCH=amd64 go build -o agent-linux-amd64 ./agent/cmd/yimsg-agent
+
+      - name: 准备 yimsg-agent 环境变量文件（DeepSeek API Key）
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          umask 077
+          printf 'DEEPSEEK_API_KEY=%s\n' "$DEEPSEEK_API_KEY" > agent.env
+
       - name: 配置部署密钥
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -109,6 +119,8 @@ jobs:
           timeout --foreground 20s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "mkdir -p /opt/yimsg/web.new.${RUN_TAG} /opt/yimsg/website.new.${RUN_TAG}"
           timed_scp "server binary" server-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/server.new.${RUN_TAG}"
           timed_scp "seed-demo binary" seed-demo-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/seed-demo.new.${RUN_TAG}"
+          timed_scp "yimsg-agent binary" agent-linux-amd64 "${SSH_USER}@${HOST}:/opt/yimsg/agent.new.${RUN_TAG}"
+          timed_scp "yimsg-agent 环境变量文件" agent.env "${SSH_USER}@${HOST}:/opt/yimsg/agent.env.new.${RUN_TAG}"
           timed_scp "web assets" -r web/. "${SSH_USER}@${HOST}:/opt/yimsg/web.new.${RUN_TAG}/"
           timed_scp "website assets" -r website/. "${SSH_USER}@${HOST}:/opt/yimsg/website.new.${RUN_TAG}/"
 
@@ -158,6 +170,22 @@ jobs:
             chown -R yimsg:yimsg /opt/yimsg/data
 
             systemctl start yimsg
+
+            # yimsg-agent（客服 demo_kf_1~3 自动回复）依赖第 4 节标准化初始化提前创建好
+            # systemd unit；机器还没跑过 tools/scripts/init_server_env.sh 时这里只跳过，
+            # 不影响本次服务端部署结果。
+            if [[ -f /etc/systemd/system/yimsg-agent.service ]]; then
+              systemctl stop yimsg-agent 2>/dev/null || true
+              chmod +x /opt/yimsg/agent.new.${RUN_TAG}
+              mv /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/agent
+              mv /opt/yimsg/agent.env.new.${RUN_TAG} /opt/yimsg/agent.env
+              chown yimsg:yimsg /opt/yimsg/agent /opt/yimsg/agent.env
+              chmod 600 /opt/yimsg/agent.env
+              systemctl start yimsg-agent
+            else
+              echo 'yimsg-agent.service 不存在，跳过启动（需先手动运行 tools/scripts/init_server_env.sh 完成标准化初始化）'
+              rm -f /opt/yimsg/agent.new.${RUN_TAG} /opt/yimsg/agent.env.new.${RUN_TAG}
+            fi
           "
 
       - name: 验证部署结果
@@ -178,3 +206,6 @@ jobs:
           timeout --foreground 120s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "systemctl status yimsg --no-pager"
           curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${HOST}/"
           curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 聊天 /app/: %{http_code}\n" "https://${HOST}/app/"
+          # yimsg-agent 不参与上面的核心可用性判定：DEEPSEEK_API_KEY 未配置时会一直
+          # Restart=on-failure，这是预期状态，不应让整次部署失败，这里只打印状态供人工确认。
+          timeout --foreground 60s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "systemctl status yimsg-agent --no-pager" || true

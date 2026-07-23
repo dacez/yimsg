@@ -22,7 +22,7 @@
 
 ```mermaid
 flowchart LR
-    subgraph agent进程["yimsg-agent 进程"]
+    subgraph AGENT["yimsg-agent 进程"]
         direction TB
         SCH["runtime 调度器<br/>每账号一个 goroutine"]
         PIPE["pipeline 处理单元"]
