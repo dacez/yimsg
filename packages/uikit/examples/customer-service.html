@@ -124,8 +124,23 @@
       const uidByUsername = new Map(); // username -> uid，避免重复 searchUser
       let activeUsername = null;
 
+      // 示例问题按客服分组，只渲染当前选中客服对应的那部分，切换客服时刷新。
+      function renderQuickQuestions(username) {
+        quickEl.innerHTML = '';
+        for (const q of dict.quickQuestions.filter((item) => item.agent === username)) {
+          const btn = document.createElement('button');
+          btn.textContent = q.text;
+          btn.addEventListener('click', async () => {
+            const uid = await openAgent(q.agent);
+            if (uid == null) return;
+            await client.sendText({ toUid: uid }, q.text);
+          });
+          quickEl.appendChild(btn);
+        }
+      }
+
       // openAgent 是"切到某个客服的临时会话"的唯一入口，客服切换按钮和示例问题按钮
-      // 共用同一套逻辑：按用户名查 uid（查过的缓存住）、高亮对应按钮、切换会话。
+      // 共用同一套逻辑：按用户名查 uid（查过的缓存住）、高亮对应按钮、切换会话、刷新示例问题。
       async function openAgent(username) {
         let uid = uidByUsername.get(username);
         if (uid == null) {
@@ -138,6 +153,7 @@
           activeUsername = username;
           for (const b of agentsEl.querySelectorAll('button')) b.classList.remove('active');
           agentButtons.get(username)?.classList.add('active');
+          renderQuickQuestions(username);
           await handle.openConversation({ friendUid: uid });
         }
         return uid;
@@ -149,19 +165,6 @@
         btn.addEventListener('click', () => openAgent(agent.username));
         agentsEl.appendChild(btn);
         agentButtons.set(agent.username, btn);
-      }
-
-      // 示例问题：点击即切到对应客服的会话并直接把问题文本发送出去，复用 UIKit
-      // 挂载时暴露出来的同一个 client，不重新拼协议（见 packages/uikit/src/embed.ts）。
-      for (const q of dict.quickQuestions) {
-        const btn = document.createElement('button');
-        btn.textContent = q.text;
-        btn.addEventListener('click', async () => {
-          const uid = await openAgent(q.agent);
-          if (uid == null) return;
-          await client.sendText({ toUid: uid }, q.text);
-        });
-        quickEl.appendChild(btn);
       }
 
       // 默认打开第一个客服的临时会话。
