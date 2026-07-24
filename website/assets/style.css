@@ -511,6 +511,62 @@ code {
 }
 .code-block code { background: none; color: inherit; padding: 0; }
 
+/* 一键启动版块：每个平台一个独立命令块 + 右上角复制按钮，避免多平台命令
+   挤在同一个代码块里，需要用户自己找到对应那一行再手动选中复制。 */
+.command-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.command-item-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.command-row {
+  position: relative;
+}
+
+.command-row .code-block {
+  margin: 0;
+  padding-right: 96px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(231, 236, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e7ecff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.copy-btn:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(231, 236, 255, 0.6); }
+
+.copy-btn.is-copied {
+  background: var(--color-brand-500);
+  border-color: var(--color-brand-500);
+  color: #ffffff;
+}
+
+@media (max-width: 480px) {
+  .command-row .code-block { padding: 44px 16px 16px; }
+  .copy-btn { top: 10px; right: 10px; }
+}
+
 @media (max-width: 900px) {
   .pillar-grid,
   .pillar-grid--reverse { grid-template-columns: 1fr; gap: 32px; }
