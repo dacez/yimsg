@@ -83,16 +83,24 @@
           <div><dt data-i18n="statCloudDt">0 Third-Party Cloud</dt><dd data-i18n="statCloudDd">All data stays under your control</dd></div>
         </dl>
         <div class="download-panel">
-          <h3 class="download-subtitle" data-i18n="downloadTitle">Download and run in minutes</h3>
+          <h3 class="download-subtitle" data-i18n="downloadTitle">One-command start</h3>
           <ul class="check-list">
             <li data-i18n="downloadPlatform1">Windows x86-64</li>
             <li data-i18n="downloadPlatform2">Linux x86-64 / ARM64</li>
             <li data-i18n="downloadPlatform3">macOS Apple Silicon</li>
           </ul>
-          <pre class="code-block"><code data-i18n="downloadSteps">1. Download and fully extract the archive for your platform
-2. Run it:      ./yimsg          (Windows: yimsg.exe)
-3. Open in a browser: http://127.0.0.1:38081/</code></pre>
-          <p class="pillar-note" data-i18n="downloadNote">No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.</p>
+          <pre class="code-block"><code data-i18n="downloadSteps"># Linux x86-64
+curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-x86_64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg
+
+# Linux ARM64
+curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg
+
+# macOS Apple Silicon
+curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-macos-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg
+
+# Windows x86-64 (PowerShell)
+curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\yimsg.exe</code></pre>
+          <p class="pillar-note" data-i18n="downloadNote">The command downloads, extracts, and starts yimsg in one step. Once it’s running, open http://127.0.0.1:38081/ in a browser. No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.</p>
           <div class="hw-actions">
             <a class="btn btn-primary" href="https://github.com/dacez/yimsg/releases/latest" target="_blank" rel="noopener" data-i18n="downloadCta">Go to GitHub Releases →</a>
           </div>
@@ -369,12 +377,12 @@ const handle = YimsgUIKit.mount(host, {
           deployItem6: 'One service across offices, branches, remote work, and mobile',
           deployItem7: 'Available over LAN or the public internet',
           deployHighlight: 'One machine. One deployment. Every location, device, and product.',
-          downloadTitle: 'Download and run in minutes',
+          downloadTitle: 'One-command start',
           downloadPlatform1: 'Windows x86-64',
           downloadPlatform2: 'Linux x86-64 / ARM64',
           downloadPlatform3: 'macOS Apple Silicon',
-          downloadSteps: '1. Download and fully extract the archive for your platform\n2. Run it:      ./yimsg          (Windows: yimsg.exe)\n3. Open in a browser: http://127.0.0.1:38081/',
-          downloadNote: 'No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.',
+          downloadSteps: '# Linux x86-64\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-x86_64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# Linux ARM64\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# macOS Apple Silicon\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-macos-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# Windows x86-64 (PowerShell)\ncurl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\\yimsg.exe',
+          downloadNote: 'The command downloads, extracts, and starts yimsg in one step. Once it’s running, open http://127.0.0.1:38081/ in a browser. No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.',
           downloadCta: 'Go to GitHub Releases →',
           statMachineDt: '1 Machine',
           statMachineDd: 'Minimal self-hosted, ready out of the box',
@@ -483,12 +491,12 @@ const handle = YimsgUIKit.mount(host, {
           deployItem6: '办公室、分支机构、居家与移动端共用',
           deployItem7: '支持局域网与公网访问',
           deployHighlight: '一台机器，一次部署，多地、多端、多个产品共用。',
-          downloadTitle: '下载后几分钟内启动',
+          downloadTitle: '一键启动',
           downloadPlatform1: 'Windows x86-64',
           downloadPlatform2: 'Linux x86-64 / ARM64',
           downloadPlatform3: 'macOS Apple Silicon',
-          downloadSteps: '1. 下载并完整解压对应平台的压缩包\n2. 运行：      ./yimsg          （Windows 为 yimsg.exe）\n3. 浏览器打开：http://127.0.0.1:38081/',
-          downloadNote: '默认无需配置文件。需要让局域网或公网中的其它设备连接时，运行 "yimsg --listen 0.0.0.0:38081"。每个发行包还附带 yimsg-cli 和 yimsg-agent 两个可选命令行工具。',
+          downloadSteps: '# Linux x86-64\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-x86_64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# Linux ARM64\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-linux-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# macOS Apple Silicon\ncurl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-macos-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg\n\n# Windows x86-64（PowerShell）\ncurl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.1/yimsg-0.1.1-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\\yimsg.exe',
+          downloadNote: '命令会一次性完成下载、解压和启动。运行后浏览器打开 http://127.0.0.1:38081/ 即可。默认无需配置文件；需要让局域网或公网中的其它设备连接时，运行 "yimsg --listen 0.0.0.0:38081"。每个发行包还附带 yimsg-cli 和 yimsg-agent 两个可选命令行工具。',
           downloadCta: '前往 GitHub Releases →',
           statMachineDt: '1 台机器',
           statMachineDd: '极简单机部署，开箱即用',
