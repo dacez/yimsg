@@ -54,3 +54,5 @@ go build -o yimsg-cli ./cli/cmd/yimsg-cli
 所有命令把结果打印为一段 JSON 到 stdout：成功时顶层 `"ok": true`，失败时 `"ok": false` 并带 `"error"`，同时进程以退出码 1 结束。运行 `./yimsg-cli --help` 查看完整子命令与参数列表。
 
 > 同一个根目录下的"当前账号"是进程间共享的单个指针（`<dir>/current.json`）。如果要用同一个根目录**并发**运行多个进程分别扮演不同账号自动回复，请在每次调用前先 `switch-user` 到目标账号，且不要并发调用 `switch-user`/依赖当前账号的命令，避免互相覆盖；更简单的做法是给每个机器人账号各用一个独立的根目录。
+
+本组件采用 `Apache-2.0`，详见 [LICENSING.md](../LICENSING.md)。

@@ -1,7 +1,7 @@
 {
   "name": "@yimsg/web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "build": "npm run check:guards && tsc --noEmit -p tsconfig.json && vite build --config vite.config.ts",

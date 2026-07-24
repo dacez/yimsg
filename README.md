@@ -71,6 +71,8 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 ├── packages/sdk/              # UI-agnostic TypeScript SDK
 ├── packages/uikit/            # Embeddable UIKit and examples
 ├── apps/web/                  # Official Web application
+├── cli/                       # yimsg-cli: command-line client for AI callers
+├── agent/                     # yimsg-agent: multi-account auto-reply daemon
 ├── website/                   # Static marketing website
 ├── docs/                      # Cross-component architecture, deployment, and development docs
 ├── tools/                     # Repository generation, validation, build, and test tools
@@ -96,7 +98,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 ## Download v0.1
 
-[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.0) provides packages for Windows x86-64, Linux x86-64 / ARM64, and macOS Apple Silicon. Download and fully extract an archive, then run `yimsg` (`yimsg.exe` on Windows). No configuration file is required by default; open `http://127.0.0.1:38081/` in a browser.
+[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.1) provides packages for Windows x86-64, Linux x86-64 / ARM64, and macOS Apple Silicon. Each package bundles three binaries: `yimsg` (the server), `yimsg-cli` (a command-line client for AI callers), and `yimsg-agent` (a multi-account auto-reply daemon). Download and fully extract an archive, then run `yimsg` (`yimsg.exe` on Windows). No configuration file is required by default; open `http://127.0.0.1:38081/` in a browser.
 
 To accept connections from other devices on a LAN or public network, use one command:
 
@@ -105,6 +107,8 @@ yimsg --listen 0.0.0.0:38081
 ```
 
 Data is stored in the `data/` directory beside the executable. Copy and edit `config.example.toml` only for advanced settings such as production TLS, certificates, shard count, or resource limits.
+
+`yimsg-cli` and `yimsg-agent` are optional and usable independently of each other; see [`cli/README.md`](cli/README.md) and [`agent/README.md`](agent/README.md) for usage.
 
 ## Memory Guarantees
 
@@ -196,7 +200,7 @@ See [`docs/development/测试方案.md`](docs/development/测试方案.md) (Chin
 
 ## Licensing and Trademarks
 
-The Server and official Web App use `AGPL-3.0-only`; the Protocol, SDK, UIKit, and website code use `Apache-2.0`. See [`LICENSING.md`](LICENSING.md) for the exact scope, contribution terms, and commercial-licensing information, and [`TRADEMARKS.md`](TRADEMARKS.md) for trademark-use boundaries.
+The Server and official Web App use `AGPL-3.0-only`; the Protocol, SDK, UIKit, CLI, Agent, and website code use `Apache-2.0`. See [`LICENSING.md`](LICENSING.md) for the exact scope, contribution terms, and commercial-licensing information, and [`TRADEMARKS.md`](TRADEMARKS.md) for trademark-use boundaries.
 
 ## Documentation Index
 

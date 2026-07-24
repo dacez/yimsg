@@ -42,12 +42,16 @@ for target in "${TARGETS[@]}"; do
   stage_root="${DIST_DIR}/.stage/${package_name}"
   mkdir -p "${stage_root}"
 
-  binary="yimsg"
+  ext=""
   if [[ "${goos}" == "windows" ]]; then
-    binary="yimsg.exe"
+    ext=".exe"
   fi
-  CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-    go build -trimpath -ldflags "${LDFLAGS}" -o "${stage_root}/${binary}" ./server/cmd/yimsg-server
+  for cmd in "yimsg:./server/cmd/yimsg-server" "yimsg-cli:./cli/cmd/yimsg-cli" "yimsg-agent:./agent/cmd/yimsg-agent"; do
+    bin_name="${cmd%%:*}"
+    pkg_path="${cmd#*:}"
+    CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+      go build -trimpath -ldflags "${LDFLAGS}" -o "${stage_root}/${bin_name}${ext}" "${pkg_path}"
+  done
 
   cp -R web website "${stage_root}/"
   cp LICENSE NOTICE LICENSING.md "${stage_root}/"

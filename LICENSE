@@ -1,8 +1,8 @@
 Yimsg is a multi-license repository.
 
 The server and official Web App are licensed under AGPL-3.0-only.
-The protocol, TypeScript SDK, UIKit, UIKit examples, and website code are
-licensed under Apache-2.0.
+The protocol, TypeScript SDK, UIKit, UIKit examples, CLI, Agent, and website
+code are licensed under Apache-2.0.
 
 The complete license texts are available at:
 

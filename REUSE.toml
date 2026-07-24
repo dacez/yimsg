@@ -23,6 +23,8 @@ path = [
   "packages/sdk/**",
   "packages/uikit/**",
   "website/**",
+  "cli/**",
+  "agent/**",
   "docs/**",
   "tools/README.md",
   "tools/*.sh",

@@ -82,6 +82,21 @@
           <div><dt data-i18n="statSizeDt">&lt; 32MB</dt><dd data-i18n="statSizeDd">Ultra-compact deployment package</dd></div>
           <div><dt data-i18n="statCloudDt">0 Third-Party Cloud</dt><dd data-i18n="statCloudDd">All data stays under your control</dd></div>
         </dl>
+        <div class="download-panel">
+          <h3 class="download-subtitle" data-i18n="downloadTitle">Download and run in minutes</h3>
+          <ul class="check-list">
+            <li data-i18n="downloadPlatform1">Windows x86-64</li>
+            <li data-i18n="downloadPlatform2">Linux x86-64 / ARM64</li>
+            <li data-i18n="downloadPlatform3">macOS Apple Silicon</li>
+          </ul>
+          <pre class="code-block"><code data-i18n="downloadSteps">1. Download and fully extract the archive for your platform
+2. Run it:      ./yimsg          (Windows: yimsg.exe)
+3. Open in a browser: http://127.0.0.1:38081/</code></pre>
+          <p class="pillar-note" data-i18n="downloadNote">No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.</p>
+          <div class="hw-actions">
+            <a class="btn btn-primary" href="https://github.com/dacez/yimsg/releases/latest" target="_blank" rel="noopener" data-i18n="downloadCta">Go to GitHub Releases →</a>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -354,6 +369,13 @@ const handle = YimsgUIKit.mount(host, {
           deployItem6: 'One service across offices, branches, remote work, and mobile',
           deployItem7: 'Available over LAN or the public internet',
           deployHighlight: 'One machine. One deployment. Every location, device, and product.',
+          downloadTitle: 'Download and run in minutes',
+          downloadPlatform1: 'Windows x86-64',
+          downloadPlatform2: 'Linux x86-64 / ARM64',
+          downloadPlatform3: 'macOS Apple Silicon',
+          downloadSteps: '1. Download and fully extract the archive for your platform\n2. Run it:      ./yimsg          (Windows: yimsg.exe)\n3. Open in a browser: http://127.0.0.1:38081/',
+          downloadNote: 'No configuration file is required by default. To allow other devices on a LAN or the public internet to connect, run "yimsg --listen 0.0.0.0:38081". Each package also bundles yimsg-cli and yimsg-agent, two optional command-line tools.',
+          downloadCta: 'Go to GitHub Releases →',
           statMachineDt: '1 Machine',
           statMachineDd: 'Minimal self-hosted, ready out of the box',
           statCoreDt: '2-core 4GB',
@@ -461,6 +483,13 @@ const handle = YimsgUIKit.mount(host, {
           deployItem6: '办公室、分支机构、居家与移动端共用',
           deployItem7: '支持局域网与公网访问',
           deployHighlight: '一台机器，一次部署，多地、多端、多个产品共用。',
+          downloadTitle: '下载后几分钟内启动',
+          downloadPlatform1: 'Windows x86-64',
+          downloadPlatform2: 'Linux x86-64 / ARM64',
+          downloadPlatform3: 'macOS Apple Silicon',
+          downloadSteps: '1. 下载并完整解压对应平台的压缩包\n2. 运行：      ./yimsg          （Windows 为 yimsg.exe）\n3. 浏览器打开：http://127.0.0.1:38081/',
+          downloadNote: '默认无需配置文件。需要让局域网或公网中的其它设备连接时，运行 "yimsg --listen 0.0.0.0:38081"。每个发行包还附带 yimsg-cli 和 yimsg-agent 两个可选命令行工具。',
+          downloadCta: '前往 GitHub Releases →',
           statMachineDt: '1 台机器',
           statMachineDd: '极简单机部署，开箱即用',
           statCoreDt: '2 核 4G',

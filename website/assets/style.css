@@ -281,6 +281,21 @@ code {
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
 }
 
+.download-panel {
+  max-width: 640px;
+  margin: 48px auto 0;
+}
+
+.download-subtitle {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 20px;
+}
+
+.download-panel .hw-actions { justify-content: center; }
+
 /* 区块 */
 .section { padding: 96px 0; }
 .section-alt {

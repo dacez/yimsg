@@ -73,3 +73,7 @@ agent_data/
 
 - `agent/config`、`agent/fsread`、`agent/state`、`agent/deepseek`、`agent/engine`：纯 Go 单元测试，不依赖真实网络（DeepSeek 调用用 `httptest` 模拟）。
 - `agent/tests/e2e`：对已启动的真实服务端 + 模拟 DeepSeek 接口，编译并驱动 `yimsg-agent` 二进制本身，覆盖完整轮询-处理-回复链路。运行方式与 `cli/tests/e2e` 一致，由 `tools/run_all_tests.sh` 统一启动服务端后执行。
+
+## 许可证
+
+本组件采用 `Apache-2.0`，详见 [LICENSING.md](../LICENSING.md)。

@@ -31,3 +31,22 @@ Yimsg 0.1 快速开始
 
 提示：开放公网访问前，请配置 TLS 和防火墙；Yimsg 0.1 是单机、单进程架构，
 一套部署可以同时服务多个地点、终端、网站和业务系统，但不是多机集群。
+
+本压缩包同时附带两个可选的独立命令行工具：
+
+yimsg-cli：供 AI 调用的命令行客户端，登录后可增量同步消息、查询联系人/群资料、
+收发消息。用法示例：
+
+   ./yimsg-cli login --server ws://127.0.0.1:38081/ws --username U --password P
+   ./yimsg-cli sync
+   ./yimsg-cli send --to-user alice --text "hello"
+
+完整子命令见 ./yimsg-cli --help，详细方案见仓库 cli/README.md。
+
+yimsg-agent：多账号自动回复常驻进程，调用 DeepSeek API 自动回答消息，支持
+私有/共享知识库。用法示例（需要 DeepSeek API Key）：
+
+   ./yimsg-agent -server ws://127.0.0.1:38081/ws -username bot --password P \
+     -deepseek-api-key-file /path/to/deepseek_api_key
+
+多账号配置文件方式和完整参数见仓库 agent/README.md。

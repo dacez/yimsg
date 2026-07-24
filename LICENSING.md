@@ -5,7 +5,7 @@
 Yimsg 是单一公开 monorepo，但不同组件采用不同许可证：
 
 - `server/**` 与 `apps/web/**`：`AGPL-3.0-only`。
-- `protocol/**`、`packages/sdk/**`、`packages/uikit/**` 与 `website/**`：`Apache-2.0`。
+- `protocol/**`、`packages/sdk/**`、`packages/uikit/**`、`cli/**`、`agent/**` 与 `website/**`：`Apache-2.0`。
 - UIKit 示例和对应测试随 UIKit 使用 `Apache-2.0`；服务端测试与官方 Web App 测试随对应组件使用 `AGPL-3.0-only`。
 - 根目录跨组件文档和纯构建、协议、SDK、UIKit 工具原则上使用 `Apache-2.0`；仅服务于 Server 或官方 Web App 的脚本按 `AGPL-3.0-only`。逐项映射以 `REUSE.toml` 为准。
 
@@ -22,7 +22,7 @@ Yimsg 是单一公开 monorepo，但不同组件采用不同许可证：
 Yimsg remains one public monorepo, with licenses assigned by component:
 
 - `server/**` and `apps/web/**`: `AGPL-3.0-only`.
-- `protocol/**`, `packages/sdk/**`, `packages/uikit/**`, and `website/**`: `Apache-2.0`.
+- `protocol/**`, `packages/sdk/**`, `packages/uikit/**`, `cli/**`, `agent/**`, and `website/**`: `Apache-2.0`.
 - UIKit examples and tests follow UIKit under `Apache-2.0`; server tests and official Web App tests follow their components under `AGPL-3.0-only`.
 - Cross-component documentation and general build, protocol, SDK, and UIKit tooling are generally `Apache-2.0`; tools used only by the Server or official Web App are `AGPL-3.0-only`. `REUSE.toml` contains the file-level directory annotations.
 

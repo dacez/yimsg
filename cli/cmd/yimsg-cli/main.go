@@ -62,6 +62,9 @@ func main() {
 	case "-h", "--help", "help":
 		printUsage()
 		return
+	case "-v", "--version", "version":
+		fmt.Println(versionString())
+		return
 	default:
 		err = fmt.Errorf("未知子命令: %s", cmd)
 	}

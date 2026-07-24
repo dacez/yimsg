@@ -7,7 +7,7 @@
 提交贡献即表示你有权提交相关内容，并同意贡献按目标目录当前适用的许可证提供：
 
 - `server/**`、`apps/web/**`：`AGPL-3.0-only`。
-- `protocol/**`、`packages/sdk/**`、`packages/uikit/**`、`website/**`：`Apache-2.0`。
+- `protocol/**`、`packages/sdk/**`、`packages/uikit/**`、`cli/**`、`agent/**`、`website/**`：`Apache-2.0`。
 - 其它路径以 [REUSE.toml](REUSE.toml) 和 [LICENSING.md](LICENSING.md) 为准。
 
 不要提交来源不明、许可证不兼容或无法保留其必要声明的第三方内容。

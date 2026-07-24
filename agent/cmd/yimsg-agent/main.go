@@ -32,6 +32,7 @@ func main() {
 
 func run() error {
 	fs := flag.NewFlagSet("yimsg-agent", flag.ExitOnError)
+	showVersion := fs.Bool("version", false, "打印版本信息后退出")
 	configPath := fs.String("config", "", "配置文件路径（TOML）；与下面的命令行账号参数互斥")
 	server := fs.String("server", "", "yimsg WebSocket 地址，例如 ws://127.0.0.1:8080/ws")
 	dataDir := fs.String("data-dir", "", "agent 本地状态根目录（含全部账号共享的 resources/ 知识库）")
@@ -49,6 +50,10 @@ func run() error {
 	fs.Var(&accountFlags, "account", "多账号命令行模式，重复传入 username:password")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return err
+	}
+	if *showVersion {
+		fmt.Println(versionString())
+		return nil
 	}
 
 	cfg, err := loadConfig(loadConfigInput{
