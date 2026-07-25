@@ -169,6 +169,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-input-row .input{flex:1;border-radius:22px;padding:0 18px;height:44px;background:var(--bg-hover);border-color:transparent}
 .message-input-row .input:focus{background:var(--bg-panel);border-color:var(--primary)}
 .message-input-row textarea.input{resize:none;padding:11px 18px;line-height:22px;overflow-y:auto}
+.message-input-row textarea.input::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .message-input-row .btn{border-radius:22px;height:44px;padding:0 22px}
 #msg-markdown-toggle{font-size:13px;font-weight:700;letter-spacing:-.5px;flex-shrink:0}
 #msg-markdown-toggle.active{background:var(--primary-light);color:var(--primary)}
