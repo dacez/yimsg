@@ -164,18 +164,32 @@ test.describe('Messaging', () => {
     await expect(page1.locator('#msg-markdown-toggle')).toHaveClass(/active/);
     await sendMessage(page1, '**bold** and `code`');
 
-    const markdownBubble = page1.locator('.message-markdown').last();
+    // 到此为止发送方 .message-markdown 序列固定为 [0]=粗体/代码消息；后续追加 [1]=标题消息。
+    const markdownBubble = page1.locator('.message-markdown').nth(0);
     await expect(markdownBubble).toBeVisible();
     await expect(markdownBubble.locator('strong')).toHaveText('bold');
     await expect(markdownBubble.locator('code')).toHaveText('code');
 
-    // 接收方也应看到解析后的 Markdown 渲染结果。
+    // 1-4 级标题应分别解析为 h1~h4，且行内粗体/代码在标题内仍生效。
+    await sendMessage(page1, '# H1\n## H2 **bold**\n### H3\n#### H4 `code`\n##### not heading');
+    const headingBubble = page1.locator('.message-markdown').nth(1);
+    await expect(headingBubble.locator('h1')).toHaveText('H1');
+    await expect(headingBubble.locator('h2 strong')).toHaveText('bold');
+    await expect(headingBubble.locator('h3')).toHaveText('H3');
+    await expect(headingBubble.locator('h4 code')).toHaveText('code');
+    await expect(headingBubble.locator('h5')).toHaveCount(0);
+    await expect(headingBubble).toContainText('##### not heading');
+
+    // 接收方也应看到解析后的 Markdown 渲染结果，序列与发送方一致。
     await page2.click('[data-view="chat"]');
     const conv2 = page2.locator('#conversation-list .conversation-item', { hasText: 'MarkdownSender' });
     await expect(conv2).toBeVisible({ timeout: 10_000 });
     await conv2.click();
-    const receiverBubble = page2.locator('.message-markdown').last();
+    const receiverBubble = page2.locator('.message-markdown').nth(0);
     await expect(receiverBubble.locator('strong')).toHaveText('bold', { timeout: 10_000 });
+    const receiverHeadingBubble = page2.locator('.message-markdown').nth(1);
+    await expect(receiverHeadingBubble.locator('h1')).toHaveText('H1', { timeout: 10_000 });
+    await expect(receiverHeadingBubble.locator('h4 code')).toHaveText('code');
 
     // 再次点击关闭后恢复纯文本发送。
     await page1.click('#msg-markdown-toggle');
