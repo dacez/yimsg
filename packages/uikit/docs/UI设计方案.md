@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-19。
+> 最后复核：2026-07-25。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -153,7 +153,7 @@ graph LR
         C1["#chat-header<br/>标题 + 详情按钮"]
         C2["#chat-empty<br/>空占位"]
         C3["#message-list<br/>上滚加载更多"]
-        C4["#message-input-area<br/>输入框 + 表情按钮 + 附件按钮"]
+        C4["#message-input-area<br/>输入框 + 表情按钮 + 附件按钮 + Markdown 模式切换按钮"]
         C1 --- C2 --- C3 --- C4
     end
 
@@ -516,20 +516,28 @@ openConversation(conv):
 
 ```
 sendMessage():
-  content = #msg-input.value.trim()
+  content = #msg-input.value.trim()          // #msg-input 为 <textarea>，支持 Shift+Enter 换行
   if input.disabled || !content || !currentConvKey → return
 
   target = client.describeConversation(currentConvKey).target
-  client.validateTextMessage(content)
-  result = composerQuote
-    ? await client.sendQuotedTextMessage(target, { text: content, quote })
-    : await client.sendMessage(target, content)
+
+  if composerMarkdownMode && !composerQuote:
+    result = await client.sendMarkdown(target, content)   // 内部按 MAX_MARKDOWN_CHARS 校验长度
+    清空输入框
+  else:
+    client.validateTextMessage(content)
+    清空输入框
+    result = composerQuote
+      ? await client.sendQuotedTextMessage(target, { text: content, quote })   // 引用回复只承载纯文本
+      : await client.sendText(target, content)
+
   appendLiveMessageToPage(result.message)
   // SDK 内部只更新会话快照；当前消息面板仍由 chat/state.ts 中的 currentMessages 数据页维护
   renderMessages()
   scrollToBottom()
-  清空输入框
 ```
+
+`#msg-markdown-toggle` 点击切换 `composerMarkdownMode`，同步按钮 `active` 态与输入框 placeholder；开始引用（`setComposerQuote`）会强制关闭并禁用该按钮，引用结束（`clearComposerQuote`）后恢复可用——协议 `QuoteBody` 只有 `TextBody`，引用中不可发送 Markdown 正文。
 
 #### 引用与转发
 

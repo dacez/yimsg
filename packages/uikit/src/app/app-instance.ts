@@ -71,6 +71,7 @@ interface ChatState {
   messagePageHasNewer: boolean;
   messagePageRequestId: number;
   pendingNewMessageCount: number;
+  composerMarkdownMode: boolean;
   composerQuote: {
     msgId: string;
     fromUid: string;
@@ -215,6 +216,7 @@ export class AppInstance {
     messagePageHasNewer: false,
     messagePageRequestId: 0,
     pendingNewMessageCount: 0,
+    composerMarkdownMode: false,
     composerQuote: null,
     messageActionMenu: null,
     messageSelectionMode: false,
@@ -469,8 +471,8 @@ export class AppInstance {
 
     const chatEmpty = this.dom.getElementById('chat-empty');
     if (chatEmpty) chatEmpty.textContent = this.t('chat.selectConversation');
-    const msgInput = this.dom.getElementById<HTMLInputElement>('msg-input');
-    if (msgInput) msgInput.placeholder = this.t('chat.typeMessage');
+    const msgInput = this.dom.getElementById<HTMLTextAreaElement>('msg-input');
+    if (msgInput) msgInput.placeholder = this.t(this.chatState.composerMarkdownMode ? 'chat.typeMarkdownMessage' : 'chat.typeMessage');
     const msgSend = this.dom.getElementById('msg-send');
     if (msgSend) msgSend.textContent = this.t('chat.send');
     const toggleDetail = this.dom.getElementById('toggle-detail');
@@ -481,6 +483,8 @@ export class AppInstance {
     if (msgAttach) msgAttach.title = this.t('chat.attachFile');
     const msgEmoji = this.dom.getElementById('msg-emoji');
     if (msgEmoji) msgEmoji.title = this.t('chat.emoji');
+    const msgMarkdownToggle = this.dom.getElementById('msg-markdown-toggle');
+    if (msgMarkdownToggle) msgMarkdownToggle.title = this.t('chat.markdownMode');
 
     const friendsTab = this.dom.querySelector<HTMLElement>('.tab[data-ctab="friends"]');
     if (friendsTab) friendsTab.textContent = this.t('contacts.friends');

@@ -1,7 +1,7 @@
 import type { AppInstance } from '../../app-instance';
 import { EMOJI_CATEGORIES } from './emoji-data';
 
-function insertEmojiAtCursor(input: HTMLInputElement, emoji: string) {
+function insertEmojiAtCursor(input: HTMLTextAreaElement, emoji: string) {
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? input.value.length;
   const value = input.value;
@@ -55,7 +55,7 @@ export function setupEmojiPicker(app: AppInstance) {
     grid.addEventListener('click', (event) => {
       const btn = (event.target as HTMLElement).closest('.emoji-picker-item');
       if (!btn) return;
-      insertEmojiAtCursor(app.$('msg-input') as HTMLInputElement, btn.textContent || '');
+      insertEmojiAtCursor(app.$('msg-input') as HTMLTextAreaElement, btn.textContent || '');
     });
 
     el.querySelector('.emoji-picker-tabs')?.addEventListener('click', (event) => {

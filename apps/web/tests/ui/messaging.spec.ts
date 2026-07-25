@@ -142,6 +142,89 @@ test.describe('Messaging', () => {
     await ctx2.close();
   });
 
+  test('markdown mode toggle sends MarkdownBody and renders formatted content', async ({ browser }) => {
+    const u1 = uniqueUser('md1');
+    const u2 = uniqueUser('md2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'MarkdownSender');
+    await register(page2, u2, password, 'MarkdownReceiver');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'MarkdownReceiver');
+
+    // 关闭状态下发送 ** ** 应作为纯文本原样展示，不解析为加粗。
+    await sendMessage(page1, '**plain not bold**');
+    await expectMessage(page1, '**plain not bold**');
+
+    // 开启 Markdown 模式后发送应解析为 <strong>/<code>，并按钮呈现激活态。
+    await page1.click('#msg-markdown-toggle');
+    await expect(page1.locator('#msg-markdown-toggle')).toHaveClass(/active/);
+    await sendMessage(page1, '**bold** and `code`');
+
+    const markdownBubble = page1.locator('.message-markdown').last();
+    await expect(markdownBubble).toBeVisible();
+    await expect(markdownBubble.locator('strong')).toHaveText('bold');
+    await expect(markdownBubble.locator('code')).toHaveText('code');
+
+    // 接收方也应看到解析后的 Markdown 渲染结果。
+    await page2.click('[data-view="chat"]');
+    const conv2 = page2.locator('#conversation-list .conversation-item', { hasText: 'MarkdownSender' });
+    await expect(conv2).toBeVisible({ timeout: 10_000 });
+    await conv2.click();
+    const receiverBubble = page2.locator('.message-markdown').last();
+    await expect(receiverBubble.locator('strong')).toHaveText('bold', { timeout: 10_000 });
+
+    // 再次点击关闭后恢复纯文本发送。
+    await page1.click('#msg-markdown-toggle');
+    await expect(page1.locator('#msg-markdown-toggle')).not.toHaveClass(/active/);
+    await sendMessage(page1, '**back to plain**');
+    await expectMessage(page1, '**back to plain**');
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('starting a quote disables markdown mode until the quote is cleared', async ({ browser }) => {
+    const u1 = uniqueUser('mdq1');
+    const u2 = uniqueUser('mdq2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'QuoteMdUser1');
+    await register(page2, u2, password, 'QuoteMdUser2');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'QuoteMdUser2');
+
+    await sendMessage(page1, 'origin message');
+    await expectMessage(page1, 'origin message');
+
+    await page1.click('#msg-markdown-toggle');
+    await expect(page1.locator('#msg-markdown-toggle')).toHaveClass(/active/);
+
+    await page1.locator('.message-row').first().hover();
+    await page1.locator('.message-actions-trigger').first().click();
+    await page1.locator('.message-action-item').getByText('引用').click();
+    await expect(page1.locator('#msg-quote-bar')).not.toHaveClass(/hidden/);
+
+    // 引用回复只能是纯文本：开始引用应关闭并禁用 Markdown 模式。
+    await expect(page1.locator('#msg-markdown-toggle')).not.toHaveClass(/active/);
+    await expect(page1.locator('#msg-markdown-toggle')).toBeDisabled();
+
+    await sendMessage(page1, 'reply with quote');
+    await expectMessage(page1, 'reply with quote');
+
+    // 引用结束后 Markdown 切换按钮恢复可用。
+    await expect(page1.locator('#msg-markdown-toggle')).toBeEnabled();
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('sender can recall message and UI updates in current chat', async ({ browser }) => {
     const u1 = uniqueUser('recall1');
     const u2 = uniqueUser('recall2');

@@ -91,7 +91,8 @@ export const APP_SHELL_HTML = `
                   <line x1="15" y1="9" x2="15.01" y2="9"/>
                 </svg>
               </button>
-              <input class="input" type="text" id="msg-input" placeholder="输入消息...">
+              <button class="icon-btn" id="msg-markdown-toggle" title="Markdown" aria-label="Markdown" aria-pressed="false">M↓</button>
+              <textarea class="input" id="msg-input" rows="1" placeholder="输入消息..."></textarea>
               <button class="btn btn-primary" id="msg-send">发送</button>
             </div>
             <input type="file" id="file-picker-image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden">

@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`。
-> 最后复核：2026-07-23。
+> 最后复核：2026-07-25。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -88,7 +88,7 @@ packages/uikit/src/
 | 选择器挂载 | 支持 | `mount('#chat', options)` 接受 CSS 选择器或 HTMLElement |
 | 登录 / 注册 | 支持 | 内置认证表单；也支持 `token` / `getToken()` 自动鉴权 |
 | 外部已认证 client | 支持 | `client` 已 ready 时跳过登录页 |
-| 会话与消息 | 支持 | 会话分页、分页、未读、详情、免打扰、Markdown、引用、转发、撤回、多选 |
+| 会话与消息 | 支持 | 会话分页、分页、未读、详情、免打扰、Markdown（输入框 Markdown 模式切换撰写 + 安全渲染）、引用、转发、撤回、多选 |
 | 联系人 / 群 | 支持 | 好友请求、搜索、备注、删除、屏蔽列表、建群、群详情与成员管理 |
 | 设置 | 支持 | 资料、头像、密码、语言、清除数据（仅 `persistent` 模式）、登出 |
 | 主题 | 支持 | `light` / `dark` / `auto`，支持 token 覆盖和运行期切换 |

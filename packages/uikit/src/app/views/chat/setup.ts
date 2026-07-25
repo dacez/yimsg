@@ -1,5 +1,5 @@
 import type { AppInstance } from '../../app-instance';
-import { uploadAndSend, sendMessage } from './composer';
+import { uploadAndSend, sendMessage, toggleComposerMarkdownMode } from './composer';
 import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
@@ -16,6 +16,9 @@ export function setupChat(app: AppInstance) {
       e.preventDefault();
       void sendMessage(app);
     }
+  });
+  app.$('msg-markdown-toggle').addEventListener('click', () => {
+    toggleComposerMarkdownMode(app);
   });
 
   app.$('chat-header').addEventListener('click', (event) => {

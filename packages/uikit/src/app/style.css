@@ -168,7 +168,10 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-input-row{display:flex;gap:var(--space-sm);align-items:center}
 .message-input-row .input{flex:1;border-radius:22px;padding:0 18px;height:44px;background:var(--bg-hover);border-color:transparent}
 .message-input-row .input:focus{background:var(--bg-panel);border-color:var(--primary)}
+.message-input-row textarea.input{resize:none;padding:11px 18px;line-height:22px;overflow-y:auto}
 .message-input-row .btn{border-radius:22px;height:44px;padding:0 22px}
+#msg-markdown-toggle{font-size:13px;font-weight:700;letter-spacing:-.5px;flex-shrink:0}
+#msg-markdown-toggle.active{background:var(--primary-light);color:var(--primary)}
 #view-contacts{flex:1;overflow:hidden;background:var(--bg-panel);display:flex}
 .contacts-left{width:280px;min-width:220px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-panel)}
 .contacts-resizer{width:8px;flex-shrink:0;cursor:col-resize;position:relative;background:var(--bg-panel);touch-action:none}
