@@ -134,6 +134,10 @@ func ActionType(action string) (uint16, bool) {
 		return uint16(pb.Type_TYPE_ACTION_CREATE_ORG), true
 	case "delete_org":
 		return uint16(pb.Type_TYPE_ACTION_DELETE_ORG), true
+	case "search_contacts":
+		return uint16(pb.Type_TYPE_ACTION_SEARCH_CONTACTS), true
+	case "search_messages":
+		return uint16(pb.Type_TYPE_ACTION_SEARCH_MESSAGES), true
 	default:
 		return 0, false
 	}
@@ -260,6 +264,10 @@ func NewRequestMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.CreateOrgRequest{}, true
 	case pb.Type_TYPE_ACTION_DELETE_ORG:
 		return &pb.DeleteOrgRequest{}, true
+	case pb.Type_TYPE_ACTION_SEARCH_CONTACTS:
+		return &pb.SearchContactsRequest{}, true
+	case pb.Type_TYPE_ACTION_SEARCH_MESSAGES:
+		return &pb.SearchMessagesRequest{}, true
 	default:
 		return nil, false
 	}
@@ -386,6 +394,10 @@ func NewResponseMessageByType(typeID uint16) (proto.Message, bool) {
 		return &pb.CreateOrgResponse{}, true
 	case pb.Type_TYPE_ACTION_DELETE_ORG:
 		return &pb.DeleteOrgResponse{}, true
+	case pb.Type_TYPE_ACTION_SEARCH_CONTACTS:
+		return &pb.SearchContactsResponse{}, true
+	case pb.Type_TYPE_ACTION_SEARCH_MESSAGES:
+		return &pb.SearchMessagesResponse{}, true
 	default:
 		return nil, false
 	}
@@ -536,6 +548,10 @@ func DispatchActionFrame(svc ActionService, info *service.BaseInfo, frame Frame)
 		resp = svc.CreateOrg(info, req.(*pb.CreateOrgRequest))
 	case pb.Type_TYPE_ACTION_DELETE_ORG:
 		resp = svc.DeleteOrg(info, req.(*pb.DeleteOrgRequest))
+	case pb.Type_TYPE_ACTION_SEARCH_CONTACTS:
+		resp = svc.SearchContacts(info, req.(*pb.SearchContactsRequest))
+	case pb.Type_TYPE_ACTION_SEARCH_MESSAGES:
+		resp = svc.SearchMessages(info, req.(*pb.SearchMessagesRequest))
 	default:
 		resp = errorResponseByType(frame.Type, appmsg.ErrorCodeUnknownAction, fmt.Sprintf("unknown type: %d", frame.Type))
 	}

@@ -69,6 +69,8 @@ enum Type {
   TYPE_ACTION_LIST_ORG_ADMINS = 58; // action=list_org_admins auth=true domain=组织 desc=列出某节点为根子树的直属管理员，需对该节点有管理权限
   TYPE_ACTION_CREATE_ORG = 59; // action=create_org auth=true domain=组织 desc=创建组织，调用方自动成为组织根管理员，任意登录用户可调用
   TYPE_ACTION_DELETE_ORG = 60; // action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理
+  TYPE_ACTION_SEARCH_CONTACTS = 61; // action=search_contacts auth=true domain=通讯录 desc=按关键字搜索通讯录
+  TYPE_ACTION_SEARCH_MESSAGES = 62; // action=search_messages auth=true domain=消息 desc=按关键字搜索消息
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001; // notification=messages:received desc=消息域发生变化
   TYPE_NOTIFY_CONTACTS_UPDATED = 10002; // notification=contacts:updated desc=通讯录发生变化
   TYPE_NOTIFY_SESSION_KICKED = 10003; // notification=session:kicked desc=当前登录态被踢下线
@@ -498,6 +500,17 @@ message GetContactsResponse {
   PageInfo page = 11; // required 展示分页信息
 }
 
+message SearchContactsRequest {
+  string keyword = 10; // required 搜索关键字；服务端按 search_text LIKE 匹配，空串（或去空白后为空）返回 ERROR_INVALID_ARGUMENT
+  optional ContactStatus status = 11; // optional 联系人状态过滤；不填表示不过滤，语义同 get_contacts，显式传 0 返回 ERROR_INVALID_ARGUMENT
+  PageQuery page = 12; // optional 展示分页游标；排序与 get_contacts 一致（friend 按 sort_key/拼音排序，pending 按 seq 倒序）
+}
+message SearchContactsResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Contact contacts = 10; // optional 命中的通讯录条目
+  PageInfo page = 11; // required 展示分页信息
+}
+
 message GetContactCountRequest {
   ContactStatus status = 10; // required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING_INCOMING 表示待我处理的好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量
 }
@@ -606,6 +619,17 @@ message GetMessagesResponse {
   BaseResponse base = 1; // required 通用响应状态
   repeated Message messages = 10; // optional 消息列表
   PageInfo page = 11; // required 展示分页信息；msg_ids 批量读取场景为空
+}
+
+message SearchMessagesRequest {
+  string keyword = 10; // required 搜索关键字；服务端按 search_text LIKE 匹配，空串（或去空白后为空）返回 ERROR_INVALID_ARGUMENT
+  ConversationTarget target = 11; // optional 会话目标；不填表示跨调用者全部会话全局搜索，填了则限定该会话内搜索
+  PageQuery page = 12; // optional 展示分页游标；排序与 get_messages 一致（旧→新）
+}
+message SearchMessagesResponse {
+  BaseResponse base = 1; // required 通用响应状态
+  repeated Message messages = 10; // optional 命中的消息
+  PageInfo page = 11; // required 展示分页信息
 }
 
 message DeleteMessageRequest {

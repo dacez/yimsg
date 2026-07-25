@@ -283,6 +283,15 @@ func toGetContactsResponse(resp *appmsg.Response) *pb.GetContactsResponse {
 	}
 	return out
 }
+func toSearchContactsResponse(resp *appmsg.Response) *pb.SearchContactsResponse {
+	out := &pb.SearchContactsResponse{Base: baseFromApp(resp), Page: pageToProto(resp.Page)}
+	if resp != nil {
+		for _, v := range resp.Contacts {
+			out.Contacts = append(out.Contacts, contactToProto(v))
+		}
+	}
+	return out
+}
 func toGetContactCountResponse(resp *appmsg.Response) *pb.GetContactCountResponse {
 	out := &pb.GetContactCountResponse{Base: baseFromApp(resp)}
 	if resp != nil && resp.Total != nil {
@@ -386,6 +395,15 @@ func toSyncMessagesResponse(resp *appmsg.Response) *pb.SyncMessagesResponse {
 }
 func toGetMessagesResponse(resp *appmsg.Response) *pb.GetMessagesResponse {
 	out := &pb.GetMessagesResponse{Base: baseFromApp(resp), Page: pageToProto(resp.Page)}
+	if resp != nil {
+		for _, v := range resp.Messages {
+			out.Messages = append(out.Messages, messageToProto(v))
+		}
+	}
+	return out
+}
+func toSearchMessagesResponse(resp *appmsg.Response) *pb.SearchMessagesResponse {
+	out := &pb.SearchMessagesResponse{Base: baseFromApp(resp), Page: pageToProto(resp.Page)}
 	if resp != nil {
 		for _, v := range resp.Messages {
 			out.Messages = append(out.Messages, messageToProto(v))

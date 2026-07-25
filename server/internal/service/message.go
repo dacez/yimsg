@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"yimsg/protocol/generated/go/pb"
 	"yimsg/server/internal/appmsg"
@@ -388,6 +389,39 @@ func (s *AppState) GetMessages(info *BaseInfo, req *pb.GetMessagesRequest) *pb.G
 	resp := appmsg.OKConversationMessages(reqID, messages)
 	resp.Page = &pageInfo
 	return toGetMessagesResponse(resp)
+}
+
+// SearchMessages 按关键字搜索消息：target 未填表示跨调用者全部会话全局搜索，
+// 填了则限定该会话内搜索；展示序、keyset 分页机制与 GetMessages 一致（旧→新）。
+func (s *AppState) SearchMessages(info *BaseInfo, req *pb.SearchMessagesRequest) *pb.SearchMessagesResponse {
+	reqID := info.RequestID
+	uid := info.UID
+	keyword := strings.TrimSpace(req.GetKeyword())
+	if keyword == "" {
+		return toSearchMessagesResponse(appmsg.ErrInvalidArgument(reqID, "empty search keyword"))
+	}
+	toUID, groupID := targetIDs(req.GetTarget())
+	store := s.MessageStore(uid)
+	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())
+
+	messages, pageInfo, err := fetchSeqPage(
+		page, false,
+		func(b, l int64) ([]dal.Message, error) {
+			return store.SearchByConversation(uid, toUID, groupID, keyword, b, l)
+		},
+		func(b, l int64) ([]dal.Message, error) {
+			m, err := store.SearchAfterByConversation(uid, toUID, groupID, keyword, b, l)
+			reverseInPlace(m)
+			return m, err
+		},
+		func(m dal.Message) int64 { return m.Seq },
+	)
+	if err != nil {
+		return toSearchMessagesResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	resp := appmsg.OKConversationMessages(reqID, messages)
+	resp.Page = &pageInfo
+	return toSearchMessagesResponse(resp)
 }
 
 func (s *AppState) GetConversations(info *BaseInfo, req *pb.GetConversationsRequest) *pb.GetConversationsResponse {

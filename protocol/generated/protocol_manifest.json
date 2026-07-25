@@ -707,6 +707,30 @@
       "desc": "删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理",
       "request_message": "DeleteOrgRequest",
       "response_message": "DeleteOrgResponse"
+    },
+    {
+      "type_id": 61,
+      "enum_name": "TYPE_ACTION_SEARCH_CONTACTS",
+      "action_name": "search_contacts",
+      "go_method": "SearchContacts",
+      "ts_function": "searchContacts",
+      "auth": true,
+      "domain": "通讯录",
+      "desc": "按关键字搜索通讯录",
+      "request_message": "SearchContactsRequest",
+      "response_message": "SearchContactsResponse"
+    },
+    {
+      "type_id": 62,
+      "enum_name": "TYPE_ACTION_SEARCH_MESSAGES",
+      "action_name": "search_messages",
+      "go_method": "SearchMessages",
+      "ts_function": "searchMessages",
+      "auth": true,
+      "domain": "消息",
+      "desc": "按关键字搜索消息",
+      "request_message": "SearchMessagesRequest",
+      "response_message": "SearchMessagesResponse"
     }
   ],
   "notifications": [

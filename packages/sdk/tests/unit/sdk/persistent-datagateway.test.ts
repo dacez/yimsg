@@ -317,6 +317,46 @@ describe("SDK PersistentDataGateway", () => {
     });
   });
 
+  // ---- search_messages ----
+  // persistent 模式直接查本地同步副本的 search_text 列，不请求服务端。
+
+  describe("searchMessages", () => {
+    it("target 未传时跨本地全部会话搜索，传了则限定该会话", async () => {
+      await seedMessages(db, [
+        { seq: 1, fromUid: "100", toUid: "200", content: "let's eat an apple" },
+        { seq: 2, fromUid: "200", toUid: "100", content: "just tea, no fruit" },
+        { seq: 3, fromUid: "100", toUid: "300", content: "apple pie for dessert" },
+      ]);
+
+      const scoped = await ds.search_messages({ keyword: "apple", to_uid: "200" });
+      expect(scoped.messages.map((m) => m.seq)).toEqual([1]);
+
+      const global = await ds.search_messages({ keyword: "apple" });
+      expect(global.messages.map((m) => m.seq).sort((a, b) => a - b)).toEqual([1, 3]);
+
+      expect(transport.send).not.toHaveBeenCalled();
+    });
+
+    it("keyset 分页与 get_messages 一致", async () => {
+      await seedMessages(
+        db,
+        Array.from({ length: 10 }, (_, i) => ({
+          seq: i + 1,
+          fromUid: "100",
+          toUid: "200",
+          content: `findme_${i}`,
+        })),
+      );
+      const r = await ds.search_messages({
+        keyword: "findme",
+        to_uid: "200",
+        page: { cursor: seqCursor(5), backward: true, limit: 3 },
+      });
+      // 展示序旧→新：seq<5 取最近 3 条 = 2,3,4 升序返回，与 get_messages 分页语义一致。
+      expect(r.messages.map((m) => m.seq)).toEqual([2, 3, 4]);
+    });
+  });
+
   // ---- get_conversations ----
 
   describe("getConversations", () => {
@@ -963,6 +1003,40 @@ describe("SDK PersistentDataGateway", () => {
         { action: "syncContacts", last_seq: 10 },
         { action: "syncContacts", last_seq: 0 },
       ]);
+    });
+  });
+
+  // ---- search_contacts ----
+  // persistent 模式直接查本地同步副本的 search_text 列，不请求服务端；
+  // 排序/分页与 get_contacts 完全一致，只是多一个 keyword 过滤。
+
+  describe("searchContacts", () => {
+    it("按 search_text 关键字过滤，排序与 get_contacts 一致", async () => {
+      await db.execBatch([
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, search_text, seq) VALUES (?, ?, ?, ?, ?, ?)",
+          params: [1, "200", CONTACT_FRIEND, "bobby", "Bobby", 1],
+        },
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, search_text, seq) VALUES (?, ?, ?, ?, ?, ?)",
+          params: [1, "300", CONTACT_FRIEND, "carol", "Carol", 2],
+        },
+      ]);
+
+      const page = await ds.search_contacts({ keyword: "Bobby", page: { limit: 10 } });
+      expect(page.contacts.map((c) => c.friend_uid)).toEqual(["200"]);
+      expect(transport.send).not.toHaveBeenCalled();
+    });
+
+    it("空关键字命中不了任何 search_text（服务端另有非空校验，本地只按值过滤）", async () => {
+      await db.execBatch([
+        {
+          sql: "INSERT INTO contacts (type, id, status, sort_key, search_text, seq) VALUES (?, ?, ?, ?, ?, ?)",
+          params: [1, "200", CONTACT_FRIEND, "bobby", "Bobby", 1],
+        },
+      ]);
+      const page = await ds.search_contacts({ keyword: "Zzz", page: { limit: 10 } });
+      expect(page.contacts).toHaveLength(0);
     });
   });
 

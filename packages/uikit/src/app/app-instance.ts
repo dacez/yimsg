@@ -477,6 +477,12 @@ export class AppInstance {
     if (msgSend) msgSend.textContent = this.t('chat.send');
     const toggleDetail = this.dom.getElementById('toggle-detail');
     if (toggleDetail) toggleDetail.title = this.t('chat.details');
+    const messageSearchToggle = this.dom.getElementById('message-search-toggle');
+    if (messageSearchToggle) messageSearchToggle.title = this.t('chat.searchMessages');
+    const messageSearchInput = this.dom.getElementById<HTMLInputElement>('message-search-input');
+    if (messageSearchInput) messageSearchInput.placeholder = this.t('chat.searchMessagesPlaceholder');
+    const messageSearchClose = this.dom.getElementById('message-search-close');
+    if (messageSearchClose) messageSearchClose.title = this.t('common.close');
     const detailMobileBack = this.dom.getElementById('detail-mobile-back');
     if (detailMobileBack) detailMobileBack.textContent = `← ${this.t('auth.mobileBack')}`;
     const msgAttach = this.dom.getElementById('msg-attach');
@@ -488,6 +494,8 @@ export class AppInstance {
 
     const friendsTab = this.dom.querySelector<HTMLElement>('.tab[data-ctab="friends"]');
     if (friendsTab) friendsTab.textContent = this.t('contacts.friends');
+    const friendsSearchInput = this.dom.getElementById<HTMLInputElement>('friends-search-input');
+    if (friendsSearchInput) friendsSearchInput.placeholder = this.t('contacts.searchContactsPlaceholder');
     const searchTab = this.dom.querySelector<HTMLElement>('.tab[data-ctab="search"]');
     if (searchTab) searchTab.textContent = this.t('contacts.search');
     const searchUsername = this.dom.getElementById<HTMLInputElement>('search-username');

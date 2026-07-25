@@ -54,6 +54,10 @@ export function createContactsView(app: AppInstance) {
   const state = app.contactsState;
   const tabScrollTop = new Map<string, number>();
   let activeContactTab = 'friends';
+  // 好友列表关键字过滤：非空时 loadFriendPage 改走 search_contacts，与 get_contacts
+  // 共用同一个 friendWindow/分页状态，排序、keyset 游标机制完全一致。
+  let friendKeyword = '';
+  let friendKeywordDebounce: ReturnType<typeof setTimeout> | null = null;
   // 背景刷新被推迟（用户不在列表顶部）；滚回顶部后追平。
   let contactsStale = false;
   let friendListView: BoundedStreamWindow<Contact> | null = null;
@@ -149,7 +153,7 @@ export function createContactsView(app: AppInstance) {
       loadingBefore: state.friendPageLoading,
       loadingAfter: state.friendPageLoading,
       loaded: state.friendPageLoaded,
-      emptyText: app.t('contacts.noFriends'),
+      emptyText: app.t(friendKeyword ? 'contacts.noSearchResults' : 'contacts.noFriends'),
       loadingText: app.t('common.loading'),
       bottomBoundaryText: app.t('contacts.noMoreContacts'),
       loadBefore: () => { if (isFriendsTabActive()) void loadFriendPage({ mode: 'backward' }); },
@@ -313,7 +317,9 @@ export function createContactsView(app: AppInstance) {
       const cursor = options.mode === 'reset'
         ? undefined
         : (backward ? window.backwardCursor : window.forwardCursor) || undefined;
-      const page = await app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit: FRIEND_PAGE_SIZE });
+      const page = friendKeyword
+        ? await app.client.searchContacts({ keyword: friendKeyword, status: CONTACT_FRIEND, cursor, backward, limit: FRIEND_PAGE_SIZE })
+        : await app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit: FRIEND_PAGE_SIZE });
       if (requestId !== state.friendPageRequestId) return;
       const result = contactPageLoad(page);
       if (options.mode === 'reset') window.setInitial(result);
@@ -321,7 +327,7 @@ export function createContactsView(app: AppInstance) {
       else window.prependBackward(result);
       state.friendPageLoaded = true;
     } catch (_) {
-      app.showToast(app.t('contacts.failedToLoadContacts'), 'error');
+      app.showToast(app.t(friendKeyword ? 'contacts.searchContactsFailed' : 'contacts.failedToLoadContacts'), 'error');
     } finally {
       // 先清除 loading 再渲染：否则渲染读到的仍是 true，顶部/底部会定格「加载中」提示。
       if (requestId === state.friendPageRequestId) {
@@ -329,6 +335,15 @@ export function createContactsView(app: AppInstance) {
         renderFriends();
       }
     }
+  }
+
+  // 关键字变化：重置好友窗口并按新关键字（或清空后回到 get_contacts）重新拉首页。
+  function applyFriendKeywordChange(rawKeyword: string): void {
+    const keyword = rawKeyword.trim();
+    if (keyword === friendKeyword) return;
+    friendKeyword = keyword;
+    contactsScroller().scrollTop = 0;
+    void loadFriendPage({ mode: 'reset' });
   }
 
   async function loadRequestPage(options: { mode: ListMode }) {
@@ -1002,6 +1017,7 @@ export function createContactsView(app: AppInstance) {
         app.$('friends-tab').classList.toggle('hidden', tab.dataset.ctab !== 'friends');
         app.$('requests-tab').classList.toggle('hidden', tab.dataset.ctab !== 'requests');
         app.$('search-tab').classList.toggle('hidden', tab.dataset.ctab !== 'search');
+        app.$('friends-search-row').classList.toggle('hidden', tab.dataset.ctab !== 'friends');
         activeContactTab = nextTab;
         scroller.scrollTop = tabScrollTop.get(nextTab) || 0;
         if (tab.dataset.ctab === 'friends') {
@@ -1015,6 +1031,18 @@ export function createContactsView(app: AppInstance) {
     app.$('search-btn').addEventListener('click', () => void searchUser());
     app.$('search-username').addEventListener('keydown', (e) => {
       if ((e as KeyboardEvent).key === 'Enter') void searchUser();
+    });
+
+    const friendsSearchInput = app.$('friends-search-input') as HTMLInputElement;
+    friendsSearchInput.addEventListener('input', () => {
+      if (friendKeywordDebounce) clearTimeout(friendKeywordDebounce);
+      const value = friendsSearchInput.value;
+      friendKeywordDebounce = setTimeout(() => applyFriendKeywordChange(value), 300);
+    });
+    friendsSearchInput.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key !== 'Enter') return;
+      if (friendKeywordDebounce) clearTimeout(friendKeywordDebounce);
+      applyFriendKeywordChange(friendsSearchInput.value);
     });
 
     app.$('create-group-btn').addEventListener('click', () => void showCreateGroupModal());

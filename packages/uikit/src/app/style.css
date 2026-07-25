@@ -219,6 +219,16 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .search-row{display:flex;gap:var(--space-sm);margin-bottom:var(--space-md)}
 .search-result{display:flex;align-items:center;gap:var(--space-md);padding:var(--space-lg);border:1px solid var(--border-light);border-radius:8px}
 .search-result-info{flex:1}
+.contact-search-row{padding:0 var(--space-lg);margin-bottom:var(--space-sm)}
+.message-search-panel{border-bottom:1px solid var(--border);background:var(--bg-panel);padding:var(--space-sm) var(--space-lg)}
+.message-search-row{display:flex;align-items:center;gap:var(--space-sm)}
+.message-search-row .input{flex:1}
+#message-search-results{max-height:280px;overflow-y:auto;margin-top:var(--space-sm)}
+.message-search-result{padding:var(--space-sm) var(--space-md);border-radius:8px;cursor:pointer;transition:background-color .15s}
+.message-search-result:hover{background:var(--bg-hover)}
+.message-search-result-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-sm);font-size:12px;color:var(--text-secondary)}
+.message-search-result-sender{font-weight:500;color:var(--text-primary)}
+.message-search-result-preview{font-size:var(--font-size-body);color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #view-settings{flex:1;overflow-y:auto;background:var(--bg-panel)}
 .settings-page{max-width:480px;margin:0 auto;padding:var(--space-2xl) var(--space-xl)}
 .settings-header{text-align:center;margin-bottom:var(--space-2xl)}

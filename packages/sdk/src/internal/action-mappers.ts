@@ -60,6 +60,10 @@ import {
   PageDirection,
   PageInfo,
   PageQuery,
+  SearchContactsRequest,
+  SearchContactsResponse,
+  SearchMessagesRequest,
+  SearchMessagesResponse,
   SendMessageRequest,
   SyncBlocklistRequest,
   SyncBlocklistResponse,
@@ -268,7 +272,7 @@ export function syncMessagesRequest(params: { last_seq: number; limit?: number }
   });
 }
 
-export function mapMessagesResponse(resp: GetMessagesResponse | SyncMessagesResponse): Message[] {
+export function mapMessagesResponse(resp: GetMessagesResponse | SyncMessagesResponse | SearchMessagesResponse): Message[] {
   return ((resp.messages || []) as unknown as Message[]).map(normalizeMessage);
 }
 
@@ -282,6 +286,26 @@ export function mapSyncMessagesResponse(resp: SyncMessagesResponse): { messages:
     hasMore: Boolean(resp.has_more),
     cursorSeq: Number(resp.cursor_seq || 0),
   };
+}
+
+// keyword 未去空白校验交给服务端（空串/纯空白统一返回 ERROR_INVALID_ARGUMENT）。
+// to_uid/group_id 都未传时不设置 target 字段，语义为跨调用者全部会话全局搜索。
+export function searchMessagesRequest(params: {
+  keyword: string;
+  to_uid?: string;
+  group_id?: string;
+  page?: PageParams;
+}): SearchMessagesRequest {
+  const hasTarget = Boolean(params.group_id || params.to_uid);
+  return SearchMessagesRequest.create({
+    keyword: params.keyword,
+    ...(hasTarget ? targetParams(params.group_id ? { groupId: params.group_id } : { toUid: params.to_uid! }) : {}),
+    page: pageQueryOf(params.page),
+  });
+}
+
+export function mapSearchMessagesResponse(resp: SearchMessagesResponse): { messages: Message[]; page: PageInfoResult } {
+  return { messages: mapMessagesResponse(resp), page: mapPageInfo(resp.page) };
 }
 
 // ---- 通讯录 ----
@@ -312,6 +336,29 @@ export function getContactsRequest(params: {
 }
 
 export function mapGetContactsResponse(resp: GetContactsResponse): {
+  contacts: Contact[];
+  page: PageInfoResult;
+} {
+  return {
+    contacts: ((resp.contacts || []) as unknown as Contact[]).map(normalizeContact),
+    page: mapPageInfo(resp.page),
+  };
+}
+
+// keyword 未去空白校验交给服务端（空串/纯空白统一返回 ERROR_INVALID_ARGUMENT）。
+export function searchContactsRequest(params: {
+  keyword: string;
+  page?: PageParams;
+  status?: number;
+}): SearchContactsRequest {
+  return SearchContactsRequest.create({
+    keyword: params.keyword,
+    status: assertValidStatus(params.status, [CONTACT_FRIEND, CONTACT_PENDING_OUTGOING, CONTACT_PENDING_INCOMING, CONTACT_DELETED]),
+    page: pageQueryOf(params.page),
+  });
+}
+
+export function mapSearchContactsResponse(resp: SearchContactsResponse): {
   contacts: Contact[];
   page: PageInfoResult;
 } {

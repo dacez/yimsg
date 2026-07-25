@@ -38,6 +38,8 @@ import {
   RegisterRequest, RegisterResponse,
   RejectFriendRequest, RejectFriendResponse,
   RemoveGroupMemberRequest, RemoveGroupMemberResponse,
+  SearchContactsRequest, SearchContactsResponse,
+  SearchMessagesRequest, SearchMessagesResponse,
   SearchUserRequest, SearchUserResponse,
   SendMessageRequest, SendMessageResponse,
   SessionKickedNotification,
@@ -72,7 +74,7 @@ export const CORE_ACTION_NAMES = [
   'getMutelist','getContactCount','getUnreadCount','getUserInfos',
   'getOrgInfos','getTagInfos','getTags','syncTags',
   'login','logout','clearUnread','muteConversation','ping','recallMessage','register',
-  'rejectFriend','removeGroupMember','searchUser','sendMessage',
+  'rejectFriend','removeGroupMember','searchContacts','searchMessages','searchUser','sendMessage',
   'syncBlocklist','syncContacts','syncConversations','syncMessages','syncMutelist',
   'unblockUser','unfavoriteGroup','unmuteConversation',
   'updateGroupInfo','updatePassword','updateRemark','updateUserInfo',
@@ -150,6 +152,8 @@ export function actionType(action: CoreActionName): number {
     case 'rejectFriend': return Type.TYPE_ACTION_REJECT_FRIEND;
     case 'deleteFriend': return Type.TYPE_ACTION_DELETE_FRIEND;
     case 'updateRemark': return Type.TYPE_ACTION_UPDATE_REMARK;
+    case 'searchContacts': return Type.TYPE_ACTION_SEARCH_CONTACTS;
+    case 'searchMessages': return Type.TYPE_ACTION_SEARCH_MESSAGES;
     case 'getContacts': return Type.TYPE_ACTION_GET_CONTACTS;
     case 'getContactCount': return Type.TYPE_ACTION_GET_CONTACT_COUNT;
     case 'syncContacts': return Type.TYPE_ACTION_SYNC_CONTACTS;
@@ -208,6 +212,8 @@ export function requestCodec(typeId: number): TestProtobufMessageCodec {
     case Type.TYPE_ACTION_REJECT_FRIEND: return RejectFriendRequest;
     case Type.TYPE_ACTION_DELETE_FRIEND: return DeleteFriendRequest;
     case Type.TYPE_ACTION_UPDATE_REMARK: return UpdateRemarkRequest;
+    case Type.TYPE_ACTION_SEARCH_CONTACTS: return SearchContactsRequest;
+    case Type.TYPE_ACTION_SEARCH_MESSAGES: return SearchMessagesRequest;
     case Type.TYPE_ACTION_GET_CONTACTS: return GetContactsRequest;
     case Type.TYPE_ACTION_GET_CONTACT_COUNT: return GetContactCountRequest;
     case Type.TYPE_ACTION_SYNC_CONTACTS: return SyncContactsRequest;
@@ -261,6 +267,8 @@ function responseCodec(typeId: number): TestProtobufMessageCodec {
     case Type.TYPE_ACTION_REJECT_FRIEND: return RejectFriendResponse;
     case Type.TYPE_ACTION_DELETE_FRIEND: return DeleteFriendResponse;
     case Type.TYPE_ACTION_UPDATE_REMARK: return UpdateRemarkResponse;
+    case Type.TYPE_ACTION_SEARCH_CONTACTS: return SearchContactsResponse;
+    case Type.TYPE_ACTION_SEARCH_MESSAGES: return SearchMessagesResponse;
     case Type.TYPE_ACTION_GET_CONTACTS: return GetContactsResponse;
     case Type.TYPE_ACTION_GET_CONTACT_COUNT: return GetContactCountResponse;
     case Type.TYPE_ACTION_SYNC_CONTACTS: return SyncContactsResponse;

@@ -75,6 +75,8 @@ type MessageStoreAPI interface {
 	ListByConversation(uid, toUID, groupID, beforeSeq, limit int64) ([]Message, error)
 	ListAfterByConversation(uid, toUID, groupID, afterSeq, limit int64) ([]Message, error)
 	ListAroundByConversation(uid, toUID, groupID, aroundSeq, limit int64) ([]Message, error)
+	SearchByConversation(uid, toUID, groupID int64, keyword string, beforeSeq, limit int64) ([]Message, error)
+	SearchAfterByConversation(uid, toUID, groupID int64, keyword string, afterSeq, limit int64) ([]Message, error)
 	Purge(uid int64, maxCount int64) (int64, error)
 	ListPurgeable(maxCount, limit, afterUID int64) ([]int64, error)
 }

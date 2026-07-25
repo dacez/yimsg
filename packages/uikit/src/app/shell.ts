@@ -63,6 +63,12 @@ export const APP_SHELL_HTML = `
           <div id="chat-header" class="hidden">
             <h2 id="chat-title"></h2>
             <div class="chat-header-actions">
+              <button id="message-search-toggle" class="icon-btn" title="搜索消息">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </button>
               <button id="toggle-detail" class="icon-btn" title="详情">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"/>
@@ -71,6 +77,18 @@ export const APP_SHELL_HTML = `
                 </svg>
               </button>
             </div>
+          </div>
+          <div id="message-search-panel" class="message-search-panel hidden">
+            <div class="message-search-row">
+              <input class="input" type="text" id="message-search-input" placeholder="搜索当前会话内的消息...">
+              <button class="icon-btn" id="message-search-close" title="关闭">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div id="message-search-results"></div>
           </div>
           <div id="chat-empty" class="empty-state">选择一个会话开始聊天</div>
           <div id="message-list"></div>
@@ -111,6 +129,9 @@ export const APP_SHELL_HTML = `
             <button class="tab active" data-ctab="friends">好友</button>
             <button class="tab" data-ctab="requests">请求</button>
             <button class="tab" data-ctab="search">搜索</button>
+          </div>
+          <div class="contact-search-row" id="friends-search-row">
+            <input class="input" type="text" id="friends-search-input" placeholder="搜索通讯录...">
           </div>
           <div class="contacts-content">
             <div id="friends-tab"></div>

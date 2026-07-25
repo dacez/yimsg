@@ -9,6 +9,8 @@ import type {
   MessagePageResult,
   MutelistPageParams,
   MutelistPageResult,
+  SearchContactsParams,
+  SearchMessagesParams,
   TagsPageParams,
   TagsPageResult,
   SyncDomain,
@@ -172,6 +174,18 @@ export abstract class BaseDataGateway implements DataGateway {
           actionMappers.contactCountRequest(status),
         )
       ).total || 0,
+    );
+  }
+
+  async search_contacts(params: SearchContactsParams): Promise<ContactPageResult> {
+    return actionMappers.mapSearchContactsResponse(
+      await actions.searchContacts(this.transport, actionMappers.searchContactsRequest(params)),
+    );
+  }
+
+  async search_messages(params: SearchMessagesParams): Promise<MessagePageResult> {
+    return actionMappers.mapSearchMessagesResponse(
+      await actions.searchMessages(this.transport, actionMappers.searchMessagesRequest(params)),
     );
   }
 

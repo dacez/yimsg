@@ -8,6 +8,41 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 test.describe('Messaging', () => {
   const password = '123456';
 
+  test('message search finds matching text and jumps to it', async ({ browser }) => {
+    const u1 = uniqueUser('msrch1');
+    const u2 = uniqueUser('msrch2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'SearchSender');
+    await register(page2, u2, password, 'SearchReceiver');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'SearchReceiver');
+
+    await sendMessage(page1, 'hello there');
+    await expectMessage(page1, 'hello there');
+    await sendMessage(page1, 'let us eat an apple pie');
+    await expectMessage(page1, 'let us eat an apple pie');
+    await sendMessage(page1, 'just tea, no fruit');
+    await expectMessage(page1, 'just tea, no fruit');
+
+    await page1.click('#message-search-toggle');
+    await page1.fill('#message-search-input', 'apple');
+    await expect(page1.locator('.message-search-result')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page1.locator('.message-search-result')).toContainText('apple pie');
+
+    await page1.click('.message-search-result');
+    await expect(page1.locator('#message-search-panel')).toHaveClass(/hidden/);
+    const highlighted = page1.locator('.message-row.msg-highlight');
+    await expect(highlighted).toBeVisible({ timeout: 5000 });
+    await expect(highlighted.locator('.message-bubble')).toContainText('apple pie');
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('send message with Enter key', async ({ browser }) => {
     const u1 = uniqueUser('enter1');
     const u2 = uniqueUser('enter2');

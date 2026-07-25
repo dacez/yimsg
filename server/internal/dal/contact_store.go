@@ -282,6 +282,10 @@ func contactWhereClause(uid int64, filter ContactListFilter) (string, []interfac
 			args = append(args, orgID)
 		}
 	}
+	if filter.Keyword != "" {
+		where += " AND search_text LIKE ?"
+		args = append(args, "%"+filter.Keyword+"%")
+	}
 	return where, args
 }
 

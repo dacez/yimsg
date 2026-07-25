@@ -390,6 +390,85 @@ func TestListConversationMessagesPagination(t *testing.T) {
 	}
 }
 
+func TestSearchMessages(t *testing.T) {
+	a := dial(t)
+	b := dial(t)
+	c := dial(t)
+	a.registerAndLogin(uniqueName("smsg"), "pass1234", "Alice")
+	b.registerAndLogin(uniqueName("smsg"), "pass1234", "Bob")
+	c.registerAndLogin(uniqueName("smsg"), "pass1234", "Carol")
+	makeFriends(t, a, b)
+	makeFriends(t, a, c)
+
+	a.sendText(userTarget(b.uid), "let's eat an apple today")
+	a.sendText(userTarget(b.uid), "just tea, no fruit")
+	a.sendText(userTarget(c.uid), "apple pie for dessert")
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 限定 B 会话：只应命中与 B 的那条 apple 消息。
+	scoped := sendOK(a, "search_messages", &pb.SearchMessagesRequest{Keyword: "apple", Target: userTarget(b.uid)}, &pb.SearchMessagesResponse{})
+	if len(scoped.GetMessages()) != 1 || bodyText(scoped.GetMessages()[0]) != "let's eat an apple today" {
+		t.Fatalf("scoped search_messages unexpected result: %+v", scoped.GetMessages())
+	}
+
+	// 不填 target：跨全部会话全局搜索，应同时命中与 B、与 C 各一条。
+	global := sendOK(a, "search_messages", &pb.SearchMessagesRequest{Keyword: "apple"}, &pb.SearchMessagesResponse{})
+	if len(global.GetMessages()) != 2 {
+		t.Fatalf("global search_messages expected 2 hits, got %d: %+v", len(global.GetMessages()), global.GetMessages())
+	}
+
+	// 空关键字（含全空白）拒绝。
+	errResp := send(a, "search_messages", &pb.SearchMessagesRequest{Keyword: " "}, &pb.SearchMessagesResponse{})
+	if errResp.GetBase().GetCode() != pb.ErrorCode_ERROR_INVALID_ARGUMENT {
+		t.Fatalf("empty keyword error_code = %v, want ERROR_INVALID_ARGUMENT", errResp.GetBase().GetCode())
+	}
+}
+
+func TestSearchMessagesPagination(t *testing.T) {
+	a := dial(t)
+	b := dial(t)
+	a.registerAndLogin(uniqueName("smsg"), "pass1234", "Alice")
+	b.registerAndLogin(uniqueName("smsg"), "pass1234", "Bob")
+	makeFriends(t, a, b)
+
+	for i := 0; i < 30; i++ {
+		a.sendText(userTarget(b.uid), fmt.Sprintf("findme_%d", i))
+	}
+	a.sendText(userTarget(b.uid), "unrelated message")
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 首页取最新一页：空游标 + BACKWARD，与 get_messages 展示序一致（旧→新）。
+	resp1 := sendOK(b, "search_messages", &pb.SearchMessagesRequest{
+		Keyword: "findme", Target: userTarget(a.uid), Page: &pb.PageQuery{Limit: 10, Direction: pb.PageDirection_PAGE_DIRECTION_BACKWARD},
+	}, &pb.SearchMessagesResponse{})
+	if len(resp1.GetMessages()) != 10 {
+		t.Fatalf("expected 10 messages in first page, got %d", len(resp1.GetMessages()))
+	}
+
+	// 次页取更旧：继续 BACKWARD，用上一页 start_cursor。
+	resp2 := sendOK(b, "search_messages", &pb.SearchMessagesRequest{
+		Keyword: "findme", Target: userTarget(a.uid), Page: &pb.PageQuery{Limit: 10, Cursor: resp1.GetPage().GetStartCursor(), Direction: pb.PageDirection_PAGE_DIRECTION_BACKWARD},
+	}, &pb.SearchMessagesResponse{})
+	if len(resp2.GetMessages()) != 10 {
+		t.Fatalf("expected 10 messages in second page, got %d", len(resp2.GetMessages()))
+	}
+
+	seen := make(map[string]bool)
+	for _, m := range resp1.GetMessages() {
+		seen[m.GetMsgId()] = true
+	}
+	for _, m := range resp2.GetMessages() {
+		if seen[m.GetMsgId()] {
+			t.Fatalf("duplicate message %s across pages", m.GetMsgId())
+		}
+		if !strings.Contains(bodyText(m), "findme") {
+			t.Fatalf("unrelated message leaked into search results: %+v", m)
+		}
+	}
+}
+
 func TestClearUnread(t *testing.T) {
 	a := dial(t)
 	b := dial(t)

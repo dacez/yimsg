@@ -17,6 +17,35 @@ async function expectResolvedSortedContactNames(page: Page): Promise<string[]> {
 test.describe('Contacts', () => {
   const password = '123456';
 
+  test('friends search filters the friend list by keyword', async ({ browser }) => {
+    const u1 = uniqueUser('fs1');
+    const u2 = uniqueUser('fs2');
+    const u3 = uniqueUser('fs3');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, u1, password, 'FriendSearcher');
+    await register(page2, u2, password, 'FindableBobby');
+    await register(page3, u3, password, 'UnrelatedCarol');
+    await addFriend(page1, page2, u2);
+    await addFriend(page1, page3, u3);
+
+    await page1.click('[data-view="contacts"]');
+    await page1.click('[data-ctab="friends"]');
+    await expect(page1.locator('#friends-tab .contact-item')).toHaveCount(2, { timeout: 10_000 });
+
+    await page1.fill('#friends-search-input', 'Findable');
+    await expect(page1.locator('#friends-tab .contact-item')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page1.locator('#friends-tab .contact-name')).toContainText('FindableBobby');
+
+    await page1.fill('#friends-search-input', '');
+    await expect(page1.locator('#friends-tab .contact-item')).toHaveCount(2, { timeout: 10_000 });
+  });
+
   test('search user not found shows empty state', async ({ page }) => {
     await register(page, uniqueUser('srch'), password, 'Searcher');
     await page.click('[data-view="contacts"]');

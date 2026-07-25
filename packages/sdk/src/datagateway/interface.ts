@@ -45,6 +45,19 @@ export interface ContactPageParams {
   readonly org_ids?: readonly string[];
 }
 
+export interface SearchContactsParams {
+  readonly keyword: string;
+  readonly page?: PageParams;
+  readonly status?: number;
+}
+
+export interface SearchMessagesParams {
+  readonly keyword: string;
+  readonly to_uid?: string;
+  readonly group_id?: string;
+  readonly page?: PageParams;
+}
+
 export interface TagsPageParams {
   readonly org_id: string;
   readonly tag_id: string;
@@ -117,6 +130,8 @@ export interface DataGateway {
   }): Promise<MessagePageResult>;
   get_contacts(params: ContactPageParams): Promise<ContactPageResult>;
   get_contact_count(status: number): Promise<number>;
+  search_contacts(params: SearchContactsParams): Promise<ContactPageResult>;
+  search_messages(params: SearchMessagesParams): Promise<MessagePageResult>;
   get_tags(params: TagsPageParams): Promise<TagsPageResult>;
   get_blocklist(params: BlocklistPageParams): Promise<BlocklistPageResult>;
   get_mutelist(params: MutelistPageParams): Promise<MutelistPageResult>;

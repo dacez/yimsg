@@ -4,6 +4,7 @@ import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
 import { isNearBottom } from './message-list';
+import { setupMessageSearch } from './message-search';
 import { registerSelectionForwardHandler } from './selection';
 import { isMobileInteractionLayout } from '../../utils';
 
@@ -31,6 +32,7 @@ export function setupChat(app: AppInstance) {
   });
 
   setupEmojiPicker(app);
+  setupMessageSearch(app);
 
   registerSelectionForwardHandler(app, async () => {
     const selected = app.chatState.currentMessages.filter((message) => app.chatState.selectedMessageIds.has(message.messageId));

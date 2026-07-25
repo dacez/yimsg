@@ -260,6 +260,64 @@ func (s *MessageStore) ListAfterByConversation(uid, toUID, groupID, afterSeq, li
 	return scanMessages(rows)
 }
 
+// messageSearchFilter 生成搜索用会话过滤子句：groupID>0 限定该群，toUID>0 限定与其私聊；
+// 两者都为 0 表示不限定会话（跨调用者全部会话全局搜索，仍只在 uid 自己的收件箱副本内）。
+func messageSearchFilter(uid, toUID, groupID int64) (string, []interface{}) {
+	switch {
+	case groupID > 0:
+		return "uid = ? AND group_id = ?", []interface{}{uid, groupID}
+	case toUID > 0:
+		return "uid = ? AND group_id = 0 AND ((from_uid = ? AND to_uid = ?) OR (from_uid = ? AND to_uid = ?))",
+			[]interface{}{uid, uid, toUID, toUID, uid}
+	default:
+		return "uid = ?", []interface{}{uid}
+	}
+}
+
+// SearchByConversation 按关键字匹配 search_text，返回展示序反向(seq DESC)一页；
+// toUID/groupID 都为 0 表示跨全部会话全局搜索，语义、排序与 ListByConversation 一致。
+func (s *MessageStore) SearchByConversation(uid, toUID, groupID int64, keyword string, beforeSeq, limit int64) ([]Message, error) {
+	where, args := messageSearchFilter(uid, toUID, groupID)
+	where += " AND status != ? AND search_text LIKE ?"
+	args = append(args, MessageDeleted, "%"+keyword+"%")
+	if beforeSeq > 0 {
+		where += " AND seq < ?"
+		args = append(args, beforeSeq)
+	}
+	args = append(args, limit)
+	rows, err := s.db.Reader.Query(
+		`SELECT `+messageSelectFields+`
+		 FROM messages WHERE `+where+` ORDER BY seq DESC LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search conversation messages: %w", err)
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
+// SearchAfterByConversation 返回关键字命中的下一页更新消息（afterSeq 之后），
+// 转换为展示序 DESC 排列，与 SearchByConversation/ListAfterByConversation 一致。
+func (s *MessageStore) SearchAfterByConversation(uid, toUID, groupID int64, keyword string, afterSeq, limit int64) ([]Message, error) {
+	where, args := messageSearchFilter(uid, toUID, groupID)
+	where += " AND status != ? AND search_text LIKE ? AND seq > ?"
+	args = append(args, MessageDeleted, "%"+keyword+"%", afterSeq)
+	args = append(args, limit)
+	rows, err := s.db.Reader.Query(
+		`SELECT `+messageSelectFields+` FROM (
+			SELECT `+messageSelectFields+`
+			FROM messages WHERE `+where+` ORDER BY seq ASC LIMIT ?
+		) ORDER BY seq DESC`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search conversation messages after: %w", err)
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
 // ListAroundByConversation returns messages centered on aroundSeq.
 // It reads half limit before (inclusive) and half limit after aroundSeq.
 // Results are returned in DESC order (newest first), same as ListByConversation.

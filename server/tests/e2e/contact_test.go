@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"testing"
 	"yimsg/protocol/generated/go/pb"
 	"yimsg/server/internal/appmsg"
@@ -317,6 +318,97 @@ func TestListContactsPagination(t *testing.T) {
 	for _, c := range resp3.GetContacts() {
 		if seen[c.GetTarget().GetUid()] {
 			t.Fatalf("duplicate contact %d across pages", c.GetTarget().GetUid())
+		}
+	}
+}
+
+func TestSearchContacts(t *testing.T) {
+	a := dial(t)
+	a.registerAndLogin(uniqueName("sct"), "pass1234", "Alice")
+
+	b := dial(t)
+	b.registerAndLogin(uniqueName("sct"), "pass1234", "Bobby")
+	c := dial(t)
+	c.registerAndLogin(uniqueName("sct"), "pass1234", "Carol")
+
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: b.uid}, &pb.AddFriendResponse{})
+	b.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	sendOK(b, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: c.uid}, &pb.AddFriendResponse{})
+	c.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	sendOK(c, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+
+	// 按昵称关键字命中，未命中的不返回。
+	resp := sendOK(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "Bobby"}, &pb.SearchContactsResponse{})
+	if len(resp.GetContacts()) != 1 || resp.GetContacts()[0].GetTarget().GetUid() != b.uid {
+		t.Fatalf("expected only Bobby in search result, got %+v", resp.GetContacts())
+	}
+
+	// 空关键字（含全空白）拒绝。
+	errResp := send(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "   "}, &pb.SearchContactsResponse{})
+	if errResp.GetBase().GetCode() != pb.ErrorCode_ERROR_INVALID_ARGUMENT {
+		t.Fatalf("empty keyword error_code = %v, want ERROR_INVALID_ARGUMENT", errResp.GetBase().GetCode())
+	}
+
+	// 备注名同样参与搜索投影。
+	sendOK(a, "update_remark", &pb.UpdateRemarkRequest{Target: userContactTarget(c.uid), RemarkName: "MyCarolNote"}, &pb.UpdateRemarkResponse{})
+	resp2 := sendOK(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "CarolNote"}, &pb.SearchContactsResponse{})
+	if len(resp2.GetContacts()) != 1 || resp2.GetContacts()[0].GetTarget().GetUid() != c.uid {
+		t.Fatalf("expected Carol via remark search, got %+v", resp2.GetContacts())
+	}
+}
+
+func TestSearchContactsPagination(t *testing.T) {
+	a := dial(t)
+	a.registerAndLogin(uniqueName("sct"), "pass1234", "Alice")
+
+	// 5 位昵称带 Findme 前缀的好友，用于验证关键字过滤 + keyset 分页续翻。
+	for i := 0; i < 5; i++ {
+		f := dial(t)
+		f.registerAndLogin(uniqueName("sct"), "pass1234", fmt.Sprintf("Findme%d", i))
+		sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: f.uid}, &pb.AddFriendResponse{})
+		f.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+		sendOK(f, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+		a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	}
+
+	// 一个不匹配关键字的好友，验证不会漏进结果。
+	other := dial(t)
+	other.registerAndLogin(uniqueName("sct"), "pass1234", "Zoe")
+	sendOK(a, "add_friend", &pb.AddFriendRequest{FriendUid: other.uid}, &pb.AddFriendResponse{})
+	other.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+	sendOK(other, "accept_friend", &pb.AcceptFriendRequest{FriendUid: a.uid}, &pb.AcceptFriendResponse{})
+	a.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "contacts:updated" })
+
+	resp1 := sendOK(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "Findme", Page: &pb.PageQuery{Limit: 2}}, &pb.SearchContactsResponse{})
+	if len(resp1.GetContacts()) != 2 {
+		t.Fatalf("expected 2 contacts with limit=2, got %d", len(resp1.GetContacts()))
+	}
+
+	resp2 := sendOK(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "Findme", Page: &pb.PageQuery{Limit: 2, Cursor: resp1.GetPage().GetEndCursor()}}, &pb.SearchContactsResponse{})
+	if len(resp2.GetContacts()) != 2 {
+		t.Fatalf("expected 2 contacts with limit=2 page2, got %d", len(resp2.GetContacts()))
+	}
+
+	resp3 := sendOK(a, "search_contacts", &pb.SearchContactsRequest{Keyword: "Findme", Page: &pb.PageQuery{Limit: 2, Cursor: resp2.GetPage().GetEndCursor()}}, &pb.SearchContactsResponse{})
+	if len(resp3.GetContacts()) != 1 {
+		t.Fatalf("expected 1 contact with limit=2 page3, got %d", len(resp3.GetContacts()))
+	}
+
+	seen := make(map[int64]bool)
+	for _, page := range [][]*pb.Contact{resp1.GetContacts(), resp2.GetContacts(), resp3.GetContacts()} {
+		for _, ct := range page {
+			uid := ct.GetTarget().GetUid()
+			if uid == other.uid {
+				t.Fatalf("unrelated contact %d leaked into search results", other.uid)
+			}
+			if seen[uid] {
+				t.Fatalf("duplicate contact %d across pages", uid)
+			}
+			seen[uid] = true
 		}
 	}
 }

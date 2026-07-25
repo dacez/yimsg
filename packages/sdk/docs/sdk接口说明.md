@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/generated/actions.gen.ts`、`packages/sdk/src/internal/action-mappers.ts`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-25。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；通用同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -235,6 +235,7 @@ interface ConversationDescriptor {
 | `recallMessage` | `(message) => Promise<void>` | 撤回一条自己发送的消息 |
 | `deleteMessage` | `(messageId) => Promise<number>` | 删除当前用户收件箱中的消息，返回服务端 tombstone seq |
 | `getMessages` | `({ target, cursor?, backward?, around?, limit? }) => Promise<MessagePage>` | 拉取消息分页（旧→新；空游标+`backward` 取最新页；`around` 传 msg_id 居中定位），返回 `{ messages, page }` |
+| `searchMessages` | `({ keyword, target?, cursor?, backward?, limit? }) => Promise<MessagePage>` | 按关键字（`search_text` LIKE 匹配）搜索消息，`target` 不填即跨全部会话全局搜索；展示序、keyset 分页与 `getMessages` 一致（旧→新）；persistent 模式直接查本地同步副本，不请求服务端，因此只能搜到该客户端本地已同步/留存范围内的消息，instant 模式请求服务端；`keyword` 为空（含全空白）同步抛 `ValidationError`（两种模式行为一致，不依赖服务端校验，避免 persistent 模式本地 `LIKE '%%'` 静默匹配全部消息） |
 | `clearUnread` | `(target) => Promise<void>` | 清除会话未读 |
 
 `MessageContentDescriptor`：
@@ -270,6 +271,7 @@ interface MessageContentDescriptor {
 | 方法 | 签名 | 说明 |
 |------|------|------|
 | `getContacts` | `({ cursor?, backward?, around?, limit?, status?, friendUid?, groupId?, orgId?, friendUids?, groupIds?, orgIds? }) => Promise<ContactPage>` | 按 keyset 游标拉取展示分页（friend 按 sort_key、pending 按 seq 倒序），返回 `{ contacts, page }`，展示总数改用 `getContactCount`；显示资料由 UI 另行调用 `getUserInfos` / `getGroupInfos` / `getOrgInfos` 合并 |
+| `searchContacts` | `({ keyword, status?, cursor?, backward?, limit? }) => Promise<ContactPage>` | 按关键字（`search_text` LIKE 匹配备注名 + 昵称/群名，不含 username）搜索通讯录，排序/keyset 分页与 `getContacts` 一致；persistent 模式查本地同步副本，instant 模式请求服务端；`keyword` 为空（含全空白）同步抛 `ValidationError` |
 | `getContactCount` | `(status: number) => Promise<number>` | 按联系人状态统计数量；待我处理的好友请求（驱动红点）传 `CONTACT_STATUS_PENDING_INCOMING`，我自己发出、待对方处理的传 `CONTACT_STATUS_PENDING_OUTGOING`，好友/收藏群传 `CONTACT_STATUS_FRIEND`。instant 模式调用后端 `get_contact_count`；持久存储模式查本地副本；未认证会抛错，已认证但会话未初始化或查询失败时返回 `0` |
 | `getUserInfos` | `(uids) => ReadonlyMap<string, UserDisplayInfo>` | 用户显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
 | `getGroupInfos` | `(groupIds) => ReadonlyMap<string, GroupDisplayInfo>` | 群显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
@@ -590,7 +592,7 @@ await client.updateRemark({ groupId }, '研发沟通');
 | `login` / `authenticate` | 无，SDK 会自动建连 |
 | `startSession` | 已认证 |
 | 消息 / 联系人 / 群组 / 资料写操作 | 已认证 |
-| `getConversations` / `getContacts` / `getMessages` 等 DataGateway 分页读取 | 需先 `startSession()` |
+| `getConversations` / `getContacts` / `getMessages` / `searchContacts` / `searchMessages` 等 DataGateway 分页读取 | 需先 `startSession()` |
 | `getUnreadCount` / `getGroupMembers` / 屏蔽列表和免打扰单点或分页读取 | 已认证 |
 
 当条件不满足时，SDK 会抛统一错误：

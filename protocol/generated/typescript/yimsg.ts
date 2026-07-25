@@ -133,6 +133,10 @@ export enum Type {
   TYPE_ACTION_CREATE_ORG = 59,
   /** TYPE_ACTION_DELETE_ORG - action=delete_org auth=true domain=组织 desc=删除组织，需对组织根有管理权限；结构同步清空，成员通讯录组织行异步清理 */
   TYPE_ACTION_DELETE_ORG = 60,
+  /** TYPE_ACTION_SEARCH_CONTACTS - action=search_contacts auth=true domain=通讯录 desc=按关键字搜索通讯录 */
+  TYPE_ACTION_SEARCH_CONTACTS = 61,
+  /** TYPE_ACTION_SEARCH_MESSAGES - action=search_messages auth=true domain=消息 desc=按关键字搜索消息 */
+  TYPE_ACTION_SEARCH_MESSAGES = 62,
   /** TYPE_NOTIFY_MESSAGES_RECEIVED - notification=messages:received desc=消息域发生变化 */
   TYPE_NOTIFY_MESSAGES_RECEIVED = 10001,
   /** TYPE_NOTIFY_CONTACTS_UPDATED - notification=contacts:updated desc=通讯录发生变化 */
@@ -335,6 +339,12 @@ export function typeFromJSON(object: any): Type {
     case 60:
     case "TYPE_ACTION_DELETE_ORG":
       return Type.TYPE_ACTION_DELETE_ORG;
+    case 61:
+    case "TYPE_ACTION_SEARCH_CONTACTS":
+      return Type.TYPE_ACTION_SEARCH_CONTACTS;
+    case 62:
+    case "TYPE_ACTION_SEARCH_MESSAGES":
+      return Type.TYPE_ACTION_SEARCH_MESSAGES;
     case 10001:
     case "TYPE_NOTIFY_MESSAGES_RECEIVED":
       return Type.TYPE_NOTIFY_MESSAGES_RECEIVED;
@@ -489,6 +499,10 @@ export function typeToJSON(object: Type): string {
       return "TYPE_ACTION_CREATE_ORG";
     case Type.TYPE_ACTION_DELETE_ORG:
       return "TYPE_ACTION_DELETE_ORG";
+    case Type.TYPE_ACTION_SEARCH_CONTACTS:
+      return "TYPE_ACTION_SEARCH_CONTACTS";
+    case Type.TYPE_ACTION_SEARCH_MESSAGES:
+      return "TYPE_ACTION_SEARCH_MESSAGES";
     case Type.TYPE_NOTIFY_MESSAGES_RECEIVED:
       return "TYPE_NOTIFY_MESSAGES_RECEIVED";
     case Type.TYPE_NOTIFY_CONTACTS_UPDATED:
@@ -1618,6 +1632,28 @@ export interface GetContactsResponse {
   page: PageInfo | undefined;
 }
 
+export interface SearchContactsRequest {
+  /** required 搜索关键字；服务端按 search_text LIKE 匹配，空串（或去空白后为空）返回 ERROR_INVALID_ARGUMENT */
+  keyword: string;
+  /** optional 联系人状态过滤；不填表示不过滤，语义同 get_contacts，显式传 0 返回 ERROR_INVALID_ARGUMENT */
+  status?:
+    | ContactStatus
+    | undefined;
+  /** optional 展示分页游标；排序与 get_contacts 一致（friend 按 sort_key/拼音排序，pending 按 seq 倒序） */
+  page: PageQuery | undefined;
+}
+
+export interface SearchContactsResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** optional 命中的通讯录条目 */
+  contacts: Contact[];
+  /** required 展示分页信息 */
+  page: PageInfo | undefined;
+}
+
 export interface GetContactCountRequest {
   /** required 统计状态；必须显式传入合法非 0 状态，例如 CONTACT_STATUS_PENDING_INCOMING 表示待我处理的好友申请数，CONTACT_STATUS_FRIEND 表示好友/收藏群数量 */
   status: ContactStatus;
@@ -1823,6 +1859,28 @@ export interface GetMessagesResponse {
   /** optional 消息列表 */
   messages: Message[];
   /** required 展示分页信息；msg_ids 批量读取场景为空 */
+  page: PageInfo | undefined;
+}
+
+export interface SearchMessagesRequest {
+  /** required 搜索关键字；服务端按 search_text LIKE 匹配，空串（或去空白后为空）返回 ERROR_INVALID_ARGUMENT */
+  keyword: string;
+  /** optional 会话目标；不填表示跨调用者全部会话全局搜索，填了则限定该会话内搜索 */
+  target:
+    | ConversationTarget
+    | undefined;
+  /** optional 展示分页游标；排序与 get_messages 一致（旧→新） */
+  page: PageQuery | undefined;
+}
+
+export interface SearchMessagesResponse {
+  /** required 通用响应状态 */
+  base:
+    | BaseResponse
+    | undefined;
+  /** optional 命中的消息 */
+  messages: Message[];
+  /** required 展示分页信息 */
   page: PageInfo | undefined;
 }
 
@@ -7809,6 +7867,192 @@ export const GetContactsResponse: MessageFns<GetContactsResponse> = {
   },
 };
 
+function createBaseSearchContactsRequest(): SearchContactsRequest {
+  return { keyword: "", status: undefined, page: undefined };
+}
+
+export const SearchContactsRequest: MessageFns<SearchContactsRequest> = {
+  encode(message: SearchContactsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.keyword !== "") {
+      writer.uint32(82).string(message.keyword);
+    }
+    if (message.status !== undefined) {
+      writer.uint32(88).int32(message.status);
+    }
+    if (message.page !== undefined) {
+      PageQuery.encode(message.page, writer.uint32(98).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchContactsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSearchContactsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.keyword = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.status = reader.int32() as any;
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.page = PageQuery.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SearchContactsRequest {
+    return {
+      keyword: isSet(object.keyword) ? globalThis.String(object.keyword) : "",
+      status: isSet(object.status) ? contactStatusFromJSON(object.status) : undefined,
+      page: isSet(object.page) ? PageQuery.fromJSON(object.page) : undefined,
+    };
+  },
+
+  toJSON(message: SearchContactsRequest): unknown {
+    const obj: any = {};
+    if (message.keyword !== "") {
+      obj.keyword = message.keyword;
+    }
+    if (message.status !== undefined) {
+      obj.status = contactStatusToJSON(message.status);
+    }
+    if (message.page !== undefined) {
+      obj.page = PageQuery.toJSON(message.page);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SearchContactsRequest>): SearchContactsRequest {
+    return SearchContactsRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SearchContactsRequest>): SearchContactsRequest {
+    const message = createBaseSearchContactsRequest();
+    message.keyword = object.keyword ?? "";
+    message.status = object.status ?? undefined;
+    message.page = (object.page !== undefined && object.page !== null) ? PageQuery.fromPartial(object.page) : undefined;
+    return message;
+  },
+};
+
+function createBaseSearchContactsResponse(): SearchContactsResponse {
+  return { base: undefined, contacts: [], page: undefined };
+}
+
+export const SearchContactsResponse: MessageFns<SearchContactsResponse> = {
+  encode(message: SearchContactsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.contacts) {
+      Contact.encode(v!, writer.uint32(82).fork()).join();
+    }
+    if (message.page !== undefined) {
+      PageInfo.encode(message.page, writer.uint32(90).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchContactsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSearchContactsResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.contacts.push(Contact.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.page = PageInfo.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SearchContactsResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      contacts: globalThis.Array.isArray(object?.contacts) ? object.contacts.map((e: any) => Contact.fromJSON(e)) : [],
+      page: isSet(object.page) ? PageInfo.fromJSON(object.page) : undefined,
+    };
+  },
+
+  toJSON(message: SearchContactsResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.contacts?.length) {
+      obj.contacts = message.contacts.map((e) => Contact.toJSON(e));
+    }
+    if (message.page !== undefined) {
+      obj.page = PageInfo.toJSON(message.page);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SearchContactsResponse>): SearchContactsResponse {
+    return SearchContactsResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SearchContactsResponse>): SearchContactsResponse {
+    const message = createBaseSearchContactsResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.contacts = object.contacts?.map((e) => Contact.fromPartial(e)) || [];
+    message.page = (object.page !== undefined && object.page !== null) ? PageInfo.fromPartial(object.page) : undefined;
+    return message;
+  },
+};
+
 function createBaseGetContactCountRequest(): GetContactCountRequest {
   return { status: 0 };
 }
@@ -9746,6 +9990,194 @@ export const GetMessagesResponse: MessageFns<GetMessagesResponse> = {
   },
   fromPartial(object: DeepPartial<GetMessagesResponse>): GetMessagesResponse {
     const message = createBaseGetMessagesResponse();
+    message.base = (object.base !== undefined && object.base !== null)
+      ? BaseResponse.fromPartial(object.base)
+      : undefined;
+    message.messages = object.messages?.map((e) => Message.fromPartial(e)) || [];
+    message.page = (object.page !== undefined && object.page !== null) ? PageInfo.fromPartial(object.page) : undefined;
+    return message;
+  },
+};
+
+function createBaseSearchMessagesRequest(): SearchMessagesRequest {
+  return { keyword: "", target: undefined, page: undefined };
+}
+
+export const SearchMessagesRequest: MessageFns<SearchMessagesRequest> = {
+  encode(message: SearchMessagesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.keyword !== "") {
+      writer.uint32(82).string(message.keyword);
+    }
+    if (message.target !== undefined) {
+      ConversationTarget.encode(message.target, writer.uint32(90).fork()).join();
+    }
+    if (message.page !== undefined) {
+      PageQuery.encode(message.page, writer.uint32(98).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchMessagesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSearchMessagesRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.keyword = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.target = ConversationTarget.decode(reader, reader.uint32());
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.page = PageQuery.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SearchMessagesRequest {
+    return {
+      keyword: isSet(object.keyword) ? globalThis.String(object.keyword) : "",
+      target: isSet(object.target) ? ConversationTarget.fromJSON(object.target) : undefined,
+      page: isSet(object.page) ? PageQuery.fromJSON(object.page) : undefined,
+    };
+  },
+
+  toJSON(message: SearchMessagesRequest): unknown {
+    const obj: any = {};
+    if (message.keyword !== "") {
+      obj.keyword = message.keyword;
+    }
+    if (message.target !== undefined) {
+      obj.target = ConversationTarget.toJSON(message.target);
+    }
+    if (message.page !== undefined) {
+      obj.page = PageQuery.toJSON(message.page);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SearchMessagesRequest>): SearchMessagesRequest {
+    return SearchMessagesRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SearchMessagesRequest>): SearchMessagesRequest {
+    const message = createBaseSearchMessagesRequest();
+    message.keyword = object.keyword ?? "";
+    message.target = (object.target !== undefined && object.target !== null)
+      ? ConversationTarget.fromPartial(object.target)
+      : undefined;
+    message.page = (object.page !== undefined && object.page !== null) ? PageQuery.fromPartial(object.page) : undefined;
+    return message;
+  },
+};
+
+function createBaseSearchMessagesResponse(): SearchMessagesResponse {
+  return { base: undefined, messages: [], page: undefined };
+}
+
+export const SearchMessagesResponse: MessageFns<SearchMessagesResponse> = {
+  encode(message: SearchMessagesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.base !== undefined) {
+      BaseResponse.encode(message.base, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.messages) {
+      Message.encode(v!, writer.uint32(82).fork()).join();
+    }
+    if (message.page !== undefined) {
+      PageInfo.encode(message.page, writer.uint32(90).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchMessagesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSearchMessagesResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.base = BaseResponse.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.messages.push(Message.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.page = PageInfo.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SearchMessagesResponse {
+    return {
+      base: isSet(object.base) ? BaseResponse.fromJSON(object.base) : undefined,
+      messages: globalThis.Array.isArray(object?.messages) ? object.messages.map((e: any) => Message.fromJSON(e)) : [],
+      page: isSet(object.page) ? PageInfo.fromJSON(object.page) : undefined,
+    };
+  },
+
+  toJSON(message: SearchMessagesResponse): unknown {
+    const obj: any = {};
+    if (message.base !== undefined) {
+      obj.base = BaseResponse.toJSON(message.base);
+    }
+    if (message.messages?.length) {
+      obj.messages = message.messages.map((e) => Message.toJSON(e));
+    }
+    if (message.page !== undefined) {
+      obj.page = PageInfo.toJSON(message.page);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SearchMessagesResponse>): SearchMessagesResponse {
+    return SearchMessagesResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SearchMessagesResponse>): SearchMessagesResponse {
+    const message = createBaseSearchMessagesResponse();
     message.base = (object.base !== undefined && object.base !== null)
       ? BaseResponse.fromPartial(object.base)
       : undefined;

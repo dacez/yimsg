@@ -5,6 +5,7 @@ import type { AppInstance } from "../../app-instance";
 import { msgPreview } from "./helpers";
 import { applyConversationGuards } from "./composer";
 import { closeMessageActionMenu, exitMessageSelectionMode } from "./selection";
+import { closeMessageSearchPanel } from "./message-search";
 import {
   getOrCreateBoundedStreamWindow,
   BoundedStreamWindow,
@@ -412,6 +413,7 @@ export async function openConversation(
   const messagePageRequestId = resetMessagePage(app);
   exitMessageSelectionMode(app);
   closeMessageActionMenu(app);
+  closeMessageSearchPanel(app);
 
   if (app.chatState.detailOpen) {
     app.chatState.detailOpen = false;

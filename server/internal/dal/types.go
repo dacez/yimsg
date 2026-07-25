@@ -64,6 +64,7 @@ type ContactListFilter struct {
 	FriendUIDs []int64
 	GroupIDs   []int64
 	OrgIDs     []int64
+	Keyword    string // 按 search_text LIKE 过滤；空串表示不过滤
 }
 
 // Message represents a message in a user's inbox.

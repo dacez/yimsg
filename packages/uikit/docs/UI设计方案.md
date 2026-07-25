@@ -150,11 +150,12 @@ graph LR
 
     subgraph 中栏["#center-panel · flex:1"]
         direction TB
-        C1["#chat-header<br/>标题 + 详情按钮"]
+        C1["#chat-header<br/>标题 + 搜索按钮 + 详情按钮"]
+        C1b["#message-search-panel<br/>关键字输入 + 结果列表，默认 hidden"]
         C2["#chat-empty<br/>空占位"]
         C3["#message-list<br/>上滚加载更多"]
         C4["#message-input-area<br/>输入框 + 表情按钮 + 附件按钮 + Markdown 模式切换按钮"]
-        C1 --- C2 --- C3 --- C4
+        C1 --- C1b --- C2 --- C3 --- C4
     end
 
     subgraph 右栏["#right-panel · 300px · 可折叠"]
@@ -416,6 +417,8 @@ sequenceDiagram
 | `showUserDetail(uid)` | 右栏渲染用户资料 |
 | `appendMembers(container, members)` | 追加成员列表 DOM |
 | `cleanupMemberScroll()` | 清理成员列表滚动监听 |
+| `setupMessageSearch(app)`（`views/chat/message-search.ts`） | 绑定 `#message-search-toggle`/`#message-search-input`/`#message-search-close`；300ms 防抖调 `client.searchMessages({keyword, target})` 限定当前会话，结果列表点击后用 `get_messages({target, around: msgId})` 重建消息窗口并滚动高亮（复用 `.msg-highlight` 动画） |
+| `closeMessageSearchPanel(app)`（`views/chat/message-search.ts`） | 关闭搜索面板并清空输入/结果；`openConversation` 切换会话时调用，避免搜索结果跨会话残留 |
 
 #### 会话列表渲染
 
@@ -645,7 +648,8 @@ showGroupDetail(groupId):
 
 | 函数 | 说明 |
 |------|------|
-| `loadFriendPage({ mode })` | reset / forward / backward 三种模式调用 `client.getContacts()` 维护好友窗口 |
+| `loadFriendPage({ mode })` | reset / forward / backward 三种模式维护好友窗口；关键字（`#friends-search-input`，300ms 防抖）为空时调用 `client.getContacts()`，非空时改调 `client.searchContacts()`，二者共用同一个 `friendWindow`/keyset 游标状态 |
+| `applyFriendKeywordChange(keyword)` | 关键字变化（去空白后与当前值不同）时重置好友窗口并按 `mode:'reset'` 重新拉首页 |
 | `renderFriends()` | 全量渲染好友窗口条目 |
 | `renderRequests(requests)` | 渲染待处理请求列表 |
 | `refreshContactsDisplay()` | `display:updated` 等显示资料变化时重绘联系人列表；若组织详情面板打开，也重新渲染当前 tag |
@@ -666,6 +670,7 @@ showGroupDetail(groupId):
 │   │   ├── [data-ctab="friends"]     Friends
 │   │   ├── [data-ctab="requests"]    Requests（.nav-badge，PENDING_INCOMING 红点）
 │   │   └── [data-ctab="search"]      Search
+│   ├── #friends-search-row           好友列表关键字过滤输入框（仅 friends tab 可见，300ms 防抖）
 │   ├── .contacts-content（滚动容器）
 │   │   ├── #friends-tab              好友列表（点击选中，操作在右侧详情面板）
 │   │   ├── #requests-tab             请求列表容器
@@ -694,6 +699,10 @@ renderFriends():
         click → showContactDetail(friend)，右侧详情面板渲染 Chat / Remark / Mute / Block / Delete 操作
     触顶且 hasMoreBefore → loadBefore → loadFriendPage({ mode:'backward' })
     触底且 hasMoreAfter → loadAfter → loadFriendPage({ mode:'forward' })
+
+#friends-search-input 输入（300ms 防抖）→ applyFriendKeywordChange(value):
+  keyword 为空 → loadFriendPage 走 client.getContacts({status:FRIEND, ...})
+  keyword 非空 → loadFriendPage 走 client.searchContacts({keyword, status:FRIEND, ...})，同一套 friendWindow/游标、同一个 renderFriends()
 ```
 
 组织条目打开后右侧进入组织架构浏览器：根 tag 名称来自 `getOrgInfos()`；直接子项来自 `getTags()`。子 tag 行使用响应里的 `name` / `avatar`；成员行只拿到 `uid` 和职务，昵称 / 头像必须通过 `getUserInfos()` 的显示资料缓存补齐。成员资料冷缓存未命中时显示加载态，不得把 UID 当作成员名长期展示；后续 `display:updated` 会触发 `refreshContactsDisplay()`，打开中的组织详情面板随之重新渲染为真实昵称。面包屑栏右侧的"管理"按钮打开 `views/org-admin.ts` 弹层（对当前节点无管理权限时，写操作提交后由服务端拒绝、UI 用 toast 提示，浏览器本身不做权限预判）。该弹层同样只拿到 tag/成员 `uid`，展示名称走同一套 `getTagInfos()` / `getUserInfos()` 缓存；弹层自身也订阅 `display:updated` 并在事件到来时重新渲染当前节点，避免新建部门等操作后名称冷缓存未命中时长期停留在 UID 兜底态。该弹层的 `showTextInputModal`/`showConfirmModal` 等嵌套提示框复用同一个 `#modal-overlay`/`#modal-content`，resolve 时会短暂把 `hidden` 加回去，因此订阅解绑不能监听 `modal-overlay` 的 `hidden` class（会把嵌套提示框关闭误判成弹层整体关闭而提前解绑），而是监听 `modal-content` 上只在本弹层自身两个真正关闭路径才摘掉的 `modal-content-wide` class；事件触发时还要先确认 `modal-content` 当前渲染的确实是本弹层自己的列表视图，避免在嵌套提示框还开着或弹层已关闭时误重渲染。
@@ -928,7 +937,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 |------|------|------|
 | 会话列表 | **有界窗口全量渲染** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
 | 消息列表 | **有界窗口全量渲染** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
-| 好友列表 | **有界窗口全量渲染** | `get_contacts(status=FRIEND)` 双向翻页，不为总数或搜索预拉全量 |
+| 好友列表 | **有界窗口全量渲染** | `get_contacts(status=FRIEND)` 双向翻页，不为总数预拉全量；`#friends-search-input` 关键字非空时改走 `search_contacts()`，同一套窗口/游标机制，同样双向翻页、不预拉全量 |
+| 消息搜索结果 | **一次性拉取，不分页** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，取固定条数（30）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮，不做无限滚动 |
 | 请求列表（待我处理） | **有界窗口全量渲染** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
 | 请求列表（我发出的） | **一次性拉取，不分页** | `get_contacts(status=PENDING_OUTGOING, limit=N)`，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
 | 建群候选 / 转发候选 / 群成员 | **有界窗口全量渲染** | 选中状态独立于 DOM 保存，双向翻页，群成员标题用 `page.total` 显示成员总数 |
@@ -944,7 +954,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 |---|---|---|---|
 | 会话列表 | `views/chat/conversation-list.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
 | 消息列表 | `views/chat/message-list.ts`、`message-page.ts` | 有界滑动窗口（≤150 条），双向翻页 | `client.getMessages()` |
-| 通讯录好友 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
+| 通讯录好友 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` / `client.searchContacts()`（关键字非空时） |
+| 消息搜索结果 | `views/chat/message-search.ts` | 一次性列表，不分页 | `client.searchMessages()` |
 | 好友请求 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
 | 群成员 | `views/chat/detail-panel.ts` | 有界滑动窗口，双向翻页 | `client.getGroupMembers()` |
 | 转发候选 | `views/chat/forward.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |

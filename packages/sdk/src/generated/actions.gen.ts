@@ -94,6 +94,10 @@ import {
   RenameOrgTagResponse,
   RevokeOrgAdminRequest,
   RevokeOrgAdminResponse,
+  SearchContactsRequest,
+  SearchContactsResponse,
+  SearchMessagesRequest,
+  SearchMessagesResponse,
   SearchUserRequest,
   SearchUserResponse,
   SendMessageRequest,
@@ -893,6 +897,32 @@ export function deleteOrg(
     DeleteOrgRequest,
     req,
     DeleteOrgResponse,
+  );
+}
+
+export function searchContacts(
+  transport: ClientTransport,
+  req: SearchContactsRequest,
+): Promise<SearchContactsResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_SEARCH_CONTACTS,
+    SearchContactsRequest,
+    req,
+    SearchContactsResponse,
+  );
+}
+
+export function searchMessages(
+  transport: ClientTransport,
+  req: SearchMessagesRequest,
+): Promise<SearchMessagesResponse> {
+  return sendProtoAction(
+    transport,
+    Type.TYPE_ACTION_SEARCH_MESSAGES,
+    SearchMessagesRequest,
+    req,
+    SearchMessagesResponse,
   );
 }
 

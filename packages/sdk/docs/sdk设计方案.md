@@ -1,7 +1,7 @@
 # SDK 设计方案
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/`、`packages/sdk/src/datagateway/`、`packages/sdk/src/state/`、`packages/sdk/src/transport/`、`protocol/generated/typescript/yimsg.ts`、`packages/sdk/src/worker/sqlite.worker.ts`、`protocol/yimsg.proto`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-25。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../../protocol/接口总览.md`](../../../protocol/docs/接口总览.md)。
 
@@ -196,8 +196,8 @@ sequenceDiagram
 | 事件 | `on()`、`off()`、`once()`、`listenerCount()`、`removeAllListeners()` |
 | 生命周期 | `register()`、`login()`、`authenticate()`、`startSession()`、`logout()`、`destroy()` |
 | 会话 | `getConversations()`、`getUnreadCount()`、`clearUnread()`、`deleteConversation()`、`describeConversation()` |
-| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`getMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
-| 联系人 | `getContacts()`、`getContactCount(status)`、`addFriend()`、`acceptFriend()`、`rejectFriend()`、`deleteFriend()`、`updateRemark()`、`favoriteGroup()`、`unfavoriteGroup()`、`searchUser()` |
+| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`getMessages()`、`searchMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
+| 联系人 | `getContacts()`、`searchContacts()`、`getContactCount(status)`、`addFriend()`、`acceptFriend()`、`rejectFriend()`、`deleteFriend()`、`updateRemark()`、`favoriteGroup()`、`unfavoriteGroup()`、`searchUser()` |
 | 屏蔽 / 免打扰 | `blockUser()`、`unblockUser()`、`getBlocklist()`、`muteConversation()`、`unmuteConversation()`、`getMutelist()` |
 | 群组 | `createGroup()`、`getGroupMembers()`、`updateGroupInfo()`、`addGroupMember()`、`removeGroupMember()`、`getGroupInfos()` |
 | 用户 / 上传 | `getUserInfos()`、`updateUserInfo()`、`updatePassword()`、`uploadFile()` |
@@ -210,8 +210,8 @@ sequenceDiagram
 |---|---|
 | `register()` / `login()` / `authenticate()` | 未连接时自动连接 |
 | 写操作 | 需要认证；多数写操作不要求会话处于 `ready` |
-| `getConversations()` / `getContacts()` | 需要认证且需要 `startSession()` 创建 DataGateway；正常调用方应等待 `startSession()` 返回 |
-| `getMessages()` / `getContactCount(status)` | 需要认证且会话处于 `ready` |
+| `getConversations()` / `getContacts()` / `searchContacts()` | 需要认证且需要 `startSession()` 创建 DataGateway；正常调用方应等待 `startSession()` 返回 |
+| `getMessages()` / `searchMessages()` / `getContactCount(status)` | 需要认证且会话处于 `ready` |
 | `getUnreadCount()` / `getBlocklist()` / `getMutelist()` | 需要认证；DataGateway 存在时走 DataGateway，否则直连服务端 |
 | `getUserInfos()` / `getGroupInfos()` | 同步读取 DisplayInfoCache；无 DataGateway 时返回空展示值且不触发远端刷新 |
 | `uploadFile()` | 需要认证 token，走 `fetch(uploadUrl)` |
@@ -279,8 +279,8 @@ sequenceDiagram
 | 类别 | 方法 |
 |---|---|
 | 生命周期 | `init(uid)`、`clear()` |
-| 会话 / 消息 | `get_conversations()`、`get_unread_count()`、`get_messages()` |
-| 联系人 | `get_contacts()`、`get_contact_count(status)` |
+| 会话 / 消息 | `get_conversations()`、`get_unread_count()`、`get_messages()`、`search_messages()` |
+| 联系人 | `get_contacts()`、`search_contacts()`、`get_contact_count(status)` |
 | 偏好 | `get_blocklist()`、`get_mutelist()` |
 | 展示资料 | `get_user_infos()`、`get_group_infos()` |
 | 回调 | `onMessagesReceived()`、`onContactsChanged()`、`onBlocklistChanged()`、`onMutelistChanged()`、`onUnreadCleared()`、`onConversationDeleted()`、`onMessageDeleted()`、`onSessionKicked()`、`onError()`、`onSync()` |
@@ -327,7 +327,7 @@ persistent 模式维护当前用户、当前 `instanceId` 的 SQLite 副本。
 | DB 后端 | `opfs` 使用 `SqliteWorkerApi` + `sqlite.worker.ts` + `@sqlite.org/sqlite-wasm`；`local` 使用 `LocalSqliteApi` + `better-sqlite3` |
 | 初始化 | 打开 DB，读取 `meta` 中 `msg_seq`、`contact_seq`、`conversation_seq`、`blocklist_seq`、`mutelist_seq`，随后启动后台同步 |
 | `ready` 时机 | DB 打开和 meta 读取成功后进入 `ready`；业务数据继续后台追平 |
-| 本地读取 | 会话、未读、消息、联系人、待处理数、屏蔽、免打扰都查 SQLite |
+| 本地读取 | 会话、未读、消息、联系人、待处理数、屏蔽、免打扰都查 SQLite；`search_contacts` / `search_messages` 复用同一份本地表按 `search_text LIKE` 过滤，排序/分页与对应 `get_*` 完全一致 |
 | 展示资料 | 先查 `displayinfo` 返回已有行，再后台请求未命中或过期 key 并写回 `displayinfo` |
 | 通知处理 | 覆盖 Base 的对应 handler，执行完整增量同步并写本地表 |
 | 消息通知 | `messages:received`：先 `sync_messages` 写本地 `messages`、`sync_conversations` 写会话（同步阶段不派发内容），再按累积的通知 `msg_id` 批量读本地内容供 `onMessages`，最后派发重绘信号；后台同步只派发空重绘信号，不重复 `onMessages` 历史消息 |

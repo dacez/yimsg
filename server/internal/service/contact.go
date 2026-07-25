@@ -2,6 +2,7 @@ package service
 
 import (
 	"strconv"
+	"strings"
 
 	"yimsg/protocol/generated/go/pb"
 	"yimsg/server/internal/appmsg"
@@ -359,6 +360,57 @@ func contactCursor(c dal.Contact, pending bool) string {
 		return encodeCursor(strconv.FormatInt(c.Seq, 10))
 	}
 	return encodeCursor(c.SortKey, strconv.FormatInt(c.Type, 10), strconv.FormatInt(c.ID, 10))
+}
+
+// SearchContacts 按关键字搜索通讯录：复用 get_contacts 的 keyset 分页与展示序，
+// 只是多一个必填的 search_text LIKE 过滤，因此可以直接复用同一个 ListPage/contactCursor。
+func (s *AppState) SearchContacts(info *BaseInfo, req *pb.SearchContactsRequest) *pb.SearchContactsResponse {
+	reqID := info.RequestID
+	uid := info.UID
+	keyword := strings.TrimSpace(req.GetKeyword())
+	if keyword == "" {
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "empty search keyword"))
+	}
+	status, ok := optionalContactStatus(req.Status)
+	if !ok {
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid contact status"))
+	}
+	filter := dal.ContactListFilter{Status: status, Keyword: keyword}
+	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())
+	store := s.ContactStore(uid)
+
+	parts, err := decodeCursor(page.cursor)
+	if err != nil {
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+	}
+	rows, err := store.ListPage(uid, filter, parts, page.backward, page.limit+1)
+	if err != nil {
+		return toSearchContactsResponse(appmsg.ErrInternal(reqID, err.Error()))
+	}
+	hasMoreTraveled := int64(len(rows)) > page.limit
+	if hasMoreTraveled {
+		rows = rows[:page.limit]
+	}
+	if page.backward {
+		reverseInPlace(rows)
+	}
+
+	pending := filter.Status != nil && dal.IsPendingStatus(*filter.Status)
+	pi := appmsg.PageInfo{Total: -1}
+	if len(rows) > 0 {
+		pi.StartCursor = contactCursor(rows[0], pending)
+		pi.EndCursor = contactCursor(rows[len(rows)-1], pending)
+	}
+	if page.backward {
+		pi.HasMoreBackward = hasMoreTraveled
+		pi.HasMoreForward = page.hasCursor
+	} else {
+		pi.HasMoreForward = hasMoreTraveled
+		pi.HasMoreBackward = page.hasCursor
+	}
+	resp := appmsg.OKListContacts(reqID, contactsFromDAL(rows))
+	resp.Page = &pi
+	return toSearchContactsResponse(resp)
 }
 
 func (s *AppState) GetContactCount(info *BaseInfo, req *pb.GetContactCountRequest) *pb.GetContactCountResponse {

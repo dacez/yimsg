@@ -913,6 +913,41 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  async searchMessages(params: {
+    keyword: string;
+    target?: ConversationTarget;
+    cursor?: string;
+    backward?: boolean;
+    limit?: number;
+  }): Promise<MessagePage> {
+    this.requireAuthenticated("searchMessages");
+    // 客户端先行校验空关键字：persistent 模式本地 LIKE '%%' 会静默匹配全部消息，
+    // 必须在两种模式下都保证空关键字一致地快速失败，不能只依赖服务端校验。
+    this.assertNonEmpty(params.keyword, "keyword", "searchMessages");
+    try {
+      const result = await this.runtime
+        .requireSessionInitialized("searchMessages")
+        .search_messages({
+          keyword: params.keyword,
+          to_uid: params.target?.toUid,
+          group_id: params.target?.groupId,
+          page: {
+            cursor: params.cursor,
+            backward: params.backward,
+            limit: clampOptionalPageLimit(params.limit, this._batchMaxLimit),
+          },
+        });
+      return wrapMessagePage(result);
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "搜索消息失败", {
+          context: "searchMessages",
+        }),
+      );
+    }
+  }
+
   async clearUnread(target: ConversationTarget): Promise<void> {
     this.requireAuthenticated("clearUnread");
     await actions.clearUnread(this._transport, actionMappers.targetParams(target));
@@ -1191,6 +1226,40 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
         error,
         new RequestError("REQUEST_FAILED", "拉取通讯录分页失败", {
           context: "getContacts",
+        }),
+      );
+    }
+  }
+
+  async searchContacts(params: {
+    keyword: string;
+    status?: number;
+    cursor?: string;
+    backward?: boolean;
+    limit?: number;
+  }): Promise<ContactPage> {
+    this.requireAuthenticated("searchContacts");
+    // 客户端先行校验空关键字：persistent 模式本地 LIKE '%%' 会静默匹配全部联系人，
+    // 必须在两种模式下都保证空关键字一致地快速失败，不能只依赖服务端校验。
+    this.assertNonEmpty(params.keyword, "keyword", "searchContacts");
+    try {
+      const result = await this.runtime
+        .requireSessionInitialized("searchContacts")
+        .search_contacts({
+          keyword: params.keyword,
+          status: params.status,
+          page: {
+            cursor: params.cursor,
+            backward: params.backward,
+            limit: clampOptionalPageLimit(params.limit, this._batchMaxLimit),
+          },
+        });
+      return wrapContactPage(result);
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "搜索通讯录失败", {
+          context: "searchContacts",
         }),
       );
     }

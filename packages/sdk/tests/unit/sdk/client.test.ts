@@ -1076,6 +1076,82 @@ describe("YimsgClient", () => {
     expect(result.messages[0].body.recall?.text).toContain("对方撤回了一条消息");
   });
 
+  it("searchMessages 未传 target 时不携带会话过滤，命中跨会话结果", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+
+    transportSend.mockResolvedValueOnce({
+      ok: true,
+      messages: [
+        {
+          uid: 100,
+          seq: 3,
+          msg_id: "3",
+          from_uid: "100",
+          to_uid: "200",
+          group_id: "0",
+          msg_type: MSG_TYPE_TEXT,
+          body: { text: { text: "let's eat an apple" } },
+          send_time: 3000,
+        },
+      ],
+    });
+
+    const result = await client.searchMessages({ keyword: "apple", limit: 10 });
+
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect(sent).toMatchObject({ action: "searchMessages", keyword: "apple" });
+    expect(sent.target).toBeFalsy();
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].body.text?.text).toBe("let's eat an apple");
+  });
+
+  it("searchMessages 传 target 时限定该会话搜索", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+
+    transportSend.mockResolvedValueOnce({ ok: true, messages: [] });
+
+    await client.searchMessages({ keyword: "apple", target: { toUid: "200" }, limit: 10 });
+
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect(sent).toMatchObject({ action: "searchMessages", keyword: "apple", to_uid: "200" });
+  });
+
+  it("searchMessages/searchContacts 空关键字（含全空白）同步抛 ValidationError，不发请求", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+    const callsBefore = transportSend.mock.calls.length;
+
+    await expect(client.searchMessages({ keyword: "" })).rejects.toThrow();
+    await expect(client.searchMessages({ keyword: "   " })).rejects.toThrow();
+    await expect(client.searchContacts({ keyword: "" })).rejects.toThrow();
+    expect(transportSend.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("searchContacts 按关键字请求并映射返回结果", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+
+    transportSend.mockResolvedValueOnce({
+      ok: true,
+      contacts: [
+        { target: { uid: "200" }, status: 1, seq: 1, remark_name: "", sort_key: "bobby", search_text: "Bobby" },
+      ],
+    });
+
+    const result = await client.searchContacts({ keyword: "Bobby", limit: 10 });
+
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect(sent).toMatchObject({ action: "searchContacts", keyword: "Bobby" });
+    expect(result.contacts).toHaveLength(1);
+    expect(result.contacts[0].friendUid).toBe("200");
+  });
+
   // ── getBoundedCollectionStats ─────────────────────────────────────────────
 
   describe("getBoundedCollectionStats", () => {

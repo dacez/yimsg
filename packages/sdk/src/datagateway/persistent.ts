@@ -21,6 +21,8 @@ import type {
   MessagePageResult,
   MutelistPageParams,
   MutelistPageResult,
+  SearchContactsParams,
+  SearchMessagesParams,
   SyncDomain,
   TagsPageParams,
   TagsPageResult,
@@ -481,6 +483,25 @@ export class PersistentDataGateway extends BaseDataGateway {
     return { messages: rows.map((r) => this.rowToMessage(r)), page: pageInfo };
   }
 
+  /**
+   * 持久存储模式直接查本地同步副本的 search_text 列，不请求服务端：
+   * 本地副本只覆盖该客户端实际同步过的窗口，不等价于服务端全量历史（同步机制方案
+   * §7）。to_uid/group_id 都未传时不限定会话，跨本地全部会话搜索。
+   */
+  async search_messages(params: SearchMessagesParams): Promise<MessagePageResult> {
+    const { filter, binds } = this.searchMessageFilter(params);
+    const visibleFilter = `${filter} AND status != ? AND search_text LIKE ?`;
+    const visibleBinds = [...binds, STATUS_DELETED, `%${params.keyword}%`];
+    const { rows, page } = await this.seqKeysetPage({
+      table: "messages",
+      where: visibleFilter,
+      binds: visibleBinds,
+      descTop: false,
+      page: params.page,
+    });
+    return { messages: rows.map((r) => this.rowToMessage(r)), page };
+  }
+
   protected async syncMessages(params: {
     last_seq: number;
     limit?: number;
@@ -575,6 +596,37 @@ export class PersistentDataGateway extends BaseDataGateway {
 
   async get_contacts(params: ContactPageParams): Promise<ContactPageResult> {
     const { where, binds } = this.contactFilter(params);
+    return this.contactKeysetPage(where, binds, params);
+  }
+
+  async get_contact_count(status: number): Promise<number> {
+    const { where, binds } = this.contactFilter({ status });
+    const rows = await this.db.query(
+      `SELECT COUNT(*) AS total FROM contacts WHERE ${where}`,
+      binds,
+    );
+    return Number(rows[0]?.total || 0);
+  }
+
+  /**
+   * 持久存储模式直接查本地同步副本的 search_text 列，不请求服务端；
+   * 排序/分页与 get_contacts 完全一致，只是多一个 search_text LIKE 过滤。
+   */
+  async search_contacts(params: SearchContactsParams): Promise<ContactPageResult> {
+    const { where, binds } = this.contactFilter({ status: params.status });
+    return this.contactKeysetPage(`${where} AND search_text LIKE ?`, [...binds, `%${params.keyword}%`], params);
+  }
+
+  /**
+   * 通讯录展示通道 keyset 分页的共用实现：get_contacts 与 search_contacts
+   * 排序/游标规则完全一致（friend 按 sort_key，pending 按 seq 倒序），
+   * 差别只在调用方传入的 where/binds。
+   */
+  private async contactKeysetPage(
+    where: string,
+    binds: unknown[],
+    params: { page?: PageParams; status?: number },
+  ): Promise<ContactPageResult> {
     const p = params.page ?? {};
     const backward = Boolean(p.backward);
     const limit = clampOptionalPageLimit(p.limit) ?? 200;
@@ -621,15 +673,6 @@ export class PersistentDataGateway extends BaseDataGateway {
       total: -1,
     };
     return { contacts, page };
-  }
-
-  async get_contact_count(status: number): Promise<number> {
-    const { where, binds } = this.contactFilter({ status });
-    const rows = await this.db.query(
-      `SELECT COUNT(*) AS total FROM contacts WHERE ${where}`,
-      binds,
-    );
-    return Number(rows[0]?.total || 0);
   }
 
   protected async syncContacts(params: {
@@ -1613,6 +1656,27 @@ export class PersistentDataGateway extends BaseDataGateway {
         "group_id = '0' AND ((from_uid = ? AND to_uid = ?) OR (from_uid = ? AND to_uid = ?))",
       binds: [this.uid, peer, peer, this.uid],
     };
+  }
+
+  /**
+   * search_messages 用的会话过滤：与 convFilter 的区别是 to_uid/group_id 都未传时
+   * 不限定会话（跨本地全部会话全局搜索），而不是 convFilter 那样落到 peer='0' 的 DM 过滤。
+   */
+  private searchMessageFilter(params: { to_uid?: string; group_id?: string }): {
+    filter: string;
+    binds: unknown[];
+  } {
+    if (params.group_id && String(params.group_id) !== "0") {
+      return { filter: "group_id = ?", binds: [params.group_id] };
+    }
+    if (params.to_uid && String(params.to_uid) !== "0") {
+      const peer = params.to_uid;
+      return {
+        filter: "group_id = '0' AND ((from_uid = ? AND to_uid = ?) OR (from_uid = ? AND to_uid = ?))",
+        binds: [this.uid, peer, peer, this.uid],
+      };
+    }
+    return { filter: "1 = 1", binds: [] };
   }
 
   private contactFilter(params: ContactPageParams): {
