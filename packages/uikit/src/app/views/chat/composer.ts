@@ -1,8 +1,10 @@
 import type {
   Message,
 } from '@yimsg/sdk';
+import { displayUserName } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
+import { showGroupMemberPicker } from '../group-member-picker';
 import { currentConversation, quotePreview } from './helpers';
 import { appendLiveMessageToPage } from './message-page';
 
@@ -136,4 +138,30 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
   } catch (e) {
     app.showToast(app.t('chat.uploadFailedColon') + (e as Error).message, 'error');
   }
+}
+
+/**
+ * 群聊输入框里刚敲下 "@" 时拉起群成员选择器；单聊没有可 @ 的对象，跳过。
+ * 选中后把光标前那个刚输入的 "@" 换成 "@昵称 "；取消选择则原样保留 "@"，
+ * 不做任何撤销处理。
+ */
+export async function maybeTriggerMentionPicker(app: AppInstance, input: HTMLTextAreaElement): Promise<void> {
+  if (input.disabled || !app.chatState.currentConvKey) return;
+  const conversation = app.client.describeConversation(app.chatState.currentConvKey);
+  if (conversation.kind !== 'group') return;
+  const caret = input.selectionStart ?? input.value.length;
+  if (input.value[caret - 1] !== '@') return;
+
+  const currentUid = app.client.getSessionSnapshot().currentUid;
+  const uid = await showGroupMemberPicker(app, conversation.id, { excludeUids: [currentUid] });
+  if (!uid) return;
+
+  const name = displayUserName(app.client.getUserInfos([uid]).get(uid), uid);
+  const mentionText = `@${name} `;
+  const before = input.value.slice(0, caret - 1);
+  const after = input.value.slice(caret);
+  input.value = before + mentionText + after;
+  const cursor = before.length + mentionText.length;
+  input.focus();
+  input.setSelectionRange(cursor, cursor);
 }

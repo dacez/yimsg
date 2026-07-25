@@ -128,6 +128,15 @@ export const translations = {
     'detail.unblockUserDone': 'User unblocked',
     'detail.failed': 'Failed: ',
 
+    // Group member picker (search box, used by @-mention and reusable elsewhere)
+    'groupMemberPicker.title': 'Select Member',
+    'groupMemberPicker.searchPlaceholder': 'Search members',
+    'groupMemberPicker.cancel': 'Cancel',
+    'groupMemberPicker.loadingCount': 'Loading… {n} members so far',
+    'groupMemberPicker.empty': 'No members',
+    'groupMemberPicker.noResults': 'No matching members',
+    'groupMemberPicker.loadFailed': 'Failed to load members',
+
     // Contacts
     'contacts.friends': 'Friends',
     'contacts.orgBadge': 'Org',
@@ -387,6 +396,15 @@ export const translations = {
     'detail.blockUserDone': '已屏蔽用户',
     'detail.unblockUserDone': '已取消屏蔽',
     'detail.failed': '失败：',
+
+    // 群成员选择器（带搜索框，供 @ 提及等多处场景复用）
+    'groupMemberPicker.title': '选择群成员',
+    'groupMemberPicker.searchPlaceholder': '搜索群成员',
+    'groupMemberPicker.cancel': '取消',
+    'groupMemberPicker.loadingCount': '加载中…已获取 {n} 位成员',
+    'groupMemberPicker.empty': '暂无成员',
+    'groupMemberPicker.noResults': '没有匹配的成员',
+    'groupMemberPicker.loadFailed': '加载群成员失败',
 
     // Contacts
     'contacts.friends': '好友',

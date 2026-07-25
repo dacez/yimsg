@@ -1,5 +1,5 @@
 import type { AppInstance } from '../../app-instance';
-import { uploadAndSend, sendMessage, toggleComposerMarkdownMode } from './composer';
+import { uploadAndSend, sendMessage, toggleComposerMarkdownMode, maybeTriggerMentionPicker } from './composer';
 import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
@@ -20,6 +20,9 @@ export function setupChat(app: AppInstance) {
   });
   app.$('msg-markdown-toggle').addEventListener('click', () => {
     toggleComposerMarkdownMode(app);
+  });
+  app.$('msg-input').addEventListener('input', () => {
+    void maybeTriggerMentionPicker(app, app.$('msg-input') as HTMLTextAreaElement);
   });
 
   app.$('chat-header').addEventListener('click', (event) => {

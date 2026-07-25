@@ -311,6 +311,11 @@ to{background-color:transparent}
 .forward-conversation-item:last-child{border-bottom:none}
 .forward-conversation-item:hover{background:var(--bg-hover)}
 .forward-conversation-empty{padding:12px;color:var(--text-secondary);font-size:var(--font-size-caption)}
+.group-member-picker-list{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+.group-member-picker-item{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border-bottom:1px solid var(--border-light);cursor:pointer;box-sizing:border-box}
+.group-member-picker-item:last-child{border-bottom:none}
+.group-member-picker-item:hover{background:var(--bg-hover)}
+.group-member-picker-empty{padding:12px;color:var(--text-secondary);font-size:var(--font-size-caption)}
 .modal-textarea{min-height:220px;padding:12px;resize:vertical}
 .mode-select-modal{width:560px;max-width:92vw}
 .mode-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-md);margin-top:var(--space-lg)}
@@ -399,8 +404,8 @@ body[data-layout="mobile"] .mode-options{grid-template-columns:1fr}
 /* 会话列表"列表有更新"提示条：悬浮于左面板底部，点击回到顶部并重拉首页 */
 .list-updated-pill{bottom:16px}
 .list-boundary-hint{width:100%;padding:8px 12px;text-align:center;color:var(--text-secondary);font-size:var(--font-size-caption);line-height:var(--line-height-caption);box-sizing:border-box}
-#conversation-list,#message-list,.contacts-content,#members-list,.member-select-list,.forward-conversation-list{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
-#conversation-list::-webkit-scrollbar,#message-list::-webkit-scrollbar,.contacts-content::-webkit-scrollbar,#members-list::-webkit-scrollbar,.member-select-list::-webkit-scrollbar,.forward-conversation-list::-webkit-scrollbar{display:none}
+#conversation-list,#message-list,.contacts-content,#members-list,.member-select-list,.forward-conversation-list,.group-member-picker-list{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
+#conversation-list::-webkit-scrollbar,#message-list::-webkit-scrollbar,.contacts-content::-webkit-scrollbar,#members-list::-webkit-scrollbar,.member-select-list::-webkit-scrollbar,.forward-conversation-list::-webkit-scrollbar,.group-member-picker-list::-webkit-scrollbar{display:none}
 
 /* ---- 组织架构浏览器 ---- */
 .contact-org-badge {

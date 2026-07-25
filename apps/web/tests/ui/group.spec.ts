@@ -234,6 +234,55 @@ test.describe('Group Chat', () => {
     await ctx2.close();
   });
 
+  test('mention a group member via the @ picker', async ({ browser }) => {
+    const owner = uniqueUser('at_o');
+    const member = uniqueUser('at_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'AtOwner');
+    await register(page2, member, password, 'AtMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'MentionGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'AtMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page1, 'MentionGroup');
+
+    // Typing "@" pulls up the group member picker (full member list + search box).
+    await page1.fill('#msg-input', '@');
+    const pickerModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(pickerModal).toBeVisible({ timeout: 5000 });
+    const searchInput = page1.locator('#group-member-picker-search');
+    await expect(searchInput).toBeEnabled({ timeout: 10_000 });
+
+    // Search narrows the (already fully loaded) member list down locally.
+    await searchInput.fill('AtMember');
+    const item = page1.locator('.group-member-picker-item', { hasText: 'AtMember' });
+    await expect(item).toBeVisible({ timeout: 5000 });
+    await item.click();
+
+    // Picking a member closes the modal and replaces the typed "@" with "@nickname ".
+    await expect(pickerModal).toBeHidden({ timeout: 5000 });
+    await expect(page1.locator('#msg-input')).toHaveValue('@AtMember ');
+
+    await page1.click('#msg-send');
+    await expectMessage(page1, '@AtMember');
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('update group avatar as owner', async ({ browser }) => {
     const owner = uniqueUser('ga_o');
     const member = uniqueUser('ga_m');
