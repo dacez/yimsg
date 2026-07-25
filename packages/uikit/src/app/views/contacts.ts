@@ -29,7 +29,7 @@ export function contactFriendUid(contact: Contact): string {
   return 'toUid' in contact.target ? String(contact.target.toUid) : '0';
 }
 
-function contactGroupId(contact: Contact): string {
+export function contactGroupId(contact: Contact): string {
   return 'groupId' in contact.target ? String(contact.target.groupId) : '0';
 }
 

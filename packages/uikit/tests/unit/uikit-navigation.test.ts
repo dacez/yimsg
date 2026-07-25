@@ -27,6 +27,17 @@ function createApp(viewMode?: 'full' | 'chat-only' | 'contacts-only') {
   };
   const loadContactsFn = vi.fn();
   const renderSettingsFn = vi.fn();
+  // switchView 离开 chat 视图时会调用 closeGlobalChatSearch，需要给这几个全局搜索
+  // DOM 元素也提供 stub（value + classList），否则 app.$() 返回 undefined 会直接抛错。
+  const genericElements = new Map<string, ReturnType<typeof makeToggle> & { value: string }>();
+  const stubElement = (id: string) => {
+    let el = genericElements.get(id);
+    if (!el) {
+      el = { ...makeToggle(), value: '' };
+      genericElements.set(id, el);
+    }
+    return el;
+  };
 
   const app = {
     runtime: { viewMode, embedded: false, instanceId: 'default' },
@@ -42,7 +53,7 @@ function createApp(viewMode?: 'full' | 'chat-only' | 'contacts-only') {
         return match ? navItems[match[1] as ViewName] ?? null : null;
       },
     },
-    $: (id: string) => views[id.replace('view-', '') as ViewName],
+    $: (id: string) => (views as Record<string, ReturnType<typeof makeToggle>>)[id.replace('view-', '')] ?? stubElement(id),
   };
 
   return { app: app as unknown as Parameters<typeof switchView>[0], views, navItems, loadContactsFn, renderSettingsFn };

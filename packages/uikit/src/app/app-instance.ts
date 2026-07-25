@@ -483,6 +483,10 @@ export class AppInstance {
     if (messageSearchInput) messageSearchInput.placeholder = this.t('chat.searchMessagesPlaceholder');
     const messageSearchClose = this.dom.getElementById('message-search-close');
     if (messageSearchClose) messageSearchClose.title = this.t('common.close');
+    const globalSearchInput = this.dom.getElementById<HTMLInputElement>('global-search-input');
+    if (globalSearchInput) globalSearchInput.placeholder = this.t('chat.globalSearchPlaceholder');
+    const globalSearchCancel = this.dom.getElementById('global-search-cancel');
+    if (globalSearchCancel) globalSearchCancel.textContent = this.t('chat.globalSearchCancel');
     const detailMobileBack = this.dom.getElementById('detail-mobile-back');
     if (detailMobileBack) detailMobileBack.textContent = `← ${this.t('auth.mobileBack')}`;
     const msgAttach = this.dom.getElementById('msg-attach');

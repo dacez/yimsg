@@ -15,6 +15,55 @@ test.describe('Chat', () => {
     user2 = uniqueUser('c2');
   });
 
+  test('global chat search finds a contact and a cross-conversation message', async ({ browser }) => {
+    const user3 = uniqueUser('c3');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, user1, password, 'GlobalSearcher');
+    await register(page2, user2, password, 'FindableFriend');
+    await register(page3, user3, password, 'ThirdFriend');
+    await addFriend(page1, page2, user2);
+    await addFriend(page1, page3, user3);
+
+    await openDMFromContacts(page1, 'FindableFriend');
+    await sendMessage(page1, 'let us eat an apple pie together');
+    await expectMessage(page1, 'let us eat an apple pie together');
+
+    await openDMFromContacts(page1, 'ThirdFriend');
+    await sendMessage(page1, 'just tea, no fruit here');
+    await expectMessage(page1, 'just tea, no fruit here');
+
+    // 联系人命中：搜关键字 "Findable" 应在「联系人」分组下命中 FindableFriend，点击后打开该会话。
+    await page1.fill('#global-search-input', 'Findable');
+    const contactResult = page1.locator('#global-search-results .conversation-item', { hasText: 'FindableFriend' });
+    await expect(contactResult).toBeVisible({ timeout: 10_000 });
+    await expect(page1.locator('#global-search-results')).toContainText('联系人');
+    await contactResult.click();
+    await expect(page1.locator('#global-search-results')).toHaveClass(/hidden/);
+    await expectMessage(page1, 'let us eat an apple pie together');
+
+    // 消息命中：搜关键字 "apple" 应跨会话命中 ThirdFriend 会话之外的那条消息（只在 FindableFriend 会话内），
+    // 点击后自动切到正确会话并跳转高亮到该消息。
+    await page1.fill('#global-search-input', 'apple');
+    const messageResult = page1.locator('#global-search-results .conversation-item', { hasText: 'apple pie' });
+    await expect(messageResult).toBeVisible({ timeout: 10_000 });
+    await expect(page1.locator('#global-search-results')).toContainText('聊天记录');
+    await messageResult.click();
+    await expect(page1.locator('#global-search-results')).toHaveClass(/hidden/);
+    const highlighted = page1.locator('.message-row.msg-highlight');
+    await expect(highlighted).toBeVisible({ timeout: 5000 });
+    await expect(highlighted.locator('.message-bubble')).toContainText('apple pie');
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+
   test('two users can chat', async ({ browser }) => {
     const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });

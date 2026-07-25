@@ -145,7 +145,11 @@
 ```mermaid
 graph LR
     subgraph 左栏["#left-panel · 280px"]
+        L1["全局搜索输入 + 取消按钮<br/>类似微信「搜索」"]
         L2["#conversation-list<br/>滚动分页"]
+        L3["#global-search-results<br/>联系人 + 聊天记录分组，默认 hidden"]
+        L1 --- L2
+        L1 --- L3
     end
 
     subgraph 中栏["#center-panel · flex:1"]
@@ -419,6 +423,9 @@ sequenceDiagram
 | `cleanupMemberScroll()` | 清理成员列表滚动监听 |
 | `setupMessageSearch(app)`（`views/chat/message-search.ts`） | 绑定 `#message-search-toggle`/`#message-search-input`/`#message-search-close`；300ms 防抖调 `client.searchMessages({keyword, target})` 限定当前会话，结果列表点击后用 `get_messages({target, around: msgId})` 重建消息窗口并滚动高亮（复用 `.msg-highlight` 动画） |
 | `closeMessageSearchPanel(app)`（`views/chat/message-search.ts`） | 关闭搜索面板并清空输入/结果；`openConversation` 切换会话时调用，避免搜索结果跨会话残留 |
+| `jumpToMessageInConversation(app, target, msgId)`（`views/chat/message-search.ts`） | 单会话搜索面板与全局搜索共用的跳转实现：`get_messages({target, around: msgId})` 重建消息窗口、渲染并滚动高亮，调用方需保证 `target` 对应的会话已经是当前打开的会话 |
+| `setupGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 会话列表顶部入口，类似微信「搜索」；绑定 `#global-search-input`/`#global-search-cancel`，300ms 防抖并行调 `client.searchContacts({keyword})` 和 `client.searchMessages({keyword})`（不传 `target`，跨全部会话），结果替换 `#conversation-list` 渲染成「联系人」「聊天记录」两组，一次性列表（不分页）；联系人组点击直接 `openConversation`，聊天记录组点击先按命中消息的 `describeMessageConversation()` 切到对应会话（若非当前会话），再调 `jumpToMessageInConversation` 跳转高亮 |
+| `closeGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 关闭全局搜索、清空输入与结果、恢复 `#conversation-list` 可见；点击结果或切到非聊天主视图（`switchView`）时调用 |
 
 #### 会话列表渲染
 
@@ -938,7 +945,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 会话列表 | **有界窗口全量渲染** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
 | 消息列表 | **有界窗口全量渲染** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
 | 好友列表 | **有界窗口全量渲染** | `get_contacts(status=FRIEND)` 双向翻页，不为总数预拉全量；`#friends-search-input` 关键字非空时改走 `search_contacts()`，同一套窗口/游标机制，同样双向翻页、不预拉全量 |
-| 消息搜索结果 | **一次性拉取，不分页** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，取固定条数（30）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮，不做无限滚动 |
+| 消息搜索结果（单会话） | **一次性拉取，不分页** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，取固定条数（30）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮，不做无限滚动 |
+| 全局搜索结果（联系人 + 聊天记录） | **一次性拉取，不分页** | 会话列表顶部 `#global-search-input`，并行 `search_contacts({keyword})` 取固定条数（8）+ `search_messages({keyword})` 不传 `target` 跨全部会话（20），替换 `#conversation-list` 展示两组结果；联系人组点击 `openConversation`，聊天记录组点击先切会话再按锚点跳转高亮，同不做无限滚动 |
 | 请求列表（待我处理） | **有界窗口全量渲染** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
 | 请求列表（我发出的） | **一次性拉取，不分页** | `get_contacts(status=PENDING_OUTGOING, limit=N)`，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
 | 建群候选 / 转发候选 / 群成员 | **有界窗口全量渲染** | 选中状态独立于 DOM 保存，双向翻页，群成员标题用 `page.total` 显示成员总数 |
@@ -955,7 +963,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 会话列表 | `views/chat/conversation-list.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
 | 消息列表 | `views/chat/message-list.ts`、`message-page.ts` | 有界滑动窗口（≤150 条），双向翻页 | `client.getMessages()` |
 | 通讯录好友 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` / `client.searchContacts()`（关键字非空时） |
-| 消息搜索结果 | `views/chat/message-search.ts` | 一次性列表，不分页 | `client.searchMessages()` |
+| 消息搜索结果（单会话） | `views/chat/message-search.ts` | 一次性列表，不分页 | `client.searchMessages()` |
+| 全局搜索结果 | `views/chat/global-search.ts` | 一次性列表，不分页 | `client.searchContacts()` + `client.searchMessages()` |
 | 好友请求 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
 | 群成员 | `views/chat/detail-panel.ts` | 有界滑动窗口，双向翻页 | `client.getGroupMembers()` |
 | 转发候选 | `views/chat/forward.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |

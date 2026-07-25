@@ -1,6 +1,7 @@
 import type { LocalConversation } from '@yimsg/sdk';
 import type { AppInstance } from '../../app-instance';
 import { canAutoClearUnreadCurrentConversation } from './helpers';
+import { closeGlobalChatSearch } from './global-search';
 
 export function startDMFromContact(app: AppInstance, uid: string) {
   switchView(app, 'chat');
@@ -31,4 +32,5 @@ export function switchView(app: AppInstance, requestedName: string) {
   }
   if (name === 'contacts') app.chatState.loadContactsFn?.();
   if (name === 'settings') app.chatState.renderSettingsFn?.();
+  if (name !== 'chat') closeGlobalChatSearch(app);
 }

@@ -57,7 +57,12 @@ export const APP_SHELL_HTML = `
     <div id="main-content">
       <section id="view-chat" class="view">
         <div id="left-panel">
+          <div class="global-search-row">
+            <input class="input" type="text" id="global-search-input" placeholder="搜索">
+            <button id="global-search-cancel" class="global-search-cancel hidden">取消</button>
+          </div>
           <div id="conversation-list"></div>
+          <div id="global-search-results" class="hidden"></div>
         </div>
         <div id="center-panel">
           <div id="chat-header" class="hidden">

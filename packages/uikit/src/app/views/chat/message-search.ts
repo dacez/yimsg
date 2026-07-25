@@ -1,4 +1,4 @@
-import type { Message } from '@yimsg/sdk';
+import type { ConversationTarget, Message } from '@yimsg/sdk';
 import { displayUserName, formatTime } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
@@ -9,6 +9,28 @@ import { resetMessagePage, setInitialMessagePage } from './message-page';
 const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_RESULT_LIMIT = 30;
 const HIGHLIGHT_MS = 1500;
+
+/**
+ * 以某条消息为锚点重新加载消息窗口（get_messages around）并滚动高亮。
+ * 调用方需确保 target 对应的会话已经是当前打开的会话——本会话内搜索面板天然满足；
+ * 全局搜索（global-search.ts）会先 openConversation 切到目标会话再调用本函数。
+ */
+export async function jumpToMessageInConversation(app: AppInstance, target: ConversationTarget, msgId: string): Promise<void> {
+  const messagePageRequestId = resetMessagePage(app);
+  try {
+    const page = await app.client.getMessages({
+      target,
+      around: msgId,
+      limit: APP_CONFIG.chat.messagePageSize,
+    });
+    if (messagePageRequestId !== app.chatState.messagePageRequestId) return;
+    setInitialMessagePage(app, page);
+    renderMessages(app);
+    scrollToMessage(app, msgId);
+  } catch (_) {
+    app.showToast(app.t('chat.failedToLoadMessages'), 'error');
+  }
+}
 
 /** 关闭消息搜索面板并清空输入/结果；切换会话时调用，避免搜索结果跨会话残留。 */
 export function closeMessageSearchPanel(app: AppInstance): void {
@@ -94,26 +116,12 @@ export function setupMessageSearch(app: AppInstance): void {
     }
   }
 
-  // 点开结果：以该消息为锚点重新加载消息窗口（get_messages around），
-  // 与打开会话首屏加载走同一套 resetMessagePage/setInitialMessagePage 机制。
+  // 点开结果：以该消息为锚点重新加载消息窗口，当前会话内搜索不需要切会话。
   async function jumpToResult(msgId: string): Promise<void> {
     const conversation = currentConversation(app);
     if (!conversation) return;
     closePanel();
-    const messagePageRequestId = resetMessagePage(app);
-    try {
-      const page = await app.client.getMessages({
-        target: conversation.target,
-        around: msgId,
-        limit: APP_CONFIG.chat.messagePageSize,
-      });
-      if (messagePageRequestId !== app.chatState.messagePageRequestId) return;
-      setInitialMessagePage(app, page);
-      renderMessages(app);
-      scrollToMessage(app, msgId);
-    } catch (_) {
-      app.showToast(app.t('chat.failedToLoadMessages'), 'error');
-    }
+    await jumpToMessageInConversation(app, conversation.target, msgId);
   }
 
   input().addEventListener('input', () => {

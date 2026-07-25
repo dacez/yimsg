@@ -3,6 +3,7 @@ import { uploadAndSend, sendMessage, toggleComposerMarkdownMode } from './compos
 import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
+import { setupGlobalChatSearch } from './global-search';
 import { isNearBottom } from './message-list';
 import { setupMessageSearch } from './message-search';
 import { registerSelectionForwardHandler } from './selection';
@@ -33,6 +34,7 @@ export function setupChat(app: AppInstance) {
 
   setupEmojiPicker(app);
   setupMessageSearch(app);
+  setupGlobalChatSearch(app);
 
   registerSelectionForwardHandler(app, async () => {
     const selected = app.chatState.currentMessages.filter((message) => app.chatState.selectedMessageIds.has(message.messageId));
