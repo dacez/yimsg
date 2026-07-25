@@ -15,6 +15,20 @@ describe('message body helpers', () => {
     expect(html).toContain('<code>c</code>');
   });
 
+  it('render markdown headings (1-4 levels)', () => {
+    expect(renderMarkdownSafe('# h1')).toBe('<h1>h1</h1>');
+    expect(renderMarkdownSafe('## h2')).toBe('<h2>h2</h2>');
+    expect(renderMarkdownSafe('### h3')).toBe('<h3>h3</h3>');
+    expect(renderMarkdownSafe('#### h4')).toBe('<h4>h4</h4>');
+    expect(renderMarkdownSafe('##### not heading')).not.toContain('<h5>');
+    expect(renderMarkdownSafe('#no-space')).not.toContain('<h1>');
+  });
+
+  it('render markdown headings mixed with normal text and inline styles', () => {
+    const html = renderMarkdownSafe('# Title\nbody **b**\n## Sub\nline2');
+    expect(html).toBe('<h1>Title</h1>body <strong>b</strong><h2>Sub</h2>line2');
+  });
+
   it('reject too long plain message', () => {
     expect(() => validateMessageLength('a'.repeat(4097))).toThrow('4096');
   });

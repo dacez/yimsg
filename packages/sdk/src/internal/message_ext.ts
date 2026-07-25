@@ -25,9 +25,26 @@ function escapeHtmlText(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function renderInlineSafe(line: string): string {
+  return line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+// 仅支持 1-4 级标题（行首 # ~ #### + 空格），其余文本按原有粗体/代码/换行规则渲染。
 export function renderMarkdownSafe(text: string): string {
-  return escapeHtmlText(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>');
+  const lines = escapeHtmlText(text).split('\n');
+  const parts: string[] = [];
+  lines.forEach((line, index) => {
+    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      parts.push(`<h${level}>${renderInlineSafe(heading[2])}</h${level}>`);
+      return;
+    }
+    const prevIsHeading = index > 0 && /^#{1,4}\s+/.test(lines[index - 1] ?? '');
+    if (index > 0 && !prevIsHeading) {
+      parts.push('<br>');
+    }
+    parts.push(renderInlineSafe(line));
+  });
+  return parts.join('');
 }
