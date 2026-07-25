@@ -130,7 +130,7 @@ func (r *AccountRunner) PollOnce(ctx context.Context) (int, error) {
 }
 
 // processGroup 处理一个 peer 分组：读记忆 → 交给 engine → 发最终回复 → 生成新
-// 记忆摘要 → 原子推进游标与记忆。engine 内部的每步进度通知通过 sendText 直接发出。
+// 记忆摘要 → 原子推进游标与记忆。engine 内部的每步进度通知通过 sendMarkdown 直接发出。
 func (r *AccountRunner) processGroup(ctx context.Context, g messageGroup) error {
 	peerMem := r.state.PeerMemory(g.peerKey)
 	userText := buildUserText(g.messages)
@@ -141,12 +141,12 @@ func (r *AccountRunner) processGroup(ctx context.Context, g messageGroup) error 
 		MemorySummary: peerMem.Summary,
 		UserText:      userText,
 	}, func(text string) error {
-		return r.sendText(target, text)
+		return r.sendMarkdown(target, text)
 	})
 	if err != nil {
 		return err
 	}
-	if err := r.sendText(target, result.FinalAnswer); err != nil {
+	if err := r.sendMarkdown(target, result.FinalAnswer); err != nil {
 		return err
 	}
 
@@ -178,15 +178,17 @@ func systemPromptFor(username string) string {
 	return fmt.Sprintf("你是 yimsg 平台上账号 %s 的自动回复助手，请用简洁、礼貌的中文回答对方的问题；不清楚的信息不要编造。", username)
 }
 
-// sendText 发一条纯文本消息；出错时视为连接不可信，主动断开以便下一次调用触发重连。
-func (r *AccountRunner) sendText(target *pb.ConversationTarget, text string) error {
+// sendMarkdown 发一条 Markdown 消息（进度通知与最终回复统一用该类型，方便客户端
+// 渲染 agent 输出的标题、列表等格式）；出错时视为连接不可信，主动断开以便下一次
+// 调用触发重连。
+func (r *AccountRunner) sendMarkdown(target *pb.ConversationTarget, text string) error {
 	if err := r.ensureConnected(); err != nil {
 		return err
 	}
 	_, err := r.conn.SendMessage(&pb.SendMessageRequest{
 		Target:  target,
-		MsgType: pb.MessageType_MESSAGE_TYPE_TEXT,
-		Body:    &pb.MessageBody{Kind: &pb.MessageBody_Text{Text: &pb.TextBody{Text: text}}},
+		MsgType: pb.MessageType_MESSAGE_TYPE_MARKDOWN,
+		Body:    &pb.MessageBody{Kind: &pb.MessageBody_Markdown{Markdown: &pb.MarkdownBody{Markdown: text}}},
 		MsgId:   msgid.Generate(),
 	})
 	if err != nil {

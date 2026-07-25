@@ -117,9 +117,10 @@ func (c *rawClient) sendTextTo(toUID int64, text string) {
 	rawSendOK(c, uint16(pb.Type_TYPE_ACTION_SEND_MESSAGE), req, &pb.SendMessageResponse{})
 }
 
-// waitForTextFrom 反复调用 sync_messages，直到收到一条来自 fromUID、内容为
-// wantText 的文本消息，或者超时。用于校验 agent 是否已经把回复真正发回来了。
-func (c *rawClient) waitForTextFrom(fromUID int64, wantText string, timeout time.Duration) bool {
+// waitForMarkdownFrom 反复调用 sync_messages，直到收到一条来自 fromUID、内容为
+// wantText 的 Markdown 消息，或者超时。用于校验 agent 是否已经把回复真正发回来
+// 了（agent 回复统一用 MESSAGE_TYPE_MARKDOWN，见 pipeline/runner.go sendMarkdown）。
+func (c *rawClient) waitForMarkdownFrom(fromUID int64, wantText string, timeout time.Duration) bool {
 	c.t.Helper()
 	deadline := time.Now().Add(timeout)
 	lastSeq := int64(0)
@@ -129,7 +130,7 @@ func (c *rawClient) waitForTextFrom(fromUID int64, wantText string, timeout time
 			if m.GetFromUid() != fromUID {
 				continue
 			}
-			text := m.GetBody().GetText().GetText()
+			text := m.GetBody().GetMarkdown().GetMarkdown()
 			if text == wantText {
 				return true
 			}

@@ -40,7 +40,7 @@ func TestAgentAutoRepliesToDirectMessage(t *testing.T) {
 	alice.login(userAlice, passAlice)
 	alice.sendTextTo(uidBot, "你好机器人")
 
-	if !alice.waitForTextFrom(uidBot, fakeDirectAnswerText, 30*time.Second) {
+	if !alice.waitForMarkdownFrom(uidBot, fakeDirectAnswerText, 30*time.Second) {
 		t.Fatal("超时未收到 agent 的自动回复")
 	}
 
