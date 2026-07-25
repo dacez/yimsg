@@ -94,9 +94,9 @@ systemctl enable yimsg
 # 跟浏览器客户端走同一条 Cloudflare 代理链路，避免直连本机 IP 时 Origin CA 证书
 # 校验不过的问题。demo_kf_1~3 密码固定为 server/tools/cmd/seed-demo 里已公开的
 # demoPassword，不是需要保密的凭证，因此直接写在 agent.toml 里；DeepSeek API Key
-# 是真正的密钥，参考 tls_cert/tls_key 的文件路径做法，只放在 /opt/yimsg/deepseek_api_key
-# （不进版本库、部署 workflow 不会碰这个文件），首次创建后需要人工 SSH 写入真实
-# 内容，一次写好长期有效，不需要每次部署都重新设置。
+# 是真正的密钥，参考 tls_cert/tls_key 的文件路径做法，只放在 /etc/deepseek/deepseek_api_key
+# （独立于 /opt/yimsg 应用目录之外的专用密钥目录，不进版本库、部署 workflow 不会碰这个
+# 文件），首次创建后需要人工 SSH 写入真实内容，一次写好长期有效，不需要每次部署都重新设置。
 mkdir -p /opt/yimsg/agent_data
 chown -R yimsg:yimsg /opt/yimsg/agent_data
 chmod 700 /opt/yimsg/agent_data
@@ -104,8 +104,8 @@ chmod 700 /opt/yimsg/agent_data
 cat > /opt/yimsg/agent.toml <<'EOF'
 [deepseek]
 base_url = "https://api.deepseek.com"
-model = "deepseek-chat"
-api_key_file = "/opt/yimsg/deepseek_api_key"
+model = "deepseek-v4-flash"
+api_key_file = "/etc/deepseek/deepseek_api_key"
 
 [agent]
 server = "wss://yimsg.im/ws"
@@ -129,11 +129,14 @@ EOF
 chown yimsg:yimsg /opt/yimsg/agent.toml
 chmod 640 /opt/yimsg/agent.toml
 
-if [[ ! -f /opt/yimsg/deepseek_api_key ]]; then
-  : > /opt/yimsg/deepseek_api_key
+mkdir -p /etc/deepseek
+chown yimsg:yimsg /etc/deepseek
+chmod 700 /etc/deepseek
+if [[ ! -f /etc/deepseek/deepseek_api_key ]]; then
+  : > /etc/deepseek/deepseek_api_key
 fi
-chown yimsg:yimsg /opt/yimsg/deepseek_api_key
-chmod 600 /opt/yimsg/deepseek_api_key
+chown yimsg:yimsg /etc/deepseek/deepseek_api_key
+chmod 600 /etc/deepseek/deepseek_api_key
 
 cat > /etc/systemd/system/yimsg-agent.service <<'EOF'
 [Unit]
@@ -183,7 +186,7 @@ id yimsg
 getent passwd yimsg
 getent group yimsg
 ls -ld /opt/yimsg /opt/yimsg/web /opt/yimsg/website /opt/yimsg/data /opt/yimsg/data/media /opt/yimsg/agent_data
-ls -l /opt/yimsg/config.toml /opt/yimsg/agent.toml /opt/yimsg/deepseek_api_key /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
+ls -l /opt/yimsg/config.toml /opt/yimsg/agent.toml /etc/deepseek/deepseek_api_key /etc/ssl/certs/yimsg.pem /etc/ssl/certs/yimsg.key
 systemctl is-enabled yimsg
 systemctl is-enabled yimsg-agent
 REMOTE

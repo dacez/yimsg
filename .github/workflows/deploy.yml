@@ -169,7 +169,7 @@ jobs:
 
             # yimsg-agent（客服 demo_kf_1~3 自动回复）依赖第 4 节标准化初始化提前创建好
             # systemd unit；机器还没跑过 tools/scripts/init_server_env.sh 时这里只跳过，
-            # 不影响本次服务端部署结果。DeepSeek API Key 文件（/opt/yimsg/deepseek_api_key）
+            # 不影响本次服务端部署结果。DeepSeek API Key 文件（/etc/deepseek/deepseek_api_key）
             # 参考 tls_cert/tls_key 的做法，只由 §13.4 的初始化脚本创建占位、由人工 SSH
             # 填入真实内容，这里不会碰这个文件，因此本步骤不需要 GitHub Secret。
             if [[ -f /etc/systemd/system/yimsg-agent.service ]]; then
@@ -210,7 +210,7 @@ jobs:
           timeout --foreground 120s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "systemctl status yimsg --no-pager"
           curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 官网 /: %{http_code}\n" "https://${HOST}/"
           curl -k -sS --connect-timeout 20 --max-time 60 -o /dev/null -w "[${{ matrix.name }}] 聊天 /app/: %{http_code}\n" "https://${HOST}/app/"
-          # yimsg-agent 不参与上面的核心可用性判定：/opt/yimsg/deepseek_api_key 还没
+          # yimsg-agent 不参与上面的核心可用性判定：/etc/deepseek/deepseek_api_key 还没
           # 人工填入真实内容时会一直 Restart=on-failure，这是预期状态，不应让整次部署
           # 失败，这里只打印状态供人工确认。
           timeout --foreground 60s ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "systemctl status yimsg-agent --no-pager" || true

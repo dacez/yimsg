@@ -42,7 +42,7 @@ func run() error {
 	username := fs.String("username", "", "单账号模式：用户名")
 	password := fs.String("password", "", "单账号模式：密码；留空则从 stdin 读取一行")
 	deepseekBaseURL := fs.String("deepseek-base-url", "", "DeepSeek base_url，默认官方地址")
-	deepseekModel := fs.String("deepseek-model", "", "DeepSeek model，默认 deepseek-chat")
+	deepseekModel := fs.String("deepseek-model", "", "DeepSeek model，默认 deepseek-v4-flash")
 	deepseekAPIKey := fs.String("deepseek-api-key", "", "DeepSeek api key（会出现在进程参数里，不推荐）")
 	deepseekAPIKeyFile := fs.String("deepseek-api-key-file", "", "读取 DeepSeek api key 的文件路径（推荐的生产部署方式，参考 tls_cert/tls_key 的文件路径做法）")
 	deepseekAPIKeyEnv := fs.String("deepseek-api-key-env", "", "读取 DeepSeek api key 的环境变量名，默认 DEEPSEEK_API_KEY")

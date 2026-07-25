@@ -17,7 +17,7 @@ import (
 // 全局默认值，对应方案文档 §2.2 的 TOML 示例。
 const (
 	DefaultDeepSeekBaseURL       = "https://api.deepseek.com"
-	DefaultDeepSeekModel         = "deepseek-chat"
+	DefaultDeepSeekModel         = "deepseek-v4-flash"
 	DefaultDeepSeekAPIKeyEnv     = "DEEPSEEK_API_KEY"
 	DefaultTemperature           = 0.7
 	DefaultRequestTimeoutSecs    = 60

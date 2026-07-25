@@ -53,8 +53,8 @@ flowchart LR
 ```toml
 [deepseek]
 base_url = "https://api.deepseek.com"        # 官方地址，OpenAI 兼容 Chat Completions
-model = "deepseek-chat"
-api_key_file = "/opt/yimsg/deepseek_api_key" # 从该文件读取 key（推荐的生产部署方式，参考 tls_cert/tls_key 的文件路径做法）
+model = "deepseek-v4-flash"
+api_key_file = "/etc/deepseek/deepseek_api_key" # 从该文件读取 key（推荐的生产部署方式，参考 tls_cert/tls_key 的文件路径做法）
 # api_key = ""                               # 明文写库，仅本地联调用
 # api_key_env = "DEEPSEEK_API_KEY"           # 从该环境变量读取 key
 temperature = 0.7

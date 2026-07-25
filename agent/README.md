@@ -14,8 +14,8 @@ go build -o yimsg-agent ./agent/cmd/yimsg-agent
 # agent.toml
 [deepseek]
 base_url = "https://api.deepseek.com"
-model = "deepseek-chat"
-api_key_file = "/opt/yimsg/deepseek_api_key"  # 推荐：从文件读取 key，参考 tls_cert/tls_key 的做法
+model = "deepseek-v4-flash"
+api_key_file = "/etc/deepseek/deepseek_api_key"  # 推荐：从文件读取 key，参考 tls_cert/tls_key 的做法
 # api_key_env = "DEEPSEEK_API_KEY"            # 也可以从环境变量读取
 
 [agent]
@@ -34,7 +34,7 @@ password_env = "YIMSG_AGENT_USER2_PASSWORD"
 ```
 
 ```bash
-echo -n 'sk-xxx' > /opt/yimsg/deepseek_api_key   # 对应 agent.toml 里的 api_key_file，一次写好即可
+echo -n 'sk-xxx' > /etc/deepseek/deepseek_api_key   # 对应 agent.toml 里的 api_key_file，一次写好即可
 export YIMSG_AGENT_USER1_PASSWORD='******'
 export YIMSG_AGENT_USER2_PASSWORD='******'
 ./yimsg-agent -config agent.toml
@@ -59,7 +59,7 @@ agent_data/
 ./yimsg-agent \
   -server ws://127.0.0.1:8080/ws \
   -username user1 --password "$YIMSG_AGENT_USER1_PASSWORD" \
-  -deepseek-api-key-file /opt/yimsg/deepseek_api_key \
+  -deepseek-api-key-file /etc/deepseek/deepseek_api_key \
   -data-dir ./agent_data
 ```
 
