@@ -63,6 +63,7 @@ function appWithMessages(): AppInstance {
       messagePageRequestId: 0,
       pendingNewMessageCount: 0,
       selectedMessageIds: new Set<string>(),
+      pendingMessageIds: new Set<string>(),
       expandedQuoteMessageIds: new Set<string>(),
     },
   } as unknown as AppInstance;

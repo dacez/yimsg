@@ -150,6 +150,8 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-time{font-size:11px;color:var(--text-placeholder);margin-top:2px;align-self:flex-end;flex-shrink:0}
 .message-status{font-size:11px;color:var(--text-placeholder)}
 .message-status.failed{color:var(--error);cursor:pointer}
+.message-status-sending{width:14px;height:14px;align-self:center;flex-shrink:0;border-radius:50%;border:2px solid var(--border);border-top-color:var(--text-secondary);animation:message-status-spin .8s linear infinite}
+@keyframes message-status-spin{to{transform:rotate(360deg)}}
 .message-system{text-align:center;margin:var(--space-md) 0;font-size:var(--font-size-caption);color:var(--text-secondary)}
 .message-loading{text-align:center;padding:var(--space-md);color:var(--text-placeholder);font-size:var(--font-size-caption)}
 .message-bubble:has(.message-image){padding:3px;overflow:hidden}

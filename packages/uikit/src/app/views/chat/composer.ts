@@ -1,12 +1,70 @@
 import type {
+  ConversationTarget,
   Message,
+  MessageBody,
+  MsgType,
 } from '@yimsg/sdk';
-import { displayUserName } from '@yimsg/sdk';
+import {
+  displayUserName,
+  MSG_TYPE_MARKDOWN,
+  MSG_TYPE_MENTION,
+  MSG_TYPE_QUOTE,
+  MSG_TYPE_TEXT,
+} from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { showGroupMemberPicker } from '../group-member-picker';
 import { currentConversation, quotePreview } from './helpers';
-import { appendLiveMessageToPage } from './message-page';
+import { appendLiveMessageToPage, removeMessageFromPage } from './message-page';
+
+let pendingMessageSeq = 0;
+
+/** 发送前先在内存里插一条乐观占位消息（临时本地 id，不落库），让用户立刻看到"发送中"。 */
+function buildPendingMessage(app: AppInstance, target: ConversationTarget, msgType: MsgType, body: MessageBody): Message {
+  const groupId = (target as { groupId?: string }).groupId;
+  const toUid = typeof groupId === 'string' ? '0' : (target as { toUid: string }).toUid;
+  return {
+    seq: Date.now(),
+    messageId: `~pending-${Date.now()}-${++pendingMessageSeq}`,
+    senderId: app.client.getSessionSnapshot().currentUid,
+    recipientId: toUid,
+    groupId: typeof groupId === 'string' ? groupId : '0',
+    messageType: msgType,
+    body,
+    sentAt: Date.now(),
+  };
+}
+
+/**
+ * 乐观发送：先插入占位消息（转圈圈"发送中"），send() 落地后用占位消息的临时 id 换成真实消息
+ * （真实 messageId 由 send() resolve 后才拿到，两者不会同 id 冲突，替换即完成"匹配"）；
+ * 失败则把占位消息原样撤回，交给调用方的 catch 提示报错。
+ */
+async function sendOptimistically(
+  app: AppInstance,
+  target: ConversationTarget,
+  msgType: MsgType,
+  body: MessageBody,
+  send: () => Promise<{ message: Message }>,
+): Promise<void> {
+  const pending = buildPendingMessage(app, target, msgType, body);
+  app.chatState.pendingMessageIds.add(pending.messageId);
+  appendLiveMessageToPage(app, pending);
+  app.views.chat?.renderMessages();
+  app.views.chat?.scrollToBottom();
+  try {
+    const result = await send();
+    removeMessageFromPage(app, pending.messageId);
+    appendLiveMessageToPage(app, result.message);
+  } catch (error) {
+    removeMessageFromPage(app, pending.messageId);
+    throw error;
+  } finally {
+    app.chatState.pendingMessageIds.delete(pending.messageId);
+    app.views.chat?.renderMessages();
+    app.views.chat?.scrollToBottom();
+  }
+}
 
 function ensureQuoteBar(app: AppInstance) {
   if (app.dom.getElementById('msg-quote-bar')) return;
@@ -103,26 +161,26 @@ export async function sendMessage(app: AppInstance) {
     const mentionedUids = app.chatState.composerQuote ? [] : pendingMentionedUids(app, content);
     const mentionAll = !app.chatState.composerQuote && pendingMentionAll(app, content);
     if (mentionedUids.length > 0 || mentionAll) {
-      const sendPromise = app.client.sendMention(target, { text: content, mentionedUids, mentionAll });
       input.value = '';
       app.chatState.composerMentions = new Map();
       app.chatState.composerMentionAll = false;
-      const result = await sendPromise;
-      appendLiveMessageToPage(app, result.message);
-      app.views.chat?.renderMessages();
-      app.views.chat?.scrollToBottom();
+      await sendOptimistically(
+        app, target, MSG_TYPE_MENTION,
+        { mention: { text: content, mentioned_uids: mentionedUids, mention_all: mentionAll } },
+        () => app.client.sendMention(target, { text: content, mentionedUids, mentionAll }),
+      );
       return;
     }
 
     if (app.chatState.composerMarkdownMode && !app.chatState.composerQuote) {
-      const sendPromise = app.client.sendMarkdown(target, content);
       input.value = '';
       app.chatState.composerMentions = new Map();
       app.chatState.composerMentionAll = false;
-      const result = await sendPromise;
-      appendLiveMessageToPage(app, result.message);
-      app.views.chat?.renderMessages();
-      app.views.chat?.scrollToBottom();
+      await sendOptimistically(
+        app, target, MSG_TYPE_MARKDOWN,
+        { markdown: { markdown: content } },
+        () => app.client.sendMarkdown(target, content),
+      );
       return;
     }
 
@@ -133,23 +191,21 @@ export async function sendMessage(app: AppInstance) {
 
     if (app.chatState.composerQuote) {
       const quote = app.chatState.composerQuote;
-      const result = await app.client.sendQuotedTextMessage(target, {
-        text: content,
-        quoteMsgId: quote.msgId,
-        quotePreview: quote.preview,
-      });
-      appendLiveMessageToPage(app, result.message);
+      await sendOptimistically(
+        app, target, MSG_TYPE_QUOTE,
+        { quote: { quote_msg_id: quote.msgId, quote_preview: quote.preview, text: { text: content } } },
+        () => app.client.sendQuotedTextMessage(target, { text: content, quoteMsgId: quote.msgId, quotePreview: quote.preview }),
+      );
       clearComposerQuote(app);
-      app.views.chat?.renderMessages();
-      app.views.chat?.scrollToBottom();
       return;
     }
 
-    const result = await app.client.sendText(target, content);
-    appendLiveMessageToPage(app, result.message);
+    await sendOptimistically(
+      app, target, MSG_TYPE_TEXT,
+      { text: { text: content } },
+      () => app.client.sendText(target, content),
+    );
     clearComposerQuote(app);
-    app.views.chat?.renderMessages();
-    app.views.chat?.scrollToBottom();
   } catch (e) {
     app.showToast(app.t('chat.failedToSend') + (e as Error).message, 'error');
   }
