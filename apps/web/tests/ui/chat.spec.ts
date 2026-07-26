@@ -33,6 +33,10 @@ test.describe('Chat', () => {
     await openDMFromContacts(page1, 'FindableFriend');
     await sendMessage(page1, 'let us eat an apple pie together');
     await expectMessage(page1, 'let us eat an apple pie together');
+    // 再发一条消息，让 apple pie 不再是该会话的最后一条——用来覆盖"跳转命中非最后一条
+    // 消息时也要正确进入会话并定位高亮"这条路径（曾经只有命中最后一条消息才生效）。
+    await sendMessage(page1, 'dessert can wait though');
+    await expectMessage(page1, 'dessert can wait though');
 
     await openDMFromContacts(page1, 'ThirdFriend');
     await sendMessage(page1, 'just tea, no fruit here');
@@ -47,8 +51,13 @@ test.describe('Chat', () => {
     await expect(page1.locator('#global-search-results')).toHaveClass(/hidden/);
     await expectMessage(page1, 'let us eat an apple pie together');
 
-    // 消息命中：搜关键字 "apple" 应跨会话命中 ThirdFriend 会话之外的那条消息（只在 FindableFriend 会话内），
-    // 点击后自动切到正确会话并跳转高亮到该消息。
+    // 切回 ThirdFriend，确保接下来点击消息命中时 FindableFriend 不是当前已打开的会话——
+    // 复现"跨会话跳转到非最后一条消息"的真实路径（当前会话就是目标会话时不会触发该问题）。
+    await openDMFromContacts(page1, 'ThirdFriend');
+    await expectMessage(page1, 'just tea, no fruit here');
+
+    // 消息命中：搜关键字 "apple" 应跨会话命中 ThirdFriend 会话之外的那条消息（只在 FindableFriend 会话内，
+    // 且不是该会话最后一条），点击后自动切到正确会话并跳转高亮到该消息。
     await page1.fill('#global-search-input', 'apple');
     const messageResult = page1.locator('#global-search-results .conversation-item', { hasText: 'apple pie' });
     await expect(messageResult).toBeVisible({ timeout: 10_000 });
@@ -57,6 +66,68 @@ test.describe('Chat', () => {
     await expect(page1.locator('#global-search-results')).toHaveClass(/hidden/);
     const highlighted = page1.locator('.message-row.msg-highlight');
     await expect(highlighted).toBeVisible({ timeout: 5000 });
+    await expect(highlighted.locator('.message-bubble')).toContainText('apple pie');
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+
+  test('global chat search jump keeps the highlight visible on a long conversation under latency', async ({ browser }) => {
+    // 回归用例：跳转命中的消息如果不是会话最后一条，get_messages({around}) 按协议约定
+    // 会把两端 has_more 都乐观置真，BoundedStreamWindow 触边会自动续拉一页并整份重渲
+    // 消息列表。真实网络下这次自动续拉常常在 scrollToMessage 加完高亮之后才返回，
+    // 若高亮只是渲染后临时补的 class 就会被这次重渲冲掉——本地零延迟环境这个时间差
+    // 太小很难稳定复现，所以这里显式给 WebSocket 连接加延迟来稳定触发。
+    const user3 = uniqueUser('c4');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, user1, password, 'LatencySearcher');
+    await register(page2, user2, password, 'LatencyFriend');
+    await register(page3, user3, password, 'LatencyThird');
+    await addFriend(page1, page2, user2);
+    await addFriend(page1, page3, user3);
+
+    await openDMFromContacts(page1, 'LatencyFriend');
+    await sendMessage(page1, 'let us eat an apple pie together');
+    await expectMessage(page1, 'let us eat an apple pie together');
+    // 命中消息后面再堆够一页消息，让锚点两侧都有内容，触发 checkReach 自动续拉。
+    for (let i = 0; i < 34; i++) {
+      await sendMessage(page1, `filler message number ${i}`);
+    }
+    await expectMessage(page1, 'filler message number 33');
+
+    await openDMFromContacts(page1, 'LatencyThird');
+    await sendMessage(page1, 'just tea, no fruit here');
+    await expectMessage(page1, 'just tea, no fruit here');
+
+    const cdp = await ctx1.newCDPSession(page1);
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 400,
+      downloadThroughput: (750 * 1024) / 8,
+      uploadThroughput: (250 * 1024) / 8,
+    });
+
+    await page1.fill('#global-search-input', 'apple');
+    const messageResult = page1.locator('#global-search-results .conversation-item', { hasText: 'apple pie' });
+    await expect(messageResult).toBeVisible({ timeout: 15_000 });
+    await messageResult.click();
+    await expect(page1.locator('#global-search-results')).toHaveClass(/hidden/);
+
+    // 高亮必须先出现、且在整个 1.5s 淡出窗口内持续保持可见——不能只是短暂闪现一下
+    // 又被自动续拉冲掉（用 count() 轮询而非 expect 断言，避免每次都触发 5s 自动重试）。
+    const highlighted = page1.locator('.message-row.msg-highlight');
+    await expect(highlighted).toBeVisible({ timeout: 10_000 });
+    for (let i = 0; i < 8; i++) {
+      expect(await highlighted.count()).toBe(1);
+      await page1.waitForTimeout(150);
+    }
     await expect(highlighted.locator('.message-bubble')).toContainText('apple pie');
 
     await ctx1.close();

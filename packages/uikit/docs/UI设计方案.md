@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-25。
+> 最后复核：2026-07-26。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -423,8 +423,8 @@ sequenceDiagram
 | `cleanupMemberScroll()` | 清理成员列表滚动监听 |
 | `setupMessageSearch(app)`（`views/chat/message-search.ts`） | 绑定 `#message-search-toggle`/`#message-search-input`/`#message-search-close`；300ms 防抖调 `client.searchMessages({keyword, target})` 限定当前会话，结果列表点击后用 `get_messages({target, around: msgId})` 重建消息窗口并滚动高亮（复用 `.msg-highlight` 动画） |
 | `closeMessageSearchPanel(app)`（`views/chat/message-search.ts`） | 关闭搜索面板并清空输入/结果；`openConversation` 切换会话时调用，避免搜索结果跨会话残留 |
-| `jumpToMessageInConversation(app, target, msgId)`（`views/chat/message-search.ts`） | 单会话搜索面板与全局搜索共用的跳转实现：`get_messages({target, around: msgId})` 重建消息窗口、渲染并滚动高亮，调用方需保证 `target` 对应的会话已经是当前打开的会话 |
-| `setupGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 会话列表顶部入口，类似微信「搜索」；绑定 `#global-search-input`/`#global-search-cancel`，300ms 防抖并行调 `client.searchContacts({keyword})` 和 `client.searchMessages({keyword})`（不传 `target`，跨全部会话），结果替换 `#conversation-list` 渲染成「联系人」「聊天记录」两组，一次性列表（不分页）；联系人组点击直接 `openConversation`，聊天记录组点击先按命中消息的 `describeMessageConversation()` 切到对应会话（若非当前会话），再调 `jumpToMessageInConversation` 跳转高亮 |
+| `jumpToMessageInConversation(app, target, msgId)`（`views/chat/message-search.ts`） | 单会话搜索面板与全局搜索共用的跳转实现：`get_messages({target, around: msgId})` 重建消息窗口、把 `msgId` 写入 `chatState.highlightMessageId` 后渲染（`views/chat/message-list.ts` 按此声明式加 `.msg-highlight`，超时后清空该字段并重渲染移除）、再滚动定位；调用方需保证 `target` 对应的会话已经是当前打开的会话。`get_messages({around})` 按协议约定两端 `has_more` 先乐观置真，`BoundedStreamWindow` 触边会自动续拉一页并整份重渲——高亮做成跟 `msgId` 绑定的声明式状态而非渲染后临时补的 class，就是为了在这类自动续拉重渲后依然带出高亮，不被冲掉 |
+| `setupGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 会话列表顶部入口，类似微信「搜索」；绑定 `#global-search-input`/`#global-search-cancel`，300ms 防抖并行调 `client.searchContacts({keyword})` 和 `client.searchMessages({keyword})`（不传 `target`，跨全部会话），结果替换 `#conversation-list` 渲染成「联系人」「聊天记录」两组，一次性列表（不分页）；联系人组点击直接 `openConversation`，聊天记录组点击先按命中消息的 `describeMessageConversation()` 用 `openConversationShellForJump`（`views/chat/conversation-list.ts`，只做会话骨架初始化、不拉最新页）切到对应会话（若非当前会话），再调 `jumpToMessageInConversation` 一次性以锚点加载并跳转高亮——避免先渲染最新页、又立刻被锚点页覆盖重渲的双重渲染 |
 | `closeGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 关闭全局搜索、清空输入与结果、恢复 `#conversation-list` 可见；点击结果或切到非聊天主视图（`switchView`）时调用 |
 
 #### 会话列表渲染

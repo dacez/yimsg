@@ -85,6 +85,7 @@ export function resetMessagePage(app: AppInstance): number {
   app.chatState.loadingNewerMessages = false;
   app.chatState.messagePageHasOlder = false;
   app.chatState.messagePageHasNewer = false;
+  app.chatState.highlightMessageId = null;
   app.chatState.pendingNewMessageCount = 0;
   app.chatState.selectedMessageIds.clear();
   app.chatState.expandedQuoteMessageIds.clear();

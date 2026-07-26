@@ -10,10 +10,33 @@ const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_RESULT_LIMIT = 30;
 const HIGHLIGHT_MS = 1500;
 
+// 跳转锚点渲染后，get_messages around 两端 has_more 按设计先乐观置 true（协议文档：
+// 客户端滚动到真实边界拿到空页后再收敛），BoundedStreamWindow 的 checkReach 会在锚点
+// 窗口不足一屏或贴边时自动触发 loadOlderMessages/loadNewerMessages 续拉一页——而这些续拉
+// 完成后都会整份重渲消息列表。如果高亮只是渲染后再用 classList.add 补上去的临时状态，
+// 这类紧随跳转发生的自动续拉一重渲就会把 class 冲掉，表现为"跳转命中会话中间的消息时
+// 高亮/定位很快消失，只有命中没有更早更新消息的最后一条时才稳定"。因此高亮改为跟 msgId
+// 一起写进 chatState、由 message-list.ts 的 renderItem 按此声明式补 class，任何重渲染
+// （含上述自动续拉）都会一并带上，不再是渲染之外的旁路副作用。
+const highlightTimers = new WeakMap<AppInstance, ReturnType<typeof setTimeout>>();
+
+function setMessageHighlight(app: AppInstance, msgId: string): void {
+  const existing = highlightTimers.get(app);
+  if (existing) clearTimeout(existing);
+  app.chatState.highlightMessageId = msgId;
+  const timer = setTimeout(() => {
+    highlightTimers.delete(app);
+    if (app.chatState.highlightMessageId !== msgId) return;
+    app.chatState.highlightMessageId = null;
+    renderMessages(app);
+  }, HIGHLIGHT_MS);
+  highlightTimers.set(app, timer);
+}
+
 /**
  * 以某条消息为锚点重新加载消息窗口（get_messages around）并滚动高亮。
  * 调用方需确保 target 对应的会话已经是当前打开的会话——本会话内搜索面板天然满足；
- * 全局搜索（global-search.ts）会先 openConversation 切到目标会话再调用本函数。
+ * 全局搜索（global-search.ts）会先切到目标会话再调用本函数。
  */
 export async function jumpToMessageInConversation(app: AppInstance, target: ConversationTarget, msgId: string): Promise<void> {
   const messagePageRequestId = resetMessagePage(app);
@@ -25,6 +48,7 @@ export async function jumpToMessageInConversation(app: AppInstance, target: Conv
     });
     if (messagePageRequestId !== app.chatState.messagePageRequestId) return;
     setInitialMessagePage(app, page);
+    setMessageHighlight(app, msgId);
     renderMessages(app);
     scrollToMessage(app, msgId);
   } catch (_) {
@@ -149,13 +173,13 @@ export function setupMessageSearch(app: AppInstance): void {
   });
 }
 
+// 高亮 class 已由 message-list.ts 按 chatState.highlightMessageId 声明式渲染（见上方
+// setMessageHighlight 的注释），这里只负责把目标行滚动到视口内。
 function scrollToMessage(app: AppInstance, msgId: string): void {
   const run = () => {
     const row = app.dom.querySelector<HTMLElement>(`[data-msg-id="${msgId.replace(/"/g, '\\"')}"]`);
     if (!row) return;
     row.scrollIntoView({ block: 'center' });
-    row.classList.add('msg-highlight');
-    setTimeout(() => row.classList.remove('msg-highlight'), HIGHLIGHT_MS);
   };
   if (typeof globalThis.requestAnimationFrame === 'function') {
     globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(run));

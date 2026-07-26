@@ -92,7 +92,8 @@ export function renderMessages(app: AppInstance) {
 
       if (isSystem) {
         const div = app.dom.ownerDocument.createElement('div');
-        div.className = 'message-system';
+        div.className = 'message-system'
+          + (msg.messageId && msg.messageId === app.chatState.highlightMessageId ? ' msg-highlight' : '');
         div.dataset.msgId = msg.messageId;
         div.textContent = app.client.describeMessage(msg).text;
         lastSender = null;
@@ -110,7 +111,8 @@ export function renderMessages(app: AppInstance) {
       lastSender = fromUid;
 
       const row = app.dom.ownerDocument.createElement('div');
-      row.className = 'message-row' + (isSelf ? ' self' : '');
+      row.className = 'message-row' + (isSelf ? ' self' : '')
+        + (msg.messageId && msg.messageId === app.chatState.highlightMessageId ? ' msg-highlight' : '');
       row.dataset.seq = String(msg.seq);
       row.dataset.msgId = msg.messageId;
       const sender = senderMap.get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };

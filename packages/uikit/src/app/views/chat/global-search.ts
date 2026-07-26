@@ -2,7 +2,7 @@ import type { Contact, LocalConversation, Message } from '@yimsg/sdk';
 import { displayGroupName, displayUserName, formatTime } from '@yimsg/sdk';
 import type { AppInstance } from '../../app-instance';
 import { contactFriendUid, contactGroupId } from '../contacts';
-import { openConversation } from './conversation-list';
+import { openConversation, openConversationShellForJump } from './conversation-list';
 import { jumpToMessageInConversation } from './message-search';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -215,14 +215,18 @@ export function closeGlobalChatSearch(app: AppInstance): void {
 }
 
 // 点开全局搜索的消息结果：先切到消息所属会话（如果不是当前会话），再以该消息为锚点
-// 重新加载消息窗口并滚动高亮，复用 message-search.ts 单会话搜索面板同一套跳转逻辑。
+// 加载消息窗口并滚动高亮，复用 message-search.ts 单会话搜索面板同一套跳转逻辑。
+// 注意：切会话只做骨架初始化（openConversationShellForJump），不经过 openConversation
+// 拉最新页那一步——否则会先渲染出最新页、马上又被锚点页覆盖重渲，且 openConversation
+// 的 scrollToBottom 多帧动画会和随后的锚点滚动/高亮竞态，导致命中会话内非最后一条消息时
+// 跳转/高亮被最新页的滚动结果覆盖，看起来像没跳转到指定消息。
 async function openConversationAndJumpToMessage(app: AppInstance, message: Message): Promise<void> {
   const descriptor = app.client.describeMessageConversation(message);
   if (app.chatState.currentConvKey !== descriptor.key) {
     const conv: LocalConversation = descriptor.kind === 'group'
       ? { groupId: descriptor.id, friendUid: '0', lastSeq: 0, lastMessage: null }
       : { groupId: '0', friendUid: descriptor.id, lastSeq: 0, lastMessage: null };
-    await openConversation(app, conv);
+    openConversationShellForJump(app, conv);
   }
   await jumpToMessageInConversation(app, descriptor.target, message.messageId);
 }

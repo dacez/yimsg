@@ -400,17 +400,18 @@ function closeStaleConversation(app: AppInstance, expectedKey: string): void {
   renderConversationList(app, { force: true });
 }
 
-export async function openConversation(
+// 会话 UI 骨架初始化（置为当前会话、清空未读、渲染头部/输入框等），不含消息拉取。
+// openConversation（拉最新页）与全局搜索的锚点跳转（openConversationShellForJump）共用，
+// 避免"先拉最新页渲染一次、再立刻被锚点页覆盖重渲一次"的双重渲染与 scrollToBottom 竞态。
+function openConversationShell(
   app: AppInstance,
   conv: LocalConversation,
-) {
+): ConversationDescriptor {
   const conversation = app.client.describeConversation(conv);
-  const isPlaceholderGroup =
-    conversation.kind === "group" && conv.lastSeq === 0 && !conv.lastMessage;
   app.emitConversationOpen(conversation);
   app.chatState.currentConvKey = conversation.key;
   app.chatState.currentConversation = conv;
-  const messagePageRequestId = resetMessagePage(app);
+  resetMessagePage(app);
   exitMessageSelectionMode(app);
   closeMessageActionMenu(app);
   closeMessageSearchPanel(app);
@@ -436,6 +437,17 @@ export async function openConversation(
   app.$("chat-empty").classList.add("hidden");
   applyConversationGuards(app);
   app.$("view-chat").classList.add("mobile-showing-chat");
+  return conversation;
+}
+
+export async function openConversation(
+  app: AppInstance,
+  conv: LocalConversation,
+) {
+  const conversation = openConversationShell(app, conv);
+  const isPlaceholderGroup =
+    conversation.kind === "group" && conv.lastSeq === 0 && !conv.lastMessage;
+  const messagePageRequestId = app.chatState.messagePageRequestId;
 
   const target: ConversationTarget = conversation.target;
   try {
@@ -459,4 +471,13 @@ export async function openConversation(
   } catch (_) {
     app.showToast(app.t("chat.failedToLoadMessages"), "error");
   }
+}
+
+// 全局搜索点开消息结果专用：只做会话骨架初始化，不拉最新页——消息加载交给调用方
+// 用 jumpToMessageInConversation 以锚点方式一次性拉取，避免上面提到的双重渲染竞态。
+export function openConversationShellForJump(
+  app: AppInstance,
+  conv: LocalConversation,
+): ConversationDescriptor {
+  return openConversationShell(app, conv);
 }

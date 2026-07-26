@@ -70,6 +70,8 @@ interface ChatState {
   messagePageHasOlder: boolean;
   messagePageHasNewer: boolean;
   messagePageRequestId: number;
+  /** 跳转定位的高亮消息 id；渲染时据此加 msg-highlight class，跨重渲染（含 checkReach 自动补页）存活直到超时清除。 */
+  highlightMessageId: string | null;
   pendingNewMessageCount: number;
   composerMarkdownMode: boolean;
   composerQuote: {
@@ -215,6 +217,7 @@ export class AppInstance {
     messagePageHasOlder: false,
     messagePageHasNewer: false,
     messagePageRequestId: 0,
+    highlightMessageId: null,
     pendingNewMessageCount: 0,
     composerMarkdownMode: false,
     composerQuote: null,
