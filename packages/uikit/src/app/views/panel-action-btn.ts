@@ -8,6 +8,7 @@ export const SVG_BAN = `<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93
 export const SVG_TRASH = `<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>`;
 export const SVG_STAR = `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`;
 export const SVG_STAR_FILLED = `<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor"/>`;
+export const SVG_PLUS = `<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`;
 
 /** 生成单个图标操作按钮的 HTML 字符串 */
 export function panelActionBtn(svgPaths: string, iconClass: string, label: string, action: string): string {

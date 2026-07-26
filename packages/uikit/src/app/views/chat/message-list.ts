@@ -266,12 +266,17 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
     const img = app.dom.ownerDocument.createElement('img');
     img.className = 'message-image';
     img.alt = details.image?.caption || app.t('chat.previewImage');
-    if (!mediaId || !setTrustedImageSrc(img, mediaUrl('image', mediaId))) {
+    // 乐观发送的图片占位消息：media_id 是本条消息自己刚创建的本地 blob: 预览地址（尚无服务端
+    // 真实 media_id），不是外部消息内容，直接使用而不经过面向远端内容的 setTrustedImageSrc 白名单。
+    const isPendingLocalPreview = app.chatState.pendingMessageIds.has(msg.messageId) && mediaId.startsWith('blob:');
+    if (isPendingLocalPreview) {
+      img.src = mediaId;
+    } else if (!mediaId || !setTrustedImageSrc(img, mediaUrl('image', mediaId))) {
       bubble.textContent = details.image?.caption || app.t('chat.previewImage');
       return;
     }
     img.addEventListener('click', () => {
-      if (typeof window !== 'undefined') window.open(img.src, '_blank', 'noopener,noreferrer');
+      if (!isPendingLocalPreview && typeof window !== 'undefined') window.open(img.src, '_blank', 'noopener,noreferrer');
     });
     bubble.appendChild(img);
     return;
