@@ -67,7 +67,7 @@ function createApp(options: { mode: 'instant' | 'persistent'; confirmed?: boolea
 
   for (const id of [
     'settings-nickname', 'settings-uid', 'settings-mode', 'settings-storage-card',
-    'edit-nickname', 'settings-avatar', 'lang-zh-btn', 'lang-en-btn',
+    'edit-nickname', 'settings-avatar', 'chat-list-avatar', 'lang-zh-btn', 'lang-en-btn',
     'save-profile-btn', 'change-pwd-btn', 'clear-data-btn', 'logout-btn', 'avatar-picker',
   ]) getElement(id);
   getElement('view-contacts', { classList: { contains: () => true, add: vi.fn(), remove: vi.fn(), toggle: vi.fn() } });

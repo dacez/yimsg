@@ -57,6 +57,21 @@ export const APP_SHELL_HTML = `
     <div id="main-content">
       <section id="view-chat" class="view">
         <div id="left-panel">
+          <div id="chat-list-topbar" class="mobile-topbar">
+            <div class="topbar-slot topbar-lead">
+              <div class="avatar avatar-sm avatar-clickable" id="chat-list-avatar" title="设置"></div>
+            </div>
+            <div class="topbar-slot topbar-mid">
+              <h1 class="topbar-title" id="chat-list-title"></h1>
+            </div>
+            <div class="topbar-slot topbar-trail">
+              <button class="icon-btn" id="chat-list-start-btn" title="发起会话">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
           <div class="global-search-row">
             <input class="input" type="text" id="global-search-input" placeholder="搜索">
             <button id="global-search-cancel" class="global-search-cancel hidden">取消</button>
@@ -66,8 +81,15 @@ export const APP_SHELL_HTML = `
         </div>
         <div id="center-panel">
           <div id="chat-header" class="hidden">
-            <h2 id="chat-title"></h2>
-            <div class="chat-header-actions">
+            <div class="topbar-slot topbar-lead">
+              <button id="chat-back-btn" class="icon-btn chat-mobile-back" title="返回">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+            </div>
+            <div class="topbar-slot topbar-mid">
+              <h2 class="topbar-title" id="chat-title"></h2>
+            </div>
+            <div class="chat-header-actions topbar-slot topbar-trail">
               <button id="message-search-toggle" class="icon-btn" title="搜索消息">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="11" cy="11" r="8"/>
@@ -130,6 +152,19 @@ export const APP_SHELL_HTML = `
 
       <section id="view-contacts" class="view hidden">
         <div class="contacts-left">
+          <div id="contacts-topbar" class="mobile-topbar">
+            <div class="topbar-slot topbar-lead"></div>
+            <div class="topbar-slot topbar-mid">
+              <h1 class="topbar-title" id="contacts-topbar-title"></h1>
+            </div>
+            <div class="topbar-slot topbar-trail">
+              <button class="icon-btn" id="contacts-add-btn" title="添加好友">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/>
+                </svg>
+              </button>
+            </div>
+          </div>
           <div class="tabs contacts-tabs">
             <button class="tab active" data-ctab="friends">好友</button>
             <button class="tab" data-ctab="requests">请求</button>
