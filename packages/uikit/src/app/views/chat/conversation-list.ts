@@ -9,6 +9,7 @@ import { closeMessageSearchPanel } from "./message-search";
 import {
   getOrCreateBoundedStreamWindow,
   BoundedStreamWindow,
+  catchUpAtEdge,
 } from "../../bounded-stream-window";
 import { resetMessagePage, setInitialMessagePage } from "./message-page";
 
@@ -57,13 +58,11 @@ interface RenderConversationListOptions {
 
 // "列表有更新"且用户已滚回顶部：自动重拉首页追平。
 function maybeCatchUpStale(app: AppInstance): void {
-  if (
-    app.chatState.conversationListStale &&
-    app.$("conversation-list").scrollTop <= LIST_TOP_STICKY_PX &&
-    !app.chatState.conversationPageLoading
-  ) {
-    void loadConversations(app, { mode: "reset" });
-  }
+  catchUpAtEdge(
+    () => app.chatState.conversationListStale && !app.chatState.conversationPageLoading,
+    () => app.$("conversation-list").scrollTop <= LIST_TOP_STICKY_PX,
+    () => loadConversations(app, { mode: "reset" }),
+  );
 }
 
 // 会话列表是有界滑动窗口（conversationWindow，按整页裁剪）：

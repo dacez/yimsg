@@ -4,7 +4,7 @@ import { APP_CONFIG } from '../../app-config';
 import type { Contact, ContactPage, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
-import { BoundedStreamWindow } from '../bounded-stream-window';
+import { BoundedStreamWindow, catchUpAtEdge } from '../bounded-stream-window';
 import { BoundedPageWindow, type PageLoadResult } from '../bounded-page-window';
 import { contactIdentity } from '../list-identity';
 import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_TRASH } from './panel-action-btn';
@@ -84,9 +84,11 @@ export function createContactsView(app: AppInstance) {
   }
 
   function maybeCatchUpStale(): void {
-    if (contactsStale && contactsScroller().scrollTop <= LIST_TOP_STICKY_PX) {
-      void loadContacts();
-    }
+    catchUpAtEdge(
+      () => contactsStale,
+      () => contactsScroller().scrollTop <= LIST_TOP_STICKY_PX,
+      () => loadContacts(),
+    );
   }
 
   // 背景刷新（contacts:updated）时若用户不在列表顶部，不重拉，只点亮「通讯录有更新」提示条。

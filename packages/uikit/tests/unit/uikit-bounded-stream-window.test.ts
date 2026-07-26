@@ -3,6 +3,7 @@ import {
   createFrameScheduler,
   getOrCreateBoundedStreamWindow,
   BoundedStreamWindow,
+  catchUpAtEdge,
 } from '../../src/app/bounded-stream-window';
 
 interface FakeElement {
@@ -300,6 +301,32 @@ describe('getOrCreateBoundedStreamWindow', () => {
     const factory = vi.fn(() => new BoundedStreamWindow<string>({ scrollElement: asElement(createScroller()) }));
     expect(getOrCreateBoundedStreamWindow(cache, owner, factory)).toBe(getOrCreateBoundedStreamWindow(cache, owner, factory));
     expect(factory).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('catchUpAtEdge（列表贴顶/贴底追平的统一契约）', () => {
+  it('有待追平的更新且已贴边缘时才追平', () => {
+    const catchUp = vi.fn();
+    catchUpAtEdge(() => true, () => true, catchUp);
+    expect(catchUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('没有待追平的更新时，就算贴边缘也不追平', () => {
+    const catchUp = vi.fn();
+    catchUpAtEdge(() => false, () => true, catchUp);
+    expect(catchUp).not.toHaveBeenCalled();
+  });
+
+  it('有待追平的更新但不在边缘时不追平', () => {
+    const catchUp = vi.fn();
+    catchUpAtEdge(() => true, () => false, catchUp);
+    expect(catchUp).not.toHaveBeenCalled();
+  });
+
+  it('两个条件都不满足时不追平', () => {
+    const catchUp = vi.fn();
+    catchUpAtEdge(() => false, () => false, catchUp);
+    expect(catchUp).not.toHaveBeenCalled();
   });
 });
 

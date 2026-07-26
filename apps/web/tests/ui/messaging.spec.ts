@@ -652,6 +652,53 @@ test.describe('Messaging', () => {
     await ctx2.close();
   });
 
+  // 回归用例：文字消息发送后会自动滚到底部，图片消息曾经不会——.message-image 没有预留
+  // 尺寸，加载完成后才把消息列表撑高（可以再长高到 320px），旧实现在图片 load 事件里现算
+  // "是否贴底"，用发送时刻的旧 scrollTop 对比撑高后的新 scrollHeight，必然判定成"已经不
+  // 贴底"而不再追平。这里先堆够历史消息让列表可滚动，发图片后断言视图确实追到了新底部。
+  test('image message auto-scrolls to bottom once it finishes loading and grows the layout', async ({ browser }) => {
+    const u1 = uniqueUser('imgscroll1');
+    const u2 = uniqueUser('imgscroll2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'ImgScrollSender');
+    await register(page2, u2, password, 'ImgScrollReceiver');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'ImgScrollReceiver');
+
+    // 堆够历史消息，让消息列表本身就是可滚动的（内容超出视口一屏）。
+    for (let i = 1; i <= 20; i++) {
+      await sendMessage(page1, `scroll filler message ${i}`);
+    }
+    await expectMessage(page1, 'scroll filler message 20');
+
+    const distanceFromBottom = () => page1.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      return list.scrollHeight - list.scrollTop - list.clientHeight;
+    });
+    await expect.poll(distanceFromBottom, { timeout: 5_000 }).toBeLessThanOrEqual(10);
+
+    // 用一张有真实高度的图片（不是 1x1 占位图）：加载完成前后的高度差必须明显
+    // 超过"贴底"判定阈值，才能复现"内容长高后视图追不上"的问题。
+    const imgPath = path.resolve(__dirname, 'fixtures', 'test-image-tall.png');
+    await page1.locator('#file-picker-image').setInputFiles(imgPath);
+
+    const img = page1.locator('#message-list .message-image').last();
+    await expect(img).toBeVisible({ timeout: 10_000 });
+    // 等图片真正解码完成（不只是 DOM 里挂了 src），确保布局已经因为图片撑高过。
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalHeight > 0), {
+      timeout: 10_000,
+    }).toBe(true);
+
+    await expect.poll(distanceFromBottom, { timeout: 5_000 }).toBeLessThanOrEqual(10);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('send file message', async ({ browser }) => {
     const u1 = uniqueUser('file1');
     const u2 = uniqueUser('file2');
@@ -747,6 +794,58 @@ test.describe('Messaging', () => {
       const list = document.querySelector('#message-list') as HTMLElement;
       return list.scrollHeight - list.scrollTop - list.clientHeight;
     }), { timeout: 5000 }).toBeLessThanOrEqual(180);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例：提示条亮起后用户不点击，而是自己滑到底部——提示条也必须消失，
+  // 不能只靠点击这一条路径才消掉（曾经的 bug：手动滑到底提示条常驻不消失）。
+  test('new message pill disappears when user scrolls to bottom without clicking', async ({ browser }) => {
+    const u1 = uniqueUser('pillscroll1');
+    const u2 = uniqueUser('pillscroll2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'PillScrollSender');
+    await register(page2, u2, password, 'PillScrollReader');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'PillScrollReader');
+
+    for (let i = 1; i <= 15; i++) {
+      await sendMessage(page1, `pill scroll filler message ${i}`);
+      await expectMessage(page1, `pill scroll filler message ${i}`);
+    }
+
+    await openConversation(page2, 'PillScrollSender');
+    await expectMessage(page2, 'pill scroll filler message 15');
+    // 等 scrollToBottom 的多帧稳定链结束，否则后续上翻会被 settle 帧钉回底部。
+    await page2.waitForTimeout(600);
+
+    await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      list.scrollTop = 0;
+    });
+    await page2.waitForTimeout(300);
+    const settledTop = await page2.evaluate(() => (document.querySelector('#message-list') as HTMLElement).scrollTop);
+    expect(settledTop).toBeLessThan(100);
+
+    await sendMessage(page1, 'pill scroll trigger message');
+
+    const pill = page2.locator('#new-message-pill');
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+
+    // 不点击提示条，直接把消息列表滑到底部——模拟"上滑拉最新消息"。
+    await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      list.scrollTop = list.scrollHeight;
+      list.dispatchEvent(new Event('scroll'));
+    });
+
+    await expectMessage(page2, 'pill scroll trigger message');
+    await expect(pill).toBeHidden({ timeout: 5000 });
 
     await ctx1.close();
     await ctx2.close();

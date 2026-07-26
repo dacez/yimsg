@@ -4,7 +4,7 @@ import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
 import { setupGlobalChatSearch } from './global-search';
-import { isNearBottom } from './message-list';
+import { stickToBottomAfterContentGrew } from './message-list';
 import { setupMessageSearch } from './message-search';
 import { registerSelectionForwardHandler } from './selection';
 import { isMobileInteractionLayout } from '../../utils';
@@ -107,10 +107,7 @@ export function setupChat(app: AppInstance) {
 
   // 滚动监听由各列表的 BoundedStreamWindow 统一持有（首次 render 时挂载）。
   // 这里只兜底"贴底时图片完成加载使内容增高"：load 不冒泡，用捕获监听。
-  app.$('message-list').addEventListener('load', () => {
-    const list = app.$('message-list');
-    if (isNearBottom(list)) list.scrollTop = list.scrollHeight;
-  }, true);
+  app.$('message-list').addEventListener('load', () => stickToBottomAfterContentGrew(app), true);
 
   app.$('toggle-detail').addEventListener('click', () => {
     if (app.chatState.detailOpen) {
