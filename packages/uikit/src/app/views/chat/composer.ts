@@ -17,7 +17,21 @@ import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { showGroupMemberPicker } from '../group-member-picker';
 import { currentConversation, quotePreview } from './helpers';
+import { mediaUrl } from './message-list';
 import { appendLiveMessageToPage, removeMessageFromPage } from './message-page';
+
+/** 提前把图片解码进浏览器缓存：占位消息换成真实消息时会整段重建 DOM（bounded-stream-window
+ * 全量渲染），新 <img> 若还没被浏览器缓存过就要重新拉取，视觉上会闪一下；预加载后再替换，
+ * 新节点直接命中缓存，不闪。加载失败（或非浏览器环境，如单测）也放行，不能因为预热失败卡住发送流程。 */
+function preloadImage(url: string): Promise<void> {
+  if (typeof Image === 'undefined') return Promise.resolve();
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve();
+    img.src = url;
+  });
+}
 
 let pendingMessageSeq = 0;
 
@@ -228,7 +242,9 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
         { image: { media_id: previewUrl, size: file.size, width: 0, height: 0, mime: file.type, caption: '' } },
         async () => {
           const data = await app.client.uploadFile(file, 'image');
-          return app.client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type });
+          const result = await app.client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type });
+          await preloadImage(mediaUrl('image', data.mediaId));
+          return result;
         },
       );
     } catch (e) {

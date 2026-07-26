@@ -239,7 +239,7 @@ export function syncNewMessagePill(app: AppInstance): void {
   pill.classList.toggle('hidden', !app.chatState.messagePageHasNewer || count <= 0);
 }
 
-function mediaUrl(kind: 'image' | 'file', mediaId: string): string {
+export function mediaUrl(kind: 'image' | 'file', mediaId: string): string {
   return `/media/${kind}/${mediaId}`;
 }
 
