@@ -508,6 +508,10 @@ export class AppInstance {
     if (msgInput) msgInput.placeholder = this.t(this.chatState.composerMarkdownMode ? 'chat.typeMarkdownMessage' : 'chat.typeMessage');
     const msgSend = this.dom.getElementById('msg-send');
     if (msgSend) msgSend.textContent = this.t('chat.send');
+    const msgSelectionCancel = this.dom.getElementById('msg-selection-cancel');
+    if (msgSelectionCancel) msgSelectionCancel.textContent = this.t('chat.multiSelectCancel');
+    const msgSelectionForward = this.dom.getElementById('msg-selection-forward');
+    if (msgSelectionForward) msgSelectionForward.textContent = this.t('chat.multiSelectForward');
     const toggleDetail = this.dom.getElementById('toggle-detail');
     if (toggleDetail) toggleDetail.title = this.t('chat.details');
     const messageSearchToggle = this.dom.getElementById('message-search-toggle');
