@@ -1,6 +1,7 @@
 import type { LocalConversation, Message } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from "../../app-instance";
+import { describeError } from "../../error-i18n";
 import { conversationLabel } from "./helpers";
 import { exitMessageSelectionMode } from "./selection";
 import { appendLiveMessageToPage } from "./message-page";
@@ -232,7 +233,7 @@ export async function forwardMessages(app: AppInstance, messages: Message[]) {
       successCount++;
     } catch (e) {
       failedCount++;
-      lastError = (e as Error).message;
+      lastError = describeError(app, e);
     }
   }
 

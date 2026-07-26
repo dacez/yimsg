@@ -1,6 +1,7 @@
 import { CONTACT_FRIEND, CONTACT_PENDING_INCOMING, CONTACT_PENDING_OUTGOING } from '@yimsg/sdk';
 import { ORG_CHILD_PERSON, ORG_CHILD_TAG } from '@yimsg/sdk/uikit-internal';
 import { APP_CONFIG } from '../../app-config';
+import { describeError } from '../error-i18n';
 import type { Contact, ContactPage, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
@@ -506,7 +507,7 @@ export function createContactsView(app: AppInstance) {
       `;
       app.$('add-friend-btn').addEventListener('click', () => void addFriend(String(p.uid)));
     } catch (e) {
-      app.showToast(app.t('contacts.searchFailed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.searchFailed') + describeError(app, e), 'error');
     }
   }
 
@@ -524,7 +525,7 @@ export function createContactsView(app: AppInstance) {
       await app.client.addFriend(friendUid, remark || undefined);
       app.showToast(app.t('contacts.friendRequestSent'), 'success');
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -535,7 +536,7 @@ export function createContactsView(app: AppInstance) {
       state.requestPageLoaded = false;
       await loadRequestPage({ mode: 'reset' });
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -546,7 +547,7 @@ export function createContactsView(app: AppInstance) {
       state.requestPageLoaded = false;
       await loadRequestPage({ mode: 'reset' });
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -567,7 +568,7 @@ export function createContactsView(app: AppInstance) {
       app.showToast(app.t('contacts.friendDeleted'), 'success');
       showContactDetail(null);
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -578,7 +579,7 @@ export function createContactsView(app: AppInstance) {
       showContactDetail(null);
       await loadContacts();
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -609,7 +610,7 @@ export function createContactsView(app: AppInstance) {
       await loadContacts();
       app.views.chat?.renderConversationList();
     } catch (e) {
-      app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -626,7 +627,7 @@ export function createContactsView(app: AppInstance) {
       const page = await app.client.getTags({ orgId, tagId: currentTagId, limit: 200 });
       tags = page.tags;
     } catch (e) {
-      app.showToast(app.t('contacts.orgLoadFailed') + (e as Error).message, 'error');
+      app.showToast(app.t('contacts.orgLoadFailed') + describeError(app, e), 'error');
       return;
     }
     if (reqId !== detailRequestId || orgPanelOrgId !== orgId) return;
@@ -820,7 +821,7 @@ export function createContactsView(app: AppInstance) {
         else await app.client.muteConversation(isGroup ? { groupId: gid } : { toUid: uid });
         void showContactDetail(contact);
       } catch (e) {
-        app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+        app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
       }
     });
     panel.querySelector('[data-action="block"]')?.addEventListener('click', async () => {
@@ -834,7 +835,7 @@ export function createContactsView(app: AppInstance) {
         }
         void showContactDetail(contact);
       } catch (e) {
-        app.showToast(app.t('contacts.failed') + (e as Error).message, 'error');
+        app.showToast(app.t('contacts.failed') + describeError(app, e), 'error');
       }
     });
     panel.querySelector('[data-action="delete"]')!.addEventListener('click', () => {
@@ -977,7 +978,7 @@ export function createContactsView(app: AppInstance) {
         app.showToast(app.t('group.groupCreated'), 'success');
         app.closeModal();
       } catch (e) {
-        app.showToast(app.t('group.failed') + (e as Error).message, 'error');
+        app.showToast(app.t('group.failed') + describeError(app, e), 'error');
       }
     });
     await loadMoreMembers({ mode: 'reset' });
@@ -998,7 +999,7 @@ export function createContactsView(app: AppInstance) {
       await app.client.addOrgMember(orgId, orgId, myUid);
       app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
     } catch (e) {
-      app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+      app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
     }
   }
 

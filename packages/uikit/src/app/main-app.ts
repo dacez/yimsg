@@ -1,5 +1,6 @@
 import type { AppInstance } from './app-instance';
 import { CONTACT_PENDING_INCOMING } from '@yimsg/sdk';
+import { describeError } from './error-i18n';
 import { watchLayoutChangesForApp } from './layout';
 import { createAuthView } from './views/auth';
 import { createChatView } from './views/chat';
@@ -152,7 +153,7 @@ export function startApp(app: AppInstance): () => void {
     }
     activeSyncDomains.delete(event.domain);
     if (event.status === 'failed') {
-      app.showToast(event.error?.message || '同步失败', 'error');
+      app.showToast(event.error ? describeError(app, event.error) : app.t('status.syncFailed'), 'error');
     }
     if (event.status === 'success' && (event.domain === 'messages' || event.domain === 'conversations')) {
       app.views.chat?.renderConversationList({ force: true });

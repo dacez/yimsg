@@ -196,7 +196,7 @@ func TestSendDMToSelf(t *testing.T) {
 	resp := sendErr(a, "send_message", &pb.SendMessageRequest{
 		MsgId: msgid.Generate(), Target: userTarget(a.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("note to self"),
 	}, &pb.SendMessageResponse{})
-	if resp.GetBase().GetMsg() != "cannot send message to yourself" {
+	if resp.GetBase().GetMsg() != "cannot_message_self" {
 		t.Fatalf("send_message to self error=%q, want cannot send message to yourself", resp.GetBase().GetMsg())
 	}
 }

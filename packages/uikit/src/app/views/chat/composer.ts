@@ -15,6 +15,7 @@ import {
 } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
+import { describeError } from '../../error-i18n';
 import { showGroupMemberPicker } from '../group-member-picker';
 import { currentConversation, quotePreview } from './helpers';
 import { mediaUrl } from './message-list';
@@ -223,7 +224,7 @@ export async function sendMessage(app: AppInstance) {
     );
     clearComposerQuote(app);
   } catch (e) {
-    app.showToast(app.t('chat.failedToSend') + (e as Error).message, 'error');
+    app.showToast(app.t('chat.failedToSend') + describeError(app, e), 'error');
   }
 }
 
@@ -248,7 +249,7 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
         },
       );
     } catch (e) {
-      app.showToast(app.t('chat.uploadFailedColon') + (e as Error).message, 'error');
+      app.showToast(app.t('chat.uploadFailedColon') + describeError(app, e), 'error');
     } finally {
       URL.revokeObjectURL(previewUrl);
     }
@@ -265,7 +266,7 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
       },
     );
   } catch (e) {
-    app.showToast(app.t('chat.uploadFailedColon') + (e as Error).message, 'error');
+    app.showToast(app.t('chat.uploadFailedColon') + describeError(app, e), 'error');
   }
 }
 

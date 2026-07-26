@@ -184,10 +184,10 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 	toUID, groupID := targetIDs(req.GetTarget())
 
 	if toUID == 0 && groupID == 0 {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "to_uid or group_id required")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "target_required")}
 	}
 	if toUID > 0 && groupID > 0 {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "cannot set both to_uid and group_id")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "target_ambiguous")}
 	}
 
 	msgType := int8(req.GetMsgType())
@@ -196,7 +196,7 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 	// msg_id 由 SDK 生成，服务端只校验、保存、回传并据此幂等；缺失或非法直接拒绝。
 	msgID := req.GetMsgId()
 	if err := msgid.Validate(msgID); err != nil {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "invalid msg_id: "+err.Error())}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "invalid_msg_id")}
 	}
 
 	// 撤回统一走 send_message + MESSAGE_TYPE_RECALL + RecallBody；撤回事件消息使用本请求的 msg_id。
@@ -206,7 +206,7 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 
 	// @ 提及只在群会话里有意义，单聊直接拒绝。
 	if msgType == dal.MsgMention && groupID == 0 {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "mention only allowed in group conversations")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "mention_requires_group")}
 	}
 
 	if err := validateSendBody(msgType, body); err != nil {
@@ -225,14 +225,14 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 
 func sendDM(s *AppState, reqID uint64, msgID string, fromUID int64, toUID int64, msgType int8, body []byte, searchText string) SendMessageResult {
 	if fromUID == toUID {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "cannot send message to yourself")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "cannot_message_self")}
 	}
 	blocked, err := isEitherWayBlocked(s, fromUID, toUID)
 	if err != nil {
 		return SendMessageResult{Response: appmsg.ErrInternal(reqID, err.Error())}
 	}
 	if blocked {
-		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "recipient is not accepting private messages")}
+		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "recipient_blocked")}
 	}
 
 	now := auth.NowMs()
@@ -272,7 +272,7 @@ func sendGroupMessage(s *AppState, reqID uint64, msgID string, fromUID int64, gr
 		return SendMessageResult{Response: appmsg.ErrInternal(reqID, err.Error())}
 	}
 	if !isMember {
-		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "not a group member")}
+		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "not_a_group_member")}
 	}
 
 	now := auth.NowMs()
@@ -359,7 +359,7 @@ func (s *AppState) GetMessages(info *BaseInfo, req *pb.GetMessagesRequest) *pb.G
 			return toGetMessagesResponse(appmsg.ErrInternal(reqID, err.Error()))
 		}
 		if len(anchor) == 0 {
-			return toGetMessagesResponse(appmsg.ErrNotFound(reqID, "around message not found"))
+			return toGetMessagesResponse(appmsg.ErrNotFound(reqID, "message_not_found"))
 		}
 		messages, err := store.ListAroundByConversation(uid, toUID, groupID, anchor[0].Seq, page.limit)
 		if err != nil {
@@ -403,7 +403,7 @@ func (s *AppState) SearchMessages(info *BaseInfo, req *pb.SearchMessagesRequest)
 	uid := info.UID
 	keyword := strings.TrimSpace(req.GetKeyword())
 	if keyword == "" {
-		return toSearchMessagesResponse(appmsg.ErrInvalidArgument(reqID, "empty search keyword"))
+		return toSearchMessagesResponse(appmsg.ErrInvalidArgument(reqID, "search_keyword_required"))
 	}
 	toUID, groupID := targetIDs(req.GetTarget())
 	store := s.MessageStore(uid)
@@ -559,7 +559,7 @@ func (s *AppState) DeleteMessage(info *BaseInfo, req *pb.DeleteMessageRequest) *
 	uid := info.UID
 	msgID := req.GetMsgId()
 	if err := msgid.Validate(msgID); err != nil {
-		return toDeleteMessageResponse(appmsg.ErrInvalidArgument(reqID, "invalid msg_id: "+err.Error()))
+		return toDeleteMessageResponse(appmsg.ErrInvalidArgument(reqID, "invalid_msg_id"))
 	}
 
 	store := s.MessageStore(uid)
@@ -568,7 +568,7 @@ func (s *AppState) DeleteMessage(info *BaseInfo, req *pb.DeleteMessageRequest) *
 		return toDeleteMessageResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if msg == nil {
-		return toDeleteMessageResponse(appmsg.ErrNotFound(reqID, "message not found"))
+		return toDeleteMessageResponse(appmsg.ErrNotFound(reqID, "message_not_found"))
 	}
 
 	seq, ok, err := store.DeleteByMsgID(uid, msgID)
@@ -576,7 +576,7 @@ func (s *AppState) DeleteMessage(info *BaseInfo, req *pb.DeleteMessageRequest) *
 		return toDeleteMessageResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toDeleteMessageResponse(appmsg.ErrNotFound(reqID, "message not found"))
+		return toDeleteMessageResponse(appmsg.ErrNotFound(reqID, "message_not_found"))
 	}
 
 	// 通知本人其它设备：该消息被删除，命中数据窗口则就地删除、不触发拉取
@@ -590,7 +590,7 @@ func (s *AppState) DeleteConversation(info *BaseInfo, req *pb.DeleteConversation
 	uid := info.UID
 	toUID, groupID := targetIDs(req.GetTarget())
 	if toUID <= 0 && groupID <= 0 {
-		return toDeleteConversationResponse(appmsg.ErrInvalidArgument(reqID, "conversation target required"))
+		return toDeleteConversationResponse(appmsg.ErrInvalidArgument(reqID, "conversation_target_required"))
 	}
 	if groupID > 0 {
 		toUID = 0
@@ -601,7 +601,7 @@ func (s *AppState) DeleteConversation(info *BaseInfo, req *pb.DeleteConversation
 		return toDeleteConversationResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toDeleteConversationResponse(appmsg.ErrNotFound(reqID, "conversation not found"))
+		return toDeleteConversationResponse(appmsg.ErrNotFound(reqID, "conversation_not_found"))
 	}
 
 	// 通知本人其它设备：该会话被删除，命中数据窗口则就地删除、不触发拉取

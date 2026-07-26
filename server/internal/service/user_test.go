@@ -23,7 +23,7 @@ func TestRegisterDuplicateUsername(t *testing.T) {
 	if isOK(resp) {
 		t.Error("duplicate username should fail")
 	}
-	if errMsg(resp) != "username already exists" {
+	if errMsg(resp) != "username_already_exists" {
 		t.Errorf("got error %q", errMsg(resp))
 	}
 }
@@ -63,7 +63,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	if isOK(resp) {
 		t.Error("wrong password should fail")
 	}
-	if errMsg(resp) != "wrong password" {
+	if errMsg(resp) != "wrong_password" {
 		t.Errorf("got error %q", errMsg(resp))
 	}
 }
@@ -74,7 +74,7 @@ func TestLoginUserNotFound(t *testing.T) {
 	if isOK(resp) {
 		t.Error("nonexistent user should fail")
 	}
-	if errMsg(resp) != "user not found" {
+	if errMsg(resp) != "user_not_found" {
 		t.Errorf("got error %q", errMsg(resp))
 	}
 }
@@ -151,7 +151,7 @@ func TestUpdatePasswordWrongOld(t *testing.T) {
 	if isOK(resp) {
 		t.Error("wrong old password should fail")
 	}
-	if errMsg(resp) != "wrong old password" {
+	if errMsg(resp) != "wrong_old_password" {
 		t.Errorf("got error %q", errMsg(resp))
 	}
 }
