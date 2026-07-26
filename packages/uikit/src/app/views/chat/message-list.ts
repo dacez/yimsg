@@ -5,6 +5,7 @@ import {
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
   MSG_TYPE_QUOTE,
+  MSG_TYPE_RECALL,
   MSG_TYPE_SYSTEM,
 } from '@yimsg/sdk';
 import {
@@ -19,6 +20,7 @@ import { showMessageActionMenu } from './action-menu';
 import {
   currentConversation,
   formatForwardBlockText,
+  recallPlaceholderText,
 } from './helpers';
 import { updateSelectionBar } from './selection';
 import { setSafeHtml, setTrustedAnchorHref, setTrustedImageSrc, safeHtml } from '../../safe-dom';
@@ -358,7 +360,12 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
     return;
   }
 
-  // RECALL 占位与普通文本/系统消息均直接展示 describeMessage 文本。
+  if (msg.messageType === MSG_TYPE_RECALL) {
+    bubble.textContent = recallPlaceholderText(app, msg);
+    return;
+  }
+
+  // 普通文本/系统消息直接展示 describeMessage 文本。
   bubble.textContent = details.text;
 }
 

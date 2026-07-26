@@ -6,6 +6,7 @@ import {
 } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
+import { describeError } from '../../error-i18n';
 import { BoundedStreamWindow } from '../../bounded-stream-window';
 import { BoundedPageWindow } from '../../bounded-page-window';
 import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
@@ -89,7 +90,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
           app.showToast(app.t('detail.groupAvatarUpdated'), 'success');
           await showGroupDetail(app, groupId);
         } catch (err) {
-          app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+          app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
         }
       });
     }
@@ -146,7 +147,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
                 app.showToast(app.t('detail.memberRemoved'), 'success');
                 await showGroupDetail(app, groupId);
               } catch (err) {
-                app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+                app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
               }
             });
           }
@@ -198,7 +199,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         app.showToast(app.t('contacts.remarkUpdated'), 'success');
         await showGroupDetail(app, groupId);
       } catch (err) {
-        app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+        app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
         await showGroupDetail(app, groupId);
       }
     });
@@ -214,7 +215,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         }
         await showGroupDetail(app, groupId);
       } catch (err) {
-        app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+        app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
         await showGroupDetail(app, groupId);
       }
     });
@@ -225,7 +226,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         else await app.client.muteConversation({ groupId });
         await showGroupDetail(app, groupId);
       } catch (err) {
-        app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+        app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
         await showGroupDetail(app, groupId);
       }
     });
@@ -321,7 +322,7 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
         app.showToast(app.t('detail.memberAdded'), 'success');
         renderList();
       } catch (err) {
-        app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+        app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
       }
     };
 
@@ -422,7 +423,7 @@ export async function showUserDetail(app: AppInstance, uid: string) {
           app.showToast(app.t('contacts.remarkUpdated'), 'success');
           await showUserDetail(app, uid);
         } catch (err) {
-          app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+          app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
           await showUserDetail(app, uid);
         }
       });
@@ -432,7 +433,7 @@ export async function showUserDetail(app: AppInstance, uid: string) {
           else await app.client.muteConversation({ toUid: uid });
           await showUserDetail(app, uid);
         } catch (err) {
-          app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+          app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
           await showUserDetail(app, uid);
         }
       });
@@ -447,7 +448,7 @@ export async function showUserDetail(app: AppInstance, uid: string) {
           }
           await showUserDetail(app, uid);
         } catch (err) {
-          app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+          app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
         }
       });
     };

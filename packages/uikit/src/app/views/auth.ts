@@ -1,4 +1,5 @@
 import type { AppInstance } from '../app-instance';
+import { describeError } from '../error-i18n';
 import type { LayoutChoice } from '../session-storage';
 import { persistAndApplyLayoutForApp } from '../layout';
 import { needsInitialModeSelection, resolveModeAfterAuth, shouldResetPersistentStorage } from '../startup-mode';
@@ -235,7 +236,7 @@ export function createAuthView(app: AppInstance) {
       try {
         await login(username, password);
       } catch (err: unknown) {
-        errEl.textContent = (err as Error).message;
+        errEl.textContent = describeError(app, err);
       }
     });
 
@@ -249,7 +250,7 @@ export function createAuthView(app: AppInstance) {
       try {
         await register(username, password, nickname);
       } catch (err: unknown) {
-        errEl.textContent = (err as Error).message;
+        errEl.textContent = describeError(app, err);
       }
     });
   }

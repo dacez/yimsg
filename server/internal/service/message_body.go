@@ -51,67 +51,67 @@ func msgTypeForBody(body *pb.MessageBody) (int8, bool) {
 func validateSendBody(msgType int8, body *pb.MessageBody) error {
 	kindType, ok := msgTypeForBody(body)
 	if !ok {
-		return errors.New("body missing or empty kind")
+		return errors.New("body_kind_required")
 	}
 	if kindType != msgType {
-		return errors.New("msg_type and body.kind mismatch")
+		return errors.New("msg_type_body_kind_mismatch")
 	}
 	switch b := body.GetKind().(type) {
 	case *pb.MessageBody_Text:
 		if b.Text.GetText() == "" {
-			return errors.New("text required")
+			return errors.New("text_required")
 		}
 		if len([]rune(b.Text.GetText())) > maxTextRunes {
-			return errors.New("text too long: max 4096 chars")
+			return errors.New("text_too_long")
 		}
 	case *pb.MessageBody_Markdown:
 		if b.Markdown.GetMarkdown() == "" {
-			return errors.New("markdown required")
+			return errors.New("markdown_required")
 		}
 		if len(b.Markdown.GetMarkdown()) > maxMarkdownBytes {
-			return errors.New("markdown too long")
+			return errors.New("markdown_too_long")
 		}
 	case *pb.MessageBody_Image:
 		if b.Image.GetMediaId() == 0 {
-			return errors.New("image media_id required")
+			return errors.New("image_media_id_required")
 		}
 	case *pb.MessageBody_File:
 		if b.File.GetMediaId() == 0 {
-			return errors.New("file media_id required")
+			return errors.New("file_media_id_required")
 		}
 		if b.File.GetName() == "" {
-			return errors.New("file name required")
+			return errors.New("file_name_required")
 		}
 	case *pb.MessageBody_Quote:
 		if b.Quote.GetQuoteMsgId() == "" {
-			return errors.New("quote_msg_id required")
+			return errors.New("quote_msg_id_required")
 		}
 		if b.Quote.GetText().GetText() == "" {
-			return errors.New("quote text required")
+			return errors.New("quote_text_required")
 		}
 	case *pb.MessageBody_Forward:
 		if len(b.Forward.GetMsgIds()) == 0 {
-			return errors.New("forward msg_ids required")
+			return errors.New("forward_msg_ids_required")
 		}
 		if len(b.Forward.GetMsgIds()) > maxForwardItemsCount {
-			return errors.New("forward items exceed limit")
+			return errors.New("forward_items_limit_exceeded")
 		}
 	case *pb.MessageBody_System:
 		if b.System.GetText() == "" {
-			return errors.New("system text required")
+			return errors.New("system_text_required")
 		}
 	case *pb.MessageBody_Mention:
 		if b.Mention.GetText() == "" {
-			return errors.New("mention text required")
+			return errors.New("mention_text_required")
 		}
 		if len([]rune(b.Mention.GetText())) > maxTextRunes {
-			return errors.New("text too long: max 4096 chars")
+			return errors.New("text_too_long")
 		}
 		if !b.Mention.GetMentionAll() && len(b.Mention.GetMentionedUids()) == 0 {
-			return errors.New("mentioned_uids or mention_all required")
+			return errors.New("mention_target_required")
 		}
 		if len(b.Mention.GetMentionedUids()) > maxMentionedUIDs {
-			return errors.New("mentioned_uids exceed limit")
+			return errors.New("mention_uids_limit_exceeded")
 		}
 	}
 	return nil
@@ -154,7 +154,7 @@ func encodeBodyWithSearch(body *pb.MessageBody) ([]byte, string, error) {
 		return nil, "", err
 	}
 	if len(raw) == 0 {
-		return nil, "", errors.New("empty body")
+		return nil, "", errors.New("empty_body")
 	}
 	return raw, messageSearchText(body), nil
 }

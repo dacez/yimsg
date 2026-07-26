@@ -382,7 +382,7 @@ func TestGroupMessageNonMember(t *testing.T) {
 	resp := sendErr(outsider, "send_message", &pb.SendMessageRequest{
 		MsgId: msgid.Generate(), Target: groupTarget(groupID), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("i should fail"),
 	}, &pb.SendMessageResponse{})
-	if resp.GetBase().GetMsg() != "非群员" {
-		t.Fatalf("error=%q, want 非群员", resp.GetBase().GetMsg())
+	if resp.GetBase().GetMsg() != "not_a_group_member" {
+		t.Fatalf("error=%q, want not a group member", resp.GetBase().GetMsg())
 	}
 }

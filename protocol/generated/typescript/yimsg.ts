@@ -1134,7 +1134,12 @@ export interface OrgUpdatedNotification {
 export interface BaseResponse {
   /** required 业务错误码，OK 表示成功 */
   code: ErrorCode;
-  /** optional 错误或提示信息 */
+  /**
+   * optional 稳定的 snake_case 错误原因 token（如 not_a_group_member），不是人类可读文本；
+   * 客户端必须按 code + msg 在本地多语言文案表中查表拼 toast，不得把 msg 原样展示给用户。
+   * code=ERROR_INTERNAL_ERROR 时例外：msg 可能是服务端内部错误详情，仅供日志排查，
+   * 客户端一律展示通用的"内部错误"文案，不读取 msg 内容。
+   */
   msg: string;
 }
 

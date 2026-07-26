@@ -1,7 +1,7 @@
 # 协议治理方案
 
 > 主要对照：`protocol/yimsg.proto`、`protocol/generated/go/pb/yimsg.pb.go`、`protocol/generated/typescript/yimsg.ts`、`server/internal/ws/connection.go`、`packages/sdk/src/transport/`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-26。
 > 触发更新：WebSocket interface、请求 / 响应字段、错误码、通知类型、SDK ↔ 服务端映射或协议生成策略变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；完整接口矩阵见 [`接口总览.md`](接口总览.md)；本文负责协议一致性治理和代码生成规则。
 
@@ -124,7 +124,7 @@ go run ./tools/cmd/protocolgen --check
 2. `register`、`login`、`authenticate` 是免认证接口；其余核心接口默认需要认证。
 3. SDK 对外仍使用业务友好的 camelCase 方法；wire 字段统一 snake_case。
 4. `uid`、`friend_uid`、`to_uid`、`group_id` 等 int64 ID 在 SDK 对外类型中保持字符串，避免 JavaScript number 精度丢失；`msg_id` 是原生 string（UUIDv7 base64url，22 字符），由 SDK 生成。
-5. 服务端失败响应必须通过 `BaseResponse.code/msg` 返回稳定错误码和可读信息。
+5. 服务端失败响应必须通过 `BaseResponse.code/msg` 返回稳定错误码和稳定的 snake_case 原因 token；`msg` 不是人类可读文案，UI 展示前必须按 `code/msg` 在客户端多语言文案表中查表（`code=INTERNAL_ERROR` 时例外）。
 6. 通知只表达“有变化”，客户端通过分页读取或 `sync_*` 接口主动追平。
 
 ## 7. 协议演进方向

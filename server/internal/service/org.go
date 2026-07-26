@@ -91,14 +91,14 @@ func orgName(s *AppState, orgID int64) string {
 // 身份取自帧头解析后的 BaseInfo.uid，不信任 body。
 func requireOrgMember(s *AppState, reqID uint64, uid, orgID int64) *appmsg.Response {
 	if orgID == 0 {
-		return appmsg.ErrInvalidArgument(reqID, "org_id required")
+		return appmsg.ErrInvalidArgument(reqID, "org_id_required")
 	}
 	row, err := s.ContactStore(uid).GetByKey(uid, 0, 0, orgID)
 	if err != nil {
 		return appmsg.ErrInternal(reqID, err.Error())
 	}
 	if row == nil || row.Status != dal.ContactFriend {
-		return appmsg.ErrForbidden(reqID, "not an org member")
+		return appmsg.ErrForbidden(reqID, "not_an_org_member")
 	}
 	return nil
 }
@@ -108,14 +108,14 @@ func requireOrgMember(s *AppState, reqID uint64, uid, orgID int64) *appmsg.Respo
 // 身份取自帧头解析后的 BaseInfo.uid，不信任 body。
 func requireOrgManage(s *AppState, reqID uint64, uid, orgID, tagID int64) *appmsg.Response {
 	if orgID == 0 || tagID == 0 {
-		return appmsg.ErrInvalidArgument(reqID, "org_id/tag_id required")
+		return appmsg.ErrInvalidArgument(reqID, "org_tag_id_required")
 	}
 	ok, err := s.OrgStore(orgID).CanManage(orgID, tagID, uid)
 	if err != nil {
 		return appmsg.ErrInternal(reqID, err.Error())
 	}
 	if !ok {
-		return appmsg.ErrForbidden(reqID, "not authorized to manage this org node")
+		return appmsg.ErrForbidden(reqID, "org_manage_forbidden")
 	}
 	return nil
 }
@@ -123,8 +123,11 @@ func requireOrgManage(s *AppState, reqID uint64, uid, orgID, tagID int64) *appms
 // orgWriteErr 把组织写路径的业务错误（防环、根不为子）映射为 ERROR_INVALID_ARGUMENT；
 // 其余未识别错误按内部错误处理。
 func orgWriteErr(reqID uint64, err error) *appmsg.Response {
-	if errors.Is(err, errOrgCycle) || errors.Is(err, errOrgRootAsChild) {
-		return appmsg.ErrInvalidArgument(reqID, err.Error())
+	if errors.Is(err, errOrgCycle) {
+		return appmsg.ErrInvalidArgument(reqID, "org_cycle")
+	}
+	if errors.Is(err, errOrgRootAsChild) {
+		return appmsg.ErrInvalidArgument(reqID, "org_root_as_child")
 	}
 	return appmsg.ErrInternal(reqID, err.Error())
 }
@@ -199,7 +202,7 @@ func (s *AppState) GetTags(info *BaseInfo, req *pb.GetTagsRequest) *pb.GetTagsRe
 		return toGetTagsResponse(resp)
 	}
 	if tagID == 0 {
-		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "tag_id required; expand root with tag_id=org_id"))
+		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "tag_id_required"))
 	}
 	store := s.OrgStore(orgID)
 	if tagID != orgID { // 组织根天然存在，只校验非根 tag
@@ -208,14 +211,14 @@ func (s *AppState) GetTags(info *BaseInfo, req *pb.GetTagsRequest) *pb.GetTagsRe
 			return toGetTagsResponse(appmsg.ErrInternal(reqID, err.Error()))
 		}
 		if tag == nil {
-			return toGetTagsResponse(appmsg.ErrNotFound(reqID, "tag not found"))
+			return toGetTagsResponse(appmsg.ErrNotFound(reqID, "tag_not_found"))
 		}
 	}
 
 	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())
 	parts, err := decodeCursor(page.cursor)
 	if err != nil {
-		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+		return toGetTagsResponse(appmsg.ErrInvalidArgument(reqID, "invalid_cursor"))
 	}
 	rows, err := store.ListTagsPage(orgID, tagID, parts, page.backward, page.limit+1)
 	if err != nil {
@@ -662,7 +665,7 @@ func (s *AppState) SetOrgItemRank(info *BaseInfo, req *pb.SetOrgItemRankRequest)
 	}
 	childType := uint8(req.GetChildType())
 	if childType != dal.TagChildPerson && childType != dal.TagChildTag {
-		return toSetOrgItemRankResponse(appmsg.ErrInvalidArgument(reqID, "child_type must be PERSON or TAG"))
+		return toSetOrgItemRankResponse(appmsg.ErrInvalidArgument(reqID, "invalid_child_type"))
 	}
 	if err := s.SetOrgItemRankDirect(orgID, tagID, req.GetChildId(), childType, req.GetTitle(), req.GetRank()); err != nil {
 		return toSetOrgItemRankResponse(appmsg.ErrInternal(reqID, err.Error()))
@@ -702,7 +705,7 @@ func (s *AppState) RevokeOrgAdmin(info *BaseInfo, req *pb.RevokeOrgAdminRequest)
 	}
 	if err := s.RevokeOrgAdminDirect(orgID, scopeTagID, req.GetUid()); err != nil {
 		if errors.Is(err, dal.ErrOrgLastRootAdmin) {
-			return toRevokeOrgAdminResponse(appmsg.ErrConflict(reqID, err.Error()))
+			return toRevokeOrgAdminResponse(appmsg.ErrConflict(reqID, "org_last_root_admin"))
 		}
 		return toRevokeOrgAdminResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}

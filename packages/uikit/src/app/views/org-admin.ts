@@ -1,6 +1,7 @@
 import { displayUserName } from '@yimsg/sdk';
 import { ORG_CHILD_PERSON, ORG_CHILD_TAG } from '@yimsg/sdk/uikit-internal';
 import type { AppInstance } from '../app-instance';
+import { describeError } from '../error-i18n';
 
 /**
  * 通讯录管理弹层：单页模态内自持面包屑栈，管理部门增删改、成员归属、
@@ -50,7 +51,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
     try {
       items = (await app.client.getTags({ orgId, tagId, limit: 200 })).tags;
     } catch (e) {
-      app.showToast(app.t('orgAdmin.loadFailed') + (e as Error).message, 'error');
+      app.showToast(app.t('orgAdmin.loadFailed') + describeError(app, e), 'error');
       app.closeModal();
       return;
     }
@@ -186,7 +187,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           else await app.client.renameOrgTag(orgId, tagId, value);
           app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
         } catch (e) {
-          app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+          app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
         }
       }
       void render();
@@ -207,7 +208,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           await app.client.deleteOrg(orgId);
           app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
         } catch (e) {
-          app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+          app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           void render();
           return;
         }
@@ -229,7 +230,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           await app.client.createOrgTag(orgId, tagId, name);
           app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
         } catch (e) {
-          app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+          app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
         }
       }
       void render();
@@ -249,7 +250,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             await app.client.renameOrgTag(orgId, item.childId, name);
             app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
           } catch (e) {
-            app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+            app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
         void render();
@@ -270,7 +271,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             await app.client.deleteOrgTag(orgId, item.childId);
             app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
           } catch (e) {
-            app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+            app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
         void render();
@@ -286,7 +287,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
         await app.client.addOrgMemberByUsername(orgId, tagId, username, { title });
         app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
       } catch (e) {
-        app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+        app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
       }
       void render();
     });
@@ -305,7 +306,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             await app.client.setOrgItemRank(orgId, tagId, item.childId, item.childType, Number(value), item.title);
             app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
           } catch (e) {
-            app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+            app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
         void render();
@@ -325,7 +326,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             await app.client.removeOrgMember(orgId, tagId, item.childId);
             app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
           } catch (e) {
-            app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+            app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
         void render();
@@ -340,7 +341,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
         await app.client.grantOrgAdminByUsername(orgId, tagId, username);
         app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
       } catch (e) {
-        app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+        app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
       }
       void render();
     });
@@ -358,7 +359,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             await app.client.revokeOrgAdmin(orgId, tagId, uid);
             app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
           } catch (e) {
-            app.showToast(app.t('orgAdmin.actionFailed') + (e as Error).message, 'error');
+            app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
         void render();

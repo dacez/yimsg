@@ -28,17 +28,17 @@ func (s *AppState) recallViaSend(info *BaseInfo, recallMsgID string, toUID, grou
 
 	recall := body.GetRecall()
 	if recall == nil {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "recall body required")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "recall_body_required")}
 	}
 	msgID := recall.GetMsgId()
 	if msgID == "" {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "msg_id required")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "msg_id_required")}
 	}
 	if recallMsgID == msgID {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "recall event msg_id must differ from target")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "recall_msg_id_conflict")}
 	}
 	if (toUID == 0 && groupID == 0) || (toUID > 0 && groupID > 0) {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "to_uid or group_id required")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "target_required")}
 	}
 	if s.Config() == nil || s.Config().Message.RecallWindowSeconds <= 0 {
 		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "recall_disabled")}

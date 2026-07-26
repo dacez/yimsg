@@ -214,19 +214,19 @@ func TestBlockPreventsFriendDMButNotGroupMessage(t *testing.T) {
 		t.Fatalf("block_user failed: %s", errMsg(blocklistResp))
 	}
 
-	if resp := addFriendService(s, "r2", uidB, uidA, ""); isOK(resp) || errMsg(resp) != "当前无法发起该操作" {
+	if resp := addFriendService(s, "r2", uidB, uidA, ""); isOK(resp) || errMsg(resp) != "action_blocked" {
 		t.Fatalf("add_friend while blocked = %+v", resp)
 	}
-	if resp := addFriendService(s, "r3", uidA, uidB, ""); isOK(resp) || errMsg(resp) != "当前无法发起该操作" {
+	if resp := addFriendService(s, "r3", uidA, uidB, ""); isOK(resp) || errMsg(resp) != "action_blocked" {
 		t.Fatalf("self add_friend while blocking = %+v", resp)
 	}
 
 	dmReq := &appmsg.Request{ToUID: uidB, MsgType: dal.MsgText, Content: "hi"}
-	if result := sendMessageService(s, "r4", uidA, dmReq); isOK(result.Response) || errMsg(result.Response) != "对方暂不接受私聊" {
+	if result := sendMessageService(s, "r4", uidA, dmReq); isOK(result.Response) || errMsg(result.Response) != "recipient_blocked" {
 		t.Fatalf("send dm while blocking = %+v", result.Response)
 	}
 	dmReq = &appmsg.Request{ToUID: uidA, MsgType: dal.MsgText, Content: "hi"}
-	if result := sendMessageService(s, "r5", uidB, dmReq); isOK(result.Response) || errMsg(result.Response) != "对方暂不接受私聊" {
+	if result := sendMessageService(s, "r5", uidB, dmReq); isOK(result.Response) || errMsg(result.Response) != "recipient_blocked" {
 		t.Fatalf("send dm while blocked = %+v", result.Response)
 	}
 

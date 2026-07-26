@@ -46,14 +46,14 @@ func (s *AppState) AddFriend(info *BaseInfo, req *pb.AddFriendRequest) *pb.AddFr
 	uid := info.UID
 	friendUID := req.GetFriendUid()
 	if uid == friendUID {
-		return toAddFriendResponse(appmsg.ErrInvalidArgument(reqID, "cannot add yourself as a friend"))
+		return toAddFriendResponse(appmsg.ErrInvalidArgument(reqID, "cannot_add_self_as_friend"))
 	}
 	blocked, err := isEitherWayBlocked(s, uid, friendUID)
 	if err != nil {
 		return toAddFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if blocked {
-		return toAddFriendResponse(appmsg.ErrForbidden(reqID, "当前无法发起该操作"))
+		return toAddFriendResponse(appmsg.ErrForbidden(reqID, "action_blocked"))
 	}
 
 	remarkName := req.GetRemarkName()
@@ -88,7 +88,7 @@ func (s *AppState) AcceptFriend(info *BaseInfo, req *pb.AcceptFriendRequest) *pb
 		return toAcceptFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if blocked {
-		return toAcceptFriendResponse(appmsg.ErrForbidden(reqID, "当前无法发起该操作"))
+		return toAcceptFriendResponse(appmsg.ErrForbidden(reqID, "action_blocked"))
 	}
 
 	// 调用者必须是这条请求的接收方（自身记录为 PENDING_INCOMING），否则 AcceptRequest 不会命中，
@@ -99,7 +99,7 @@ func (s *AppState) AcceptFriend(info *BaseInfo, req *pb.AcceptFriendRequest) *pb
 		return toAcceptFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toAcceptFriendResponse(appmsg.ErrConflict(reqID, "no pending request"))
+		return toAcceptFriendResponse(appmsg.ErrConflict(reqID, "no_pending_request"))
 	}
 
 	// 申请方那一侧的记录是 PENDING_OUTGOING，同步翻成 FRIEND。
@@ -122,7 +122,7 @@ func (s *AppState) RejectFriend(info *BaseInfo, req *pb.RejectFriendRequest) *pb
 		return toRejectFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toRejectFriendResponse(appmsg.ErrConflict(reqID, "no pending request"))
+		return toRejectFriendResponse(appmsg.ErrConflict(reqID, "no_pending_request"))
 	}
 
 	// 申请方那一侧的记录是 PENDING_OUTGOING，同步翻成 DELETED。
@@ -136,7 +136,7 @@ func (s *AppState) RejectFriend(info *BaseInfo, req *pb.RejectFriendRequest) *pb
 
 func removeContact(s *AppState, reqID uint64, uid, friendUID, groupID int64) *appmsg.Response {
 	if (friendUID == 0 && groupID == 0) || (friendUID > 0 && groupID > 0) {
-		return appmsg.ErrInvalidArgument(reqID, "friend_uid or group_id required")
+		return appmsg.ErrInvalidArgument(reqID, "friend_or_group_required")
 	}
 	store := s.ContactStore(uid)
 	seq, ok, err := store.Delete(uid, friendUID, groupID, 0)
@@ -144,7 +144,7 @@ func removeContact(s *AppState, reqID uint64, uid, friendUID, groupID int64) *ap
 		return appmsg.ErrInternal(reqID, err.Error())
 	}
 	if !ok {
-		return appmsg.ErrNotFound(reqID, "contact not found")
+		return appmsg.ErrNotFound(reqID, "contact_not_found")
 	}
 
 	notifyContactsUpdated(s, uid)
@@ -162,7 +162,7 @@ func (s *AppState) UpdateRemark(info *BaseInfo, req *pb.UpdateRemarkRequest) *pb
 	friendUID, groupID, orgID := contactTargetIDs(req.GetTarget())
 	remarkName := req.GetRemarkName()
 	if !exactlyOneTargetID(friendUID, groupID, orgID) {
-		return toUpdateRemarkResponse(appmsg.ErrInvalidArgument(reqID, "exactly one of friend_uid, group_id, org_id required"))
+		return toUpdateRemarkResponse(appmsg.ErrInvalidArgument(reqID, "conversation_target_required"))
 	}
 
 	store := s.ContactStore(uid)
@@ -183,7 +183,7 @@ func (s *AppState) UpdateRemark(info *BaseInfo, req *pb.UpdateRemarkRequest) *pb
 		return toUpdateRemarkResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toUpdateRemarkResponse(appmsg.ErrNotFound(reqID, "contact not found"))
+		return toUpdateRemarkResponse(appmsg.ErrNotFound(reqID, "contact_not_found"))
 	}
 	return toUpdateRemarkResponse(appmsg.OKEmpty(reqID))
 }
@@ -193,7 +193,7 @@ func (s *AppState) FavoriteGroup(info *BaseInfo, req *pb.FavoriteGroupRequest) *
 	uid := info.UID
 	groupID := req.GetGroupId()
 	if groupID == 0 {
-		return toFavoriteGroupResponse(appmsg.ErrInvalidArgument(reqID, "group_id required"))
+		return toFavoriteGroupResponse(appmsg.ErrInvalidArgument(reqID, "group_id_required"))
 	}
 	groupStore := s.GroupStore(groupID)
 	isMember, err := groupStore.IsMember(groupID, uid)
@@ -201,7 +201,7 @@ func (s *AppState) FavoriteGroup(info *BaseInfo, req *pb.FavoriteGroupRequest) *
 		return toFavoriteGroupResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !isMember {
-		return toFavoriteGroupResponse(appmsg.ErrForbidden(reqID, "not a group member"))
+		return toFavoriteGroupResponse(appmsg.ErrForbidden(reqID, "not_a_group_member"))
 	}
 
 	remarkName := req.GetRemarkName()
@@ -221,7 +221,7 @@ func (s *AppState) UnfavoriteGroup(info *BaseInfo, req *pb.UnfavoriteGroupReques
 	uid := info.UID
 	groupID := req.GetGroupId()
 	if groupID == 0 {
-		return toUnfavoriteGroupResponse(appmsg.ErrInvalidArgument(reqID, "group_id required"))
+		return toUnfavoriteGroupResponse(appmsg.ErrInvalidArgument(reqID, "group_id_required"))
 	}
 	store := s.ContactStore(uid)
 	seq, ok, err := store.Delete(uid, 0, groupID, 0)
@@ -229,7 +229,7 @@ func (s *AppState) UnfavoriteGroup(info *BaseInfo, req *pb.UnfavoriteGroupReques
 		return toUnfavoriteGroupResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toUnfavoriteGroupResponse(appmsg.ErrNotFound(reqID, "contact not found"))
+		return toUnfavoriteGroupResponse(appmsg.ErrNotFound(reqID, "contact_not_found"))
 	}
 	return toUnfavoriteGroupResponse(appmsg.OKContactWrite(reqID, seq))
 }
@@ -301,7 +301,7 @@ func (s *AppState) GetContacts(info *BaseInfo, req *pb.GetContactsRequest) *pb.G
 	uid := info.UID
 	status, ok := optionalContactStatus(req.Status)
 	if !ok {
-		return toGetContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid contact status"))
+		return toGetContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid_contact_status"))
 	}
 	var friendUIDs, groupIDs, orgIDs []int64
 	for _, target := range req.GetTargets() {
@@ -321,7 +321,7 @@ func (s *AppState) GetContacts(info *BaseInfo, req *pb.GetContactsRequest) *pb.G
 
 	parts, err := decodeCursor(page.cursor)
 	if err != nil {
-		return toGetContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+		return toGetContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid_cursor"))
 	}
 	// 通讯录展示通道 keyset 分页：FRIEND/默认按 sort_key 升序，PENDING 按 seq 倒序。
 	rows, err := store.ListPage(uid, filter, parts, page.backward, page.limit+1)
@@ -369,11 +369,11 @@ func (s *AppState) SearchContacts(info *BaseInfo, req *pb.SearchContactsRequest)
 	uid := info.UID
 	keyword := strings.TrimSpace(req.GetKeyword())
 	if keyword == "" {
-		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "empty search keyword"))
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "search_keyword_required"))
 	}
 	status, ok := optionalContactStatus(req.Status)
 	if !ok {
-		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid contact status"))
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid_contact_status"))
 	}
 	filter := dal.ContactListFilter{Status: status, Keyword: keyword}
 	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())
@@ -381,7 +381,7 @@ func (s *AppState) SearchContacts(info *BaseInfo, req *pb.SearchContactsRequest)
 
 	parts, err := decodeCursor(page.cursor)
 	if err != nil {
-		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+		return toSearchContactsResponse(appmsg.ErrInvalidArgument(reqID, "invalid_cursor"))
 	}
 	rows, err := store.ListPage(uid, filter, parts, page.backward, page.limit+1)
 	if err != nil {
@@ -418,7 +418,7 @@ func (s *AppState) GetContactCount(info *BaseInfo, req *pb.GetContactCountReques
 	uid := info.UID
 	status, ok := requiredContactStatus(req.GetStatus())
 	if !ok {
-		return toGetContactCountResponse(appmsg.ErrInvalidArgument(reqID, "invalid contact status"))
+		return toGetContactCountResponse(appmsg.ErrInvalidArgument(reqID, "invalid_contact_status"))
 	}
 	total, err := s.ContactStore(uid).Count(uid, dal.ContactListFilter{Status: &status})
 	if err != nil {

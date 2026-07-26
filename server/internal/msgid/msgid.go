@@ -46,20 +46,20 @@ func Generate() string {
 // 长度固定 22、base64url 合法、可解码为 16 字节、version=7、variant=0b10。
 func Validate(id string) error {
 	if len(id) != Length {
-		return fmt.Errorf("msg_id 长度必须为 %d，实际为 %d", Length, len(id))
+		return fmt.Errorf("msg_id length must be %d, got %d", Length, len(id))
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(id)
 	if err != nil {
-		return fmt.Errorf("msg_id 不是合法的 base64url: %w", err)
+		return fmt.Errorf("msg_id is not valid base64url: %w", err)
 	}
 	if len(raw) != rawLen {
-		return fmt.Errorf("msg_id 解码后长度必须为 %d 字节，实际为 %d", rawLen, len(raw))
+		return fmt.Errorf("msg_id decoded length must be %d bytes, got %d", rawLen, len(raw))
 	}
 	if raw[6]&0xf0 != 0x70 {
-		return fmt.Errorf("msg_id version 必须为 7")
+		return fmt.Errorf("msg_id version must be 7")
 	}
 	if raw[8]&0xc0 != 0x80 {
-		return fmt.Errorf("msg_id variant 必须为 0b10")
+		return fmt.Errorf("msg_id variant must be 0b10")
 	}
 	return nil
 }

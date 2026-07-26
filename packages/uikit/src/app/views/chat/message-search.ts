@@ -1,8 +1,8 @@
 import type { ConversationTarget, Message } from '@yimsg/sdk';
-import { displayUserName, formatTime } from '@yimsg/sdk';
+import { MSG_TYPE_RECALL, displayUserName, formatTime } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
-import { currentConversation } from './helpers';
+import { currentConversation, recallPlaceholderText } from './helpers';
 import { renderMessages } from './message-list';
 import { resetMessagePage, setInitialMessagePage } from './message-page';
 
@@ -107,7 +107,9 @@ export function setupMessageSearch(app: AppInstance): void {
       const isSelf = fromUid === myUid;
       const sender = senderMap.get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
       const senderName = isSelf ? app.t('chat.selfName') : displayUserName(sender, fromUid);
-      const preview = app.client.describeMessage(msg).text;
+      const preview = msg.messageType === MSG_TYPE_RECALL
+        ? recallPlaceholderText(app, msg)
+        : app.client.describeMessage(msg).text;
       const div = app.dom.ownerDocument.createElement('div');
       div.className = 'message-search-result';
       div.innerHTML = `
