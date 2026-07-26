@@ -634,12 +634,12 @@ test.describe('Messaging', () => {
     const imgPath = path.resolve(__dirname, 'fixtures', 'test-image.png');
     await page1.locator('#file-picker-image').setInputFiles(imgPath);
 
-    // Should display the image in message list
+    // Should display the image in message list. It first shows a local blob: preview
+    // placeholder (乐观发送) before the upload lands, so wait for the src to settle on
+    // the real upload URL instead of asserting on the first paint.
     const img = page1.locator('#message-list .message-image');
     await expect(img).toBeVisible({ timeout: 10_000 });
-    // Image src should be a valid upload URL
-    const src = await img.getAttribute('src');
-    expect(src).toContain('/media/');
+    await expect(img).toHaveAttribute('src', /\/media\//, { timeout: 10_000 });
 
     // Receiver should also see the image
     await page2.click('[data-view="chat"]');

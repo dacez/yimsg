@@ -566,7 +566,29 @@ sendMessage():
 
 `#msg-markdown-toggle` 点击切换 `composerMarkdownMode`，同步按钮 `active` 态与输入框 placeholder；开始引用（`setComposerQuote`）会强制关闭并禁用该按钮，引用结束（`clearComposerQuote`）后恢复可用——协议 `QuoteBody` 只有 `TextBody`，引用中不可发送 Markdown 正文。
 
-占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。图片 / 文件发送（`uploadAndSend`）未接入该乐观流程，因为上传本身的网络耗时占主导，发送前没有可展示的正文占位。
+占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。
+
+图片 / 文件发送（`uploadAndSend`）同样接入该乐观流程，且占位插入时机在上传之前（上传+发送是这条链路里最长的等待，越早展示占位越有意义）：
+
+```
+uploadAndSend(file, type):
+  if type == image:
+    previewUrl = URL.createObjectURL(file)   // 本地 blob: 预览地址，尚无服务端 media_id
+    try:
+      await sendOptimistically(target, MSG_TYPE_IMAGE, { image: { media_id: previewUrl, ... } }, async () => {
+        data = await client.uploadFile(file, 'image')
+        return client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type })
+      })
+    finally:
+      URL.revokeObjectURL(previewUrl)   // 占位已被替换/撤回，释放本地预览
+  else:
+    await sendOptimistically(target, MSG_TYPE_FILE, { file: { media_id: '', name: file.name, ... } }, async () => {
+      data = await client.uploadFile(file, 'file')
+      return client.sendFile(target, { mediaId: data.mediaId, name: file.name, size: data.size, mime: file.type })
+    })
+```
+
+图片占位消息的 `media_id` 直接是本地 `blob:` 预览地址：`message-list.ts` 的 `fillMessageBubble` 只在该消息命中 `pendingMessageIds` 且 `media_id` 以 `blob:` 开头时才直接使用它做 `img.src`（不经过面向远端内容的 `setTrustedImageSrc` 协议白名单，因为这条消息是本条会话自己刚创建的本地对象，不是外部输入）；文件占位消息没有可视预览，`media_id` 为空时按现有兜底逻辑展示文件名即可，不需要额外处理。
 
 #### 引用与转发
 

@@ -6,6 +6,8 @@ import type {
 } from '@yimsg/sdk';
 import {
   displayUserName,
+  MSG_TYPE_FILE,
+  MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
   MSG_TYPE_MENTION,
   MSG_TYPE_QUOTE,
@@ -215,16 +217,37 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
   if (!app.chatState.currentConvKey) return;
   if ((app.$('msg-input') as HTMLTextAreaElement).disabled) return;
 
-  try {
-    const data = await app.client.uploadFile(file, type === 'image' ? 'image' : 'file');
-    const target = app.client.describeConversation(app.chatState.currentConvKey).target;
+  const target = app.client.describeConversation(app.chatState.currentConvKey).target;
 
-    const result = type === 'image'
-      ? await app.client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type })
-      : await app.client.sendFile(target, { mediaId: data.mediaId, name: file.name, size: data.size, mime: file.type });
-    appendLiveMessageToPage(app, result.message);
-    app.views.chat?.renderMessages();
-    app.views.chat?.scrollToBottom();
+  if (type === 'image') {
+    // 本地 blob: 预览地址直接当占位消息的 media_id 用：上传+发送耗时最长，先看到本地缩略图最有意义。
+    const previewUrl = URL.createObjectURL(file);
+    try {
+      await sendOptimistically(
+        app, target, MSG_TYPE_IMAGE,
+        { image: { media_id: previewUrl, size: file.size, width: 0, height: 0, mime: file.type, caption: '' } },
+        async () => {
+          const data = await app.client.uploadFile(file, 'image');
+          return app.client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type });
+        },
+      );
+    } catch (e) {
+      app.showToast(app.t('chat.uploadFailedColon') + (e as Error).message, 'error');
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+    }
+    return;
+  }
+
+  try {
+    await sendOptimistically(
+      app, target, MSG_TYPE_FILE,
+      { file: { media_id: '', name: file.name, size: file.size, mime: file.type } },
+      async () => {
+        const data = await app.client.uploadFile(file, 'file');
+        return app.client.sendFile(target, { mediaId: data.mediaId, name: file.name, size: data.size, mime: file.type });
+      },
+    );
   } catch (e) {
     app.showToast(app.t('chat.uploadFailedColon') + (e as Error).message, 'error');
   }
