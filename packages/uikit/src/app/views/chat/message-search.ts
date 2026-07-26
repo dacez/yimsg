@@ -37,8 +37,16 @@ function setMessageHighlight(app: AppInstance, msgId: string): void {
  * 以某条消息为锚点重新加载消息窗口（get_messages around）并滚动高亮。
  * 调用方需确保 target 对应的会话已经是当前打开的会话——本会话内搜索面板天然满足；
  * 全局搜索（global-search.ts）会先切到目标会话再调用本函数。
+ *
+ * 移动端从聊天页返回会话列表时（chat-header 左上角返回区域），只会移除 view-chat 上的
+ * mobile-showing-chat class，不会清空 chatState.currentConvKey（详见 setup.ts）。因此
+ * 全局搜索命中"返回前正在看的那个会话"时，global-search.ts 会判定当前会话已是目标会话
+ * 而跳过 shell 初始化（其中才会补上 mobile-showing-chat），移动端就会停在会话列表、
+ * 看起来像没跳转。这里统一兜底：无论调用方是否需要重建 shell，跳转到具体消息前都先
+ * 确保聊天面板可见——桌面端两栏同时展示，这一步是无害的空操作。
  */
 export async function jumpToMessageInConversation(app: AppInstance, target: ConversationTarget, msgId: string): Promise<void> {
+  app.$('view-chat').classList.add('mobile-showing-chat');
   const messagePageRequestId = resetMessagePage(app);
   try {
     const page = await app.client.getMessages({
