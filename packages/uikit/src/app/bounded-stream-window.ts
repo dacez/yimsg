@@ -69,6 +69,21 @@ export function createFrameScheduler(callback: () => void): () => void {
   };
 }
 
+/**
+ * 「背景有更新 + 贴边缘追平」的统一契约：会话列表贴顶、通讯录贴顶、消息列表贴底都遵循同一条
+ * 规则——收到背景更新时若用户不在对应边缘只点亮提示条，用户之后（不论是点击提示条还是自己
+ * 滚回边缘）都必须追平并把提示条清掉。三处调用方原先各自手写「stale && atEdge」判断，容易漏挂
+ * onScroll（消息列表就漏过，导致手动滑到底提示条不消失）；改走这个共用函数后，新增一处贴边缘
+ * 追平场景只需提供三个判定/动作，不必重新决定判断条件怎么写。
+ */
+export function catchUpAtEdge(
+  hasPendingUpdate: () => boolean,
+  isAtEdge: () => boolean,
+  catchUp: () => void | Promise<void>,
+): void {
+  if (hasPendingUpdate() && isAtEdge()) void catchUp();
+}
+
 export function getOrCreateBoundedStreamWindow<TOwner extends object, T>(
   cache: WeakMap<TOwner, BoundedStreamWindow<T>>,
   owner: TOwner,

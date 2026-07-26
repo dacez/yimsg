@@ -751,4 +751,56 @@ test.describe('Messaging', () => {
     await ctx1.close();
     await ctx2.close();
   });
+
+  // 回归用例：提示条亮起后用户不点击，而是自己滑到底部——提示条也必须消失，
+  // 不能只靠点击这一条路径才消掉（曾经的 bug：手动滑到底提示条常驻不消失）。
+  test('new message pill disappears when user scrolls to bottom without clicking', async ({ browser }) => {
+    const u1 = uniqueUser('pillscroll1');
+    const u2 = uniqueUser('pillscroll2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'PillScrollSender');
+    await register(page2, u2, password, 'PillScrollReader');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'PillScrollReader');
+
+    for (let i = 1; i <= 15; i++) {
+      await sendMessage(page1, `pill scroll filler message ${i}`);
+      await expectMessage(page1, `pill scroll filler message ${i}`);
+    }
+
+    await openConversation(page2, 'PillScrollSender');
+    await expectMessage(page2, 'pill scroll filler message 15');
+    // 等 scrollToBottom 的多帧稳定链结束，否则后续上翻会被 settle 帧钉回底部。
+    await page2.waitForTimeout(600);
+
+    await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      list.scrollTop = 0;
+    });
+    await page2.waitForTimeout(300);
+    const settledTop = await page2.evaluate(() => (document.querySelector('#message-list') as HTMLElement).scrollTop);
+    expect(settledTop).toBeLessThan(100);
+
+    await sendMessage(page1, 'pill scroll trigger message');
+
+    const pill = page2.locator('#new-message-pill');
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+
+    // 不点击提示条，直接把消息列表滑到底部——模拟"上滑拉最新消息"。
+    await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      list.scrollTop = list.scrollHeight;
+      list.dispatchEvent(new Event('scroll'));
+    });
+
+    await expectMessage(page2, 'pill scroll trigger message');
+    await expect(pill).toBeHidden({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
 });

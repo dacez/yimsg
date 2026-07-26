@@ -22,7 +22,7 @@ import {
 } from './helpers';
 import { updateSelectionBar } from './selection';
 import { setSafeHtml, setTrustedAnchorHref, setTrustedImageSrc, safeHtml } from '../../safe-dom';
-import { getOrCreateBoundedStreamWindow, BoundedStreamWindow } from '../../bounded-stream-window';
+import { getOrCreateBoundedStreamWindow, BoundedStreamWindow, catchUpAtEdge } from '../../bounded-stream-window';
 import {
   appendNewerMessagesToPage,
   markMessagesHasNewer,
@@ -48,7 +48,19 @@ export function isNearBottom(list: HTMLElement): boolean {
 function getMessageListView(app: AppInstance): BoundedStreamWindow<Message> {
   return getOrCreateBoundedStreamWindow(messageListViews, app, () => new BoundedStreamWindow<Message>({
     scrollElement: app.$('message-list'),
+    onScroll: () => maybeCatchUpNewMessages(app),
   }));
+}
+
+// 新消息提示条亮起后用户自己滑到底：与会话列表贴顶、通讯录贴顶追平同一套契约（见
+// bounded-stream-window.ts 的 catchUpAtEdge），直接重拉最新一页把提示条消掉，
+// 不必等触底分页一页页链式追完。
+function maybeCatchUpNewMessages(app: AppInstance): void {
+  catchUpAtEdge(
+    () => app.chatState.pendingNewMessageCount > 0 && !app.chatState.loadingNewerMessages,
+    () => isNearBottom(app.$('message-list')),
+    () => reloadLatestMessagePage(app),
+  );
 }
 
 function scheduleFrame(callback: () => void): void {
@@ -398,10 +410,12 @@ export async function loadNewerMessages(app: AppInstance) {
 }
 
 // reloadLatestMessagePage 重新拉取打开中会话的最新一页并滚到底部。
-// 供"贴底时收到重绘信号"和"点击新消息提示条"两条路径复用。
+// 供"贴底时收到重绘信号"、"点击新消息提示条"、"提示条亮起后自己滑到底" 三条路径复用；
+// 复用 loadingNewerMessages 守卫防止三条路径并发触发重复拉取。
 async function reloadLatestMessagePage(app: AppInstance): Promise<void> {
   const convKey = app.chatState.currentConvKey;
-  if (!convKey) return;
+  if (!convKey || app.chatState.loadingNewerMessages) return;
+  app.chatState.loadingNewerMessages = true;
   const target = app.client.describeConversation(convKey).target;
   const requestId = app.chatState.messagePageRequestId;
   try {
@@ -417,6 +431,8 @@ async function reloadLatestMessagePage(app: AppInstance): Promise<void> {
     }
   } catch (e) {
     console.warn('reload latest message page failed:', e);
+  } finally {
+    app.chatState.loadingNewerMessages = false;
   }
 }
 
@@ -428,7 +444,7 @@ export function removeMessage(app: AppInstance, messageId: string): void {
 // refreshOpenConversation 收到 messages:received 重绘信号时刷新打开中的会话。
 // 不消费通知 payload：通过 get_messages 重读，新消息/撤回/删除都按服务端最新状态统一反映。
 // 只有用户贴底时才重拉最新一页并滚到底部；上翻阅读中只点亮新消息提示条，
-// 交给滚动触底的 loadNewerMessages 或提示条点击跳转，避免打断浏览。
+// 交给滚动触底的 maybeCatchUpNewMessages（贴底自动追平）或提示条点击跳转，避免打断浏览。
 export async function refreshOpenConversation(app: AppInstance): Promise<void> {
   if (!app.chatState.currentConvKey) return;
   if (app.$('view-chat').classList.contains('hidden')) return;
@@ -438,10 +454,13 @@ export async function refreshOpenConversation(app: AppInstance): Promise<void> {
     return;
   }
   if (!isNearBottom(app.$('message-list')) && app.chatState.currentMessages.length > 0) {
-    // 会话尾部之后出现了新内容：标记 hasNewer，让触底加载能追平，并点亮提示条。
+    // 会话尾部之后出现了新内容：标记 hasNewer 并整份重渲——不重渲的话 BoundedStreamWindow
+    // 内部仍持有上一次渲染时 hasMoreAfter=false 的快照，之后用户自己滑到底不会触发任何
+    // 追平（既不会走 checkReach 的触底续拉，也绕不开 maybeCatchUpNewMessages 的贴底判定），
+    // 提示条只能靠点击才消失。重渲后 syncNewMessagePill 会随之同步，不需要再单独调用。
     app.chatState.pendingNewMessageCount += 1;
     markMessagesHasNewer(app);
-    syncNewMessagePill(app);
+    renderMessages(app);
     return;
   }
   await reloadLatestMessagePage(app);
