@@ -577,7 +577,9 @@ uploadAndSend(file, type):
     try:
       await sendOptimistically(target, MSG_TYPE_IMAGE, { image: { media_id: previewUrl, ... } }, async () => {
         data = await client.uploadFile(file, 'image')
-        return client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type })
+        result = await client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type })
+        await preloadImage(mediaUrl('image', data.mediaId))   // 见下方"占位换真实消息不闪烁"
+        return result
       })
     finally:
       URL.revokeObjectURL(previewUrl)   // 占位已被替换/撤回，释放本地预览
@@ -589,6 +591,8 @@ uploadAndSend(file, type):
 ```
 
 图片占位消息的 `media_id` 直接是本地 `blob:` 预览地址：`message-list.ts` 的 `fillMessageBubble` 只在该消息命中 `pendingMessageIds` 且 `media_id` 以 `blob:` 开头时才直接使用它做 `img.src`（不经过面向远端内容的 `setTrustedImageSrc` 协议白名单，因为这条消息是本条会话自己刚创建的本地对象，不是外部输入）；文件占位消息没有可视预览，`media_id` 为空时按现有兜底逻辑展示文件名即可，不需要额外处理。
+
+**占位换真实消息不闪烁**：`bounded-stream-window.ts` 的渲染引擎是"有界窗口全量渲染"（每次 `render()` 都 `innerHTML=''` 整段重建，`keyOf` 只用于滚动锚点，不做按 key 的 DOM 复用，见该文件顶部设计取舍注释）。普通消息重渲染不闪是因为 `<img src>` 没变，浏览器直接走内存缓存；但占位换真实消息这一刻，`src` 会从本地 `blob:` 预览地址换成一个浏览器从没请求过的 `/media/image/{id}`，若不预热就会在这次整段重建里对着这个新 URL 发起真实请求，画面上就是一闪。`uploadAndSend` 在 `sendImage` 成功后、`sendOptimistically` 把占位换成真实消息触发重渲染之前，先用一个不挂载到 DOM 的 `Image()` 把 `mediaUrl('image', data.mediaId)` 拉进浏览器缓存（`preloadImage`，加载失败也放行，不能因为预热失败卡住发送），换入的新 `<img>` 节点就能直接命中缓存瞬间画出，不再有可见的加载间隙。
 
 #### 引用与转发
 
@@ -606,21 +610,9 @@ uploadAndSend(file, type):
 #msg-attach click → 动态创建附件菜单:
   [📷 Image] → 触发 #file-picker-image.click()
   [📎 File]  → 触发 #file-picker-file.click()
-
-uploadAndSend(file, type):
-  showStatus('Uploading...', 'syncing')
-  data = await client.uploadFile(file, type)
-  hideStatus()
-
-  if type === 'image':
-    await client.sendMessage(target, data.url, MSG_TYPE_IMAGE)
-  if type === 'file':
-    content = JSON.stringify({ url: data.url, name: file.name, size: data.size })
-    await client.sendMessage(target, content, MSG_TYPE_FILE)
-
-  renderMessages()
-  scrollToBottom()
 ```
+
+选中文件后触发 `uploadAndSend(file, type)`，完整乐观发送流程（占位、`client.uploadFile` + `sendImage`/`sendFile`、图片预热防闪）见上文"发送消息流程"一节。
 
 #### 表情选择流程
 
