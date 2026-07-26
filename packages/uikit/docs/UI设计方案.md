@@ -527,6 +527,8 @@ openConversation(conv):
 
 #### 发送消息流程
 
+发送采用乐观 UI：点击发送后不等网络往返，先把消息以"发送中"占位态插入内存态消息窗口（不落库），网络请求落地后再用占位消息的临时 id 换成服务端返回的真实消息；失败则把占位消息原样撤回。
+
 ```
 sendMessage():
   content = #msg-input.value.trim()          // #msg-input 为 <textarea>，支持 Shift+Enter 换行
@@ -534,23 +536,37 @@ sendMessage():
 
   target = client.describeConversation(currentConvKey).target
 
+  sendOptimistically(target, msgType, body, send):
+    pending = 构造占位 Message（临时本地 id，非服务端 msg_id；senderId/target 字段照抄，sentAt=now）
+    pendingMessageIds.add(pending.messageId)
+    appendLiveMessageToPage(pending)          // 立即可见，气泡旁展示"发送中"转圈图标
+    renderMessages(); scrollToBottom()
+    try:
+      result = await send()                  // 真正发起 sendText / sendMarkdown / sendQuotedTextMessage / sendMention
+      removeMessageFromPage(pending.messageId)
+      appendLiveMessageToPage(result.message) // 真实 messageId 替换占位，转圈图标随之消失
+    catch (e):
+      removeMessageFromPage(pending.messageId) // 失败原样撤回，交给上层 toast 报错
+      throw e
+    finally:
+      pendingMessageIds.delete(pending.messageId)
+      renderMessages(); scrollToBottom()
+
   if composerMarkdownMode && !composerQuote:
-    result = await client.sendMarkdown(target, content)   // 内部按 MAX_MARKDOWN_CHARS 校验长度
     清空输入框
+    await sendOptimistically(target, MSG_TYPE_MARKDOWN, { markdown }, () => client.sendMarkdown(target, content))   // 内部按 MAX_MARKDOWN_CHARS 校验长度
   else:
     client.validateTextMessage(content)
     清空输入框
-    result = composerQuote
-      ? await client.sendQuotedTextMessage(target, { text: content, quote })   // 引用回复只承载纯文本
-      : await client.sendText(target, content)
-
-  appendLiveMessageToPage(result.message)
-  // SDK 内部只更新会话快照；当前消息面板仍由 chat/state.ts 中的 currentMessages 数据页维护
-  renderMessages()
-  scrollToBottom()
+    if composerQuote:
+      await sendOptimistically(target, MSG_TYPE_QUOTE, { quote }, () => client.sendQuotedTextMessage(target, { text: content, quote }))   // 引用回复只承载纯文本
+    else:
+      await sendOptimistically(target, MSG_TYPE_TEXT, { text }, () => client.sendText(target, content))
 ```
 
 `#msg-markdown-toggle` 点击切换 `composerMarkdownMode`，同步按钮 `active` 态与输入框 placeholder；开始引用（`setComposerQuote`）会强制关闭并禁用该按钮，引用结束（`clearComposerQuote`）后恢复可用——协议 `QuoteBody` 只有 `TextBody`，引用中不可发送 Markdown 正文。
+
+占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。图片 / 文件发送（`uploadAndSend`）未接入该乐观流程，因为上传本身的网络耗时占主导，发送前没有可展示的正文占位。
 
 #### 引用与转发
 

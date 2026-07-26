@@ -148,6 +148,13 @@ export function renderMessages(app: AppInstance) {
       fillMessageBubble(app, bubble, msg);
       row.appendChild(bubble);
 
+      if (isSelf && app.chatState.pendingMessageIds.has(msg.messageId)) {
+        const status = app.dom.ownerDocument.createElement('div');
+        status.className = 'message-status message-status-sending';
+        status.title = app.t('chat.sending');
+        row.appendChild(status);
+      }
+
       if (!app.chatState.messageSelectionMode) {
         const actionsBtn = app.dom.ownerDocument.createElement('button');
         actionsBtn.className = 'message-actions-trigger';
