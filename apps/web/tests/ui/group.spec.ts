@@ -393,7 +393,7 @@ test.describe('Group Chat', () => {
     await ctx2.close();
   });
 
-  test('owner adds a friend to the group via the detail panel', async ({ browser }) => {
+  test('ordinary member adds own friend but cannot remove group members', async ({ browser }) => {
     const owner = uniqueUser('am_o');
     const member = uniqueUser('am_m');
     const newcomer = uniqueUser('am_n');
@@ -408,7 +408,7 @@ test.describe('Group Chat', () => {
     await register(page2, member, password, 'AddMemberInitial');
     await register(page3, newcomer, password, 'AddMemberNewcomer');
     await addFriend(page1, page2, member);
-    await addFriend(page1, page3, newcomer);
+    await addFriend(page2, page3, newcomer);
 
     // Create group with just the initial member
     await page1.click('[data-view="contacts"]');
@@ -421,30 +421,35 @@ test.describe('Group Chat', () => {
     await cb.check();
     await page1.click('#modal-create');
 
-    await openConversation(page1, 'AddMemberGroupUI');
-    await page1.click('#toggle-detail');
-    const rightPanel = page1.locator('#right-panel');
+    await openConversation(page2, 'AddMemberGroupUI');
+    await page2.click('#toggle-detail');
+    const rightPanel = page2.locator('#right-panel');
     await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
 
-    // Owner has 2 members (self + AddMemberInitial); adds AddMemberNewcomer via the "+" action
+    // 普通成员可以从自己的好友列表邀请新人，但不能移出任何群成员。
     await expect(rightPanel.locator('.detail-section h4')).toContainText(/2/);
-    await page1.click('#detail-group-addmember-btn');
+    await expect(rightPanel.locator('.member-remove-btn')).toHaveCount(0);
+    await page2.click('#detail-group-addmember-btn');
 
-    const addModal = page1.locator('#modal-overlay:not(.hidden)');
+    const addModal = page2.locator('#modal-overlay:not(.hidden)');
     await expect(addModal).toBeVisible({ timeout: 5000 });
-    const candidate = page1.locator('.group-member-picker-item', { hasText: 'AddMemberNewcomer' });
+    const candidate = page2.locator('.group-member-picker-item', { hasText: 'AddMemberNewcomer' });
     await expect(candidate).toBeVisible({ timeout: 10_000 });
     await candidate.click();
-    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('.toast-success')).toBeVisible({ timeout: 5000 });
 
-    // Candidate disappears from the picker (already a member now); close the picker
+    // 新成员加入后从候选中消失，关闭选择器并核对成员列表。
     await expect(candidate).toHaveCount(0, { timeout: 5000 });
-    await page1.click('#add-member-done');
+    await page2.click('#add-member-done');
     await expect(addModal).toBeHidden({ timeout: 5000 });
 
-    // Member count refreshes to 3 and the new member shows up in the list
     await expect(rightPanel.locator('.detail-section h4')).toContainText(/3/, { timeout: 5000 });
     await expect(rightPanel.locator('.member-item', { hasText: 'AddMemberNewcomer' })).toBeVisible({ timeout: 5000 });
+    await expect(rightPanel.locator('.member-remove-btn')).toHaveCount(0);
+
+    // 新成员获得群会话，证明普通成员邀请已真正落到服务端。
+    await page3.click('[data-view="chat"]');
+    await expect(page3.locator('#conversation-list .conversation-item', { hasText: 'AddMemberGroupUI' })).toBeVisible({ timeout: 10_000 });
 
     await ctx1.close();
     await ctx2.close();

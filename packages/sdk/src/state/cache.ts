@@ -1,5 +1,5 @@
 import type { UserInfo, GroupInfo, OrgInfo, TagInfo } from '../models';
-import type { DisplayInfoScope } from '../types';
+import type { DisplayInfoReadOptions, DisplayInfoScope } from '../types';
 import type { DataGateway, MaybePromise } from '../datagateway/interface';
 import { ValidationError } from '../errors';
 import { DEFAULT_CACHE_TTL_SECONDS, DEFAULT_CACHE_MAX_ENTRIES, DEFAULT_PROFILE_LOAD_QUEUE_MAX_ENTRIES, DEFAULT_MAX_BATCH_LIMIT } from '../internal/sdk-defaults';
@@ -64,11 +64,14 @@ class ScopeStore {
   readonly pending: FifoSet<string>;
   /** 在飞（已发起 DataGateway 加载）去重集合。 */
   readonly loading: FifoSet<string>;
+  /** 待拉取队列中要求绕过持久缓存、强制访问服务端的 key。 */
+  readonly forcedPending: FifoSet<string>;
 
   constructor(cacheMaxEntries: number, queueMaxEntries: number) {
     this.cache = new FifoMap<string, DisplayCacheEntry>({ capacity: cacheMaxEntries });
     this.pending = new FifoSet<string>({ capacity: queueMaxEntries });
     this.loading = new FifoSet<string>({ capacity: queueMaxEntries });
+    this.forcedPending = new FifoSet<string>({ capacity: queueMaxEntries });
   }
 
   hasPending(): boolean { return this.pending.size > 0; }
@@ -81,9 +84,12 @@ class ScopeStore {
    * 显式前置容量检查保证 queued < maxQueued 才会调用 pending.add()，
    * 因此 pending/loading 各自的 FIFO 淘汰在此路径下不会触发，仅作兜底。
    */
-  enqueue(key: string, maxQueued: number): void {
+  enqueue(key: string, maxQueued: number, forceRefresh = false): void {
     if (this.loading.has(key)) return;
-    if (this.pending.has(key)) return;
+    if (this.pending.has(key)) {
+      if (forceRefresh) this.forcedPending.add(key);
+      return;
+    }
     const queued = this.queuedSize();
     if (queued >= maxQueued) {
       throw new ValidationError('显示信息待拉取队列已满', {
@@ -92,13 +98,16 @@ class ScopeStore {
       });
     }
     this.pending.add(key);
+    if (forceRefresh) this.forcedPending.add(key);
   }
 
   /** 原子排空待拉取队列并标记为在飞。 */
-  drainPending(): string[] {
+  drainPending(): { keys: string[]; forceRefresh: boolean } {
     const keys = this.pending.drain();
+    const forceRefresh = keys.some((key) => this.forcedPending.has(key));
+    for (const key of keys) this.forcedPending.delete(key);
     for (const k of keys) this.loading.add(k);
-    return keys;
+    return { keys, forceRefresh };
   }
 
   doneLoading(keys: string[]): void {
@@ -109,6 +118,7 @@ class ScopeStore {
     this.cache.clear();
     this.pending.clear();
     this.loading.clear();
+    this.forcedPending.clear();
   }
 }
 
@@ -179,7 +189,10 @@ export class DisplayInfoCache {
     return '0';
   }
 
-  getUserInfos(uids: string[]): Map<string, UserDisplayValue> {
+  getUserInfos(
+    uids: string[],
+    options: DisplayInfoReadOptions = {},
+  ): Map<string, UserDisplayValue> {
     const result = new Map<string, UserDisplayValue>();
     const now = Date.now();
     for (const raw of uids) {
@@ -191,10 +204,12 @@ export class DisplayInfoCache {
       const entry = this.userStore.cache.get(key);
       if (entry) {
         result.set(key, this.toUserValue(entry));
-        if (entry.expireAt <= now) this.userStore.enqueue(key, this.queueMaxSize);
+        if (options.forceRefresh || entry.expireAt <= now) {
+          this.userStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
+        }
       } else {
         result.set(key, this.emptyUserValue());
-        this.userStore.enqueue(key, this.queueMaxSize);
+        this.userStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
       }
     }
     this.scheduleFlushScope('user');
@@ -202,7 +217,10 @@ export class DisplayInfoCache {
     return result;
   }
 
-  getGroupInfos(groupIds: string[]): Map<string, GroupDisplayValue> {
+  getGroupInfos(
+    groupIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): Map<string, GroupDisplayValue> {
     const result = new Map<string, GroupDisplayValue>();
     const now = Date.now();
     for (const raw of groupIds) {
@@ -214,10 +232,12 @@ export class DisplayInfoCache {
       const entry = this.groupStore.cache.get(key);
       if (entry) {
         result.set(key, this.toGroupValue(entry));
-        if (entry.expireAt <= now) this.groupStore.enqueue(key, this.queueMaxSize);
+        if (options.forceRefresh || entry.expireAt <= now) {
+          this.groupStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
+        }
       } else {
         result.set(key, this.emptyGroupValue());
-        this.groupStore.enqueue(key, this.queueMaxSize);
+        this.groupStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
       }
     }
     this.scheduleFlushScope('group');
@@ -225,7 +245,10 @@ export class DisplayInfoCache {
     return result;
   }
 
-  getOrgInfos(orgIds: string[]): Map<string, OrgDisplayValue> {
+  getOrgInfos(
+    orgIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): Map<string, OrgDisplayValue> {
     const result = new Map<string, OrgDisplayValue>();
     const now = Date.now();
     for (const raw of orgIds) {
@@ -237,10 +260,12 @@ export class DisplayInfoCache {
       const entry = this.orgStore.cache.get(key);
       if (entry) {
         result.set(key, this.toOrgValue(entry));
-        if (entry.expireAt <= now) this.orgStore.enqueue(key, this.queueMaxSize);
+        if (options.forceRefresh || entry.expireAt <= now) {
+          this.orgStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
+        }
       } else {
         result.set(key, this.emptyOrgValue());
-        this.orgStore.enqueue(key, this.queueMaxSize);
+        this.orgStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
       }
     }
     this.scheduleFlushScope('org');
@@ -248,7 +273,11 @@ export class DisplayInfoCache {
     return result;
   }
 
-  getTagInfos(orgId: string, tagIds: string[]): Map<string, TagDisplayValue> {
+  getTagInfos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): Map<string, TagDisplayValue> {
     const result = new Map<string, TagDisplayValue>();
     const now = Date.now();
     const org = String(orgId || '0');
@@ -262,10 +291,12 @@ export class DisplayInfoCache {
       const entry = this.tagStore.cache.get(key);
       if (entry) {
         result.set(key, this.toTagValue(entry));
-        if (entry.expireAt <= now) this.tagStore.enqueue(key, this.queueMaxSize);
+        if (options.forceRefresh || entry.expireAt <= now) {
+          this.tagStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
+        }
       } else {
         result.set(key, this.emptyTagValue());
-        this.tagStore.enqueue(key, this.queueMaxSize);
+        this.tagStore.enqueue(key, this.queueMaxSize, options.forceRefresh);
       }
     }
     this.scheduleFlushScope('tag');
@@ -361,7 +392,7 @@ export class DisplayInfoCache {
     const store = this.storeOf(scope);
     if (!store.hasPending()) return;
 
-    const pending = store.drainPending();
+    const { keys: pending, forceRefresh } = store.drainPending();
     if (pending.length === 0) return;
 
     if (scope === 'user') {
@@ -369,6 +400,7 @@ export class DisplayInfoCache {
         scope: 'user',
         load: (ids) => ds.get_user_infos(ids, {
           cacheTtlMs: this.cacheTtlMs,
+          forceRefresh,
           updateDisplayInfos: items => {
             if (this.getDataGateway() !== ds) return;
             const updated = this.upsertUserInfos(items);
@@ -391,6 +423,7 @@ export class DisplayInfoCache {
         scope: 'group',
         load: (ids) => ds.get_group_infos(ids, {
           cacheTtlMs: this.cacheTtlMs,
+          forceRefresh,
           updateDisplayInfos: items => {
             if (this.getDataGateway() !== ds) return;
             const updated = this.upsertGroupInfos(items);
@@ -412,6 +445,7 @@ export class DisplayInfoCache {
         scope: 'org',
         load: (ids) => ds.get_org_infos(ids, {
           cacheTtlMs: this.cacheTtlMs,
+          forceRefresh,
           updateDisplayInfos: items => {
             if (this.getDataGateway() !== ds) return;
             const updated = this.upsertOrgInfos(items);
@@ -434,6 +468,7 @@ export class DisplayInfoCache {
       scope: 'tag',
       load: (ids) => ds.get_tag_infos(this.orgForTags(ids), ids, {
         cacheTtlMs: this.cacheTtlMs,
+        forceRefresh,
         updateDisplayInfos: items => {
           if (this.getDataGateway() !== ds) return;
           const updated = this.upsertTagInfos(items);

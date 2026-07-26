@@ -1,10 +1,14 @@
 import { test, expect } from './test-fixtures';
-import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, setContactRemark } from './helpers';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, setContactRemark, ensureModeSelected } from './helpers';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test.describe('Profile Change Visibility', () => {
   const password = '123456';
 
-  test('nickname change visible to friend in conversation list', async ({ browser }) => {
+  test('opening user detail force-refreshes changed nickname and display cache', async ({ browser }) => {
     const u1 = uniqueUser('nv1');
     const u2 = uniqueUser('nv2');
     const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -16,65 +20,26 @@ test.describe('Profile Change Visibility', () => {
     await register(page2, u2, password, 'Friend2');
     await addFriend(page1, page2, u2);
 
-    // Send a message so u1 appears in u2's conversation list
+    // 建立会话，让接收方先缓存旧昵称。资料修改不要求主动广播到关联账号。
     await openDMFromContacts(page1, 'Friend2');
     await sendMessage(page1, 'hello from original');
     await page2.click('[data-view="chat"]');
     await expect(page2.locator('#conversation-list .conversation-item', { hasText: 'OriginalNick' })).toBeVisible({ timeout: 10_000 });
 
-    // User1 changes nickname
+    // 用户 1 修改昵称；用户 2 的列表此时允许继续使用缓存。
     await page1.click('[data-view="settings"]');
     await page1.fill('#edit-nickname', 'UpdatedNick');
     await page1.click('#save-profile-btn');
-    await page1.waitForTimeout(500);
+    await expect(page1.locator('.toast-success').last()).toBeVisible({ timeout: 5000 });
 
-    // Send another message to trigger notification on u2
-    await openConversation(page1, 'Friend2');
-    await sendMessage(page1, 'hello with new nick');
+    // 用户 2 重新进入旧昵称会话并点击详情；详情请求必须绕过缓存。
+    await openConversation(page2, 'OriginalNick');
+    await page2.click('#toggle-detail');
+    await expect(page2.locator('#detail-panel .detail-name')).toHaveText('UpdatedNick', { timeout: 10_000 });
 
-    // User2 switches away from chat and back to force a re-render
-    // DisplayInfoCache may not have expired yet, so we verify the message arrives
-    // and conversation list updates accordingly
-    await page2.click('[data-view="chat"]');
-    const conv2 = page2.locator('#conversation-list .conversation-item').first();
-    await expect(conv2).toBeVisible({ timeout: 10_000 });
-    // Verify the conversation preview shows the new message
-    await expect(conv2.locator('.conversation-preview')).toContainText('hello with new nick', { timeout: 10_000 });
-
-    await ctx1.close();
-    await ctx2.close();
-  });
-
-  test('nickname change visible in chat messages', async ({ browser }) => {
-    const u1 = uniqueUser('ncm1');
-    const u2 = uniqueUser('ncm2');
-    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page1 = await ctx1.newPage();
-    const page2 = await ctx2.newPage();
-
-    await register(page1, u1, password, 'SenderNick');
-    await register(page2, u2, password, 'RecvNick');
-    await addFriend(page1, page2, u2);
-    await openDMFromContacts(page1, 'RecvNick');
-    await sendMessage(page1, 'msg before rename');
-
-    // User1 changes nickname
-    await page1.click('[data-view="settings"]');
-    await page1.fill('#edit-nickname', 'RenamedSender');
-    await page1.click('#save-profile-btn');
-    await page1.waitForTimeout(500);
-
-    // User1 sends another message
-    await openConversation(page1, 'RecvNick');
-    await sendMessage(page1, 'msg after rename');
-
-    // User2 opens conversation and sees both messages
-    await page2.click('[data-view="chat"]');
-    const conv = page2.locator('#conversation-list .conversation-item').first();
-    await expect(conv).toBeVisible({ timeout: 10_000 });
-    await conv.click();
-    await expectMessage(page2, 'msg after rename', 10_000);
+    // 强制拉取成功后会写回显示缓存，并驱动会话标题与列表重绘。
+    await expect(page2.locator('#chat-title')).toHaveText('UpdatedNick', { timeout: 10_000 });
+    await expect(page2.locator('#conversation-list .conversation-item', { hasText: 'UpdatedNick' })).toBeVisible({ timeout: 10_000 });
 
     await ctx1.close();
     await ctx2.close();
@@ -135,8 +100,7 @@ test.describe('Profile Change Visibility', () => {
     await ctx2.close();
   });
 
-  test('avatar change visible to other user', async ({ browser }) => {
-    // This test verifies avatar update mechanism works
+  test('opening user detail force-refreshes changed avatar and display cache', async ({ browser }) => {
     const u1 = uniqueUser('av1');
     const u2 = uniqueUser('av2');
     const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -145,23 +109,39 @@ test.describe('Profile Change Visibility', () => {
     const page2 = await ctx2.newPage();
 
     await register(page1, u1, password, 'AvatarUser');
-    await register(page2, u2, password, 'AvatarFriend');
+    await page2.goto('/app/');
+    await ensureModeSelected(page2, 'persistent');
+    await page2.click('[data-tab="register"]');
+    await page2.fill('#reg-username', u2);
+    await page2.fill('#reg-password', password);
+    await page2.fill('#reg-nickname', 'AvatarFriend');
+    await page2.click('#register-form button[type="submit"]');
+    await expect(page2.locator('#app')).toBeVisible({ timeout: 20_000 });
     await addFriend(page1, page2, u2);
 
-    // Check initial avatar is placeholder (no img)
-    await page1.click('[data-view="settings"]');
-    const avatarContainer = page1.locator('#settings-avatar');
-    await expect(avatarContainer).toBeVisible();
-
-    // User2 sends message so u1 appears in conv list
-    await openDMFromContacts(page2, 'AvatarUser');
-    await sendMessage(page2, 'hello avatar');
-    await page2.waitForTimeout(500);
-
-    // User1's avatar in User2's conversation should be visible (placeholder or img)
+    // 建立会话，让用户 2 缓存用户 1 的字母头像。
+    await openDMFromContacts(page1, 'AvatarFriend');
+    await sendMessage(page1, 'hello avatar');
     await page2.click('[data-view="chat"]');
-    const convItem = page2.locator('#conversation-list .conversation-item', { hasText: 'AvatarUser' });
-    await expect(convItem).toBeVisible({ timeout: 10_000 });
+    await expect(page2.locator('#conversation-list .conversation-item', { hasText: 'AvatarUser' })).toBeVisible({ timeout: 10_000 });
+
+    // 用户 1 上传头像；不要求向所有好友和群成员主动广播资料变化。
+    await page1.click('[data-view="settings"]');
+    const imgPath = path.resolve(__dirname, 'fixtures', 'test-image.png');
+    await page1.locator('#avatar-picker').setInputFiles(imgPath);
+    await expect(page1.locator('.toast-success').last()).toBeVisible({ timeout: 10_000 });
+
+    // 重新进入会话并点击详情后，详情头像必须来自服务端最新资料。
+    await openConversation(page2, 'AvatarUser');
+    await page2.click('#toggle-detail');
+    const detailAvatar = page2.locator('#detail-panel .detail-header .avatar img');
+    await expect(detailAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(detailAvatar).toHaveAttribute('src', /\/media\//);
+
+    // 最新头像写回显示缓存后，会话列表头像也同步重绘。
+    const conversationAvatar = page2.locator('#conversation-list .conversation-item', { hasText: 'AvatarUser' }).locator('.avatar img');
+    await expect(conversationAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(conversationAvatar).toHaveAttribute('src', /\/media\//);
 
     await ctx1.close();
     await ctx2.close();

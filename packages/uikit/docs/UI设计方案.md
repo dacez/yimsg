@@ -657,12 +657,17 @@ emoji 数据（`views/chat/emoji-data.ts`）为纯 Unicode 字符表，跟随系
 ```
 showUserDetail(uid):
   requestId = ++detailRequestId                    // 防竞态：旧请求结果忽略
-  display = client.getUserInfos([uid])              // 未命中或过期时触发后台刷新
-  blocklistPage = await client.getBlocklist({ uids: [uid], limit: 1 })
-  mutePage = await client.getMutelist({ toUid: uid, limit: 1 })
-  渲染：头像 + 昵称 + 状态标签（屏蔽 / 免打扰） + 设置备注 / 屏蔽 / 免打扰按钮
-  500ms 后重新读取（等待 display:updated 更新缓存）
+  cached = client.getUserInfos([uid], { forceRefresh: true })
+                                                    // 立即渲染缓存，同时无条件安排异步服务端刷新
+  并行等待：
+    blocklistPage = await client.getBlocklist({ uids: [uid], limit: 1 })
+    mutePage = await client.getMutelist({ toUid: uid, limit: 1 })
+  if requestId !== detailRequestId → return
+  重读当前缓存，二次渲染头像 + 昵称 + 状态标签（屏蔽 / 免打扰） + 设置备注 / 屏蔽 / 免打扰按钮
+  后台资料返回 → display:updated → 再次刷新详情与其它可见视图
 ```
+
+昵称和头像更新不向全部好友、会话与共同群成员主动广播，列表允许保留 TTL 内的旧缓存。用户重新进入单聊并点击详情时，`getUserInfos([uid], { forceRefresh: true })` 必须同步返回当前缓存并无条件安排服务端异步刷新。Instant 模式更新内存 cache；Persistent 模式先更新本地数据库再更新 cache；随后统一通过 `display:updated` 刷新详情、当前会话标题、会话列表和可见通讯录。强制刷新失败时保留首次渲染的缓存内容并上报后台加载错误。
 
 **群详情（`showGroupDetail`）**：
 
@@ -683,7 +688,7 @@ showGroupDetail(groupId):
 
 **添加 / 移出群成员：**
 
-- 添加成员：点击详情面板头部的 "+" 动作按钮打开候选弹窗（复用 §7.6 群成员选择器同样的"一次性全量拉取 + 安全上限"取舍，候选源换成好友列表并排除已在群内的成员）；点击候选立即调用 `addGroupMember` 并从候选列表移除，不做批量勾选 + 二次确认，弹窗内可连续添加多人，点击"完成"关闭后刷新详情面板。
+- 添加成员：任意群成员均可点击详情面板头部的 "+" 动作按钮，候选仅来自当前用户自己的好友列表并排除已在群内的成员（复用 §7.6 群成员选择器同样的"一次性全量拉取 + 安全上限"取舍）；点击候选立即调用 `addGroupMember` 并从候选列表移除，不做批量勾选 + 二次确认，弹窗内可连续添加多人，点击"完成"关闭后刷新详情面板。
 - 移出成员：仅群主可见，每个非群主成员行末尾渲染一个移出按钮；点击后走 `showConfirmModal` 二次确认，确认后调用 `removeGroupMember` 并刷新详情面板。群主自己的成员行不渲染移出按钮（转让群主 / 解散群不在本次范围）。
 - 两者服务端当前均不做额外权限校验（`AddGroupMember`/`RemoveGroupMember` 对任意已登录用户放行），前端仅按上述规则控制入口可见性，属于 UI 层的合理性约束而非安全边界。
 

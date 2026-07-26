@@ -23,6 +23,7 @@ export type {
   ConversationTarget,
   ConversationKind,
   ConversationDescriptor,
+  DisplayInfoReadOptions,
   UserDisplayInfo,
   GroupDisplayInfo,
   UserInfo,

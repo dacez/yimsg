@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DisplayInfoCache, type DisplayInfoCacheOptions } from '../../../src/state/cache';
 import type { DataGateway, DisplayInfoFetchOptions } from '../../../src/datagateway/interface';
-import type { UserInfo, GroupInfo } from '../../../src/models';
+import type { UserInfo, GroupInfo, OrgInfo, TagInfo } from '../../../src/models';
 
 function mockDataGateway(overrides?: Partial<DataGateway>): DataGateway {
   return {
@@ -16,6 +16,8 @@ function mockDataGateway(overrides?: Partial<DataGateway>): DataGateway {
     get_mutelist: vi.fn().mockResolvedValue({ offset: 0, total: 0, mutes: [] }),
     get_user_infos: vi.fn().mockResolvedValue([]),
     get_group_infos: vi.fn().mockResolvedValue([]),
+    get_org_infos: vi.fn().mockResolvedValue([]),
+    get_tag_infos: vi.fn().mockResolvedValue([]),
     onMessagesReceived: vi.fn(),
     onContactsChanged: vi.fn(),
     onBlocklistChanged: vi.fn(),
@@ -137,6 +139,85 @@ describe('DisplayInfoCache', () => {
 
     expect(getUserInfo(shortTtlCache, '100')).toEqual({ username: '', nickname: 'New', avatar: 'new.png', remark: '' });
     expect(updatedKeys).toEqual([['100']]);
+  });
+
+  it('forceRefresh 命中新鲜缓存时仍异步拉取并更新缓存', async () => {
+    cache.setUserInfos([{ uid: '100', nickname: 'Old', avatar: 'old.png' }]);
+    (ds.get_user_infos as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_uids: string[], options: DisplayInfoFetchOptions<UserInfo>) => {
+        expect(options.forceRefresh).toBe(true);
+        queueMicrotask(() => options.updateDisplayInfos?.([
+          { uid: '100', nickname: 'New', avatar: 'new.png', username: '', created_at: 0, updated_at: Date.now() },
+        ]));
+        return [];
+      },
+    );
+    const updatedKeys: string[][] = [];
+    cache.onDisplayUpdated = (keys) => updatedKeys.push(keys);
+
+    expect(cache.getUserInfos(['100'], { forceRefresh: true }).get('100')).toEqual({
+      username: '',
+      nickname: 'Old',
+      avatar: 'old.png',
+      remark: '',
+    });
+    await flushPromises();
+
+    expect(ds.get_user_infos).toHaveBeenCalledWith(
+      ['100'],
+      expect.objectContaining({ forceRefresh: true }),
+    );
+    expect(getUserInfo(cache, '100')).toEqual({
+      username: '',
+      nickname: 'New',
+      avatar: 'new.png',
+      remark: '',
+    });
+    expect(updatedKeys).toEqual([['100']]);
+  });
+
+  it('forceRefresh 会统一传递到用户、群、组织和 tag 的 DataGateway 请求', () => {
+    cache.setUserInfos([{ uid: '100', nickname: 'User', avatar: '' }]);
+    cache.setGroupInfos([{ group_id: '200', name: 'Group', avatar: '' }]);
+    (ds.get_org_infos as ReturnType<typeof vi.fn>).mockReturnValue([
+      { org_id: '300', name: 'Org', avatar: '' } satisfies OrgInfo,
+    ]);
+    (ds.get_tag_infos as ReturnType<typeof vi.fn>).mockReturnValue([
+      { tag_id: '400', name: 'Tag', avatar: '' } satisfies TagInfo,
+    ]);
+    cache.getOrgInfos(['300']);
+    cache.getTagInfos('300', ['400']);
+    for (const method of [
+      ds.get_user_infos,
+      ds.get_group_infos,
+      ds.get_org_infos,
+      ds.get_tag_infos,
+    ]) {
+      vi.mocked(method).mockClear();
+    }
+
+    cache.getUserInfos(['100'], { forceRefresh: true });
+    cache.getGroupInfos(['200'], { forceRefresh: true });
+    cache.getOrgInfos(['300'], { forceRefresh: true });
+    cache.getTagInfos('300', ['400'], { forceRefresh: true });
+
+    expect(ds.get_user_infos).toHaveBeenCalledWith(
+      ['100'],
+      expect.objectContaining({ forceRefresh: true }),
+    );
+    expect(ds.get_group_infos).toHaveBeenCalledWith(
+      ['200'],
+      expect.objectContaining({ forceRefresh: true }),
+    );
+    expect(ds.get_org_infos).toHaveBeenCalledWith(
+      ['300'],
+      expect.objectContaining({ forceRefresh: true }),
+    );
+    expect(ds.get_tag_infos).toHaveBeenCalledWith(
+      '300',
+      ['400'],
+      expect.objectContaining({ forceRefresh: true }),
+    );
   });
 
   it('deduplicates concurrent loads for same uid', async () => {

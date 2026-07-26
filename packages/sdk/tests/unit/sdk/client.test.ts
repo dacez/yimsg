@@ -598,6 +598,82 @@ describe("YimsgClient", () => {
     client.destroy();
   });
 
+  it("getUserInfos forceRefresh 同步返回旧缓存并异步回写最新资料", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+    const cache = (
+      client as unknown as {
+        _displayInfoCache: {
+          setUserInfos: (
+            entries: Array<{
+              uid: string;
+              username?: string;
+              nickname: string;
+              avatar: string;
+            }>,
+          ) => void;
+        };
+      }
+    )._displayInfoCache;
+    cache.setUserInfos([
+      {
+        uid: "200",
+        username: "profile_user",
+        nickname: "旧昵称",
+        avatar: "",
+      },
+    ]);
+    const displayUpdated = vi.fn();
+    client.on("display:updated", displayUpdated);
+    transportSend.mockResolvedValueOnce({
+      base: { code: 0 },
+      profiles: [
+        {
+          uid: "200",
+          username: "profile_user",
+          nickname: "新昵称",
+          avatar: "/media/new-avatar.png",
+          created_at: "1",
+          updated_at: "2",
+        },
+      ],
+    });
+
+    const infos = client.getUserInfos(["200", "200"], {
+      forceRefresh: true,
+    });
+
+    expect(infos.get("200")).toMatchObject({
+      username: "profile_user",
+      nickname: "旧昵称",
+      avatarUrl: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        decodedTransportRequests(transportSend).at(-1),
+      ).toMatchObject({
+        action: "getUserInfos",
+        uids: ["200"],
+      });
+      expect(client.getUserInfos(["200"]).get("200")).toMatchObject({
+        username: "profile_user",
+        nickname: "新昵称",
+        avatarUrl: "/media/new-avatar.png",
+      });
+    });
+    expect(client.getUserInfos(["200"]).get("200")).toMatchObject({
+      username: "profile_user",
+      nickname: "新昵称",
+      avatarUrl: "/media/new-avatar.png",
+    });
+    expect(displayUpdated).toHaveBeenCalledWith({
+      keys: ["200"],
+      scope: "user",
+    });
+    client.destroy();
+  });
+
   it("getGroupInfos 去重后未超过上限时返回去重后的只读视图", () => {
     const client = new YimsgClient({ batchMaxLimit: 2 });
 

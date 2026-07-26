@@ -213,7 +213,7 @@ sequenceDiagram
 | `getConversations()` / `getContacts()` / `searchContacts()` | 需要认证且需要 `startSession()` 创建 DataGateway；正常调用方应等待 `startSession()` 返回 |
 | `getMessages()` / `searchMessages()` / `getContactCount(status)` | 需要认证且会话处于 `ready` |
 | `getUnreadCount()` / `getBlocklist()` / `getMutelist()` | 需要认证；DataGateway 存在时走 DataGateway，否则直连服务端 |
-| `getUserInfos()` / `getGroupInfos()` | 同步读取 DisplayInfoCache；无 DataGateway 时返回空展示值且不触发远端刷新 |
+| 四个 `getXxxInfos()` | 同步读取 DisplayInfoCache；`forceRefresh: true` 时同步返回值不变，但无条件安排 DataGateway 异步服务端刷新；无 DataGateway 时只返回当前展示值 |
 | `uploadFile()` | 需要认证 token，走 `fetch(uploadUrl)` |
 
 ### 5.3 事件
@@ -328,28 +328,31 @@ persistent 模式维护当前用户、当前 `instanceId` 的 SQLite 副本。
 | 初始化 | 打开 DB，读取 `meta` 中 `msg_seq`、`contact_seq`、`conversation_seq`、`blocklist_seq`、`mutelist_seq`，随后启动后台同步 |
 | `ready` 时机 | DB 打开和 meta 读取成功后进入 `ready`；业务数据继续后台追平 |
 | 本地读取 | 会话、未读、消息、联系人、待处理数、屏蔽、免打扰都查 SQLite；`search_contacts` / `search_messages` 复用同一份本地表按 `search_text LIKE` 过滤，排序/分页与对应 `get_*` 完全一致 |
-| 展示资料 | 先查 `displayinfo` 返回已有行，再后台请求未命中或过期 key 并写回 `displayinfo` |
+| 展示资料 | 先查 `displayinfo` 返回已有行，再后台请求未命中、过期或显式 `forceRefresh` 的 key 并写回 `displayinfo` |
 | 通知处理 | 覆盖 Base 的对应 handler，执行完整增量同步并写本地表 |
 | 消息通知 | `messages:received`：先 `sync_messages` 写本地 `messages`、`sync_conversations` 写会话（同步阶段不派发内容），再按累积的通知 `msg_id` 批量读本地内容供 `onMessages`，最后派发重绘信号；后台同步只派发空重绘信号，不重复 `onMessages` 历史消息 |
 | 清理 | `clear()` 递增 `backgroundSyncRun`，让未完成后台阶段在阶段间停止，并异步关闭 DB |
 
 ## 8. 展示资料缓存
 
-`DisplayInfoCache` 将用户与群展示资料拆分为两套结构完全独立的有界集合（`userStore` / `groupStore`），key 永远是纯 uint64（`uid` 或 `group_id`），不再使用 `user:{uid}` / `group:{groupId}` 字符串 tagged key。每个域包含：
+`DisplayInfoCache` 将用户、群、组织和 tag 展示资料拆分为四套结构完全独立的有界集合（`userStore` / `groupStore` / `orgStore` / `tagStore`），key 永远是对应纯 uint64 ID，不使用字符串 tagged key。每个域包含：
 
 - `cache`：固定容量 `FifoMap<string, DisplayCacheEntry>`，FIFO 淘汰，溢出自动淘汰最旧条目。
 - `pending` / `loading`：固定容量 `FifoSet<string>`，`enqueue()` 显式前置容量检查，满则抛 `ValidationError`，承载「待拉取 / 在飞」去重队列。
+- `forcedPending`：与 pending 同容量，记录合并窗口内哪些 key 明确要求绕过本地 TTL；批次只要包含一个此类 key，就向对应 DataGateway 传 `forceRefresh: true`。
 
-拆分的收益：key 永远纯 uint64、无需 tagged union / packed key、不会发生 uid 与 group_id 冲突；代价是允许少量容量浪费（用户与群各自预留容量）。详见 [`有界集合方案.md`](有界集合方案.md)。
+拆分的收益：key 永远纯 uint64、无需 tagged union / packed key、不同实体域的相同 ID 不会冲突；代价是允许少量容量浪费（四个域各自预留容量）。详见 [`有界集合方案.md`](有界集合方案.md)。
 
 ```mermaid
 flowchart TD
-  Read[getUserInfos / getGroupInfos] --> Cache{对应域 FifoMap}
+  Read[四个 getXxxInfos] --> Cache{对应域 FifoMap}
   Cache -->|命中未过期| ReturnFresh[同步返回缓存值]
   Cache -->|命中过期| ReturnStale[同步返回旧值并入队]
   Cache -->|未命中| ReturnEmpty[同步返回空值并入队]
+  Read -->|forceRefresh| Force[同步返回当前值并强制入队]
   ReturnStale --> Merge[按 scope 合并窗口]
   ReturnEmpty --> Merge
+  Force --> Merge
   Merge --> DG[当前 DataGateway]
   DG -->|instant| Remote[服务端 get_*_infos]
   DG -->|persistent| Local[displayinfo 表]
@@ -363,9 +366,10 @@ flowchart TD
 - 非法 uint64（空字符串、`'0'`、非十进制）不入队，但返回 Map 中仍包含对应空展示值。
 - 公开调用会先按字符串去重；去重后数量超过当前 `batchMaxLimit` 时抛 `ValidationError(INVALID_ARGUMENT)`。
 - 命中未过期直接返回；命中过期返回旧值并后台刷新；未命中返回空值并后台刷新。
-- 用户和群使用不同协议接口，分别按默认 8ms 合并窗口 flush。
+- `forceRefresh: true` 不改变同步返回值，但即使命中未过期也强制进入后台刷新。
+- 四个 scope 使用不同协议接口，分别按默认 8ms 合并窗口 flush。
 - 后台加载按 `batchMaxLimit` 串行拆批；批次内顺序由有界集合 slot 顺序决定，与插入顺序无关。
-- 单个域 `pending + loading` 超过 `profileLoadQueueMaxEntries` 时抛 `ValidationError(INVALID_ARGUMENT)`；用户与群队列上限相互独立。
+- 单个域 `pending + loading` 超过 `profileLoadQueueMaxEntries` 时抛 `ValidationError(INVALID_ARGUMENT)`；四个域的队列上限相互独立。
 - `cache` 满（达到固定容量）时按 FIFO 自动淘汰最旧 key，`size` 永不超过 `capacity`。
 - `setUserInfos()` / `setGroupInfos()` 只写内存缓存，不写 persistent `displayinfo` 表；DataGateway 远端刷新会写 persistent 表。
 - 登出、切换账号、销毁会清空缓存和队列。
@@ -383,7 +387,7 @@ flowchart TD
 | 待我处理联系人数量（红点） | 服务端 `get_contact_count(status=CONTACT_STATUS_PENDING_INCOMING)` | 本地 `contacts` 统计 `CONTACT_PENDING_INCOMING`（不含自己发出的 `CONTACT_PENDING_OUTGOING`） |
 | 屏蔽列表 | 服务端 `get_blocklist` 分页 | 本地 `blocklist` |
 | 免打扰列表 | 服务端 `get_mutelist` 分页 | 本地 `mutelist` |
-| 用户 / 群展示资料 | DisplayInfoCache 同步返回，后台读服务端 | DisplayInfoCache 同步返回，后台读 `displayinfo` 并刷新服务端 |
+| 用户 / 群 / 组织 / tag 展示资料 | DisplayInfoCache 同步返回，后台读服务端 | DisplayInfoCache 同步返回，后台读 `displayinfo`；过期、未命中或 `forceRefresh` 时刷新服务端 |
 
 ### 9.2 persistent 后台同步
 

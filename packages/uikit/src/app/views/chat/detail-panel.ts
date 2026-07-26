@@ -386,7 +386,7 @@ export async function showUserDetail(app: AppInstance, uid: string) {
   try {
     const panel = app.$('detail-panel');
 
-    // 立即用缓存数据打开面板；触发后台拉取，待数据到达后 refreshDetailPanel 自动补刷头像/名字
+    // 立即用缓存数据打开面板；随后绕过缓存强制拉取，避免详情长期展示对方的旧昵称或旧头像。
     const renderContent = (profile: { nickname: string; avatarUrl: string; remarkName: string; username: string }, isBlocked: boolean, muted: boolean) => {
       const userName = displayUserName(profile, uid);
       panel.innerHTML = `
@@ -453,22 +453,22 @@ export async function showUserDetail(app: AppInstance, uid: string) {
       });
     };
 
-    // 第一次渲染：用缓存数据立即展示（触发后台拉取；按钮状态暂用默认值）
-    const cachedProfile = app.client.getUserInfos([uid]).get(uid)
+    // 第一次渲染：同步返回缓存，同时强制安排异步服务端刷新；按钮状态暂用默认值。
+    const cachedProfile = app.client.getUserInfos([uid], { forceRefresh: true }).get(uid)
       || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
     renderContent(cachedProfile, false, false);
     app.chatState.detailOpen = true;
     app.$('right-panel').classList.remove('collapsed');
     app.$('view-chat').classList.add('mobile-showing-detail');
 
-    // 并行拉取 muted/blocked 状态（与后台用户信息拉取同步进行）
+    // muted/blocked 与资料后台刷新并行；资料到达后由 display:updated 刷新面板和其它可见视图。
     const [isBlocked, muted] = await Promise.all([
       app.views.sessionPreferences?.isUserBlocked(uid) ?? Promise.resolve(false),
       app.views.sessionPreferences?.isMuted({ toUid: uid }) ?? Promise.resolve(false),
     ]);
     if (app.chatState.detailRequestId !== requestId) return;
 
-    // 第二次渲染：用最新缓存（后台拉取大概率已完成）+ 正确的按钮状态
+    // 第二次渲染：重读当前缓存并补齐正确的按钮状态；后台资料稍后到达仍会继续刷新。
     const freshProfile = app.client.getUserInfos([uid]).get(uid)
       || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
     renderContent(freshProfile, isBlocked, muted);

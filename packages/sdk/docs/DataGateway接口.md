@@ -1,7 +1,7 @@
 # DataGateway 接口说明
 
 > 主要对照：`packages/sdk/src/datagateway/interface.ts`、`base.ts`、`instant.ts`、`persistent.ts`、`packages/sdk/src/state/cache.ts`。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-26。
 > 触发更新：DataGateway 接口、同步事件、显示信息本地缓存接口或 instant / persistent 数据来源变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；公开 API 见 [`sdk接口说明.md`](sdk接口说明.md)。
 
@@ -9,7 +9,7 @@
 
 `DataGateway` 是 SDK 内部的数据访问抽象，只负责屏蔽 `instant` 与 `persistent` 两种模式的读模型差异、接收服务端通知并派发同步结果。UI 和 SDK 调用方只使用 `YimsgClient` 公开 API，不直接接触 DataGateway。
 
-当前接口共 **22 个方法**：2 个生命周期方法、9 个数据读取 / 缓存协作方法、10 个事件回调注册方法和 1 个通知分发方法。不再包含运行期批量上限设置、联系人写后刷新入口、显示信息本地缓存读写或外部消息游标推进方法。批量上限通过构造参数注入；联系人写成功后统一走 `handleNotification({ type: 'contacts:updated' })` 的通知链路；显示信息本地落盘收敛在 `get_user_infos()` / `get_group_infos()` 内部；消息游标由 DataGateway 在 `init()` 内自行确定。
+当前接口共 **28 个方法**：2 个生命周期方法、14 个数据读取 / 缓存协作方法、11 个事件回调注册方法和 1 个通知分发方法。不再包含运行期批量上限设置、联系人写后刷新入口、显示信息本地缓存读写或外部消息游标推进方法。批量上限通过构造参数注入；联系人写成功后统一走 `handleNotification({ type: 'contacts:updated' })` 的通知链路；显示信息本地落盘收敛在四个 `get_*_infos()` 内部；消息游标由 DataGateway 在 `init()` 内自行确定。
 
 ## 2. 生命周期
 
@@ -27,10 +27,15 @@
 | `get_messages(params)` | 直连 `get_messages`，`params` 支持 `msg_ids`（按 id 批量取，与 seq 游标互斥） | 读本地 `messages` 分页；`msg_ids` 走本地 `msg_id IN (...)` 查询 |
 | `get_contacts(params)` | 直连 `get_contacts` | 读本地 `contacts` 分页 / 过滤 |
 | `get_contact_count(status)` | 直连 `get_contact_count` | 按显式非 0 联系人状态统计本地联系人 |
+| `search_contacts(params)` | 直连 `search_contacts` | 按关键字查询本地 `contacts.search_text` |
+| `search_messages(params)` | 直连 `search_messages` | 按关键字查询本地 `messages.search_text` |
+| `get_tags(params)` | 直连 `get_tags` | 读本地组织关系表 |
 | `get_blocklist(params)` | 直连 `get_blocklist`，返回 `{ users, page }` | 读本地 `blocklist`（keyset 游标），返回同样的 `page` 元数据 |
 | `get_mutelist(params)` | 直连 `get_mutelist`，返回 `{ mutes, page }` | 读本地 `mutelist`（keyset 游标），返回同样的 `page` 元数据 |
-| `get_user_infos(uids, options)` | 立即返回空数组，并异步直连 `get_user_infos`，完成后调用 `options.updateDisplayInfos` | 立即返回本地 `displayinfo` 中已有的数据（不因过期过滤），并异步请求过期 / 未命中的 UID，写回本地后调用 `options.updateDisplayInfos` |
-| `get_group_infos(groupIds, options)` | 立即返回空数组，并异步直连 `get_group_infos`，完成后调用 `options.updateDisplayInfos` | 立即返回本地 `displayinfo` 中已有的数据（不因过期过滤），并异步请求过期 / 未命中的 group_id，写回本地后调用 `options.updateDisplayInfos` |
+| `get_user_infos(uids, options)` | 立即返回空数组，并异步直连 `get_user_infos`，完成后调用 `options.updateDisplayInfos` | 立即返回本地 `displayinfo` 中已有的数据；异步请求过期、未命中或 `forceRefresh` 的 UID，写回本地后回调 |
+| `get_group_infos(groupIds, options)` | 同上，异步直连 `get_group_infos` | 同上，按 group_id 读取和刷新 |
+| `get_org_infos(orgIds, options)` | 同上，异步直连 `get_org_infos` | 同上，按 org_id 读取和刷新 |
+| `get_tag_infos(orgId, tagIds, options)` | 同上，按 org_id 路由并异步直连 `get_tag_infos` | 同上，按 tag_id 读取和刷新 |
 
 ### 3.1 persistent 本地 keyset 索引
 
@@ -49,17 +54,18 @@ persistent 模式的展示通道读取与服务端一致，使用本地自产自
 
 ## 4. 显示信息缓存协作
 
-`DataGateway` 只保留显示信息读取方法 `get_user_infos()` / `get_group_infos()`，返回类型允许 `T[] | Promise<T[]>`，签名包含：
+`DataGateway` 保留用户、群、组织和 tag 四类显示信息读取方法，返回类型允许 `T[] | Promise<T[]>`，签名包含：
 
 - `cacheTtlMs`：由 `DisplayInfoCache` 按构造配置传入，persistent 模式用它结合本地 `displayinfo.updated_at`（本地缓存写入时间）判断是否需要后台刷新。
+- `forceRefresh`：为 `true` 时，persistent 模式即使本地 `displayinfo` 命中且未过期，也必须异步请求服务端；instant 模式本来就直接请求服务端。
 - `updateDisplayInfos(entries)`：DataGateway 异步拿到服务端最新资料后调用，DisplayInfoCache 通过该回调更新内存缓存并发送 `display:updated`。
 
 `DisplayInfoCache` 的当前流程：
 
-1. `getUserInfos()` / `getGroupInfos()` 先同步读取 DisplayInfoCache 内存命中、过期旧值或空值。
-2. miss / 过期 key 进入有界队列，并立即调用 DataGateway。
+1. 四个 `getXxxInfos()` 先同步读取 DisplayInfoCache 内存命中、过期旧值或空值。
+2. miss / 过期 key 进入有界队列；`forceRefresh: true` 还会让新鲜命中 key 进入队列。短窗口合并后调用对应 DataGateway。
 3. instant 模式下 DataGateway 立即返回空数组，并异步请求服务端。
-4. persistent 模式下 DataGateway 立即返回本地 `displayinfo` 已有数据（即使已过期），DisplayInfoCache 会按本地 `displayinfo.updated_at` 计算内存过期时间并合并到本次返回 Map；DataGateway 同时异步请求过期和未命中的 key。
+4. persistent 模式下 DataGateway 立即返回本地 `displayinfo` 已有数据（即使已过期），DisplayInfoCache 会按本地 `displayinfo.updated_at` 计算内存过期时间并合并到本次返回 Map；DataGateway 同时异步请求过期、未命中或明确要求 `forceRefresh` 的 key。
 5. 后端返回的数据由 persistent DataGateway 写回 `displayinfo`，其中 `updated_at` 写入本地缓存刷新时间，然后通过 `updateDisplayInfos` 回调交给 `DisplayInfoCache`。
 6. `DisplayInfoCache` 处理 `updateDisplayInfos` 回调时按本次写入时间加 TTL 计算内存过期时间，再发 `display:updated`，UI 重新读取当前可见页并刷新显示。
 

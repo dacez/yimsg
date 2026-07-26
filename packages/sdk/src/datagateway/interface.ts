@@ -105,6 +105,7 @@ export type MaybePromise<T> = T | Promise<T>;
 
 export interface DisplayInfoFetchOptions<TInfo> {
   readonly cacheTtlMs: number;
+  readonly forceRefresh?: boolean;
   readonly updateDisplayInfos?: (entries: TInfo[]) => void;
 }
 

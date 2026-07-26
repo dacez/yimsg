@@ -818,10 +818,12 @@ export class PersistentDataGateway extends BaseDataGateway {
         )
         .map((item) => String(item.uid)),
     );
-    const needServer = uids
+    const validUids = uids
       .map((uid) => String(uid))
-      .filter((uid) => uid && uid !== "0")
-      .filter((uid) => !found.has(uid) || expired.has(uid));
+      .filter((uid) => uid && uid !== "0");
+    const needServer = options.forceRefresh
+      ? validUids
+      : validUids.filter((uid) => !found.has(uid) || expired.has(uid));
     void this.refreshUserInfos(needServer, options);
     return profiles;
   }
@@ -861,10 +863,12 @@ export class PersistentDataGateway extends BaseDataGateway {
         )
         .map((item) => String(item.group_id)),
     );
-    const needServer = groupIds
+    const validGroupIds = groupIds
       .map((groupId) => String(groupId))
-      .filter((groupId) => groupId && groupId !== "0")
-      .filter((groupId) => !found.has(groupId) || expired.has(groupId));
+      .filter((groupId) => groupId && groupId !== "0");
+    const needServer = options.forceRefresh
+      ? validGroupIds
+      : validGroupIds.filter((groupId) => !found.has(groupId) || expired.has(groupId));
     void this.refreshGroupInfos(needServer, options);
     return groups;
   }
@@ -897,10 +901,12 @@ export class PersistentDataGateway extends BaseDataGateway {
         .filter((item) => (Number(item.updated_at) || 0) + options.cacheTtlMs <= now)
         .map((item) => String(item.org_id)),
     );
-    const needServer = orgIds
+    const validOrgIds = orgIds
       .map((orgId) => String(orgId))
-      .filter((orgId) => orgId && orgId !== "0")
-      .filter((orgId) => !found.has(orgId) || expired.has(orgId));
+      .filter((orgId) => orgId && orgId !== "0");
+    const needServer = options.forceRefresh
+      ? validOrgIds
+      : validOrgIds.filter((orgId) => !found.has(orgId) || expired.has(orgId));
     void this.refreshOrgInfos(needServer, options);
     return orgs;
   }
@@ -935,10 +941,12 @@ export class PersistentDataGateway extends BaseDataGateway {
         .filter((item) => (Number(item.updated_at) || 0) + options.cacheTtlMs <= now)
         .map((item) => String(item.tag_id)),
     );
-    const needServer = tagIds
+    const validTagIds = tagIds
       .map((tagId) => String(tagId))
-      .filter((tagId) => tagId && tagId !== "0")
-      .filter((tagId) => !found.has(tagId) || expired.has(tagId));
+      .filter((tagId) => tagId && tagId !== "0");
+    const needServer = options.forceRefresh
+      ? validTagIds
+      : validTagIds.filter((tagId) => !found.has(tagId) || expired.has(tagId));
     void this.refreshTagInfos(orgId, needServer, options);
     return tags;
   }

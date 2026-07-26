@@ -1397,6 +1397,63 @@ describe("SDK PersistentDataGateway", () => {
       expect(transport.send).not.toHaveBeenCalled();
     });
 
+    it("get_user_infos forceRefresh 对新鲜本地数据也异步拉取并写回数据库", async () => {
+      const updated = vi.fn();
+      await db.exec(
+        "INSERT INTO displayinfo (uid, group_id, username, name, avatar, remark_name, updated_at) VALUES (?, '0', ?, ?, ?, ?, ?)",
+        ["101", "old_user", "Old User", "old.png", "", Date.now()],
+      );
+      (transport.send as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        ok: true,
+        profiles: [
+          {
+            uid: "101",
+            username: "new_user",
+            nickname: "New User",
+            avatar: "new.png",
+            updated_at: 10,
+          },
+        ],
+      });
+
+      const immediate = await ds.get_user_infos(["101"], {
+        cacheTtlMs: 86400000,
+        forceRefresh: true,
+        updateDisplayInfos: updated,
+      });
+
+      expect(immediate[0]).toMatchObject({
+        uid: "101",
+        username: "old_user",
+        nickname: "Old User",
+      });
+      await flushSyncQueue();
+
+      expect(transport.send).toHaveBeenCalledWith({
+        action: "getUserInfos",
+        uids: ["101"],
+      });
+      expect(updated).toHaveBeenCalledWith([
+        expect.objectContaining({
+          uid: "101",
+          username: "new_user",
+          nickname: "New User",
+          avatar: "new.png",
+        }),
+      ]);
+      const rows = await db.query(
+        "SELECT username, name, avatar FROM displayinfo WHERE uid = ? AND group_id = ?",
+        ["101", "0"],
+      );
+      expect(rows).toEqual([
+        {
+          username: "new_user",
+          name: "New User",
+          avatar: "new.png",
+        },
+      ]);
+    });
+
     it("get_group_infos 立即返回本地 displayinfo 数据", async () => {
       await db.exec(
         "INSERT INTO displayinfo (uid, group_id, username, name, avatar, remark_name, updated_at) VALUES ('0', ?, '', ?, ?, ?, ?)",

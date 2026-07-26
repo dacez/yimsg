@@ -371,6 +371,10 @@ export interface UserDisplayInfo {
   readonly remarkName: string;
 }
 
+export interface DisplayInfoReadOptions {
+  readonly forceRefresh?: boolean;
+}
+
 export interface GroupInfo {
   readonly groupId: string;
   readonly name: string;

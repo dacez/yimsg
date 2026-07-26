@@ -274,10 +274,10 @@ interface MessageContentDescriptor {
 | `getContacts` | `({ cursor?, backward?, around?, limit?, status?, friendUid?, groupId?, orgId?, friendUids?, groupIds?, orgIds? }) => Promise<ContactPage>` | 按 keyset 游标拉取展示分页（friend 按 sort_key、pending 按 seq 倒序），返回 `{ contacts, page }`，展示总数改用 `getContactCount`；显示资料由 UI 另行调用 `getUserInfos` / `getGroupInfos` / `getOrgInfos` 合并 |
 | `searchContacts` | `({ keyword, status?, cursor?, backward?, limit? }) => Promise<ContactPage>` | 按关键字（`search_text` LIKE 匹配备注名 + 昵称/群名，不含 username）搜索通讯录，排序/keyset 分页与 `getContacts` 一致；persistent 模式查本地同步副本，instant 模式请求服务端；`keyword` 为空（含全空白）同步抛 `ValidationError` |
 | `getContactCount` | `(status: number) => Promise<number>` | 按联系人状态统计数量；待我处理的好友请求（驱动红点）传 `CONTACT_STATUS_PENDING_INCOMING`，我自己发出、待对方处理的传 `CONTACT_STATUS_PENDING_OUTGOING`，好友/收藏群传 `CONTACT_STATUS_FRIEND`。instant 模式调用后端 `get_contact_count`；持久存储模式查本地副本；未认证会抛错，已认证但会话未初始化或查询失败时返回 `0` |
-| `getUserInfos` | `(uids) => ReadonlyMap<string, UserDisplayInfo>` | 用户显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
-| `getGroupInfos` | `(groupIds) => ReadonlyMap<string, GroupDisplayInfo>` | 群显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
-| `getOrgInfos` | `(orgIds) => ReadonlyMap<string, OrgDisplayInfo>` | 组织显示信息只读视图（与 `getUserInfos`/`getGroupInfos` 同构）；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
-| `getTagInfos` | `(orgId, tagIds) => ReadonlyMap<string, TagDisplayInfo>` | tag（部门/横向分组）显示信息只读视图；去重后超过 `getClientConfig().batchMaxLimit` 时抛 `INVALID_ARGUMENT` |
+| `getUserInfos` | `(uids, options?: DisplayInfoReadOptions) => ReadonlyMap<string, UserDisplayInfo>` | 用户显示信息只读视图；`forceRefresh: true` 时仍同步返回当前缓存，同时无条件安排服务端异步刷新 |
+| `getGroupInfos` | `(groupIds, options?: DisplayInfoReadOptions) => ReadonlyMap<string, GroupDisplayInfo>` | 群显示信息只读视图；支持相同的 `forceRefresh` 语义 |
+| `getOrgInfos` | `(orgIds, options?: DisplayInfoReadOptions) => ReadonlyMap<string, OrgDisplayInfo>` | 组织显示信息只读视图；支持相同的 `forceRefresh` 语义 |
+| `getTagInfos` | `(orgId, tagIds, options?: DisplayInfoReadOptions) => ReadonlyMap<string, TagDisplayInfo>` | tag（部门/横向分组）显示信息只读视图；支持相同的 `forceRefresh` 语义 |
 | `searchUser` | `(username) => Promise<UserInfo \| null>` | 按用户名搜索；任一方向存在屏蔽列表时返回 `null` |
 
 `ContactPage` 的公开形状：
@@ -300,9 +300,13 @@ interface Contact {
 
 持久存储模式下，`sync_contacts` 收到联系人删除 tombstone 后会删除本地 `contacts` 行并推进 `contact_seq`；公开 `getContacts()` 只返回当前仍可见的联系人、待处理请求或群收藏。
 
-`getUserInfos()` / `getGroupInfos()` 的调用上限来自 `getClientConfig().batchMaxLimit`。SDK 会先按字符串值去重；去重后数量超过上限时同步抛 `ValidationError`，`YimsgError.code` 为 `INVALID_ARGUMENT`，本次调用不会返回部分 Map，也不会安排后台加载。调用方应把超出部分切成多批循环调用，例如每批最多 `client.getClientConfig().batchMaxLimit` 个 key。若后台加载绕过 SDK 单次上限并被服务端拒绝，错误会通过 `error` 事件上报为 `RequestError`，`YimsgError.code` 为 `REQUEST_FAILED`，服务端错误码在 `details.serverErrorCode` 中为 `BATCH_LIMIT_EXCEEDED`。
+四个 `getXxxInfos()` 的调用上限来自 `getClientConfig().batchMaxLimit`。SDK 会先按字符串值去重；去重后数量超过上限时同步抛 `ValidationError`，`YimsgError.code` 为 `INVALID_ARGUMENT`，本次调用不会返回部分 Map，也不会安排后台加载。调用方应把超出部分切成多批循环调用，例如每批最多 `client.getClientConfig().batchMaxLimit` 个 key。若后台加载绕过 SDK 单次上限并被服务端拒绝，错误会通过 `error` 事件上报为 `RequestError`，`YimsgError.code` 为 `REQUEST_FAILED`，服务端错误码在 `details.serverErrorCode` 中为 `BATCH_LIMIT_EXCEEDED`。
 
 显示信息读取是只读缓存视图：无效 key（空字符串或 `0`）与当前缓存未命中都会同步返回空显示值；调用方不应依赖返回值区分这两类情况，而应订阅 `display:updated` 后重读当前可见项。
+
+`DisplayInfoReadOptions` 当前只有 `forceRefresh?: boolean`。四个 `getXxxInfos()` 默认保持现有 TTL 行为；传 `{ forceRefresh: true }` 时方法仍同步返回当前内存缓存，但该批 key 会无条件进入异步服务端刷新链路。Instant 模式在服务端返回后更新 DisplayInfoCache；Persistent 模式先写本地 `displayinfo` 数据库，再更新 DisplayInfoCache；两种模式最后都发出 `display:updated`，由可见视图重读缓存。
+
+用户修改昵称或头像后，服务端不会向其全部好友、会话和共同群成员广播资料变化，普通列表允许继续展示 TTL 内的缓存。用户主动打开对方详情时，UI 调用 `getUserInfos([uid], { forceRefresh: true })`，立即展示旧缓存并在后台补拉最新资料。该策略避免资料变更触发关联账号的全量同步，同时保证显式查看详情最终显示服务端最新值。
 
 ## 4.2 联系人写操作
 
@@ -344,7 +348,7 @@ interface Contact {
 
 | 方法 | 签名 |
 |------|------|
-| `getUserInfos` | `(uids) => ReadonlyMap<string, UserDisplayInfo>` |
+| `getUserInfos` | `(uids, options?) => ReadonlyMap<string, UserDisplayInfo>` |
 | `updateUserInfo` | `(params) => Promise<void>` |
 | `updatePassword` | `(oldPassword, newPassword) => Promise<void>` |
 | `uploadFile` | `(file, category) => Promise<UploadResult>` |
@@ -458,7 +462,7 @@ client.on('error', (event) => {});
 | `BlocklistUpdatedEvent` | `snapshot, reason`，当前 `reason` 为 `notification` |
 | `MutelistUpdatedEvent` | `snapshot, reason`，当前 `reason` 为 `notification` |
 | `OrgUpdatedEvent` | `orgIds`：发生变化的组织 ID 列表（通知合并后去重） |
-| `DisplayInfoUpdatedEvent` | `keys, scope`，`scope` 为 `user` / `group` / `mixed` |
+| `DisplayInfoUpdatedEvent` | `keys, scope`，`scope` 为 `user` / `group` / `org` / `tag` / `mixed` |
 | `ClientErrorEvent` | `error, context, snapshot` |
 
 说明：
@@ -478,7 +482,7 @@ client.on('error', (event) => {});
 - 所有事件载荷对象
 - 事件中的数组字段
 - `getConversations()`、`getContacts()`、`getMessages()`、`getGroupMembers()` 返回值
-- `getUserInfos()`、`getGroupInfos()` 返回的 map 视图
+- 四个 `getXxxInfos()` 返回的 map 视图
 - `Message`、`LocalConversation`、`Contact`、`BlocklistUser`、`MutelistEntry`、`UserInfo`、`SessionSnapshot` 等公开模型
 
 错误示例：
@@ -657,7 +661,7 @@ await client.updateRemark({ groupId }, '研发沟通');
 | `recallWindowSeconds` | `number` | 120 | 消息撤回时限认证前初始值（0 禁用）；登录 / 鉴权成功后以后端 `client_config.recall_window_seconds` 为准 |
 | `batchMaxLimit` | `number` | 500 | 认证前批量接口单次网络请求最大条数；登录 / 鉴权成功后与后端 `client_config.batch_max_limit` 取较小值 |
 
-公开分页读取接口（会话、联系人、消息）会裁剪 `limit` 到当前批量上限与 500 硬上限中的较小值；持久存储 / 已初始化 DataGateway 路径下的屏蔽列表和免打扰分页、增量接口也使用当前批量上限。`getGroupMembers()` 以及尚未 `startSession()` 时直连后端的屏蔽列表 / 免打扰分页使用 500 硬上限。`getUserInfos()` / `getGroupInfos()` 会先把调用方传入的 key 按字符串值去重，去重后超过当前批量上限时抛 `INVALID_ARGUMENT`；调用方应按 `getClientConfig().batchMaxLimit` 循环分批调用。
+公开分页读取接口（会话、联系人、消息）会裁剪 `limit` 到当前批量上限与 500 硬上限中的较小值；持久存储 / 已初始化 DataGateway 路径下的屏蔽列表和免打扰分页、增量接口也使用当前批量上限。`getGroupMembers()` 以及尚未 `startSession()` 时直连后端的屏蔽列表 / 免打扰分页使用 500 硬上限。四个 `getXxxInfos()` 会先把调用方传入的 key 按字符串值去重，去重后超过当前批量上限时抛 `INVALID_ARGUMENT`；调用方应按 `getClientConfig().batchMaxLimit` 循环分批调用。
 
 所有默认值均定义于 `packages/sdk/src/sdk-defaults.ts`，修改时应同步更新该文件注释。
 

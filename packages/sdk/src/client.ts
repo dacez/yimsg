@@ -42,6 +42,7 @@ import type {
   TagsPage,
   BlocklistUserPage,
   MutelistEntryPage,
+  DisplayInfoReadOptions,
   MessageBody,
   MessagePage,
   GroupDisplayInfo,
@@ -996,9 +997,12 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
    * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
    * 循环分批调用，而不是一次传入超大 key 集。
    */
-  getUserInfos(uids: string[]): ReadonlyMap<string, UserDisplayInfo> {
+  getUserInfos(
+    uids: string[],
+    options: DisplayInfoReadOptions = {},
+  ): ReadonlyMap<string, UserDisplayInfo> {
     const input = this.normalizeDisplayInfoKeys(uids, "getUserInfos");
-    const raw = this._displayInfoCache.getUserInfos(input);
+    const raw = this._displayInfoCache.getUserInfos(input, options);
     const result = new Map<string, UserDisplayInfo>();
     for (const [key, value] of raw) {
       result.set(key, mapUserDisplayInfo(value));
@@ -1013,9 +1017,12 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
    * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
    * 循环分批调用，而不是一次传入超大 key 集。
    */
-  getGroupInfos(groupIds: string[]): ReadonlyMap<string, GroupDisplayInfo> {
+  getGroupInfos(
+    groupIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): ReadonlyMap<string, GroupDisplayInfo> {
     const input = this.normalizeDisplayInfoKeys(groupIds, "getGroupInfos");
-    const raw = this._displayInfoCache.getGroupInfos(input);
+    const raw = this._displayInfoCache.getGroupInfos(input, options);
     const result = new Map<string, GroupDisplayInfo>();
     for (const [key, value] of raw) {
       result.set(key, mapGroupDisplayInfo(value));
@@ -1030,9 +1037,12 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
    * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
    * 循环分批调用，而不是一次传入超大 key 集。
    */
-  getOrgInfos(orgIds: string[]): ReadonlyMap<string, OrgDisplayInfo> {
+  getOrgInfos(
+    orgIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): ReadonlyMap<string, OrgDisplayInfo> {
     const input = this.normalizeDisplayInfoKeys(orgIds, "getOrgInfos");
-    const raw = this._displayInfoCache.getOrgInfos(input);
+    const raw = this._displayInfoCache.getOrgInfos(input, options);
     const result = new Map<string, OrgDisplayInfo>();
     for (const [key, value] of raw) {
       result.set(key, mapOrgDisplayInfo(value));
@@ -1047,9 +1057,13 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
    * 时抛 `ValidationError`，错误码为 `INVALID_ARGUMENT`。调用方应按该上限
    * 循环分批调用，而不是一次传入超大 key 集。
    */
-  getTagInfos(orgId: string, tagIds: string[]): ReadonlyMap<string, TagDisplayInfo> {
+  getTagInfos(
+    orgId: string,
+    tagIds: string[],
+    options: DisplayInfoReadOptions = {},
+  ): ReadonlyMap<string, TagDisplayInfo> {
     const input = this.normalizeDisplayInfoKeys(tagIds, "getTagInfos");
-    const raw = this._displayInfoCache.getTagInfos(orgId, input);
+    const raw = this._displayInfoCache.getTagInfos(orgId, input, options);
     const result = new Map<string, TagDisplayInfo>();
     for (const [key, value] of raw) {
       result.set(key, mapTagDisplayInfo(value));
@@ -1059,7 +1073,11 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
 
   private normalizeDisplayInfoKeys(
     keys: string[],
-    action: "getUserInfos" | "getGroupInfos" | "getOrgInfos" | "getTagInfos",
+    action:
+      | "getUserInfos"
+      | "getGroupInfos"
+      | "getOrgInfos"
+      | "getTagInfos",
   ): string[] {
     return normalizeDisplayInfoKeys(keys, action, this._batchMaxLimit);
   }
