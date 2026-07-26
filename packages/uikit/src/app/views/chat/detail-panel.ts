@@ -16,8 +16,9 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
   const requestId = ++app.chatState.detailRequestId;
 
   try {
-    // 触发群信息后台缓存拉取（非阻塞）
-    app.client.getGroupInfos([groupId]);
+    // 群资料变更不向全部成员主动广播；显式查看详情时绕过 TTL 强制后台刷新。
+    // 方法同步返回当前缓存，服务端结果到达后由 display:updated 刷新本面板和其它可见视图。
+    app.client.getGroupInfos([groupId], { forceRefresh: true });
     // 三个独立请求并行执行，比串行节省约 2 个 RTT
     const [firstMemberPage, favoritePage, muted] = await Promise.all([
       app.client.getGroupMembers(groupId, { limit: APP_CONFIG.list.pageSize }),

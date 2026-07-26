@@ -426,6 +426,12 @@ function openConversationShell(
     app.client.clearUnread(conversation.target).catch(() => {});
   }
 
+  // 群资料变更不向全部成员主动广播；用户显式进入群聊时绕过 TTL 强制后台刷新，
+  // 返回后由 display:updated 统一重绘当前标题、会话列表和已打开的详情面板。
+  if (conversation.kind === "group") {
+    app.client.getGroupInfos([conversation.id], { forceRefresh: true });
+  }
+
   renderConversationList(app);
   updateChatHeaderTitle(app, conversation, conv);
   app.$("chat-header").classList.remove("hidden");

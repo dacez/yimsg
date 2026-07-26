@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-26。
+> 最后复核：2026-07-27。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -512,6 +512,9 @@ openConversation(conv):
   currentConvKey = convKey
   client.clearUnread(target)                          // 清未读 + 通知服务端
   setNavBadge(...)                                 // 更新导航栏红点
+  if descriptor.kind == group:
+    client.getGroupInfos([descriptor.id], { forceRefresh: true })
+                                                    // 同步返回缓存，并异步强制刷新群资料
 
   设置 #chat-title、显示 #chat-header / #message-input-area
   applyConversationGuards()                        // 若当前单聊已被我屏蔽，则禁用输入区
@@ -523,7 +526,10 @@ openConversation(conv):
   scrollToBottom()
 ```
 
-补充约束：上面这条 `clearUnread(target)` 只属于“用户真正打开会话”的路径。桌面布局下，当前 chat 视图可见时仍允许自动清当前会话未读；mobile 布局下只有 `#view-chat.mobile-showing-chat` 时才允许自动清未读，若只是停留在会话列表，不应因为保留了 `currentConvKey` 就自动消红点。
+补充约束：
+
+- 上面这条 `clearUnread(target)` 只属于“用户真正打开会话”的路径。桌面布局下，当前 chat 视图可见时仍允许自动清当前会话未读；mobile 布局下只有 `#view-chat.mobile-showing-chat` 时才允许自动清未读，若只是停留在会话列表，不应因为保留了 `currentConvKey` 就自动消红点。
+- 群头像和群名更新不向全部成员主动广播，普通会话列表允许继续显示 TTL 内的旧缓存。用户明确进入群聊时，必须调用 `getGroupInfos([groupId], { forceRefresh: true })`；Instant 模式更新内存 cache，Persistent 模式先更新本地数据库再更新 cache，随后通过 `display:updated` 刷新当前会话标题、会话列表和已打开的群详情。
 
 #### 发送消息流程
 
@@ -675,7 +681,8 @@ showUserDetail(uid):
 ```
 showGroupDetail(groupId):
   requestId = ++detailRequestId
-  display = client.getGroupInfos([groupId])
+  display = client.getGroupInfos([groupId], { forceRefresh: true })
+                                                    // 立即读取缓存，同时异步强制刷新群资料
   memberPage = await client.getGroupMembers(groupId, { limit: list.pageSize })
   mutePage = await client.getMutelist({ groupId, limit: 1 })
 
@@ -686,6 +693,8 @@ showGroupDetail(groupId):
 
   if requestId !== detailRequestId → return        // 被新请求覆盖，丢弃
 ```
+
+打开群详情与重新进入群聊遵循相同的群资料按需刷新策略。首次渲染可以使用当前缓存；后台强制刷新完成后，`display:updated` 必须重绘群详情、当前会话标题和会话列表。刷新失败时保留缓存内容并按统一后台加载错误策略处理。
 
 **添加 / 移出群成员：**
 

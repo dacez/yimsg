@@ -1,7 +1,7 @@
 import { test, expect } from './test-fixtures';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { uniqueUser, register, addFriend, sendMessage, expectMessage, openConversation, loginSeedUser, seedPrefix } from './helpers';
+import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openConversation, loginSeedUser, seedPrefix } from './helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -339,13 +339,15 @@ test.describe('Group Chat', () => {
     await ctx2.close();
   });
 
-  test('update group avatar as owner', async ({ browser }) => {
+  test('group avatar refreshes when a member re-enters the chat or opens group detail', async ({ browser }) => {
     const owner = uniqueUser('ga_o');
     const member = uniqueUser('ga_m');
     const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
     const page1 = await ctx1.newPage();
     const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
 
     await register(page1, owner, password, 'AvatarOwner');
     await register(page2, member, password, 'AvatarMember');
@@ -362,7 +364,21 @@ test.describe('Group Chat', () => {
     await cb.check();
     await page1.click('#modal-create');
 
-    // Open group and toggle detail panel
+    // 两个成员页面都先进入群聊，缓存群头像的旧字母占位。
+    await page2.click('[data-view="chat"]');
+    const reenterGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
+    await expect(reenterGroupConv).toBeVisible({ timeout: 15_000 });
+    await reenterGroupConv.click();
+    await expect(reenterGroupConv.locator('.avatar img')).toHaveCount(0);
+
+    await login(page3, member, password);
+    await page3.click('[data-view="chat"]');
+    const detailGroupConv = page3.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
+    await expect(detailGroupConv).toBeVisible({ timeout: 15_000 });
+    await detailGroupConv.click();
+    await expect(detailGroupConv.locator('.avatar img')).toHaveCount(0);
+
+    // 群主打开群详情并上传新头像。
     await page1.click('[data-view="chat"]');
     const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
     await expect(groupConv).toBeVisible({ timeout: 5000 });
@@ -389,8 +405,25 @@ test.describe('Group Chat', () => {
     const src = await avatarImg.getAttribute('src');
     expect(src).toContain('/media/');
 
+    // 不主动广播到所有群成员；成员重新进入群聊时必须 force refresh 并回写会话列表。
+    await page2.click('[data-view="settings"]');
+    await openConversation(page2, 'AvatarGroup');
+    const reenteredAvatar = reenterGroupConv.locator('.avatar img');
+    await expect(reenteredAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(reenteredAvatar).toHaveAttribute('src', /\/media\//);
+
+    // 另一个成员保持旧会话不重进，主动打开群详情也必须 force refresh，
+    // 随后通过 display:updated 同时刷新详情与会话列表。
+    await page3.click('#toggle-detail');
+    const memberDetailAvatar = page3.locator('#group-avatar-display img');
+    await expect(memberDetailAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(memberDetailAvatar).toHaveAttribute('src', /\/media\//);
+    await expect(detailGroupConv.locator('.avatar img')).toBeVisible({ timeout: 10_000 });
+    await expect(detailGroupConv.locator('.avatar img')).toHaveAttribute('src', /\/media\//);
+
     await ctx1.close();
     await ctx2.close();
+    await ctx3.close();
   });
 
   test('ordinary member adds own friend but cannot remove group members', async ({ browser }) => {
