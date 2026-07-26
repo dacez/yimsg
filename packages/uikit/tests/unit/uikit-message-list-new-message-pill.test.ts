@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MSG_TYPE_SYSTEM } from '@yimsg/sdk';
 import type { ConversationTarget, Message } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
-import { createMessageWindow } from '../../src/app/views/chat/message-page';
+import { createMessageWindow, setInitialMessagePage, type MessagePageResultLike } from '../../src/app/views/chat/message-page';
 import {
   isNearBottom,
   refreshOpenConversation,
@@ -22,6 +22,7 @@ interface FakeNode {
   dataset: Record<string, string>;
   children: FakeNode[];
   parentElement: FakeNode | null;
+  ownerDocument: { createElement(): FakeNode } | null;
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
@@ -51,6 +52,7 @@ function createFakeElement(): FakeNode {
     dataset: {} as Record<string, string>,
     children: [] as FakeNode[],
     parentElement: null as FakeNode | null,
+    ownerDocument: null as { createElement(): FakeNode } | null,
     scrollTop: 0,
     scrollHeight: 0,
     clientHeight: 0,
@@ -88,6 +90,8 @@ function createFakeElement(): FakeNode {
     get: () => html,
     set: (value: string) => { html = value; if (value === '') node.children.length = 0; },
   });
+  // applyRender 用 (scrollElement/contentElement).ownerDocument.createElement 造边界提示节点。
+  node.ownerDocument = { createElement: () => createFakeElement() };
   return node;
 }
 
@@ -111,6 +115,18 @@ function systemMessage(seq: number): Message {
     body: {} as Message['body'],
     sentAt: seq,
   } as Message;
+}
+
+function pageResult(messages: Message[], opts: { hasMoreBackward?: boolean; hasMoreForward?: boolean } = {}): MessagePageResultLike {
+  return {
+    messages,
+    page: {
+      startCursor: messages.length ? `s-${messages[0].seq}` : '',
+      endCursor: messages.length ? `e-${messages[messages.length - 1].seq}` : '',
+      hasMoreBackward: opts.hasMoreBackward ?? false,
+      hasMoreForward: opts.hasMoreForward ?? false,
+    },
+  };
 }
 
 function createTestApp() {
@@ -165,7 +181,7 @@ function createTestApp() {
     chatState: {
       currentConvKey: 'u:2',
       messageWindow: createMessageWindow(5),
-      currentMessages: [systemMessage(1)],
+      currentMessages: [] as Message[],
       loadingMoreMessages: false,
       loadingNewerMessages: false,
       messagePageHasOlder: false,
@@ -179,6 +195,11 @@ function createTestApp() {
       expandedQuoteMessageIds: new Set<string>(),
     },
   } as unknown as AppInstance;
+
+  // 通过真实的 setInitialMessagePage 灌入窗口，而不是直接手写 currentMessages：
+  // markMessagesHasNewer 等函数会用窗口投影覆盖 currentMessages，直接手写会在
+  // 第一次 syncFromWindow 时被空窗口悄悄冲掉。
+  setInitialMessagePage(app, pageResult([systemMessage(1)]));
 
   return { app, messageList, getMessages, clearUnread };
 }
