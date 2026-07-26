@@ -1222,6 +1222,51 @@ describe("YimsgClient", () => {
     expect(result.messages[0].body.recall?.text).toContain("对方撤回了一条消息");
   });
 
+  it("getMessagesByIds 按 msg_ids 批量拉取（不分页），用于查看转发消息/引用消息的原始内容", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+
+    transportSend.mockResolvedValueOnce({
+      ok: true,
+      messages: [
+        {
+          uid: 100,
+          seq: 5,
+          msg_id: "5",
+          from_uid: "200",
+          to_uid: "100",
+          group_id: "0",
+          msg_type: MSG_TYPE_TEXT,
+          body: { text: { text: "hello" } },
+          send_time: 5000,
+        },
+      ],
+    });
+
+    // "missing" 对应一条已被物理清理的消息：服务端不返回该条，调用方需按 messageId 自行对齐。
+    const messages = await client.getMessagesByIds(["5", "missing"]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ messageId: "5", senderId: "200" });
+
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect(sent).toMatchObject({ action: "getMessages", msg_ids: ["5", "missing"] });
+    expect(sent.page).toBeUndefined();
+  });
+
+  it("getMessagesByIds 传空数组时直接返回空数组，不发起请求", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+    await client.startSession({ storage: "instant" });
+
+    const callsBefore = transportSend.mock.calls.length;
+    const messages = await client.getMessagesByIds([]);
+
+    expect(messages).toEqual([]);
+    expect(transportSend.mock.calls.length).toBe(callsBefore);
+  });
+
   it("searchMessages 未传 target 时不携带会话过滤，命中跨会话结果", async () => {
     const { client, transportSend } = setupClientWithMocks();
     await client.authenticate("tok123");

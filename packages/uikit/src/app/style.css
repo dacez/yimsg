@@ -313,8 +313,13 @@ to{background-color:transparent}
 .message-action-item{display:block;width:100%;padding:8px 10px;border-radius:8px;text-align:left;font-size:13px;color:#111827}
 .message-action-item:hover{background:#f3f4f6}
 .message-quote-block{padding:6px 8px;border-left:3px solid #d1d5db;background:#f9fafb;border-radius:6px;margin-bottom:6px;font-size:12px;color:#6b7280;cursor:pointer}
-.quote-detail{margin-top:4px;padding-top:4px;border-top:1px solid #e5e7eb;white-space:pre-wrap;word-break:break-word;color:#374151}
-.message-forward-block{padding:4px 8px;background:#eff6ff;color:#1d4ed8;border-radius:6px;margin-bottom:6px;font-size:12px}
+.message-forward-block{padding:4px 8px;background:#eff6ff;color:#1d4ed8;border-radius:6px;margin-bottom:6px;font-size:12px;cursor:pointer}
+.message-detail-list{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
+.message-detail-item{padding:8px 10px;border:1px solid var(--border);border-radius:8px}
+.message-detail-item-header{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#6b7280;margin-bottom:4px}
+.message-detail-item-name{font-weight:600;color:#111827}
+.message-detail-missing{color:#9ca3af;font-size:12px;font-style:italic}
+.message-detail-truncated{margin-top:8px;font-size:12px;color:#9ca3af;text-align:center}
 .message-markdown code{background:#f3f4f6;border-radius:4px;padding:0 4px}
 .message-markdown h1,.message-markdown h2,.message-markdown h3,.message-markdown h4{margin:4px 0;line-height:1.3;font-weight:600}
 .message-markdown h1{font-size:20px}

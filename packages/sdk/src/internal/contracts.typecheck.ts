@@ -109,6 +109,8 @@ void assertPublicMessageShape;
 async function assertPublicPageApiNames() {
   await client.getMessages({ target, limit: 20 });
   await client.getMessages({ target, backward: true, limit: 20 });
+  const byIds: ReadonlyArray<import("../types").Message> = await client.getMessagesByIds(["1"]);
+  void byIds;
   await client.getConversations({ cursor: "", limit: 20 });
   await client.getContacts({ cursor: "", limit: 20 });
   await client.getBlocklist({ cursor: "", limit: 20 });

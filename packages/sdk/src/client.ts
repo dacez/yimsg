@@ -920,6 +920,26 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     }
   }
 
+  // 按 msg_id 批量拉取消息（不分页），用于查看转发消息/引用消息里被引用的原始消息完整内容；
+  // 未命中的 msg_id（已被物理清理等）在返回数组里直接缺省，调用方需按 messageId 自行对齐。
+  async getMessagesByIds(msgIds: readonly string[]): Promise<ReadonlyArray<PublicMessage>> {
+    this.requireAuthenticated("getMessagesByIds");
+    if (msgIds.length === 0) return [];
+    try {
+      const result = await this.runtime
+        .requireSessionInitialized("getMessagesByIds")
+        .get_messages({ msg_ids: [...msgIds] });
+      return wrapMessagePage(result).messages;
+    } catch (error) {
+      throw wrapError(
+        error,
+        new RequestError("REQUEST_FAILED", "批量拉取消息失败", {
+          context: "getMessagesByIds",
+        }),
+      );
+    }
+  }
+
   async searchMessages(params: {
     keyword: string;
     target?: ConversationTarget;

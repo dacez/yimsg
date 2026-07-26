@@ -17,6 +17,7 @@ import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { canAutoClearUnreadCurrentConversation } from './helpers';
 import { showMessageActionMenu } from './action-menu';
+import { showForwardDetailModal, showQuoteDetailModal } from './message-detail';
 import {
   currentConversation,
   formatForwardBlockText,
@@ -260,7 +261,7 @@ export function mediaUrl(kind: 'image' | 'file', mediaId: string): string {
   return `/media/${kind}/${mediaId}`;
 }
 
-function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) {
+export function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) {
   const details = app.client.describeMessage(msg);
 
   if (msg.messageType === MSG_TYPE_IMAGE) {
@@ -320,14 +321,18 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
   }
 
   if (msg.messageType === MSG_TYPE_FORWARD && details.forward) {
+    const forward = details.forward;
     const forwardBlock = app.dom.ownerDocument.createElement('div');
     forwardBlock.className = 'message-forward-block';
-    forwardBlock.textContent = formatForwardBlockText(app, details.forward.messageIds.length);
+    forwardBlock.textContent = formatForwardBlockText(app, forward.messageIds.length);
+    forwardBlock.addEventListener('click', () => {
+      void showForwardDetailModal(app, forward);
+    });
     bubble.appendChild(forwardBlock);
-    if (details.forward.title) {
+    if (forward.title) {
       const title = app.dom.ownerDocument.createElement('div');
       title.className = 'message-forward-title';
-      title.textContent = details.forward.title;
+      title.textContent = forward.title;
       bubble.appendChild(title);
     }
     return;
@@ -338,21 +343,9 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
     const quoteBlock = app.dom.ownerDocument.createElement('div');
     quoteBlock.className = 'message-quote-block';
     quoteBlock.textContent = quote.preview;
-    quoteBlock.style.cursor = 'pointer';
     quoteBlock.addEventListener('click', () => {
-      if (app.chatState.expandedQuoteMessageIds.has(msg.messageId)) {
-        app.chatState.expandedQuoteMessageIds.delete(msg.messageId);
-      } else {
-        app.chatState.expandedQuoteMessageIds.add(msg.messageId);
-      }
-      renderMessages(app);
+      void showQuoteDetailModal(app, quote);
     });
-    if (app.chatState.expandedQuoteMessageIds.has(msg.messageId)) {
-      const detail = app.dom.ownerDocument.createElement('div');
-      detail.className = 'quote-detail';
-      detail.textContent = quote.preview;
-      quoteBlock.appendChild(detail);
-    }
     bubble.appendChild(quoteBlock);
     const reply = app.dom.ownerDocument.createElement('div');
     reply.textContent = quote.text;

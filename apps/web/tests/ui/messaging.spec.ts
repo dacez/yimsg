@@ -361,13 +361,14 @@ test.describe('Messaging', () => {
     await expect(page1.locator('.message-quote-block').last()).toContainText('origin message');
     await expectMessage(page1, 'reply with quote');
 
-    // 点击引用块应内联展开详细信息，而不是弹窗
+    // 点击引用块应打开弹窗，展示被引用原始消息的完整内容。
     await page1.locator('.message-quote-block').last().click();
-    await expect(page1.locator('.quote-detail').last()).toBeVisible();
-    await expect(page1.locator('.quote-detail').last()).toContainText('origin message');
-    // 再次点击应收起
-    await page1.locator('.message-quote-block').last().click();
-    await expect(page1.locator('.quote-detail')).toHaveCount(0);
+    const modalOverlay = page1.locator('#modal-overlay');
+    await expect(modalOverlay).not.toHaveClass(/hidden/);
+    await expect(page1.locator('#modal-content .message-bubble').last()).toContainText('origin message');
+    // 关闭弹窗。
+    await page1.locator('#modal-content .btn-secondary').click();
+    await expect(modalOverlay).toHaveClass(/hidden/);
 
     await ctx1.close();
     await ctx2.close();
@@ -399,6 +400,14 @@ test.describe('Messaging', () => {
 
     await expect(page1.locator('.message-forward-block').last()).toContainText('转发 1 条');
     await expectMessage(page1, '来自转发');
+
+    // 点击转发块应打开弹窗，展示被转发原始消息的完整内容。
+    await page1.locator('.message-forward-block').last().click();
+    const modalOverlay = page1.locator('#modal-overlay');
+    await expect(modalOverlay).not.toHaveClass(/hidden/);
+    await expect(page1.locator('#modal-content .message-bubble').last()).toContainText('origin for forward');
+    await page1.locator('#modal-content .btn-secondary').click();
+    await expect(modalOverlay).toHaveClass(/hidden/);
 
     await ctx1.close();
     await ctx2.close();

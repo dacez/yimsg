@@ -236,6 +236,7 @@ interface ConversationDescriptor {
 | `recallMessage` | `(message) => Promise<void>` | 撤回一条自己发送的消息 |
 | `deleteMessage` | `(messageId) => Promise<number>` | 删除当前用户收件箱中的消息，返回服务端 tombstone seq |
 | `getMessages` | `({ target, cursor?, backward?, around?, limit? }) => Promise<MessagePage>` | 拉取消息分页（旧→新；空游标+`backward` 取最新页；`around` 传 msg_id 居中定位），返回 `{ messages, page }` |
+| `getMessagesByIds` | `(msgIds: readonly string[]) => Promise<ReadonlyArray<Message>>` | 按 msg_id 批量拉取消息（不分页），用于查看转发消息/引用消息里被引用的原始消息完整内容；未命中的 msg_id（已被物理清理等）在返回数组里直接缺省，调用方需按 `messageId` 自行对齐；`msgIds` 为空数组直接返回 `[]`，不发请求 |
 | `searchMessages` | `({ keyword, target?, cursor?, backward?, limit? }) => Promise<MessagePage>` | 按关键字（`search_text` LIKE 匹配）搜索消息，`target` 不填即跨全部会话全局搜索；展示序、keyset 分页与 `getMessages` 一致（旧→新）；persistent 模式直接查本地同步副本，不请求服务端，因此只能搜到该客户端本地已同步/留存范围内的消息，instant 模式请求服务端；`keyword` 为空（含全空白）同步抛 `ValidationError`（两种模式行为一致，不依赖服务端校验，避免 persistent 模式本地 `LIKE '%%'` 静默匹配全部消息） |
 | `clearUnread` | `(target) => Promise<void>` | 清除会话未读 |
 

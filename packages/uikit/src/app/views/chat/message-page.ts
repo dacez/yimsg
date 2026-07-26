@@ -90,7 +90,6 @@ export function resetMessagePage(app: AppInstance): number {
   app.chatState.pendingNewMessageCount = 0;
   app.chatState.selectedMessageIds.clear();
   app.chatState.pendingMessageIds.clear();
-  app.chatState.expandedQuoteMessageIds.clear();
   return ++app.chatState.messagePageRequestId;
 }
 
