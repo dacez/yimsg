@@ -84,7 +84,7 @@ func (s *AppState) GetGroupMembers(info *BaseInfo, req *pb.GetGroupMembersReques
 
 	parts, err := decodeCursor(page.cursor)
 	if err != nil {
-		return toGetGroupMembersResponse(appmsg.ErrInvalidArgument(reqID, "invalid cursor"))
+		return toGetGroupMembersResponse(appmsg.ErrInvalidArgument(reqID, "invalid_cursor"))
 	}
 	// 群成员展示通道 keyset 分页：role 倒序、uid 升序。
 	members, err := groupStore.ListMembersPage(groupID, parts, page.backward, page.limit+1)
@@ -146,10 +146,10 @@ func (s *AppState) UpdateGroupInfo(info *BaseInfo, req *pb.UpdateGroupInfoReques
 		return toUpdateGroupInfoResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if groupInfo == nil {
-		return toUpdateGroupInfoResponse(appmsg.ErrNotFound(reqID, "group not found"))
+		return toUpdateGroupInfoResponse(appmsg.ErrNotFound(reqID, "group_not_found"))
 	}
 	if groupInfo.OwnerUID != uid {
-		return toUpdateGroupInfoResponse(appmsg.ErrForbidden(reqID, "only the group owner can update group info"))
+		return toUpdateGroupInfoResponse(appmsg.ErrForbidden(reqID, "group_owner_required"))
 	}
 
 	ok, err := groupStore.UpdateInfo(groupID, req.GetName(), req.GetAvatar(), auth.NowMs())
@@ -157,7 +157,7 @@ func (s *AppState) UpdateGroupInfo(info *BaseInfo, req *pb.UpdateGroupInfoReques
 		return toUpdateGroupInfoResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toUpdateGroupInfoResponse(appmsg.ErrNotFound(reqID, "group not found"))
+		return toUpdateGroupInfoResponse(appmsg.ErrNotFound(reqID, "group_not_found"))
 	}
 
 	return toUpdateGroupInfoResponse(appmsg.OKEmpty(reqID))
@@ -178,7 +178,7 @@ func (s *AppState) AddGroupMember(info *BaseInfo, req *pb.AddGroupMemberRequest)
 		return toAddGroupMemberResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toAddGroupMemberResponse(appmsg.ErrAlreadyExists(reqID, "member already exists"))
+		return toAddGroupMemberResponse(appmsg.ErrAlreadyExists(reqID, "member_already_exists"))
 	}
 
 	// System message
@@ -206,7 +206,7 @@ func (s *AppState) RemoveGroupMember(info *BaseInfo, req *pb.RemoveGroupMemberRe
 		return toRemoveGroupMemberResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toRemoveGroupMemberResponse(appmsg.ErrNotFound(reqID, "member not found"))
+		return toRemoveGroupMemberResponse(appmsg.ErrNotFound(reqID, "member_not_found"))
 	}
 
 	// System message to remaining + removed member

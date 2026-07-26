@@ -188,7 +188,7 @@ func TestAddGroupMemberDuplicate(t *testing.T) {
 	if isOK(addResp) {
 		t.Error("duplicate member should fail")
 	}
-	if errMsg(addResp) != "member already exists" {
+	if errMsg(addResp) != "member_already_exists" {
 		t.Errorf("got error %q", errMsg(addResp))
 	}
 }
@@ -295,7 +295,7 @@ func TestRemoveGroupMemberNotFound(t *testing.T) {
 	if isOK(removeResp) {
 		t.Error("nonexistent member should fail")
 	}
-	if errMsg(removeResp) != "member not found" {
+	if errMsg(removeResp) != "member_not_found" {
 		t.Errorf("got error %q", errMsg(removeResp))
 	}
 }

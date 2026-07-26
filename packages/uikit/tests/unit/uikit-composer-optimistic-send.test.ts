@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT, RequestError } from '@yimsg/sdk';
+import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
 import { createMessageWindow } from '../../src/app/views/chat/message-page';
 import { sendMessage, uploadAndSend } from '../../src/app/views/chat/composer';
@@ -179,75 +179,5 @@ describe('composer 乐观发送', () => {
     expect(app.chatState.currentMessages).toHaveLength(0);
     expect(app.chatState.pendingMessageIds.size).toBe(0);
     expect(showToast).toHaveBeenCalledOnce();
-  });
-});
-
-function createGroupApp(sendText: (...args: unknown[]) => Promise<unknown>) {
-  const renderMessages = vi.fn();
-  const scrollToBottom = vi.fn();
-  const showToast = vi.fn();
-  const input = { value: '被移出后还敢发', disabled: false };
-
-  const app = {
-    chatState: {
-      currentConvKey: 'g:5',
-      messageWindow: createMessageWindow(3),
-      currentMessages: [] as unknown[],
-      composerMentions: new Map<string, string>(),
-      composerMentionAll: false,
-      composerMarkdownMode: false,
-      composerQuote: null,
-      pendingMessageIds: new Set<string>(),
-      selectedMessageIds: new Set<string>(),
-    },
-    client: {
-      describeConversation: () => ({ target: { groupId: '5' }, kind: 'group', id: '5' }),
-      validateTextMessage: () => {},
-      getSessionSnapshot: () => ({ currentUid: '1' }),
-      sendText,
-    },
-    views: { chat: { renderMessages, scrollToBottom } },
-    showToast,
-    t: (key: string) => key,
-    $: (id: string) => (id === 'msg-input' ? input : ({} as unknown)),
-  };
-
-  return { app: app as unknown as AppInstance, input, showToast };
-}
-
-describe('composer 群聊被移出后的发送失败', () => {
-  it('非群员发送失败：提示明确本地化文案，而非拼接服务端原文', async () => {
-    const forbidden = new RequestError('REQUEST_FAILED', '非群员', {
-      details: { serverErrorCode: 'FORBIDDEN' },
-    });
-    const { app, showToast } = createGroupApp(() => Promise.reject(forbidden));
-
-    await sendMessage(app);
-
-    expect(showToast).toHaveBeenCalledWith('chat.notGroupMemberError', 'error');
-  });
-
-  it('非群员上传失败：同样提示明确本地化文案', async () => {
-    const forbidden = new RequestError('REQUEST_FAILED', '非群员', {
-      details: { serverErrorCode: 'FORBIDDEN' },
-    });
-    const { app, showToast } = createGroupApp(() => Promise.reject(forbidden));
-    (app.client as unknown as { uploadFile: () => Promise<unknown> }).uploadFile = () => Promise.reject(forbidden);
-
-    const file = new File(['fake-file-bytes'], 'doc.pdf', { type: 'application/pdf' });
-    await uploadAndSend(app, file, 'file');
-
-    expect(showToast).toHaveBeenCalledWith('chat.notGroupMemberError', 'error');
-  });
-
-  it('私聊 FORBIDDEN（如对方拉黑）不误判为"非群员"，仍走原有拼接提示', async () => {
-    const forbidden = new RequestError('REQUEST_FAILED', '对方暂不接受私聊', {
-      details: { serverErrorCode: 'FORBIDDEN' },
-    });
-    const { app, showToast } = createApp(() => Promise.reject(forbidden));
-
-    await sendMessage(app);
-
-    expect(showToast).toHaveBeenCalledWith('chat.failedToSend对方暂不接受私聊', 'error');
   });
 });

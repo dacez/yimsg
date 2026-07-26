@@ -21,10 +21,10 @@ func (s *AppState) setMuteConversation(info *BaseInfo, toUID, groupID int64, mut
 	reqID := info.RequestID
 	uid := info.UID
 	if (toUID == 0 && groupID == 0) || (toUID > 0 && groupID > 0) {
-		return appmsg.ErrInvalidArgument(reqID, "to_uid or group_id required")
+		return appmsg.ErrInvalidArgument(reqID, "target_required")
 	}
 	if toUID == uid {
-		return appmsg.ErrInvalidArgument(reqID, "cannot mutelist yourself")
+		return appmsg.ErrInvalidArgument(reqID, "cannot_mute_self")
 	}
 
 	if groupID > 0 {
@@ -33,7 +33,7 @@ func (s *AppState) setMuteConversation(info *BaseInfo, toUID, groupID int64, mut
 			return appmsg.ErrInternal(reqID, err.Error())
 		}
 		if !ok {
-			return appmsg.ErrForbidden(reqID, "not a group member")
+			return appmsg.ErrForbidden(reqID, "not_a_group_member")
 		}
 	} else {
 		profile, err := s.UserStore(toUID).GetInfo(toUID)
@@ -41,7 +41,7 @@ func (s *AppState) setMuteConversation(info *BaseInfo, toUID, groupID int64, mut
 			return appmsg.ErrInternal(reqID, err.Error())
 		}
 		if profile == nil {
-			return appmsg.ErrNotFound(reqID, "user not found")
+			return appmsg.ErrNotFound(reqID, "user_not_found")
 		}
 	}
 
@@ -72,7 +72,7 @@ func (s *AppState) GetMutelist(info *BaseInfo, req *pb.GetMutelistRequest) *pb.G
 	uid := info.UID
 	status, ok := optionalMutelistStatus(req.Status)
 	if !ok {
-		return toGetMutelistResponse(appmsg.ErrInvalidArgument(reqID, "invalid mutelist status"))
+		return toGetMutelistResponse(appmsg.ErrInvalidArgument(reqID, "invalid_mutelist_status"))
 	}
 	var toUIDs, groupIDs []int64
 	for _, target := range req.GetTargets() {

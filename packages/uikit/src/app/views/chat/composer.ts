@@ -6,7 +6,6 @@ import type {
 } from '@yimsg/sdk';
 import {
   displayUserName,
-  isYimsgError,
   MSG_TYPE_FILE,
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
@@ -16,6 +15,7 @@ import {
 } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
+import { describeError } from '../../error-i18n';
 import { showGroupMemberPicker } from '../group-member-picker';
 import { currentConversation, quotePreview } from './helpers';
 import { mediaUrl } from './message-list';
@@ -152,29 +152,6 @@ export function applyConversationGuards(app: AppInstance) {
   app.$('message-input-area').classList.remove('is-blocked');
 }
 
-/** 发送/上传失败时判断是否是"已被移出群聊"：仅群聊目标 + 服务端 FORBIDDEN 才成立
- *（sendGroupMessage 里唯一的 Forbidden 分支就是非群员；私聊 FORBIDDEN 另有含义，如对方拉黑）。
- * 命中后提示完整本地化文案，不再把服务端中文原文拼进英文提示前缀。 */
-function isNotGroupMemberError(target: ConversationTarget, error: unknown): boolean {
-  const groupId = (target as { groupId?: string }).groupId;
-  if (!groupId) return false;
-  if (!isYimsgError(error) || error.kind !== 'request') return false;
-  return (error.details?.serverErrorCode as string | undefined) === 'FORBIDDEN';
-}
-
-function handleSendFailure(
-  app: AppInstance,
-  target: ConversationTarget,
-  error: unknown,
-  fallbackKey: 'chat.failedToSend' | 'chat.uploadFailedColon',
-) {
-  if (isNotGroupMemberError(target, error)) {
-    app.showToast(app.t('chat.notGroupMemberError'), 'error');
-    return;
-  }
-  app.showToast(app.t(fallbackKey) + (error as Error).message, 'error');
-}
-
 /** 取出仍留在文本里的待发送 @ 提及；手动删掉 "@昵称" 片段的会被过滤掉，不当成有效提及发送。 */
 function pendingMentionedUids(app: AppInstance, content: string): string[] {
   const result: string[] = [];
@@ -247,7 +224,7 @@ export async function sendMessage(app: AppInstance) {
     );
     clearComposerQuote(app);
   } catch (e) {
-    handleSendFailure(app, target, e, 'chat.failedToSend');
+    app.showToast(app.t('chat.failedToSend') + describeError(app, e), 'error');
   }
 }
 
@@ -272,7 +249,7 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
         },
       );
     } catch (e) {
-      handleSendFailure(app, target, e, 'chat.uploadFailedColon');
+      app.showToast(app.t('chat.uploadFailedColon') + describeError(app, e), 'error');
     } finally {
       URL.revokeObjectURL(previewUrl);
     }
@@ -289,7 +266,7 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
       },
     );
   } catch (e) {
-    handleSendFailure(app, target, e, 'chat.uploadFailedColon');
+    app.showToast(app.t('chat.uploadFailedColon') + describeError(app, e), 'error');
   }
 }
 

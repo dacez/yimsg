@@ -622,7 +622,7 @@ await client.updateRemark({ groupId }, '研发沟通');
 | `STORAGE_UNSUPPORTED` | 持久化存储不支持 |
 | `STORAGE_FAILED` | 持久化 DataGateway 初始化或读写失败 |
 
-服务端 WebSocket 失败响应会同时返回稳定 `error_code` 与可读 `error` 文案。SDK 保持自身错误类型不变，WebSocket action 失败仍抛 `RequestError`；服务端错误码保存在 `error.details.serverErrorCode`，调用方需要区分业务失败原因时优先读取该字段，不要依赖 `error.message` 文案。
+服务端 WebSocket 失败响应会同时返回稳定 `error_code` 与稳定的 snake_case 原因 token（`code=INTERNAL_ERROR` 时例外，token 位置可能是内部错误详情，仅供日志）。SDK 保持自身错误类型不变，WebSocket action 失败仍抛 `RequestError`；服务端错误码保存在 `error.details.serverErrorCode`，原因 token 就是 `error.message`。`error.message` 不是人类可读文案，UI 层必须按 `serverErrorCode` + `message` 在本地多语言文案表中查表展示（参见 `packages/uikit` 的 `describeError`），不能把它原样展示给用户。
 
 ---
 

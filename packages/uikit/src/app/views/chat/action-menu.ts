@@ -1,5 +1,6 @@
 import type { Message } from '@yimsg/sdk';
 import type { AppInstance } from '../../app-instance';
+import { describeError } from '../../error-i18n';
 import { setComposerQuote } from './composer';
 import { forwardMessages } from './forward';
 import { canRecallMessage } from './helpers';
@@ -28,7 +29,7 @@ export function showMessageActionMenu(app: AppInstance, anchor: HTMLElement, msg
     try {
       await app.client.recallMessage(msg);
     } catch (err) {
-      app.showToast(app.t('chat.recallFailed') + (err as Error).message, 'error');
+      app.showToast(app.t('chat.recallFailed') + describeError(app, err), 'error');
     }
   });
   menu.querySelector('[data-action="quote"]')?.addEventListener('click', () => {

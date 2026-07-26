@@ -12,7 +12,7 @@ func (s *AppState) Register(info *BaseInfo, req *pb.RegisterRequest) *pb.Registe
 	reqID := info.RequestID
 	username := req.GetUsername()
 	if username == "" {
-		return toRegisterResponse(appmsg.ErrInvalidArgument(reqID, "username is required"))
+		return toRegisterResponse(appmsg.ErrInvalidArgument(reqID, "username_required"))
 	}
 	hash, err := auth.HashPassword(req.GetPassword())
 	if err != nil {
@@ -28,7 +28,7 @@ func (s *AppState) Register(info *BaseInfo, req *pb.RegisterRequest) *pb.Registe
 		return toRegisterResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toRegisterResponse(appmsg.ErrAlreadyExists(reqID, "username already exists"))
+		return toRegisterResponse(appmsg.ErrAlreadyExists(reqID, "username_already_exists"))
 	}
 
 	// Step 2: create user
@@ -51,7 +51,7 @@ func (s *AppState) Login(info *BaseInfo, req *pb.LoginRequest) *pb.LoginResponse
 		return toLoginResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if uid == 0 {
-		return toLoginResponse(appmsg.ErrNotFound(reqID, "user not found"))
+		return toLoginResponse(appmsg.ErrNotFound(reqID, "user_not_found"))
 	}
 
 	// Step 2: verify password
@@ -61,10 +61,10 @@ func (s *AppState) Login(info *BaseInfo, req *pb.LoginRequest) *pb.LoginResponse
 		return toLoginResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if user == nil {
-		return toLoginResponse(appmsg.ErrNotFound(reqID, "user not found"))
+		return toLoginResponse(appmsg.ErrNotFound(reqID, "user_not_found"))
 	}
 	if !auth.VerifyPassword(req.GetPassword(), user.PasswordHash) {
-		return toLoginResponse(appmsg.ErrAuthFailed(reqID, "wrong password"))
+		return toLoginResponse(appmsg.ErrAuthFailed(reqID, "wrong_password"))
 	}
 
 	// Step 3: write user_session index
@@ -98,7 +98,7 @@ func (s *AppState) UpdateUserInfo(info *BaseInfo, req *pb.UpdateUserInfoRequest)
 		return toUpdateUserInfoResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if !ok {
-		return toUpdateUserInfoResponse(appmsg.ErrNotFound(reqID, "user not found"))
+		return toUpdateUserInfoResponse(appmsg.ErrNotFound(reqID, "user_not_found"))
 	}
 	// 昵称变化会影响组织边上的名字排序投影：按通讯录组织行找到所属组织逐个刷新并扇出。
 	if req.GetNickname() != "" {
@@ -116,10 +116,10 @@ func (s *AppState) UpdatePassword(info *BaseInfo, req *pb.UpdatePasswordRequest)
 		return toUpdatePasswordResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if user == nil {
-		return toUpdatePasswordResponse(appmsg.ErrNotFound(reqID, "user not found"))
+		return toUpdatePasswordResponse(appmsg.ErrNotFound(reqID, "user_not_found"))
 	}
 	if !auth.VerifyPassword(req.GetOldPassword(), user.PasswordHash) {
-		return toUpdatePasswordResponse(appmsg.ErrAuthFailed(reqID, "wrong old password"))
+		return toUpdatePasswordResponse(appmsg.ErrAuthFailed(reqID, "wrong_old_password"))
 	}
 
 	newHash, err := auth.HashPassword(req.GetNewPassword())

@@ -20,10 +20,10 @@ func (s *AppState) BlockUser(info *BaseInfo, req *pb.BlockUserRequest) *pb.Block
 	uid := info.UID
 	blockUID := req.GetUid()
 	if blockUID == 0 {
-		return toBlockUserResponse(appmsg.ErrInvalidArgument(reqID, "uid required"))
+		return toBlockUserResponse(appmsg.ErrInvalidArgument(reqID, "uid_required"))
 	}
 	if uid == blockUID {
-		return toBlockUserResponse(appmsg.ErrInvalidArgument(reqID, "cannot block yourself"))
+		return toBlockUserResponse(appmsg.ErrInvalidArgument(reqID, "cannot_block_self"))
 	}
 
 	profile, err := s.UserStore(blockUID).GetInfo(blockUID)
@@ -31,7 +31,7 @@ func (s *AppState) BlockUser(info *BaseInfo, req *pb.BlockUserRequest) *pb.Block
 		return toBlockUserResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if profile == nil {
-		return toBlockUserResponse(appmsg.ErrNotFound(reqID, "user not found"))
+		return toBlockUserResponse(appmsg.ErrNotFound(reqID, "user_not_found"))
 	}
 
 	now := auth.NowMs()
@@ -53,7 +53,7 @@ func (s *AppState) UnblockUser(info *BaseInfo, req *pb.UnblockUserRequest) *pb.U
 	uid := info.UID
 	blockUID := req.GetUid()
 	if blockUID == 0 {
-		return toUnblockUserResponse(appmsg.ErrInvalidArgument(reqID, "uid required"))
+		return toUnblockUserResponse(appmsg.ErrInvalidArgument(reqID, "uid_required"))
 	}
 	seq, _, err := s.BlocklistStore(uid).Delete(uid, blockUID, auth.NowMs())
 	if err != nil {
@@ -85,7 +85,7 @@ func (s *AppState) GetBlocklist(info *BaseInfo, req *pb.GetBlocklistRequest) *pb
 	uid := info.UID
 	status, ok := optionalBlocklistStatus(req.Status)
 	if !ok {
-		return toGetBlocklistResponse(appmsg.ErrInvalidArgument(reqID, "invalid blocklist status"))
+		return toGetBlocklistResponse(appmsg.ErrInvalidArgument(reqID, "invalid_blocklist_status"))
 	}
 	filter := dal.BlocklistFilter{Status: status, UIDs: req.GetUids()}
 	page := parsePageQuery(req.GetPage(), s.MaxBatchLimit())

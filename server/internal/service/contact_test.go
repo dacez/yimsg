@@ -94,7 +94,7 @@ func TestAcceptFriendNoPending(t *testing.T) {
 	if isOK(resp) {
 		t.Error("accept without pending should fail")
 	}
-	if errMsg(resp) != "no pending request" {
+	if errMsg(resp) != "no_pending_request" {
 		t.Errorf("got error %q", errMsg(resp))
 	}
 }

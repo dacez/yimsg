@@ -1,4 +1,5 @@
 import type { AppInstance } from '../app-instance';
+import { describeError } from '../error-i18n';
 import { refreshVisibleViews } from '../view-refresh';
 
 export function createSettingsView(app: AppInstance) {
@@ -12,7 +13,7 @@ export function createSettingsView(app: AppInstance) {
       renderSettings();
       app.showToast(app.t('settings.profileUpdated'), 'success');
     } catch (e) {
-      app.showToast(app.t('settings.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('settings.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -24,7 +25,7 @@ export function createSettingsView(app: AppInstance) {
       await app.client.updatePassword(oldPwd, newPwd);
       app.showToast(app.t('settings.passwordChanged'), 'success');
     } catch (e) {
-      app.showToast(app.t('settings.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('settings.failed') + describeError(app, e), 'error');
     }
   }
 
@@ -70,7 +71,7 @@ export function createSettingsView(app: AppInstance) {
       renderSettings();
       app.showToast(app.t('settings.clearDataSuccess'), 'success');
     } catch (e) {
-      app.showToast(app.t('settings.clearDataFailed') + (e as Error).message, 'error');
+      app.showToast(app.t('settings.clearDataFailed') + describeError(app, e), 'error');
     }
   }
 
@@ -83,7 +84,7 @@ export function createSettingsView(app: AppInstance) {
       renderSettings();
       app.showToast(app.t('settings.avatarUpdated'), 'success');
     } catch (e) {
-      app.showToast(app.t('settings.failed') + (e as Error).message, 'error');
+      app.showToast(app.t('settings.failed') + describeError(app, e), 'error');
     }
   }
 

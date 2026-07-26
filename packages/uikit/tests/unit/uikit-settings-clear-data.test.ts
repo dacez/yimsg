@@ -159,7 +159,9 @@ describe('uikit settings 清除数据', () => {
 
     await ctx.elements.get('clear-data-btn')!.trigger('click');
 
-    expect(ctx.mocks.showToast).toHaveBeenCalledWith('settings.clearDataFailedcleanup failed', 'error');
+    // resetLocalDataError 是普通 Error（非 YimsgError），describeError 不透传其 message，
+    // 统一走 error.unknown 兜底文案，避免把内部清理失败细节原样展示给用户。
+    expect(ctx.mocks.showToast).toHaveBeenCalledWith('settings.clearDataFailederror.unknown', 'error');
     expect(ctx.mocks.views.chat.renderConversationList).not.toHaveBeenCalled();
   });
 
