@@ -104,6 +104,8 @@ interface ChatState {
   detailRequestId: number;
   detailOpen: boolean;
   forwardSelectionHandler: (() => Promise<void> | void) | null;
+  /** 本次会话进程内、发送/上传失败后确认"已被移出"的群 id 集合：锁定该群输入框直到重新进入会话。 */
+  removedGroupIds: Set<string>;
 }
 
 interface ContactsViewState {
@@ -247,6 +249,7 @@ export class AppInstance {
     detailRequestId: 0,
     detailOpen: false,
     forwardSelectionHandler: null,
+    removedGroupIds: new Set<string>(),
   };
   readonly contactsState: ContactsViewState = {
     friendWindow: new BoundedPageWindow<Contact>(APP_CONFIG.list.maxPages, undefined, contactIdentity),

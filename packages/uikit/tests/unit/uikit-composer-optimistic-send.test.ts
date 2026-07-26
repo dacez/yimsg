@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT } from '@yimsg/sdk';
+import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT, RequestError } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
 import { createMessageWindow } from '../../src/app/views/chat/message-page';
-import { sendMessage, uploadAndSend } from '../../src/app/views/chat/composer';
+import { applyConversationGuards, sendMessage, uploadAndSend } from '../../src/app/views/chat/composer';
 
 /** 手动可控的 Promise：测试用它精确摆放"网络往返尚未完成"这一时刻。 */
 function deferred<T>() {
@@ -179,5 +179,145 @@ describe('composer 乐观发送', () => {
     expect(app.chatState.currentMessages).toHaveLength(0);
     expect(app.chatState.pendingMessageIds.size).toBe(0);
     expect(showToast).toHaveBeenCalledOnce();
+  });
+});
+
+/** 伪造一个可 toggle/contains 的 classList，供 message-input-area 的 is-blocked 断言使用。 */
+function fakeClassList() {
+  const set = new Set<string>();
+  return {
+    toggle: (name: string, force?: boolean) => {
+      const shouldAdd = force === undefined ? !set.has(name) : force;
+      if (shouldAdd) set.add(name); else set.delete(name);
+    },
+    contains: (name: string) => set.has(name),
+  };
+}
+
+/** 伪造一个最小 DOM 元素：disabled/placeholder + classList.toggle + setAttribute（撮 markdown 按钮用）。 */
+function fakeElement(): { disabled: boolean; placeholder?: string; classList: ReturnType<typeof fakeClassList>; setAttribute: (name: string, value: string) => void } {
+  return { disabled: false, classList: fakeClassList(), setAttribute: () => {} };
+}
+
+function createGroupApp(sendText: (...args: unknown[]) => Promise<unknown>, options: { detailOpen?: boolean } = {}) {
+  const renderMessages = vi.fn();
+  const scrollToBottom = vi.fn();
+  const showToast = vi.fn();
+  const rerenderCurrentDetailPanel = vi.fn();
+  const input = { value: '被移出后还敢发', disabled: false, placeholder: '', classList: fakeClassList(), setAttribute: () => {} };
+  const elements: Record<string, ReturnType<typeof fakeElement>> = {
+    'msg-input': input,
+    'msg-send': fakeElement(),
+    'msg-attach': fakeElement(),
+    'msg-emoji': fakeElement(),
+    'msg-markdown-toggle': fakeElement(),
+    'message-input-area': fakeElement(),
+  };
+
+  const app = {
+    chatState: {
+      currentConvKey: 'g:5',
+      messageWindow: createMessageWindow(3),
+      currentMessages: [] as unknown[],
+      composerMentions: new Map<string, string>(),
+      composerMentionAll: false,
+      composerMarkdownMode: false,
+      composerQuote: null,
+      pendingMessageIds: new Set<string>(),
+      selectedMessageIds: new Set<string>(),
+      removedGroupIds: new Set<string>(),
+      detailOpen: options.detailOpen ?? false,
+    },
+    client: {
+      describeConversation: () => ({ target: { groupId: '5' }, kind: 'group', id: '5' }),
+      validateTextMessage: () => {},
+      getSessionSnapshot: () => ({ currentUid: '1' }),
+      sendText,
+    },
+    views: { chat: { renderMessages, scrollToBottom, rerenderCurrentDetailPanel } },
+    dom: { getElementById: (id: string) => elements[id] ?? null },
+    showToast,
+    t: (key: string) => key,
+    $: (id: string) => elements[id] ?? ({} as unknown),
+  };
+
+  return { app: app as unknown as AppInstance, input, showToast, rerenderCurrentDetailPanel, elements };
+}
+
+describe('composer 群聊被移出后的发送失败', () => {
+  it('非群员发送失败：提示明确文案（非拼接服务端原文）、锁定输入区、刷新已打开的群详情', async () => {
+    const forbidden = new RequestError('REQUEST_FAILED', '非群员', {
+      details: { serverErrorCode: 'FORBIDDEN' },
+    });
+    const { app, showToast, rerenderCurrentDetailPanel, elements } = createGroupApp(
+      () => Promise.reject(forbidden),
+      { detailOpen: true },
+    );
+
+    await sendMessage(app);
+
+    expect(showToast).toHaveBeenCalledWith('chat.notGroupMemberError', 'error');
+    expect(app.chatState.removedGroupIds.has('5')).toBe(true);
+    expect(elements['msg-input'].disabled).toBe(true);
+    expect(elements['msg-send'].disabled).toBe(true);
+    expect(elements['msg-attach'].disabled).toBe(true);
+    expect(elements['msg-emoji'].disabled).toBe(true);
+    expect(elements['msg-markdown-toggle'].disabled).toBe(true);
+    expect(elements['message-input-area'].classList.contains('is-blocked')).toBe(true);
+    expect(rerenderCurrentDetailPanel).toHaveBeenCalledOnce();
+  });
+
+  it('非群员上传失败：同样锁定输入区，且详情面板未打开时不触发刷新', async () => {
+    const forbidden = new RequestError('REQUEST_FAILED', '非群员', {
+      details: { serverErrorCode: 'FORBIDDEN' },
+    });
+    const { app, showToast, rerenderCurrentDetailPanel, elements } = createGroupApp(
+      () => Promise.reject(forbidden),
+      { detailOpen: false },
+    );
+    (app.client as unknown as { uploadFile: () => Promise<unknown> }).uploadFile = () => Promise.reject(forbidden);
+
+    const file = new File(['fake-file-bytes'], 'doc.pdf', { type: 'application/pdf' });
+    await uploadAndSend(app, file, 'file');
+
+    expect(showToast).toHaveBeenCalledWith('chat.notGroupMemberError', 'error');
+    expect(app.chatState.removedGroupIds.has('5')).toBe(true);
+    expect(elements['msg-input'].disabled).toBe(true);
+    expect(rerenderCurrentDetailPanel).not.toHaveBeenCalled();
+  });
+});
+
+describe('applyConversationGuards 对已被移出群聊的会话', () => {
+  it('仅锁定命中 removedGroupIds 的当前会话，其它会话不受影响', () => {
+    const input = { value: '', disabled: false, placeholder: '', classList: fakeClassList(), setAttribute: () => {} };
+    const elements: Record<string, ReturnType<typeof fakeElement>> = {
+      'msg-input': input,
+      'msg-send': fakeElement(),
+      'msg-attach': fakeElement(),
+      'msg-emoji': fakeElement(),
+      'msg-markdown-toggle': fakeElement(),
+      'message-input-area': fakeElement(),
+    };
+    const app = {
+      chatState: {
+        currentConvKey: 'g:5',
+        composerQuote: null,
+        composerMarkdownMode: false,
+        removedGroupIds: new Set<string>(['5']),
+      },
+      client: {
+        describeConversation: () => ({ target: { groupId: '5' }, kind: 'group', id: '5' }),
+      },
+      dom: { getElementById: (id: string) => elements[id] ?? null },
+      t: (key: string) => key,
+      $: (id: string) => elements[id] ?? ({} as unknown),
+    } as unknown as AppInstance;
+
+    applyConversationGuards(app);
+
+    expect(elements['msg-input'].disabled).toBe(true);
+    expect(elements['msg-send'].disabled).toBe(true);
+    expect(elements['message-input-area'].classList.contains('is-blocked')).toBe(true);
+    expect(input.placeholder).toBe('chat.removedFromGroupPlaceholder');
   });
 });
