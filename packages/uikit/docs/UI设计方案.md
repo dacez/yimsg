@@ -643,12 +643,19 @@ showGroupDetail(groupId):
   memberPage = await client.getGroupMembers(groupId, { limit: list.pageSize })
   mutePage = await client.getMutelist({ groupId, limit: 1 })
 
-  渲染：群头像（可点击上传更换） + 群名 + 免打扰状态标签 + 编辑 / 免打扰 / 收藏按钮 + 成员窗口范围
+  渲染：群头像（可点击上传更换） + 群名 + 免打扰状态标签 + 编辑 / 免打扰 / 收藏 / 添加成员按钮 + 成员窗口范围
   群主显示 "Owner" 角标
   成员列表是有界滑动窗口（role 倒序、uid 升序），按服务端边界游标双向翻页、整页裁剪、全量渲染
+  群主视角下，非群主成员行末尾额外渲染一个移出按钮（member-remove-btn）
 
   if requestId !== detailRequestId → return        // 被新请求覆盖，丢弃
 ```
+
+**添加 / 移出群成员：**
+
+- 添加成员：点击详情面板头部的 "+" 动作按钮打开候选弹窗（复用 §7.6 群成员选择器同样的"一次性全量拉取 + 安全上限"取舍，候选源换成好友列表并排除已在群内的成员）；点击候选立即调用 `addGroupMember` 并从候选列表移除，不做批量勾选 + 二次确认，弹窗内可连续添加多人，点击"完成"关闭后刷新详情面板。
+- 移出成员：仅群主可见，每个非群主成员行末尾渲染一个移出按钮；点击后走 `showConfirmModal` 二次确认，确认后调用 `removeGroupMember` 并刷新详情面板。群主自己的成员行不渲染移出按钮（转让群主 / 解散群不在本次范围）。
+- 两者服务端当前均不做额外权限校验（`AddGroupMember`/`RemoveGroupMember` 对任意已登录用户放行），前端仅按上述规则控制入口可见性，属于 UI 层的合理性约束而非安全边界。
 
 **竞态保护：** 使用递增的 `detailRequestId`。如果用户快速切换详情面板，旧的异步请求返回时检查 ID 不匹配则丢弃结果，防止旧数据覆盖新数据。
 

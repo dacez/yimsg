@@ -265,6 +265,8 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .member-item .member-name{flex:1;font-size:var(--font-size-body)}
 #members-list{max-height:320px;overflow-y:auto}
 .member-badge{font-size:var(--font-size-caption);color:var(--primary);background:var(--primary-light);padding:1px 6px;border-radius:4px}
+.member-remove-btn{width:22px;height:22px;flex-shrink:0;border:none;border-radius:50%;background:var(--bg-hover);color:var(--text-secondary);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.member-remove-btn:hover{background:#fff0f0;color:var(--error)}
 .member-select-list{max-height:300px;overflow-y:auto}
 .member-select-item{display:flex;align-items:center;gap:var(--space-sm);height:40px;padding:0 var(--space-sm);cursor:pointer;border-radius:4px;box-sizing:border-box}
 .member-select-item:hover{background:var(--bg-hover)}
