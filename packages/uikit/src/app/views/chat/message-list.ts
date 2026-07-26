@@ -48,7 +48,10 @@ export function isNearBottom(list: HTMLElement): boolean {
 function getMessageListView(app: AppInstance): BoundedStreamWindow<Message> {
   return getOrCreateBoundedStreamWindow(messageListViews, app, () => new BoundedStreamWindow<Message>({
     scrollElement: app.$('message-list'),
-    onScroll: () => maybeCatchUpNewMessages(app),
+    onScroll: () => {
+      app.chatState.messageListStickToBottom = isNearBottom(app.$('message-list'));
+      maybeCatchUpNewMessages(app);
+    },
   }));
 }
 
@@ -355,9 +358,11 @@ function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) 
 }
 
 // 内容（特别是图片）可能在渲染后的若干帧内才完成排版，多帧重设 scrollTop 才能真正到底；
-// 更晚到达的图片由 setup.ts 的 load 捕获监听兜底（贴底时继续贴底）。
+// 更晚到达的图片由 stickToBottomAfterContentGrew 兜底（贴底时继续贴底，不等程序化 scrollTop
+// 触发的原生 scroll 事件绕一圈回来，这里直接置位，避免时序上的不确定性）。
 export function scrollToBottom(app: AppInstance) {
   const list = app.$('message-list');
+  app.chatState.messageListStickToBottom = true;
   let remainingFrames = BOTTOM_SETTLE_FRAME_COUNT;
   const settle = () => {
     list.scrollTop = list.scrollHeight;
@@ -365,6 +370,17 @@ export function scrollToBottom(app: AppInstance) {
     if (remainingFrames > 0) scheduleFrame(settle);
   };
   settle();
+}
+
+// 图片等异步增高内容 load 完成后的贴底兜底：setup.ts 用捕获监听（load 不冒泡）把原生
+// 'load' 事件转给这里。这里必须读 messageListStickToBottom 缓存，不能现算 isNearBottom——
+// load 事件触发时图片已经把内容撑高，此时读 scrollHeight 会强制以撑高后的布局重排，
+// 旧 scrollTop 对比新 scrollHeight 必然因为增高超过贴底阈值而误判成"已经不贴底"，
+// 导致贴底时发图片反而看不到图片底部（真实 bug：文字消息会自动滚到底，图片消息不会）。
+export function stickToBottomAfterContentGrew(app: AppInstance): void {
+  if (!app.chatState.messageListStickToBottom) return;
+  const list = app.$('message-list');
+  list.scrollTop = list.scrollHeight;
 }
 
 // 翻页在头 / 尾插入并可能在另一端裁剪，重渲染后画面不应跳动：锚点保持由引擎统一负责

@@ -182,6 +182,7 @@ function createTestApp() {
       currentConvKey: 'u:2',
       messageWindow: createMessageWindow(5),
       currentMessages: [] as Message[],
+      messageListStickToBottom: true,
       loadingMoreMessages: false,
       loadingNewerMessages: false,
       messagePageHasOlder: false,
@@ -287,5 +288,31 @@ describe('message-list 新消息提示条（贴底追平）', () => {
     await flushMicrotasks();
     expect(app.chatState.pendingNewMessageCount).toBe(0);
     expect(pill(app)!.classList.contains('hidden')).toBe(true);
+  });
+});
+
+describe('message-list 贴底状态随真实滚动事件更新（messageListStickToBottom）', () => {
+  it('用户上翻远离底部后，真实 scroll 事件会把贴底标记同步置为 false', () => {
+    const { app, messageList } = createTestApp();
+    renderMessages(app); // 建立真实渲染，挂上 BoundedStreamWindow 的 onScroll 监听。
+    expect(app.chatState.messageListStickToBottom).toBe(true);
+
+    messageList.scrollTop = 0; // 上翻到顶部，远离底部。
+    messageList.dispatch('scroll');
+
+    expect(app.chatState.messageListStickToBottom).toBe(false);
+  });
+
+  it('用户再滑回底部，贴底标记会同步置回 true', () => {
+    const { app, messageList } = createTestApp();
+    renderMessages(app);
+    messageList.scrollTop = 0;
+    messageList.dispatch('scroll');
+    expect(app.chatState.messageListStickToBottom).toBe(false);
+
+    messageList.scrollTop = messageList.scrollHeight;
+    messageList.dispatch('scroll');
+
+    expect(app.chatState.messageListStickToBottom).toBe(true);
   });
 });

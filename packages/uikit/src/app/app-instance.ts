@@ -65,6 +65,13 @@ interface ChatState {
   /** 消息有界滑动窗口；currentMessages 是它 flatten 后的同步投影。 */
   messageWindow: BoundedPageWindow<Message>;
   currentMessages: Message[];
+  /**
+   * 消息列表是否"贴底跟随"：由真实滚动事件（含程序化贴底触发的 scroll）持续更新，
+   * 图片等异步增高内容 load 完成时读它决定要不要把 scrollTop 摁回底部。不能在 load
+   * 事件里现算 isNearBottom——那时图片已经把内容撑高，用旧 scrollTop 对比新
+   * scrollHeight 必然因为增高超阈值而误判成"已经不贴底"。
+   */
+  messageListStickToBottom: boolean;
   loadingMoreMessages: boolean;
   loadingNewerMessages: boolean;
   messagePageHasOlder: boolean;
@@ -218,6 +225,7 @@ export class AppInstance {
     conversationPageRequestId: 0,
     messageWindow: createMessageWindow(APP_CONFIG.chat.messagePageMaxPages),
     currentMessages: [],
+    messageListStickToBottom: true,
     loadingMoreMessages: false,
     loadingNewerMessages: false,
     messagePageHasOlder: false,

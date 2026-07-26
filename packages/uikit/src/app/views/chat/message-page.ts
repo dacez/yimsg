@@ -81,6 +81,7 @@ export function messageForwardCursor(app: AppInstance): string {
 export function resetMessagePage(app: AppInstance): number {
   app.chatState.messageWindow.reset();
   app.chatState.currentMessages = [];
+  app.chatState.messageListStickToBottom = true;
   app.chatState.loadingMoreMessages = false;
   app.chatState.loadingNewerMessages = false;
   app.chatState.messagePageHasOlder = false;
