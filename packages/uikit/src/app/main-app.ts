@@ -99,6 +99,16 @@ export function startApp(app: AppInstance): () => void {
     item.addEventListener('click', () => app.views.chat?.switchView(item.dataset.view!));
   });
 
+  const openContactsSearchTab = () => {
+    app.dom.querySelector<HTMLElement>('.tab[data-ctab="search"]')?.click();
+  };
+  app.$('chat-list-avatar').addEventListener('click', () => app.views.chat?.switchView('settings'));
+  app.$('chat-list-start-btn').addEventListener('click', () => {
+    app.views.chat?.switchView('contacts');
+    openContactsSearchTab();
+  });
+  app.$('contacts-add-btn').addEventListener('click', openContactsSearchTab);
+
   app.$('modal-overlay').addEventListener('click', (e) => {
     if (e.target === e.currentTarget && !app.$('modal-overlay').dataset.preventClose) app.closeModal();
   });

@@ -38,7 +38,7 @@ function setMessageHighlight(app: AppInstance, msgId: string): void {
  * 调用方需确保 target 对应的会话已经是当前打开的会话——本会话内搜索面板天然满足；
  * 全局搜索（global-search.ts）会先切到目标会话再调用本函数。
  *
- * 移动端从聊天页返回会话列表时（chat-header 左上角返回区域），只会移除 view-chat 上的
+ * 移动端从聊天页返回会话列表时（点击 chat-header 内的 chat-back-btn），只会移除 view-chat 上的
  * mobile-showing-chat class，不会清空 chatState.currentConvKey（详见 setup.ts）。因此
  * 全局搜索命中"返回前正在看的那个会话"时，global-search.ts 会判定当前会话已是目标会话
  * 而跳过 shell 初始化（其中才会补上 mobile-showing-chat），移动端就会停在会话列表、

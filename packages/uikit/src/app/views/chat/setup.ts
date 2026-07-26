@@ -26,13 +26,9 @@ export function setupChat(app: AppInstance) {
     void maybeTriggerMentionPicker(app, app.$('msg-input') as HTMLTextAreaElement);
   });
 
-  app.$('chat-header').addEventListener('click', (event) => {
+  app.$('chat-back-btn').addEventListener('click', () => {
     if (!isMobileInteractionLayout(app)) return;
-    const rect = app.$('chat-header').getBoundingClientRect();
-    const me = event as MouseEvent;
-    if (me.clientX - rect.left < 56) {
-      app.$('view-chat').classList.remove('mobile-showing-chat');
-    }
+    app.$('view-chat').classList.remove('mobile-showing-chat');
   });
 
   setupEmojiPicker(app);

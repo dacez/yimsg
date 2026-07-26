@@ -478,6 +478,19 @@ export class AppInstance {
     const navSettings = this.dom.querySelector<HTMLElement>('.nav-item[data-view="settings"]');
     if (navSettings) navSettings.title = this.t('nav.settings');
 
+    const chatListTitle = this.dom.getElementById('chat-list-title');
+    if (chatListTitle) chatListTitle.textContent = this.t('nav.chat');
+    const chatListAvatar = this.dom.getElementById('chat-list-avatar');
+    if (chatListAvatar) chatListAvatar.title = this.t('nav.settings');
+    const chatListStartBtn = this.dom.getElementById('chat-list-start-btn');
+    if (chatListStartBtn) chatListStartBtn.title = this.t('chat.startConversation');
+    const chatBackBtn = this.dom.getElementById('chat-back-btn');
+    if (chatBackBtn) chatBackBtn.title = this.t('auth.mobileBack');
+    const contactsTopbarTitle = this.dom.getElementById('contacts-topbar-title');
+    if (contactsTopbarTitle) contactsTopbarTitle.textContent = this.t('nav.contacts');
+    const contactsAddBtn = this.dom.getElementById('contacts-add-btn');
+    if (contactsAddBtn) contactsAddBtn.title = this.t('contacts.addWithRemark');
+
     const chatEmpty = this.dom.getElementById('chat-empty');
     if (chatEmpty) chatEmpty.textContent = this.t('chat.selectConversation');
     const msgInput = this.dom.getElementById<HTMLTextAreaElement>('msg-input');

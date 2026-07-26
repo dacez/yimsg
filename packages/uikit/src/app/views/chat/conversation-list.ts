@@ -430,9 +430,6 @@ function openConversationShell(
   renderConversationList(app);
   updateChatHeaderTitle(app, conversation, conv);
   app.$("chat-header").classList.remove("hidden");
-  app
-    .$("chat-header")
-    .setAttribute("data-mobile-back", app.t("auth.mobileBack"));
   app.$("message-input-area").classList.remove("hidden");
   app.$("chat-empty").classList.add("hidden");
   applyConversationGuards(app);

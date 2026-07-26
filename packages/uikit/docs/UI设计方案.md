@@ -146,16 +146,18 @@
 ```mermaid
 graph LR
     subgraph 左栏["#left-panel · 280px"]
+        L0["#chat-list-topbar.mobile-topbar<br/>移动端专属：头像（进设置）+ 标题 + 发起会话按钮（跳到通讯录搜索 Tab）"]
         L1["全局搜索输入 + 取消按钮<br/>类似微信「搜索」"]
         L2["#conversation-list<br/>滚动分页"]
         L3["#global-search-results<br/>联系人 + 聊天记录分组，默认 hidden"]
+        L0 --- L1
         L1 --- L2
         L1 --- L3
     end
 
     subgraph 中栏["#center-panel · flex:1"]
         direction TB
-        C1["#chat-header<br/>标题 + 搜索按钮 + 详情按钮"]
+        C1["#chat-header：三段式 lead/mid/trail<br/>返回按钮（#chat-back-btn，移动端专属）+ 标题 + 搜索/详情按钮"]
         C1b["#message-search-panel<br/>关键字输入 + 结果列表，默认 hidden"]
         C2["#chat-empty<br/>空占位"]
         C3["#message-list<br/>上滚加载更多"]
@@ -697,6 +699,7 @@ showGroupDetail(groupId):
 ```
 #view-contacts
 ├── .contacts-left（桌面默认 280px，可通过 #contacts-resizer 拖拽调整）
+│   ├── #contacts-topbar.mobile-topbar（移动端专属，桌面隐藏；标题 + 添加好友按钮，跳到 search Tab）
 │   ├── .tabs
 │   │   ├── [data-ctab="friends"]     Friends
 │   │   ├── [data-ctab="requests"]    Requests（.nav-badge，PENDING_INCOMING 红点）
@@ -1187,6 +1190,8 @@ SDK 事件 → main-app.ts 事件处理 → 调用 render 函数 → 读取 clie
 ```
 
 桌面端居中带圆角阴影，移动端全屏。
+
+移动端顶栏统一采用共享的三段式布局（`.topbar-slot` + `.topbar-lead`/`.topbar-mid`/`.topbar-trail`，标题用 `.topbar-title`），供 `#chat-header`、`#chat-list-topbar`、`#contacts-topbar` 三处复用：`.topbar-lead`/`.topbar-trail` 各预留至少 44px 宽度，让 `.topbar-mid` 里的标题在只有单侧按钮时也能视觉居中。`#chat-header` 的返回按钮是真实的 `<button id="chat-back-btn">`（桌面隐藏，移动端 `.chat-mobile-back` 显示），替代早期"整个 header 监听点击坐标、按 clientX < 56px 判定"的伪返回方案；`#chat-list-topbar`/`#contacts-topbar` 加了 `.mobile-topbar` class，桌面默认 `display:none`，只在 `body[data-layout="mobile"]` 下显示，避免会话列表/通讯录顶部空白。三处顶栏在移动布局下都叠加 `env(safe-area-inset-top)` 的顶部内边距（避开刘海屏/灵动岛）和品牌浅紫到白色的竖向渐变背景（`--topbar-tint-a` → `--topbar-tint-b`），桌面端不受影响。
 
 ### 12.4 关键 CSS 类
 

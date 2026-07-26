@@ -116,9 +116,8 @@ test.describe('Mobile layout & recall', () => {
     await expect(page1.locator('#left-panel')).toBeHidden();
     await expect(page1.locator('#center-panel')).toBeVisible();
 
-    // 点击 header 左上角返回区域（前 56px）应回到会话列表
-    const header = page1.locator('#chat-header');
-    await header.click({ position: { x: 10, y: 20 } });
+    // 点击顶栏返回按钮应回到会话列表
+    await page1.locator('#chat-back-btn').click();
     await expect(page1.locator('#left-panel')).toBeVisible();
 
     await ctx1.close();
@@ -150,9 +149,8 @@ test.describe('Mobile layout & recall', () => {
     }
     await expectMessage(page1, 'mobjump message 9');
 
-    // 点击 header 左上角返回区域回到会话列表：只隐藏聊天面板，currentConvKey 不清空。
-    const header = page1.locator('#chat-header');
-    await header.click({ position: { x: 10, y: 20 } });
+    // 点击顶栏返回按钮回到会话列表：只隐藏聊天面板，currentConvKey 不清空。
+    await page1.locator('#chat-back-btn').click();
     await expect(page1.locator('#left-panel')).toBeVisible();
     await expect(page1.locator('#center-panel')).toBeHidden();
 
@@ -187,8 +185,8 @@ test.describe('Mobile layout & recall', () => {
 
     await openDMFromContacts(page1, 'MobileUnreadSender');
 
-    const header = page1.locator('#chat-header');
-    await header.click({ position: { x: 10, y: 20 } });
+    const backBtn = page1.locator('#chat-back-btn');
+    await backBtn.click();
     await expect(page1.locator('#left-panel')).toBeVisible();
     await expect(page1.locator('#center-panel')).toBeHidden();
 
@@ -213,7 +211,7 @@ test.describe('Mobile layout & recall', () => {
     await expect(page1.locator('#message-list', { hasText: 'mobile unread should stay' })).toBeVisible({ timeout: 10_000 });
     await expect(page1.locator('.nav-item[data-view="chat"] .nav-badge')).toBeHidden({ timeout: 10_000 });
 
-    await header.click({ position: { x: 10, y: 20 } });
+    await backBtn.click();
     await expect(page1.locator('#left-panel')).toBeVisible({ timeout: 5_000 });
     await expect(conv.locator('.unread-badge')).toBeHidden({ timeout: 5_000 });
 
