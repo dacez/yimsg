@@ -7,6 +7,10 @@ interface MemberEntry {
   name: string;
 }
 
+export type GroupMemberPickResult =
+  | { kind: 'member'; uid: string }
+  | { kind: 'all' };
+
 function pinyinCollator(): Intl.Collator {
   return new Intl.Collator('zh-Hans-CN-u-co-pinyin', { numeric: true, sensitivity: 'base' });
 }
@@ -20,13 +24,16 @@ function pinyinCollator(): Intl.Collator {
  * 群成员是低频操作，一次性全量拉取带来的等待可接受；异常大群靠
  * APP_CONFIG.groupMemberPicker.maxPages 兜底，不做无界翻页。
  *
- * 供 @ 提及等多处场景复用：resolve 选中的 uid；取消 / Esc / 点击取消按钮 resolve null。
+ * 供 @ 提及等多处场景复用：resolve `{ kind: 'member', uid }` 或（`includeMentionAll` 开启时）
+ * `{ kind: 'all' }`；取消 / Esc / 点击取消按钮 resolve null。`includeMentionAll` 默认关闭——
+ * 这个组件本身通用（未来"转让群主"之类只选单个具体成员的场景也会复用），@全体成员只是
+ * 调用方按需开启的一个选项，不该对所有调用方都出现。
  */
 export async function showGroupMemberPicker(
   app: AppInstance,
   groupId: string,
-  options: { excludeUids?: ReadonlyArray<string> } = {},
-): Promise<string | null> {
+  options: { excludeUids?: ReadonlyArray<string>; includeMentionAll?: boolean } = {},
+): Promise<GroupMemberPickResult | null> {
   const excluded = new Set(options.excludeUids ?? []);
   const collator = pinyinCollator();
 
@@ -53,7 +60,7 @@ export async function showGroupMemberPicker(
     const searchInput = app.$('group-member-picker-search') as HTMLInputElement;
     const listEl = app.$('group-member-picker-list');
 
-    const finish = (value: string | null) => {
+    const finish = (value: GroupMemberPickResult | null) => {
       controller.abort();
       app.client.off('display:updated', onDisplayUpdated);
       app.closeModal();
@@ -62,13 +69,33 @@ export async function showGroupMemberPicker(
 
     const nameOf = (uid: string): string => displayUserName(app.client.getUserInfos([uid]).get(uid), uid);
 
+    // "所有人"是静态选项，不依赖群成员拉取结果，也不参与搜索过滤——始终钉在列表最前面。
+    const renderMentionAllRow = () => {
+      if (!options.includeMentionAll) return;
+      const label = app.t('groupMemberPicker.allMembers');
+      const item = app.dom.ownerDocument.createElement('div');
+      item.className = 'group-member-picker-item group-member-picker-all';
+      item.innerHTML = `<div class="avatar avatar-sm">${app.avatarInnerHtml({ nickname: label })}</div><span>${app.escapeHtml(label)}</span>`;
+      item.addEventListener('click', () => finish({ kind: 'all' }), { signal: controller.signal });
+      listEl.appendChild(item);
+    };
+
+    const appendEmptyRow = (text: string) => {
+      const row = app.dom.ownerDocument.createElement('div');
+      row.className = 'group-member-picker-empty';
+      row.textContent = text;
+      listEl.appendChild(row);
+    };
+
     const renderList = () => {
+      listEl.innerHTML = '';
+      renderMentionAllRow();
       if (loadFailed) {
-        listEl.innerHTML = `<div class="group-member-picker-empty">${app.escapeHtml(app.t('groupMemberPicker.loadFailed'))}</div>`;
+        appendEmptyRow(app.t('groupMemberPicker.loadFailed'));
         return;
       }
       if (!loaded) {
-        listEl.innerHTML = `<div class="group-member-picker-empty">${app.escapeHtml(app.t('groupMemberPicker.loadingCount', { n: loadingCount }))}</div>`;
+        appendEmptyRow(app.t('groupMemberPicker.loadingCount', { n: loadingCount }));
         return;
       }
       const query = searchInput.value.trim().toLowerCase();
@@ -76,17 +103,16 @@ export async function showGroupMemberPicker(
         ? entries.filter((entry) => entry.name.toLowerCase().includes(query))
         : entries;
       if (filtered.length === 0) {
-        listEl.innerHTML = `<div class="group-member-picker-empty">${app.escapeHtml(app.t(query ? 'groupMemberPicker.noResults' : 'groupMemberPicker.empty'))}</div>`;
+        appendEmptyRow(app.t(query ? 'groupMemberPicker.noResults' : 'groupMemberPicker.empty'));
         return;
       }
-      listEl.innerHTML = '';
       for (const entry of filtered) {
         const item = app.dom.ownerDocument.createElement('div');
         item.className = 'group-member-picker-item';
         item.dataset.uid = entry.uid;
         const avatarHtml = app.avatarInnerHtml({ nickname: entry.name });
         item.innerHTML = `<div class="avatar avatar-sm">${avatarHtml}</div><span>${app.escapeHtml(entry.name)}</span>`;
-        item.addEventListener('click', () => finish(entry.uid), { signal: controller.signal });
+        item.addEventListener('click', () => finish({ kind: 'member', uid: entry.uid }), { signal: controller.signal });
         listEl.appendChild(item);
       }
     };

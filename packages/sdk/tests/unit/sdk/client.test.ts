@@ -993,6 +993,27 @@ describe("YimsgClient", () => {
       .toMatchObject({ text: "@Bob hi", mentioned_uids: ["200"], mention_all: false });
   });
 
+  it("sendMention builds a MentionBody with mentionAll and no specific uids", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+
+    transportSend.mockResolvedValueOnce({
+      ok: true,
+      seq: 12,
+      msg_id: "mention-all-msg",
+    });
+
+    const result = await client.sendMention(
+      { groupId: "9001" },
+      { text: "@all hi", mentionAll: true },
+    );
+
+    expect(result.message.messageType).toBe(MSG_TYPE_MENTION);
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect((sent.body as { mention?: { mentioned_uids?: string[]; mention_all?: boolean } }).mention)
+      .toMatchObject({ mentioned_uids: [], mention_all: true });
+  });
+
   it("sendMention throws when neither mentionedUids nor mentionAll is set", async () => {
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");

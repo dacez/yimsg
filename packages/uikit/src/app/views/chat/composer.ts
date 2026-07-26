@@ -86,6 +86,11 @@ function pendingMentionedUids(app: AppInstance, content: string): string[] {
   return result;
 }
 
+/** @全体成员同理：手动删掉 "@所有人" 片段的不当成有效提及发送。 */
+function pendingMentionAll(app: AppInstance, content: string): boolean {
+  return app.chatState.composerMentionAll && content.includes(`@${app.t('groupMemberPicker.allMembers')}`);
+}
+
 export async function sendMessage(app: AppInstance) {
   const input = app.$('msg-input') as HTMLTextAreaElement;
   const content = input.value.trim();
@@ -94,12 +99,14 @@ export async function sendMessage(app: AppInstance) {
   const target = app.client.describeConversation(app.chatState.currentConvKey).target;
   try {
     // @ 提及与引用回复互斥（QuoteBody 不带提及字段，引用优先），与 Markdown 也互斥
-    // （MentionBody 不是富文本）；只要还有提及且没在引用，就按提及消息发送。
+    // （MentionBody 不是富文本）；只要还有提及（具体成员或 @全体成员）且没在引用，就按提及消息发送。
     const mentionedUids = app.chatState.composerQuote ? [] : pendingMentionedUids(app, content);
-    if (mentionedUids.length > 0) {
-      const sendPromise = app.client.sendMention(target, { text: content, mentionedUids });
+    const mentionAll = !app.chatState.composerQuote && pendingMentionAll(app, content);
+    if (mentionedUids.length > 0 || mentionAll) {
+      const sendPromise = app.client.sendMention(target, { text: content, mentionedUids, mentionAll });
       input.value = '';
       app.chatState.composerMentions = new Map();
+      app.chatState.composerMentionAll = false;
       const result = await sendPromise;
       appendLiveMessageToPage(app, result.message);
       app.views.chat?.renderMessages();
@@ -111,6 +118,7 @@ export async function sendMessage(app: AppInstance) {
       const sendPromise = app.client.sendMarkdown(target, content);
       input.value = '';
       app.chatState.composerMentions = new Map();
+      app.chatState.composerMentionAll = false;
       const result = await sendPromise;
       appendLiveMessageToPage(app, result.message);
       app.views.chat?.renderMessages();
@@ -121,6 +129,7 @@ export async function sendMessage(app: AppInstance) {
     app.client.validateTextMessage(content);
     input.value = '';
     app.chatState.composerMentions = new Map();
+    app.chatState.composerMentionAll = false;
 
     if (app.chatState.composerQuote) {
       const quote = app.chatState.composerQuote;
@@ -167,8 +176,9 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
 
 /**
  * 群聊输入框里刚敲下 "@" 时拉起群成员选择器；单聊没有可 @ 的对象，跳过。
- * 选中后把光标前那个刚输入的 "@" 换成 "@昵称 "；取消选择则原样保留 "@"，
- * 不做任何撤销处理。
+ * 选中具体成员：把光标前那个刚输入的 "@" 换成 "@昵称 "。
+ * 选中"所有人"：换成 "@所有人 "，标记 composerMentionAll。
+ * 取消选择：原样保留 "@"，不做任何撤销处理。
  */
 export async function maybeTriggerMentionPicker(app: AppInstance, input: HTMLTextAreaElement): Promise<void> {
   if (input.disabled || !app.chatState.currentConvKey) return;
@@ -178,10 +188,13 @@ export async function maybeTriggerMentionPicker(app: AppInstance, input: HTMLTex
   if (input.value[caret - 1] !== '@') return;
 
   const currentUid = app.client.getSessionSnapshot().currentUid;
-  const uid = await showGroupMemberPicker(app, conversation.id, { excludeUids: [currentUid] });
-  if (!uid) return;
+  const pick = await showGroupMemberPicker(app, conversation.id, {
+    excludeUids: [currentUid],
+    includeMentionAll: true,
+  });
+  if (!pick) return;
 
-  const name = displayUserName(app.client.getUserInfos([uid]).get(uid), uid);
+  const name = pick.kind === 'all' ? app.t('groupMemberPicker.allMembers') : displayUserName(app.client.getUserInfos([pick.uid]).get(pick.uid), pick.uid);
   const mentionText = `@${name} `;
   const before = input.value.slice(0, caret - 1);
   const after = input.value.slice(caret);
@@ -189,5 +202,6 @@ export async function maybeTriggerMentionPicker(app: AppInstance, input: HTMLTex
   const cursor = before.length + mentionText.length;
   input.focus();
   input.setSelectionRange(cursor, cursor);
-  app.chatState.composerMentions.set(uid, name);
+  if (pick.kind === 'all') app.chatState.composerMentionAll = true;
+  else app.chatState.composerMentions.set(pick.uid, name);
 }

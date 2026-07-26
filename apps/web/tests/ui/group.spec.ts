@@ -283,6 +283,62 @@ test.describe('Group Chat', () => {
     await ctx2.close();
   });
 
+  test('mention everyone via the @ picker', async ({ browser }) => {
+    const owner = uniqueUser('atall_o');
+    const member = uniqueUser('atall_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'AtAllOwner');
+    await register(page2, member, password, 'AtAllMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'MentionAllGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'AtAllMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page1, 'MentionAllGroup');
+
+    // Typing "@" pulls up the picker; the "everyone" row is pinned at the top regardless
+    // of the member list load state or search query, and its label is locale-dependent
+    // (zh: 所有人 / en: Everyone), so read it back instead of hardcoding it.
+    await page1.fill('#msg-input', '@');
+    const pickerModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(pickerModal).toBeVisible({ timeout: 5000 });
+    const allRow = page1.locator('.group-member-picker-all');
+    await expect(allRow).toBeVisible({ timeout: 5000 });
+    // Read the label from the name span only — the row's own textContent also includes
+    // the avatar fallback's single leading character (no real avatar image for "everyone").
+    const allLabel = ((await allRow.locator('span').textContent()) || '').trim();
+    expect(allLabel.length).toBeGreaterThan(0);
+    await allRow.click();
+
+    await expect(pickerModal).toBeHidden({ timeout: 5000 });
+    await expect(page1.locator('#msg-input')).toHaveValue(`@${allLabel} `);
+
+    await page1.click('#msg-send');
+    await expectMessage(page1, `@${allLabel}`);
+
+    // Member should receive the mention-all message too.
+    await page2.click('[data-view="chat"]');
+    const memberGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'MentionAllGroup' });
+    await expect(memberGroupConv).toBeVisible({ timeout: 15_000 });
+    await memberGroupConv.click();
+    await expectMessage(page2, `@${allLabel}`, 10_000);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('update group avatar as owner', async ({ browser }) => {
     const owner = uniqueUser('ga_o');
     const member = uniqueUser('ga_m');

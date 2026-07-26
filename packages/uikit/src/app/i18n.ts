@@ -131,6 +131,7 @@ export const translations = {
     // Group member picker (search box, used by @-mention and reusable elsewhere)
     'groupMemberPicker.title': 'Select Member',
     'groupMemberPicker.searchPlaceholder': 'Search members',
+    'groupMemberPicker.allMembers': 'Everyone',
     'groupMemberPicker.cancel': 'Cancel',
     'groupMemberPicker.loadingCount': 'Loading… {n} members so far',
     'groupMemberPicker.empty': 'No members',
@@ -400,6 +401,7 @@ export const translations = {
     // 群成员选择器（带搜索框，供 @ 提及等多处场景复用）
     'groupMemberPicker.title': '选择群成员',
     'groupMemberPicker.searchPlaceholder': '搜索群成员',
+    'groupMemberPicker.allMembers': '所有人',
     'groupMemberPicker.cancel': '取消',
     'groupMemberPicker.loadingCount': '加载中…已获取 {n} 位成员',
     'groupMemberPicker.empty': '暂无成员',

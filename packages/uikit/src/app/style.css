@@ -315,6 +315,7 @@ to{background-color:transparent}
 .group-member-picker-item{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border-bottom:1px solid var(--border-light);cursor:pointer;box-sizing:border-box}
 .group-member-picker-item:last-child{border-bottom:none}
 .group-member-picker-item:hover{background:var(--bg-hover)}
+.group-member-picker-all{font-weight:600;color:var(--primary)}
 .group-member-picker-empty{padding:12px;color:var(--text-secondary);font-size:var(--font-size-caption)}
 .modal-textarea{min-height:220px;padding:12px;resize:vertical}
 .mode-select-modal{width:560px;max-width:92vw}
