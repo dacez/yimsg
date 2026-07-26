@@ -143,23 +143,18 @@ export function applyConversationGuards(app: AppInstance) {
   const attachBtn = app.$('msg-attach') as HTMLButtonElement;
   const emojiBtn = app.$('msg-emoji') as HTMLButtonElement;
   const markdownToggle = app.$('msg-markdown-toggle') as HTMLButtonElement;
-
-  const conversation = app.chatState.currentConvKey ? app.client.describeConversation(app.chatState.currentConvKey) : null;
-  const removedFromGroup = !!conversation && conversation.kind === 'group' && app.chatState.removedGroupIds.has(conversation.id);
-
-  input.disabled = removedFromGroup;
-  sendBtn.disabled = removedFromGroup;
-  attachBtn.disabled = removedFromGroup;
-  emojiBtn.disabled = removedFromGroup;
-  markdownToggle.disabled = removedFromGroup || !!app.chatState.composerQuote;
+  input.disabled = false;
+  sendBtn.disabled = false;
+  attachBtn.disabled = false;
+  emojiBtn.disabled = false;
+  markdownToggle.disabled = !!app.chatState.composerQuote;
   syncComposerMarkdownButton(app);
-  if (removedFromGroup) input.placeholder = app.t('chat.removedFromGroupPlaceholder');
-  app.$('message-input-area').classList.toggle('is-blocked', removedFromGroup);
+  app.$('message-input-area').classList.remove('is-blocked');
 }
 
 /** 发送/上传失败时判断是否是"已被移出群聊"：仅群聊目标 + 服务端 FORBIDDEN 才成立
  *（sendGroupMessage 里唯一的 Forbidden 分支就是非群员；私聊 FORBIDDEN 另有含义，如对方拉黑）。
- * 命中后就地锁定输入框并刷新可能打开的群详情，不必等服务端下发额外通知。 */
+ * 命中后提示完整本地化文案，不再把服务端中文原文拼进英文提示前缀。 */
 function isNotGroupMemberError(target: ConversationTarget, error: unknown): boolean {
   const groupId = (target as { groupId?: string }).groupId;
   if (!groupId) return false;
@@ -173,11 +168,7 @@ function handleSendFailure(
   error: unknown,
   fallbackKey: 'chat.failedToSend' | 'chat.uploadFailedColon',
 ) {
-  const groupId = (target as { groupId?: string }).groupId;
-  if (groupId && isNotGroupMemberError(target, error)) {
-    app.chatState.removedGroupIds.add(groupId);
-    applyConversationGuards(app);
-    if (app.chatState.detailOpen) app.views.chat?.rerenderCurrentDetailPanel();
+  if (isNotGroupMemberError(target, error)) {
     app.showToast(app.t('chat.notGroupMemberError'), 'error');
     return;
   }

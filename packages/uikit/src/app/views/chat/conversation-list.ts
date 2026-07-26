@@ -426,9 +426,6 @@ function openConversationShell(
     app.client.clearUnread(conversation.target).catch(() => {});
   }
 
-  // 重新进入会话：清掉上次"已被移出该群"的锁定态，交给下一次发送重新向服务端确认最新成员身份。
-  if (conversation.kind === 'group') app.chatState.removedGroupIds.delete(conversation.id);
-
   renderConversationList(app);
   updateChatHeaderTitle(app, conversation, conv);
   app.$("chat-header").classList.remove("hidden");
