@@ -16,6 +16,7 @@ export type {
   RecallBody,
   QuoteBody,
   ForwardBody,
+  MentionBody,
 } from "./models";
 export type MessageBody = RawMessageBody;
 export type { SendImageInput, SendFileInput } from "./internal/client-message-facade";
@@ -186,6 +187,11 @@ export interface ForwardAttachmentInfo {
   readonly title: string;
 }
 
+export interface MessageMentionInfo {
+  readonly mentionedUids: ReadonlyArray<string>;
+  readonly mentionAll: boolean;
+}
+
 export interface MessageContentDescriptor {
   readonly text: string;
   readonly html: string | null;
@@ -195,12 +201,19 @@ export interface MessageContentDescriptor {
   readonly image: ImageBody | null;
   readonly file: FileBody | null;
   readonly recall: RecallBody | null;
+  readonly mention: MessageMentionInfo | null;
 }
 
 export interface SendQuotedTextInput {
   readonly text: string;
   readonly quoteMsgId: string;
   readonly quotePreview?: string;
+}
+
+export interface SendMentionInput {
+  readonly text: string;
+  readonly mentionedUids?: ReadonlyArray<string>;
+  readonly mentionAll?: boolean;
 }
 
 export interface ConversationEntry {

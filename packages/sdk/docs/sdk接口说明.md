@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/generated/actions.gen.ts`、`packages/sdk/src/internal/action-mappers.ts`。
-> 最后复核：2026-07-25。
+> 最后复核：2026-07-26。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；通用同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -230,7 +230,8 @@ interface ConversationDescriptor {
 | `sendFile` | `(target, { mediaId, name, ... }) => Promise<SentMessage>` | 发送文件消息，媒体仅用 `media_id` 引用，组装 `FileBody` |
 | `sendQuotedTextMessage` | `(target, input) => Promise<SentMessage>` | 发送引用消息，内部组装 `QuoteBody` |
 | `forwardMessages` | `(target, messages, title) => Promise<SentMessage>` | 转发消息，内部组装 `ForwardBody`（仅携带被转发的 `msg_ids` 与标题） |
-| `describeMessage` | `(message) => MessageContentDescriptor` | 从强类型 `body` 派生正文、HTML、引用、转发、图片、文件和撤回展示信息 |
+| `sendMention` | `(target, { text, mentionedUids?, mentionAll? }) => Promise<SentMessage>` | 发送群内 @ 提及消息，内部组装 `MentionBody`；`mentionedUids` 与 `mentionAll` 至少指定一个，否则同步抛 `ValidationError`；仅群会话可发，单聊由服务端拒绝 |
+| `describeMessage` | `(message) => MessageContentDescriptor` | 从强类型 `body` 派生正文、HTML、引用、转发、图片、文件、撤回和 @ 提及展示信息 |
 | `validateTextMessage` | `(content) => void` | 发送前校验文本长度 |
 | `recallMessage` | `(message) => Promise<void>` | 撤回一条自己发送的消息 |
 | `deleteMessage` | `(messageId) => Promise<number>` | 删除当前用户收件箱中的消息，返回服务端 tombstone seq |

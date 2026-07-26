@@ -297,6 +297,12 @@ func markdownBody(text string) *pb.MessageBody {
 	return &pb.MessageBody{Kind: &pb.MessageBody_Markdown{Markdown: &pb.MarkdownBody{Markdown: text}}}
 }
 
+func mentionBody(text string, mentionedUIDs []int64, mentionAll bool) *pb.MessageBody {
+	return &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{
+		Text: text, MentionedUids: mentionedUIDs, MentionAll: mentionAll,
+	}}}
+}
+
 // bodyText 从 pb.Message.Body 读出可读文本，供断言使用。
 func bodyText(m *pb.Message) string {
 	switch b := m.GetBody().GetKind().(type) {
@@ -308,6 +314,8 @@ func bodyText(m *pb.Message) string {
 		return b.System.GetText()
 	case *pb.MessageBody_Quote:
 		return b.Quote.GetText().GetText()
+	case *pb.MessageBody_Mention:
+		return b.Mention.GetText()
 	case *pb.MessageBody_Recall:
 		return b.Recall.GetText()
 	default:

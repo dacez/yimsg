@@ -180,6 +180,13 @@ function mapBody(body: RawMessage['body'] | undefined): Message['body'] {
       title: b.forward.title || '',
     };
   }
+  if (b.mention) {
+    out.mention = {
+      text: b.mention.text || '',
+      mentioned_uids: (b.mention.mentioned_uids || []).map((id) => String(id)),
+      mention_all: b.mention.mention_all || false,
+    };
+  }
   return out;
 }
 

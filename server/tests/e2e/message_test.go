@@ -94,6 +94,63 @@ func TestSendDMForwardExceedsLimit(t *testing.T) {
 	}, &pb.SendMessageResponse{})
 }
 
+func TestSendGroupMention(t *testing.T) {
+	clients := setupGroupUsers(t, 3)
+	owner, m1, m2 := clients[0], clients[1], clients[2]
+	group := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "MentionGroup", MemberUids: []int64{owner.uid, m1.uid, m2.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := group.GetGroupId()
+	m1.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" && notifGroupID(n) != 0 })
+	m2.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" && notifGroupID(n) != 0 })
+
+	resp := owner.sendMsg(groupTarget(groupID), pb.MessageType_MESSAGE_TYPE_MENTION, mentionBody("@User1 hi", []int64{m1.uid}, false))
+	if resp.GetMsgId() == "" {
+		t.Fatal("send mention message should return msg_id")
+	}
+
+	msgs := sendOK(owner, "get_messages", &pb.GetMessagesRequest{Target: groupTarget(groupID)}, &pb.GetMessagesResponse{})
+	mention := msgs.GetMessages()[len(msgs.GetMessages())-1].GetBody().GetMention()
+	if mention == nil || mention.GetText() != "@User1 hi" || len(mention.GetMentionedUids()) != 1 || mention.GetMentionedUids()[0] != m1.uid || mention.GetMentionAll() {
+		t.Fatalf("mention body not stored correctly: %+v", mention)
+	}
+}
+
+func TestSendGroupMentionAll(t *testing.T) {
+	clients := setupGroupUsers(t, 2)
+	owner, m1 := clients[0], clients[1]
+	group := sendOK(owner, "create_group", &pb.CreateGroupRequest{
+		Name: "MentionAllGroup", MemberUids: []int64{owner.uid, m1.uid},
+	}, &pb.CreateGroupResponse{})
+	groupID := group.GetGroupId()
+	m1.waitNotif(func(n *appmsg.Notification) bool { return n.Type == "messages:received" && notifGroupID(n) != 0 })
+
+	resp := owner.sendMsg(groupTarget(groupID), pb.MessageType_MESSAGE_TYPE_MENTION, mentionBody("@all hi", nil, true))
+	if resp.GetMsgId() == "" {
+		t.Fatal("send mention-all message should return msg_id")
+	}
+
+	msgs := sendOK(owner, "get_messages", &pb.GetMessagesRequest{Target: groupTarget(groupID)}, &pb.GetMessagesResponse{})
+	mention := msgs.GetMessages()[len(msgs.GetMessages())-1].GetBody().GetMention()
+	if mention == nil || !mention.GetMentionAll() {
+		t.Fatalf("mention_all body not stored correctly: %+v", mention)
+	}
+}
+
+func TestSendMentionRejectedInDM(t *testing.T) {
+	a := dial(t)
+	b := dial(t)
+	a.registerAndLogin(uniqueName("msgmentiondm"), "pass1234", "Alice")
+	b.registerAndLogin(uniqueName("msgmentiondm"), "pass1234", "Bob")
+	makeFriends(t, a, b)
+
+	// @ 提及只在群会话里有意义，单聊直接拒绝 INVALID_ARGUMENT。
+	sendErr(a, "send_message", &pb.SendMessageRequest{
+		MsgId: msgid.Generate(), Target: userTarget(b.uid), MsgType: pb.MessageType_MESSAGE_TYPE_MENTION,
+		Body: mentionBody("@Bob hi", []int64{b.uid}, false),
+	}, &pb.SendMessageResponse{})
+}
+
 func TestSendMsgTypeBodyMismatch(t *testing.T) {
 	a := dial(t)
 	b := dial(t)

@@ -3,6 +3,7 @@ import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
+  MSG_TYPE_MENTION,
   MSG_TYPE_QUOTE,
   MSG_TYPE_RECALL,
   MSG_TYPE_SYSTEM,
@@ -18,6 +19,7 @@ import type {
   RecallBody,
   ForwardAttachmentInfo,
   MessageQuoteInfo,
+  MessageMentionInfo,
   MsgType,
 } from '../types';
 
@@ -30,6 +32,7 @@ function descriptor(fields: {
   image?: ImageBody | null;
   file?: FileBody | null;
   recall?: RecallBody | null;
+  mention?: MessageMentionInfo | null;
 }): MessageContentDescriptor {
   return freezeObject({
     text: fields.text,
@@ -40,6 +43,7 @@ function descriptor(fields: {
     image: fields.image ?? null,
     file: fields.file ?? null,
     recall: fields.recall ?? null,
+    mention: fields.mention ?? null,
   });
 }
 
@@ -84,6 +88,16 @@ export function describeMessageContent(message: Message): MessageContentDescript
   }
   if (body.recall) {
     return descriptor({ text: body.recall.text, bodyKind: MSG_TYPE_RECALL, recall: body.recall });
+  }
+  if (body.mention) {
+    return descriptor({
+      text: body.mention.text,
+      bodyKind: MSG_TYPE_MENTION,
+      mention: freezeObject({
+        mentionedUids: [...(body.mention.mentioned_uids || [])],
+        mentionAll: body.mention.mention_all || false,
+      }),
+    });
   }
   return descriptor({ text: '', bodyKind: message.messageType });
 }

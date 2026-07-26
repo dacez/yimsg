@@ -1,7 +1,7 @@
 # SDK 设计方案
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/`、`packages/sdk/src/datagateway/`、`packages/sdk/src/state/`、`packages/sdk/src/transport/`、`protocol/generated/typescript/yimsg.ts`、`packages/sdk/src/worker/sqlite.worker.ts`、`protocol/yimsg.proto`。
-> 最后复核：2026-07-25。
+> 最后复核：2026-07-26。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../../protocol/接口总览.md`](../../../protocol/docs/接口总览.md)。
 
@@ -196,7 +196,7 @@ sequenceDiagram
 | 事件 | `on()`、`off()`、`once()`、`listenerCount()`、`removeAllListeners()` |
 | 生命周期 | `register()`、`login()`、`authenticate()`、`startSession()`、`logout()`、`destroy()` |
 | 会话 | `getConversations()`、`getUnreadCount()`、`clearUnread()`、`deleteConversation()`、`describeConversation()` |
-| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`getMessages()`、`searchMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
+| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`sendMention()`、`getMessages()`、`searchMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
 | 联系人 | `getContacts()`、`searchContacts()`、`getContactCount(status)`、`addFriend()`、`acceptFriend()`、`rejectFriend()`、`deleteFriend()`、`updateRemark()`、`favoriteGroup()`、`unfavoriteGroup()`、`searchUser()` |
 | 屏蔽 / 免打扰 | `blockUser()`、`unblockUser()`、`getBlocklist()`、`muteConversation()`、`unmuteConversation()`、`getMutelist()` |
 | 群组 | `createGroup()`、`getGroupMembers()`、`updateGroupInfo()`、`addGroupMember()`、`removeGroupMember()`、`getGroupInfos()` |

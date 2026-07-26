@@ -51,6 +51,7 @@ import type {
   LocalConversation as PublicLocalConversation,
   Message as PublicMessage,
   MessageContentDescriptor,
+  SendMentionInput,
   SendQuotedTextInput,
   SentMessage as PublicSentMessage,
   SessionMode,
@@ -810,6 +811,11 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   ): Promise<PublicSentMessage> {
     this.requireAuthenticated("sendQuotedTextMessage");
     return this.messageFacade.sendQuotedTextMessage(target, input);
+  }
+
+  sendMention(target: ConversationTarget, input: SendMentionInput): Promise<PublicSentMessage> {
+    this.requireAuthenticated("sendMention");
+    return this.messageFacade.sendMention(target, input);
   }
 
   async recallMessage(message: PublicMessage): Promise<void> {

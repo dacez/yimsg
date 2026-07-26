@@ -27,6 +27,8 @@ func TestValidateSendBody_OK(t *testing.T) {
 		{"file", dal.MsgFile, &pb.MessageBody{Kind: &pb.MessageBody_File{File: &pb.FileBody{MediaId: 9, Name: "a.pdf"}}}},
 		{"quote", dal.MsgQuote, &pb.MessageBody{Kind: &pb.MessageBody_Quote{Quote: &pb.QuoteBody{QuoteMsgId: msgid.Generate(), QuotePreview: "p", Text: &pb.TextBody{Text: "re"}}}}},
 		{"forward", dal.MsgForward, &pb.MessageBody{Kind: &pb.MessageBody_Forward{Forward: &pb.ForwardBody{MsgIds: []string{msgid.Generate(), msgid.Generate()}, Title: "t"}}}},
+		{"mention_uids", dal.MsgMention, &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{Text: "@Bob hi", MentionedUids: []int64{2}}}}},
+		{"mention_all", dal.MsgMention, &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{Text: "@all hi", MentionAll: true}}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -64,6 +66,24 @@ func TestValidateSendBody_ForwardLimit(t *testing.T) {
 	}
 }
 
+func TestValidateSendBody_MentionRequiresTargets(t *testing.T) {
+	body := &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{Text: "hi"}}}
+	if err := validateSendBody(dal.MsgMention, body); err == nil {
+		t.Fatal("mention without mentioned_uids or mention_all should be rejected")
+	}
+}
+
+func TestValidateSendBody_MentionLimit(t *testing.T) {
+	uids := make([]int64, 0, maxMentionedUIDs+1)
+	for i := 0; i <= maxMentionedUIDs; i++ {
+		uids = append(uids, int64(i+1))
+	}
+	body := &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{Text: "hi", MentionedUids: uids}}}
+	if err := validateSendBody(dal.MsgMention, body); err == nil {
+		t.Fatal("mention over limit should be rejected")
+	}
+}
+
 func TestMessageSearchText(t *testing.T) {
 	cases := []struct {
 		name string
@@ -77,6 +97,7 @@ func TestMessageSearchText(t *testing.T) {
 		{"image_caption", &pb.MessageBody{Kind: &pb.MessageBody_Image{Image: &pb.ImageBody{Caption: "sunset"}}}, "sunset"},
 		{"image_empty", &pb.MessageBody{Kind: &pb.MessageBody_Image{Image: &pb.ImageBody{}}}, ""},
 		{"forward", &pb.MessageBody{Kind: &pb.MessageBody_Forward{Forward: &pb.ForwardBody{Title: "chat log"}}}, "chat log"},
+		{"mention", &pb.MessageBody{Kind: &pb.MessageBody_Mention{Mention: &pb.MentionBody{Text: "@Bob hi"}}}, "@Bob hi"},
 		{"recall", recallBody(msgid.Generate(), 2, 3, "你撤回了一条消息"), ""},
 	}
 	for _, c := range cases {

@@ -5,6 +5,7 @@ import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
+  MSG_TYPE_MENTION,
   MSG_TYPE_QUOTE,
   MSG_TYPE_RECALL,
   MSG_TYPE_SYSTEM,
@@ -20,7 +21,8 @@ export type MsgType =
   | typeof MSG_TYPE_RECALL
   | typeof MSG_TYPE_QUOTE
   | typeof MSG_TYPE_FORWARD
-  | typeof MSG_TYPE_MARKDOWN;
+  | typeof MSG_TYPE_MARKDOWN
+  | typeof MSG_TYPE_MENTION;
 
 // ---- Strongly-typed message body (mirrors protobuf MessageBody) ----
 // 字段名与线协议（snake_case）一致，便于本地 protobuf 编解码。
@@ -62,6 +64,11 @@ export interface ForwardBody {
   msg_ids: string[];
   title?: string;
 }
+export interface MentionBody {
+  text: string;
+  mentioned_uids?: string[];
+  mention_all?: boolean;
+}
 export interface MessageBody {
   text?: TextBody;
   image?: ImageBody;
@@ -71,6 +78,7 @@ export interface MessageBody {
   quote?: QuoteBody;
   forward?: ForwardBody;
   markdown?: MarkdownBody;
+  mention?: MentionBody;
 }
 export type GroupRole = typeof GROUP_ROLE_MEMBER | typeof GROUP_ROLE_OWNER;
 

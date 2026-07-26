@@ -113,6 +113,7 @@ enum MessageType {
   MESSAGE_TYPE_QUOTE = 6; // meaning=引用消息 body=quote
   MESSAGE_TYPE_FORWARD = 7; // meaning=转发消息 body=forward
   MESSAGE_TYPE_MARKDOWN = 8; // meaning=Markdown 消息 body=markdown
+  MESSAGE_TYPE_MENTION = 9; // meaning=群内@提及消息 body=mention
 }
 
 // ContactStatus 是联系人条目状态；0 保留为非法值，真实业务值从 1 开始。
@@ -315,6 +316,7 @@ message MessageBody {
     QuoteBody quote = 6; // MESSAGE_TYPE_QUOTE
     ForwardBody forward = 7; // MESSAGE_TYPE_FORWARD
     MarkdownBody markdown = 8; // MESSAGE_TYPE_MARKDOWN
+    MentionBody mention = 9; // MESSAGE_TYPE_MENTION
   }
 }
 
@@ -364,6 +366,15 @@ message QuoteBody {
 message ForwardBody {
   repeated string msg_ids = 1; // required 被转发消息 ID 列表
   string title = 2; // optional 转发标题，参与搜索投影
+}
+
+// MentionBody 表达群内 @ 提及消息；仅群会话可发送，服务端拒绝单聊 target。
+// mentioned_uids 与 mention_all 至少有一个非空/为真；@全体成员时 mentioned_uids 可为空。
+// 被 @ 与免打扰规则相互独立：被 @ 的成员若该会话已开启免打扰，仍按免打扰规则处理，不做穿透提醒。
+message MentionBody {
+  string text = 1; // required 消息文本内容，参与搜索投影
+  repeated int64 mentioned_uids = 2; // optional 被 @ 的具体成员 uid 列表；mention_all=true 时可为空
+  bool mention_all = 3; // optional 是否 @ 全体成员
 }
 
 message ConversationEntry {

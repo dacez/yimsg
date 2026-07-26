@@ -3,9 +3,11 @@ import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_IMAGE,
   MSG_TYPE_MARKDOWN,
+  MSG_TYPE_MENTION,
   MSG_TYPE_QUOTE,
   MSG_TYPE_TEXT,
 } from '../constants';
+import { ValidationError } from '../errors';
 import type { MessageBody, MsgType } from '../models';
 import {
   describeConversation as buildConversationDescriptor,
@@ -24,6 +26,7 @@ import type {
   Message as PublicMessage,
   MessageContentDescriptor,
   SentMessage as PublicSentMessage,
+  SendMentionInput,
   SendQuotedTextInput,
   SessionSnapshot,
   UploadResult,
@@ -123,6 +126,21 @@ export class ClientMessageFacade {
         text: { text: input.text },
       },
     }, MSG_TYPE_QUOTE);
+  }
+
+  sendMention(target: ConversationTarget, input: SendMentionInput): Promise<PublicSentMessage> {
+    validateMessageLength(input.text);
+    const mentionedUids = input.mentionedUids ? [...input.mentionedUids] : [];
+    if (!input.mentionAll && mentionedUids.length === 0) {
+      throw new ValidationError('mentionedUids 或 mentionAll 必须至少指定一个', { context: 'sendMention' });
+    }
+    return this.deps.sendMessage(target, {
+      mention: {
+        text: input.text,
+        mentioned_uids: mentionedUids,
+        mention_all: input.mentionAll || false,
+      },
+    }, MSG_TYPE_MENTION);
   }
 
   forwardMessages(

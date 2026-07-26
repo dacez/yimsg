@@ -74,6 +74,10 @@ interface ChatState {
   highlightMessageId: string | null;
   pendingNewMessageCount: number;
   composerMarkdownMode: boolean;
+  /** 输入框里通过 @ 面板选中、仍待发送的提及：uid → 插入时的展示名，发送时按文本里是否还留着该名字过滤。 */
+  composerMentions: Map<string, string>;
+  /** 是否通过 @ 面板选中了"所有人"，同样在发送时按文本里是否还留着 "@所有人" 过滤。 */
+  composerMentionAll: boolean;
   composerQuote: {
     msgId: string;
     fromUid: string;
@@ -220,6 +224,8 @@ export class AppInstance {
     highlightMessageId: null,
     pendingNewMessageCount: 0,
     composerMarkdownMode: false,
+    composerMentions: new Map<string, string>(),
+    composerMentionAll: false,
     composerQuote: null,
     messageActionMenu: null,
     messageSelectionMode: false,

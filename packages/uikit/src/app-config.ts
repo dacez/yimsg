@@ -38,6 +38,14 @@ export const APP_CONFIG = Object.freeze({
     /** 建群成员选择最多选中的用户数。 */
     maxSelected: 500,
   }),
+  groupMemberPicker: Object.freeze({
+    /**
+     * 带搜索框的群成员选择器一次性全量拉取的安全上限（页数，按 list.pageSize 40 计算）。
+     * 群成员搜索是低频操作，接受一次性拉全量成员 + 展示名再本地排序搜索；
+     * 这里只是防御异常数据（如成员数据损坏导致游标不收敛）的安全兜底，正常群不会触发。
+     */
+    maxPages: 200,
+  }),
   sessionPrefs: Object.freeze({
     /** 屏蔽列表和免打扰同步每页拉取条数。 */
     pageSize: DEFAULT_SYNC_BATCH_SIZE,

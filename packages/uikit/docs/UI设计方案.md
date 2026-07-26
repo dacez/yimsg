@@ -95,6 +95,7 @@
         ├── chat.ts                 — 聊天门面（对外导出 setup/render API）
         ├── chat/                   — 会话、消息、转发、详情、导航
         ├── contacts.ts             — 通讯录（好友 / 请求 / 搜索 / 建群）
+        ├── group-member-picker.ts — 带搜索框的群成员选择器（跨视图复用，见 §7.6）
         ├── settings.ts             — 设置（资料 / 密码 / 登出）
         └── session-preferences.ts  — 屏蔽列表 / 免打扰详情状态辅助
 ```
@@ -594,6 +595,29 @@ uploadAndSend(file, type):
 
 emoji 数据（`views/chat/emoji-data.ts`）为纯 Unicode 字符表，跟随系统 emoji 字体渲染，不引入图片资源。
 
+#### @ 提及（群成员选择器 + MentionBody）
+
+```
+#msg-input input 事件 → maybeTriggerMentionPicker(app, input):
+  仅群聊触发（单聊 conversation.kind !== 'group' 直接返回）
+  光标前一个字符不是刚输入的 "@" → 直接返回
+  → showGroupMemberPicker(app, groupId, { excludeUids: [自己], includeMentionAll: true })（见 §7.6）
+  → 用户选中具体成员：把光标前那个 "@" 替换为 "@昵称 "，并记入
+    chatState.composerMentions（uid → 插入时的展示名）
+  → 用户选中"所有人"：替换为 "@所有人 "，标记 chatState.composerMentionAll = true
+  → 用户取消：不做任何处理，"@" 原样留在输入框里
+
+发送时（composer.ts sendMessage）：
+  按 chatState.composerMentions 过滤出文本里仍包含 "@展示名" 的条目
+  （手动删掉某个 "@昵称" / "@所有人" 片段的会被过滤掉，不当成有效提及发送）
+  composerMentionAll 同理按文本里是否还留着 "@所有人" 过滤
+  过滤后（具体成员或全体成员）非空且当前不在引用中
+    → client.sendMention(target, { text, mentionedUids, mentionAll })
+  发送后清空 composerMentions 与 composerMentionAll
+```
+
+@ 提及是协议层的结构化消息类型（`MESSAGE_TYPE_MENTION` / `MentionBody { text, mentioned_uids, mention_all }`，仅群会话可发，服务端拒绝单聊），与引用回复、Markdown 互斥（同现有 quote/markdown 互斥的惯例：引用优先于提及，提及优先于 Markdown）。渲染上不做特殊高亮，`MentionBody.text` 本身就是可读的 "@昵称 ..." 纯文本，走 `message-list.ts` 里 TEXT/SYSTEM/RECALL 共用的兜底展示分支即可。被 @ 与免打扰规则相互独立，不做穿透提醒。
+
 #### 详情面板
 
 **用户详情（`showUserDetail`）**：
@@ -932,6 +956,31 @@ closeModal()   // 添加 .hidden 类
 
 ```typescript
 setNavBadge(selector: string, visible: boolean)   // 增删红点
+```
+
+### 7.6 群成员选择器（带搜索框）
+
+`views/group-member-picker.ts` 导出 `showGroupMemberPicker(app, groupId, options?): Promise<GroupMemberPickResult | null>`，`GroupMemberPickResult` 为 `{ kind: 'member', uid } | { kind: 'all' }`；复用共享 `#modal-overlay`/`#modal-content`，跨视图通用（目前供 §5.2 的 @ 提及调用，未来任何需要"选一个群成员"的场景都可以直接复用，不必各自重新实现）。`options.includeMentionAll` 默认关闭，只有传 `true` 时才会在列表最前面钉一行"所有人"选项——组件本身通用（例如未来"转让群主"只需选单个具体成员的场景不该出现这一行），@ 提及是目前唯一开启它的调用方。
+
+设计取舍——群成员表（`group_member`）本身不存昵称，昵称永远来自 SDK 的 `UserDisplayInfo` 缓存视图，理由是：群成员昵称若冗余存一份，用户改名后要挨个反查其所在的所有群逐条更新，属于典型的写放大且极易漏更新；而群成员搜索是低频操作，接受"打开时等一次全量拉取"换取零冗余、零一致性维护成本。
+
+```
+打开时：
+  搜索框禁用，列表显示"加载中…已获取 N 位成员"
+  分页循环 client.getGroupMembers(groupId, { cursor, limit }) 直到 hasMoreForward=false
+    （安全上限 APP_CONFIG.groupMemberPicker.maxPages，仅防御异常数据，正常群不会触发）
+  按 APP_CONFIG 批量大小分块调用 client.getUserInfos(uids) 拉展示名
+  按 Intl.Collator('zh-Hans-CN-u-co-pinyin') 拼音排序
+  → 搜索框启用，聚焦
+
+搜索框输入：纯本地按昵称/用户名子串过滤已加载好的成员数组，不发起任何服务端搜索请求
+
+面板开着期间收到 display:updated（缓存后台刷新补齐昵称）→ 只重算受影响成员的展示名并重排，不重新全量拉取
+
+"所有人"选项（includeMentionAll=true 时）：静态选项，不依赖成员拉取结果，不参与搜索过滤，加载中也可点
+
+点击某一行 → resolve({ kind: 'member', uid }) 或 resolve({ kind: 'all' }) 并关闭；
+取消按钮 / Esc / 点击遮罩 → resolve(null)
 ```
 
 ---
