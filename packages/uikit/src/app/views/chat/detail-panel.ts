@@ -8,7 +8,8 @@ import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { BoundedStreamWindow } from '../../bounded-stream-window';
 import { BoundedPageWindow } from '../../bounded-page-window';
-import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED } from '../panel-action-btn';
+import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
+import { contactFriendUid } from '../contacts';
 
 export async function showGroupDetail(app: AppInstance, groupId: string) {
   const requestId = ++app.chatState.detailRequestId;
@@ -61,6 +62,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
           ${panelActionBtn(SVG_REMARK, 'panel-action-gray', app.escapeHtml(app.t('detail.setRemark')), 'remark')}
           ${panelActionBtn(muted ? SVG_BELL_OFF : SVG_BELL, muted ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(app.t('contacts.mute')), 'mute')}
           ${panelActionBtn(favorited ? SVG_STAR_FILLED : SVG_STAR, favorited ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(favorited ? app.t('detail.unfavoriteGroup') : app.t('detail.favoriteGroup')), 'favorite')}
+          ${panelActionBtn(SVG_PLUS, 'panel-action-gray', app.escapeHtml(app.t('detail.addMember')), 'add-member')}
         </div>
       </div>
       <div class="detail-section">
@@ -70,6 +72,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
     `;
     (panel.querySelector('[data-action="remark"]') as HTMLElement | null)?.setAttribute('id', 'detail-group-remark-btn');
     (panel.querySelector('[data-action="favorite"]') as HTMLElement | null)?.setAttribute('id', 'detail-group-favorite-btn');
+    (panel.querySelector('[data-action="add-member"]') as HTMLElement | null)?.setAttribute('id', 'detail-group-addmember-btn');
 
     if (isOwner) {
       app.$('group-avatar-display').addEventListener('click', () => {
@@ -119,11 +122,34 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
           const div = app.dom.ownerDocument.createElement('div');
           div.className = 'member-item';
           div.dataset.uid = uid;
+          // 群主可以把除自己以外的成员移出群聊；群主自己不显示移出按钮（需先转让群主 / 解散群，非本次范围）。
+          const canRemove = isOwner && member.role !== GROUP_ROLE_OWNER;
           div.innerHTML = `
             <div class="avatar avatar-sm">${avatarHtml}</div>
             <span class="member-name">${app.escapeHtml(name)}</span>
             ${member.role === GROUP_ROLE_OWNER ? `<span class="member-badge">${app.t('detail.owner')}</span>` : ''}
+            ${canRemove ? `<button class="member-remove-btn" data-uid="${app.escapeHtml(uid)}" title="${app.escapeHtml(app.t('detail.removeMember'))}">&minus;</button>` : ''}
           `;
+          if (canRemove) {
+            div.querySelector('.member-remove-btn')!.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              const ok = await app.showConfirmModal({
+                title: app.t('detail.removeMemberConfirmTitle'),
+                desc: app.t('detail.removeMemberConfirmDesc', { name }),
+                confirmText: app.t('detail.removeMember'),
+                cancelText: app.t('group.cancel'),
+                danger: true,
+              });
+              if (!ok) return;
+              try {
+                await app.client.removeGroupMember(groupId, uid);
+                app.showToast(app.t('detail.memberRemoved'), 'success');
+                await showGroupDetail(app, groupId);
+              } catch (err) {
+                app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+              }
+            });
+          }
           return [div];
         },
       });
@@ -204,6 +230,11 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
       }
     });
 
+    panel.querySelector('[data-action="add-member"]')!.addEventListener('click', async () => {
+      await showAddMemberModal(app, groupId);
+      if (app.chatState.detailRequestId === requestId) await showGroupDetail(app, groupId);
+    });
+
     app.chatState.detailOpen = true;
     const rightPanel = app.$('right-panel');
     rightPanel.classList.remove('collapsed');
@@ -211,6 +242,142 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
   } catch (_) {
     app.showToast(app.t('detail.failedToLoadGroupDetail'), 'error');
   }
+}
+
+/**
+ * 添加群成员弹窗：一次性全量拉取"好友 - 已在群内的成员"作为候选（与群成员搜索器
+ * §7.6 同样的低频操作、一次性全量拉取取舍），点击候选立即调用 addGroupMember 并从
+ * 列表移除，不做批量勾选 + 确认二次交互，保持与需求一致的最小复杂度。
+ */
+async function showAddMemberModal(app: AppInstance, groupId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const modal = app.$('modal-content');
+    const controller = new AbortController();
+    let entries: { uid: string; name: string }[] = [];
+    let loaded = false;
+    let loadFailed = false;
+
+    modal.innerHTML = `
+      <div class="modal-title">${app.escapeHtml(app.t('detail.addMember'))}</div>
+      <div class="form-group">
+        <input class="input" type="text" id="add-member-search" placeholder="${app.escapeHtml(app.t('detail.addMemberSearchPlaceholder'))}" disabled>
+      </div>
+      <div class="group-member-picker-list" id="add-member-list"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="add-member-done">${app.escapeHtml(app.t('detail.addMemberDone'))}</button>
+      </div>
+    `;
+    app.$('modal-overlay').classList.remove('hidden');
+
+    const searchInput = app.$('add-member-search') as HTMLInputElement;
+    const listEl = app.$('add-member-list');
+
+    const finish = () => {
+      controller.abort();
+      app.closeModal();
+      resolve();
+    };
+
+    const appendEmptyRow = (text: string) => {
+      const row = app.dom.ownerDocument.createElement('div');
+      row.className = 'group-member-picker-empty';
+      row.textContent = text;
+      listEl.appendChild(row);
+    };
+
+    const renderList = () => {
+      listEl.innerHTML = '';
+      if (loadFailed) {
+        appendEmptyRow(app.t('detail.addMemberLoadFailed'));
+        return;
+      }
+      if (!loaded) {
+        appendEmptyRow(app.t('common.loading'));
+        return;
+      }
+      const query = searchInput.value.trim().toLowerCase();
+      const filtered = query
+        ? entries.filter((entry) => entry.name.toLowerCase().includes(query))
+        : entries;
+      if (filtered.length === 0) {
+        appendEmptyRow(app.t(query ? 'detail.addMemberNoResults' : 'detail.addMemberEmpty'));
+        return;
+      }
+      for (const entry of filtered) {
+        const item = app.dom.ownerDocument.createElement('div');
+        item.className = 'group-member-picker-item';
+        item.dataset.uid = entry.uid;
+        const avatarHtml = app.avatarInnerHtml({ nickname: entry.name });
+        item.innerHTML = `<div class="avatar avatar-sm">${avatarHtml}</div><span>${app.escapeHtml(entry.name)}</span>`;
+        item.addEventListener('click', () => { void addOne(entry.uid); }, { signal: controller.signal });
+        listEl.appendChild(item);
+      }
+    };
+
+    const addOne = async (uid: string) => {
+      try {
+        await app.client.addGroupMember(groupId, uid);
+        entries = entries.filter((entry) => entry.uid !== uid);
+        app.showToast(app.t('detail.memberAdded'), 'success');
+        renderList();
+      } catch (err) {
+        app.showToast(app.t('detail.failed') + (err as Error).message, 'error');
+      }
+    };
+
+    const loadCandidates = async () => {
+      // 全量拉取当前群成员 uid 用于排除，翻页安全上限与群成员搜索器一致（groupMemberPicker.maxPages）。
+      const existingUids = new Set<string>();
+      let memberCursor: string | undefined;
+      for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
+        const result = await app.client.getGroupMembers(groupId, { cursor: memberCursor, limit: APP_CONFIG.list.pageSize });
+        if (controller.signal.aborted) return;
+        for (const member of result.members) existingUids.add(member.userId || '0');
+        if (!result.page.hasMoreForward) break;
+        memberCursor = result.page.endCursor;
+      }
+
+      const friendUids: string[] = [];
+      let friendCursor: string | undefined;
+      for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
+        const result = await app.client.getContacts({ status: CONTACT_FRIEND, cursor: friendCursor, limit: APP_CONFIG.list.pageSize });
+        if (controller.signal.aborted) return;
+        for (const contact of result.contacts) {
+          const uid = contactFriendUid(contact);
+          if (uid !== '0' && !existingUids.has(uid)) friendUids.push(uid);
+        }
+        if (!result.page.hasMoreForward) break;
+        friendCursor = result.page.endCursor;
+      }
+
+      const batchMaxLimit = app.client.getClientConfig().batchMaxLimit;
+      for (let i = 0; i < friendUids.length; i += batchMaxLimit) {
+        app.client.getUserInfos(friendUids.slice(i, i + batchMaxLimit));
+      }
+      if (controller.signal.aborted) return;
+
+      const collator = new Intl.Collator('zh-Hans-CN-u-co-pinyin', { numeric: true, sensitivity: 'base' });
+      entries = friendUids
+        .map((uid) => ({ uid, name: displayUserName(app.client.getUserInfos([uid]).get(uid), uid) }))
+        .sort((a, b) => collator.compare(a.name, b.name));
+      loaded = true;
+      searchInput.disabled = false;
+      renderList();
+    };
+
+    loadCandidates().catch(() => {
+      if (controller.signal.aborted) return;
+      loadFailed = true;
+      renderList();
+    });
+
+    renderList();
+    searchInput.addEventListener('input', () => renderList(), { signal: controller.signal });
+    searchInput.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') finish();
+    }, { signal: controller.signal });
+    app.$('add-member-done').addEventListener('click', finish, { signal: controller.signal });
+  });
 }
 
 export async function showUserDetail(app: AppInstance, uid: string) {
