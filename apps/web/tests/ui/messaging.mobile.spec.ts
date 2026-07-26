@@ -1,5 +1,5 @@
 import { test, expect, devices } from './test-fixtures';
-import { uniqueUser, register, addFriend, openDMFromContacts, sendMessage } from './helpers';
+import { uniqueUser, register, addFriend, openDMFromContacts, sendMessage, expectMessage } from './helpers';
 
 // 使用 iPhone 13 的设备尺寸与 pointer: coarse，验证移动端布局与长按撤回路径。
 test.describe('Mobile layout & recall', () => {
@@ -120,6 +120,53 @@ test.describe('Mobile layout & recall', () => {
     const header = page1.locator('#chat-header');
     await header.click({ position: { x: 10, y: 20 } });
     await expect(page1.locator('#left-panel')).toBeVisible();
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例：移动端从聊天页点返回只会隐藏聊天面板、不会清空 currentConvKey（详见
+  // messaging.mobile.spec.ts 上面 "mobile chat view hides conversation list" 那条用例）。
+  // 因此全局搜索命中"刚刚返回前正在看的那个会话"内的消息时，若跳转逻辑只在
+  // currentConvKey 变化时才重新展示聊天面板，就会误判"已经是当前会话"而跳过展示，
+  // 移动端点击搜索结果后仍停留在会话列表——这正是用户报告的 bug（搜中间的消息不跳转，
+  // 搜最后一条消息才正常，实为"是否恰好在此之前手动重新进过该会话"的巧合）。
+  test('mobile 从聊天页返回会话列表后，全局搜索命中同一会话内的消息也要正确跳转到聊天面板', async ({ browser }) => {
+    const ctx1 = await browser.newContext({ ...iphone, ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ...iphone, ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    const u1 = uniqueUser('mobj1');
+    const u2 = uniqueUser('mobj2');
+
+    await register(page1, u1, password, 'MobJumpSearcher');
+    await register(page2, u2, password, 'MobJumpFriend');
+    await addFriend(page1, page2, u2);
+
+    await openDMFromContacts(page1, 'MobJumpFriend');
+    for (let i = 1; i <= 9; i++) {
+      await sendMessage(page1, `mobjump message ${i}`);
+    }
+    await expectMessage(page1, 'mobjump message 9');
+
+    // 点击 header 左上角返回区域回到会话列表：只隐藏聊天面板，currentConvKey 不清空。
+    const header = page1.locator('#chat-header');
+    await header.click({ position: { x: 10, y: 20 } });
+    await expect(page1.locator('#left-panel')).toBeVisible();
+    await expect(page1.locator('#center-panel')).toBeHidden();
+
+    // 全局搜索命中会话中间（非最后一条）的消息，点击应正确切到聊天面板并高亮定位。
+    await page1.fill('#global-search-input', 'mobjump message 3');
+    const messageResult = page1.locator('#global-search-results .conversation-item', { hasText: 'mobjump message 3' });
+    await expect(messageResult).toBeVisible({ timeout: 10_000 });
+    await messageResult.click();
+
+    await expect(page1.locator('#center-panel')).toBeVisible({ timeout: 5_000 });
+    await expect(page1.locator('#left-panel')).toBeHidden({ timeout: 5_000 });
+    const highlighted = page1.locator('.message-row.msg-highlight');
+    await expect(highlighted).toBeVisible({ timeout: 5_000 });
+    await expect(highlighted.locator('.message-bubble')).toContainText('mobjump message 3');
 
     await ctx1.close();
     await ctx2.close();

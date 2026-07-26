@@ -526,6 +526,86 @@ func TestSearchMessagesPagination(t *testing.T) {
 	}
 }
 
+// 回归用例：复现"发 1~1000 条消息，搜索命中中间的一条（203），能否正确定位跳转"。
+// 前端全局搜索会先 search_messages 拿到命中消息，再用 get_messages({page:{around: msg_id}})
+// 以该消息为锚点居中拉一页；这里在服务端层面覆盖这条链路在长会话（远超单页大小）下的正确性，
+// 不依赖真实浏览器操作 1000 次发送消息的耗时。
+func TestGetMessagesAroundDeepInLongConversation(t *testing.T) {
+	a := dial(t)
+	b := dial(t)
+	a.registerAndLogin(uniqueName("longmsg"), "pass1234", "Alice")
+	b.registerAndLogin(uniqueName("longmsg"), "pass1234", "Bob")
+	makeFriends(t, a, b)
+
+	const total = 1000
+	const target = 203
+	for i := 1; i <= total; i++ {
+		a.sendText(userTarget(b.uid), fmt.Sprintf("longmsg %d", i))
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 搜索命中第 203 条：关键字精确到该消息文本，避免被其它编号误命中。
+	wantText := fmt.Sprintf("longmsg %d", target)
+	searchResp := sendOK(b, "search_messages", &pb.SearchMessagesRequest{
+		Keyword: wantText, Target: userTarget(a.uid),
+	}, &pb.SearchMessagesResponse{})
+	if len(searchResp.GetMessages()) != 1 || bodyText(searchResp.GetMessages()[0]) != wantText {
+		t.Fatalf("search_messages(%q) unexpected result: %+v", wantText, searchResp.GetMessages())
+	}
+	msgID := searchResp.GetMessages()[0].GetMsgId()
+	if msgID == "" {
+		t.Fatal("search hit is missing msg_id")
+	}
+
+	// 以命中消息为锚点居中定位：应包含该消息本身，且两端都还有更多（乐观 has_more，
+	// 客户端滚动到真实边界后再收敛），前后各能取到相邻编号的消息，证明确实定位在
+	// 会话中段而不是退化成最新一页。
+	aroundResp := sendOK(b, "get_messages", &pb.GetMessagesRequest{
+		Target: userTarget(a.uid),
+		Page:   &pb.PageQuery{Around: msgID, Limit: 30},
+	}, &pb.GetMessagesResponse{})
+
+	messages := aroundResp.GetMessages()
+	if len(messages) == 0 {
+		t.Fatal("get_messages(around) returned no messages")
+	}
+	if !aroundResp.GetPage().GetHasMoreBackward() || !aroundResp.GetPage().GetHasMoreForward() {
+		t.Fatalf("get_messages(around) around a middle message should optimistically report has_more on both sides, got backward=%v forward=%v",
+			aroundResp.GetPage().GetHasMoreBackward(), aroundResp.GetPage().GetHasMoreForward())
+	}
+
+	found := false
+	minSeen, maxSeen := total+1, 0
+	for _, m := range messages {
+		text := bodyText(m)
+		var n int
+		if _, err := fmt.Sscanf(text, "longmsg %d", &n); err != nil {
+			t.Fatalf("unexpected message body in around window: %q", text)
+		}
+		if n < minSeen {
+			minSeen = n
+		}
+		if n > maxSeen {
+			maxSeen = n
+		}
+		if m.GetMsgId() == msgID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("get_messages(around) window does not contain the anchor message %d, got range [%d,%d]", target, minSeen, maxSeen)
+	}
+	// 锚点两侧都应该有内容：既不是从 1 开始（说明没退化成"从头"），也不是以 total 结尾
+	// （说明没退化成"最新一页"），真正证明是围绕 203 居中取的一页。
+	if minSeen >= target {
+		t.Fatalf("around window has nothing before the anchor: min=%d target=%d", minSeen, target)
+	}
+	if maxSeen <= target {
+		t.Fatalf("around window has nothing after the anchor: max=%d target=%d", maxSeen, target)
+	}
+}
+
 func TestClearUnread(t *testing.T) {
 	a := dial(t)
 	b := dial(t)

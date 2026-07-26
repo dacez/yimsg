@@ -220,7 +220,10 @@ export function closeGlobalChatSearch(app: AppInstance): void {
 // 拉最新页那一步——否则会先渲染出最新页、马上又被锚点页覆盖重渲，且 openConversation
 // 的 scrollToBottom 多帧动画会和随后的锚点滚动/高亮竞态，导致命中会话内非最后一条消息时
 // 跳转/高亮被最新页的滚动结果覆盖，看起来像没跳转到指定消息。
-async function openConversationAndJumpToMessage(app: AppInstance, message: Message): Promise<void> {
+// 目标会话已是 currentConvKey 时跳过 shell 初始化——这在移动端也是安全的：
+// jumpToMessageInConversation 自身会兜底补上 mobile-showing-chat（见该函数注释）。
+// export 仅为单测直接覆盖这条决策分支，非公开 API。
+export async function openConversationAndJumpToMessage(app: AppInstance, message: Message): Promise<void> {
   const descriptor = app.client.describeMessageConversation(message);
   if (app.chatState.currentConvKey !== descriptor.key) {
     const conv: LocalConversation = descriptor.kind === 'group'
