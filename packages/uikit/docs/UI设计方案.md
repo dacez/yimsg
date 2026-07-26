@@ -601,7 +601,8 @@ uploadAndSend(file, type):
 - 撤回入口：消息操作菜单会在“自己发送、仍处于撤回时限内、且消息不是 recall event / recall placeholder”时显示 `撤回`。
 - 引用发送：`client.sendQuotedTextMessage(target, { text, quote })`
 - 转发发送：转发弹窗按会话分页读取目标候选，最多选择 500 个目标会话，并对每个目标调用 `client.forwardMessages(target, messages, comment)`
-- 转发渲染：`client.describeMessage(message).forward`（标题与被转发的 msg_ids）
+- 转发渲染：`client.describeMessage(message).forward`（标题与被转发的 msg_ids）；气泡里的“转发 N 条（点击查看）”块可点击，点击后 `views/chat/message-detail.ts` 的 `showForwardDetailModal` 用 `client.getMessagesByIds(messageIds)` 按 msg_ids 批量拉取被转发消息全文，在弹窗（`.modal-content-wide`）里逐条渲染（复用 `fillMessageBubble`，图片/文件与正常消息一致可点开/下载）；已被删除的条目展示“消息不存在或已被删除”占位。
+- 引用渲染：气泡里的引用预览块可点击，点击后 `showQuoteDetailModal` 用 `client.getMessagesByIds([quote.messageId])` 拉取被引用原始消息全文并在同一弹窗展示；原消息已不存在时退回展示 `quote.preview` 摘要。
 - ext / markdown 渲染：`client.describeMessage(message)`
 
 #### 附件上传流程

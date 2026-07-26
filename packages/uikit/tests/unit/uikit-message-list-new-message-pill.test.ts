@@ -193,7 +193,6 @@ function createTestApp() {
       messageSelectionMode: false,
       selectedMessageIds: new Set<string>(),
       pendingMessageIds: new Set<string>(),
-      expandedQuoteMessageIds: new Set<string>(),
     },
   } as unknown as AppInstance;
 

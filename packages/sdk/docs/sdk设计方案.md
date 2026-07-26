@@ -196,7 +196,7 @@ sequenceDiagram
 | 事件 | `on()`、`off()`、`once()`、`listenerCount()`、`removeAllListeners()` |
 | 生命周期 | `register()`、`login()`、`authenticate()`、`startSession()`、`logout()`、`destroy()` |
 | 会话 | `getConversations()`、`getUnreadCount()`、`clearUnread()`、`deleteConversation()`、`describeConversation()` |
-| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`sendMention()`、`getMessages()`、`searchMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
+| 消息 | `sendMessage()`、`sendText()`、`sendMarkdown()`、`sendImage()`、`sendFile()`、`sendQuotedTextMessage()`、`forwardMessages()`、`sendMention()`、`getMessages()`、`getMessagesByIds()`、`searchMessages()`、`recallMessage()`、`deleteMessage()`、`describeMessage()`、`describeMessageConversation()`、`validateTextMessage()` |
 | 联系人 | `getContacts()`、`searchContacts()`、`getContactCount(status)`、`addFriend()`、`acceptFriend()`、`rejectFriend()`、`deleteFriend()`、`updateRemark()`、`favoriteGroup()`、`unfavoriteGroup()`、`searchUser()` |
 | 屏蔽 / 免打扰 | `blockUser()`、`unblockUser()`、`getBlocklist()`、`muteConversation()`、`unmuteConversation()`、`getMutelist()` |
 | 群组 | `createGroup()`、`getGroupMembers()`、`updateGroupInfo()`、`addGroupMember()`、`removeGroupMember()`、`getGroupInfos()` |
@@ -211,7 +211,7 @@ sequenceDiagram
 | `register()` / `login()` / `authenticate()` | 未连接时自动连接 |
 | 写操作 | 需要认证；多数写操作不要求会话处于 `ready` |
 | `getConversations()` / `getContacts()` / `searchContacts()` | 需要认证且需要 `startSession()` 创建 DataGateway；正常调用方应等待 `startSession()` 返回 |
-| `getMessages()` / `searchMessages()` / `getContactCount(status)` | 需要认证且会话处于 `ready` |
+| `getMessages()` / `getMessagesByIds()` / `searchMessages()` / `getContactCount(status)` | 需要认证且会话处于 `ready` |
 | `getUnreadCount()` / `getBlocklist()` / `getMutelist()` | 需要认证；DataGateway 存在时走 DataGateway，否则直连服务端 |
 | 四个 `getXxxInfos()` | 同步读取 DisplayInfoCache；`forceRefresh: true` 时同步返回值不变，但无条件安排 DataGateway 异步服务端刷新；无 DataGateway 时只返回当前展示值 |
 | `uploadFile()` | 需要认证 token，走 `fetch(uploadUrl)` |

@@ -80,7 +80,6 @@ function createApp() {
       pendingNewMessageCount: 0,
       selectedMessageIds: new Set<string>(),
       pendingMessageIds: new Set<string>(),
-      expandedQuoteMessageIds: new Set<string>(),
       highlightMessageId: null as string | null,
     },
   } as unknown as AppInstance;

@@ -98,7 +98,6 @@ interface ChatState {
   selectedMessageIds: Set<string>;
   /** 发送中的乐观占位消息 id（临时本地 id，非服务端 msg_id）：命中时消息气泡旁展示"发送中"图标。 */
   pendingMessageIds: Set<string>;
-  expandedQuoteMessageIds: Set<string>;
   loadContactsFn: (() => void) | null;
   renderSettingsFn: (() => void) | null;
   detailRequestId: number;
@@ -241,7 +240,6 @@ export class AppInstance {
     messageSelectionMode: false,
     selectedMessageIds: new Set<string>(),
     pendingMessageIds: new Set<string>(),
-    expandedQuoteMessageIds: new Set<string>(),
     loadContactsFn: null,
     renderSettingsFn: null,
     detailRequestId: 0,
