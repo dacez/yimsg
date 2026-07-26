@@ -53,7 +53,7 @@ func (s *AppState) AddFriend(info *BaseInfo, req *pb.AddFriendRequest) *pb.AddFr
 		return toAddFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if blocked {
-		return toAddFriendResponse(appmsg.ErrForbidden(reqID, "当前无法发起该操作"))
+		return toAddFriendResponse(appmsg.ErrForbidden(reqID, "action not allowed while blocked"))
 	}
 
 	remarkName := req.GetRemarkName()
@@ -88,7 +88,7 @@ func (s *AppState) AcceptFriend(info *BaseInfo, req *pb.AcceptFriendRequest) *pb
 		return toAcceptFriendResponse(appmsg.ErrInternal(reqID, err.Error()))
 	}
 	if blocked {
-		return toAcceptFriendResponse(appmsg.ErrForbidden(reqID, "当前无法发起该操作"))
+		return toAcceptFriendResponse(appmsg.ErrForbidden(reqID, "action not allowed while blocked"))
 	}
 
 	// 调用者必须是这条请求的接收方（自身记录为 PENDING_INCOMING），否则 AcceptRequest 不会命中，

@@ -1,9 +1,10 @@
 import type { Contact, LocalConversation, Message } from '@yimsg/sdk';
-import { displayGroupName, displayUserName, formatTime } from '@yimsg/sdk';
+import { MSG_TYPE_RECALL, displayGroupName, displayUserName, formatTime } from '@yimsg/sdk';
 import type { AppInstance } from '../../app-instance';
 import { contactFriendUid, contactGroupId } from '../contacts';
 import { openConversation, openConversationShellForJump } from './conversation-list';
 import { jumpToMessageInConversation } from './message-search';
+import { recallPlaceholderText } from './helpers';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const CONTACT_RESULT_LIMIT = 8;
@@ -176,7 +177,9 @@ export function setupGlobalChatSearch(app: AppInstance): void {
         frag.appendChild(resultRow({
           name: convName,
           avatarUrl,
-          preview: app.client.describeMessage(message).text,
+          preview: message.messageType === MSG_TYPE_RECALL
+            ? recallPlaceholderText(app, message)
+            : app.client.describeMessage(message).text,
           time: formatTime(message.sentAt),
           onClick: () => void openConversationAndJumpToMessage(app, message),
         }));

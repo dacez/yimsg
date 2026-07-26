@@ -32,11 +32,22 @@ export function canAutoClearUnreadCurrentConversation(app: AppInstance): boolean
   return Boolean(currentConversation(app) && isConversationPaneVisible(app));
 }
 
+// 撤回占位文案：body.recall.text 是服务端生成的固定语言文案，不能直接展示给不同语言的
+// 界面；改为客户端按当前语言、结合撤回操作者是否本人/是否群聊本地渲染。
+export function recallPlaceholderText(app: AppInstance, msg: Message): string {
+  const fromUid = msg.senderId || '0';
+  if (fromUid === app.client.getSessionSnapshot().currentUid) return app.t('chat.recallSelf');
+  if (!msg.groupId || msg.groupId === '0') return app.t('chat.recallOther');
+  const sender = app.client.getUserInfos([fromUid]).get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
+  return app.t('chat.recallByName', { name: displayUserName(sender, fromUid) });
+}
+
 // 纯文本预览：真实内容来自 body，由 describeMessage 派生可读文本。
 function plainText(app: AppInstance, msg: Message): string {
   const msgType = msg.messageType;
   if (msgType === MSG_TYPE_IMAGE) return app.t('chat.previewImage');
   if (msgType === MSG_TYPE_FILE) return app.t('chat.previewFile');
+  if (msgType === MSG_TYPE_RECALL) return recallPlaceholderText(app, msg);
   return app.client.describeMessage(msg).text.replace(/\n/g, ' ');
 }
 

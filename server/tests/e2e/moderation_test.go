@@ -37,8 +37,8 @@ func TestBlockFlowAndSync(t *testing.T) {
 	sendResp := sendErr(a, "send_message", &pb.SendMessageRequest{
 		MsgId: msgid.Generate(), Target: userTarget(b.uid), MsgType: pb.MessageType_MESSAGE_TYPE_TEXT, Body: textBody("blocklist"),
 	}, &pb.SendMessageResponse{})
-	if sendResp.GetBase().GetMsg() != "对方暂不接受私聊" {
-		t.Fatalf("blocked DM error=%q, want 对方暂不接受私聊", sendResp.GetBase().GetMsg())
+	if sendResp.GetBase().GetMsg() != "recipient is not accepting private messages" {
+		t.Fatalf("blocked DM error=%q, want recipient is not accepting private messages", sendResp.GetBase().GetMsg())
 	}
 
 	sendOK(a, "unblock_user", &pb.UnblockUserRequest{Uid: b.uid}, &pb.UnblockUserResponse{})

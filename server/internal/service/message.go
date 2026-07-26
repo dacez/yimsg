@@ -225,14 +225,14 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 
 func sendDM(s *AppState, reqID uint64, msgID string, fromUID int64, toUID int64, msgType int8, body []byte, searchText string) SendMessageResult {
 	if fromUID == toUID {
-		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "不能给自己发送消息")}
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "cannot send message to yourself")}
 	}
 	blocked, err := isEitherWayBlocked(s, fromUID, toUID)
 	if err != nil {
 		return SendMessageResult{Response: appmsg.ErrInternal(reqID, err.Error())}
 	}
 	if blocked {
-		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "对方暂不接受私聊")}
+		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "recipient is not accepting private messages")}
 	}
 
 	now := auth.NowMs()
@@ -272,7 +272,7 @@ func sendGroupMessage(s *AppState, reqID uint64, msgID string, fromUID int64, gr
 		return SendMessageResult{Response: appmsg.ErrInternal(reqID, err.Error())}
 	}
 	if !isMember {
-		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "非群员")}
+		return SendMessageResult{Response: appmsg.ErrForbidden(reqID, "not a group member")}
 	}
 
 	now := auth.NowMs()

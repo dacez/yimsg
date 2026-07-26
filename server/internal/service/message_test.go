@@ -295,7 +295,7 @@ func TestSendGroupMessageNonMember(t *testing.T) {
 	if isOK(result.Response) {
 		t.Error("non-member should not be able to send")
 	}
-	if errMsg(result.Response) != "非群员" {
+	if errMsg(result.Response) != "not a group member" {
 		t.Errorf("got error %q", errMsg(result.Response))
 	}
 }
@@ -323,8 +323,8 @@ func TestSendDMToSelfRejected(t *testing.T) {
 	if isOK(result.Response) {
 		t.Fatal("send dm to self should fail")
 	}
-	if errMsg(result.Response) != "不能给自己发送消息" {
-		t.Fatalf("error = %q, want 不能给自己发送消息", errMsg(result.Response))
+	if errMsg(result.Response) != "cannot send message to yourself" {
+		t.Fatalf("error = %q, want cannot send message to yourself", errMsg(result.Response))
 	}
 }
 
