@@ -9,6 +9,7 @@ import { InstantDataGateway } from "../../../src/datagateway/instant";
 import {
   MSG_TYPE_FORWARD,
   MSG_TYPE_MARKDOWN,
+  MSG_TYPE_MENTION,
   MSG_TYPE_QUOTE,
   MSG_TYPE_RECALL,
   MSG_TYPE_TEXT,
@@ -891,6 +892,23 @@ describe("YimsgClient", () => {
       id: "200",
       target: { toUid: "200" },
     });
+
+    const mentionMessage = {
+      seq: 3,
+      messageId: "m3",
+      senderId: "200",
+      recipientId: "0",
+      groupId: "9001",
+      messageType: MSG_TYPE_MENTION,
+      body: { mention: { text: "@Bob hi", mentioned_uids: ["200"], mention_all: false } },
+      sentAt: 125,
+    } as const;
+    const mentionDescriptor = client.describeMessage(mentionMessage);
+    expect(mentionDescriptor).toMatchObject({
+      text: "@Bob hi",
+      bodyKind: MSG_TYPE_MENTION,
+      mention: { mentionedUids: ["200"], mentionAll: false },
+    });
   });
 
   it("sendQuotedTextMessage builds a QuoteBody through the facade", async () => {
@@ -951,6 +969,37 @@ describe("YimsgClient", () => {
     expect(sent).toMatchObject({ action: "sendMessage", msg_type: MSG_TYPE_FORWARD, to_uid: "200" });
     expect((sent.body as { forward?: { msg_ids?: string[]; title?: string } }).forward)
       .toMatchObject({ msg_ids: ["5"], title: "转发附言" });
+  });
+
+  it("sendMention builds a MentionBody through the facade", async () => {
+    const { client, transportSend } = setupClientWithMocks();
+    await client.authenticate("tok123");
+
+    transportSend.mockResolvedValueOnce({
+      ok: true,
+      seq: 11,
+      msg_id: "mention-msg",
+    });
+
+    const result = await client.sendMention(
+      { groupId: "9001" },
+      { text: "@Bob hi", mentionedUids: ["200"] },
+    );
+
+    expect(result.message.messageType).toBe(MSG_TYPE_MENTION);
+    const sent = decodedTransportRequests(transportSend).at(-1) as Record<string, unknown>;
+    expect(sent).toMatchObject({ action: "sendMessage", msg_type: MSG_TYPE_MENTION, group_id: "9001" });
+    expect((sent.body as { mention?: { text?: string; mentioned_uids?: string[]; mention_all?: boolean } }).mention)
+      .toMatchObject({ text: "@Bob hi", mentioned_uids: ["200"], mention_all: false });
+  });
+
+  it("sendMention throws when neither mentionedUids nor mentionAll is set", async () => {
+    const { client } = setupClientWithMocks();
+    await client.authenticate("tok123");
+
+    expect(() => client.sendMention({ groupId: "9001" }, { text: "hi" })).toThrow(
+      /mentionedUids|mentionAll/,
+    );
   });
 
 

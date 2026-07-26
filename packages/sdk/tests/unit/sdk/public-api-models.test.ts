@@ -35,6 +35,26 @@ describe('SDK 公开模型映射', () => {
     expect(Object.isFrozen(message)).toBe(true);
   });
 
+  it('将 @ 提及消息体映射为 camelCase 的公开模型', () => {
+    const message = mapMessage({
+      uid: 0,
+      seq: 11,
+      msg_id: 'msg-11',
+      from_uid: '100',
+      to_uid: '0',
+      group_id: '9001',
+      msg_type: 9,
+      body: { mention: { text: '@Bob hi', mentioned_uids: ['200'], mention_all: false } },
+      send_time: 123457,
+    } as never);
+
+    expect(message.body.mention).toMatchObject({
+      text: '@Bob hi',
+      mentioned_uids: ['200'],
+      mention_all: false,
+    });
+  });
+
   it('将联系人与资料映射为前端友好字段', () => {
     const contact = mapContact({
       friend_uid: '200',

@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-25。
+> 最后复核：2026-07-26。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -588,18 +588,25 @@ uploadAndSend(file, type):
 
 emoji 数据（`views/chat/emoji-data.ts`）为纯 Unicode 字符表，跟随系统 emoji 字体渲染，不引入图片资源。
 
-#### @ 提及（群成员选择器）
+#### @ 提及（群成员选择器 + MentionBody）
 
 ```
 #msg-input input 事件 → maybeTriggerMentionPicker(app, input):
   仅群聊触发（单聊 conversation.kind !== 'group' 直接返回）
   光标前一个字符不是刚输入的 "@" → 直接返回
   → showGroupMemberPicker(app, groupId, { excludeUids: [自己] })（见 §7.6）
-  → 用户选中 uid：把光标前那个 "@" 替换为 "@昵称 "
+  → 用户选中 uid：把光标前那个 "@" 替换为 "@昵称 "，并记入
+    chatState.composerMentions（uid → 插入时的展示名）
   → 用户取消：不做任何处理，"@" 原样留在输入框里
+
+发送时（composer.ts sendMessage）：
+  按 chatState.composerMentions 过滤出文本里仍包含 "@展示名" 的条目
+  （手动删掉某个 "@昵称" 片段的会被过滤掉，不当成有效提及发送）
+  过滤后非空且当前不在引用中 → client.sendMention(target, { text, mentionedUids })
+  发送后清空 composerMentions
 ```
 
-@ 提及只是纯文本插入（`@昵称 `），不产生结构化提及字段，也不触发提及专属的推送通知——协议里没有 mention 相关字段，这类语义如果之后要做（高亮渲染、被 @ 用户特殊提醒）需要改协议，需先走变更确认流程。
+@ 提及是协议层的结构化消息类型（`MESSAGE_TYPE_MENTION` / `MentionBody { text, mentioned_uids, mention_all }`，仅群会话可发，服务端拒绝单聊），与引用回复、Markdown 互斥（同现有 quote/markdown 互斥的惯例：引用优先于提及，提及优先于 Markdown）。渲染上不做特殊高亮，`MentionBody.text` 本身就是可读的 "@昵称 ..." 纯文本，走 `message-list.ts` 里 TEXT/SYSTEM/RECALL 共用的兜底展示分支即可。当前 `showGroupMemberPicker` 只能选中单个具体成员，暂未提供"@全体成员"的 UI 入口（`mention_all` 字段已在协议/服务端/SDK 就绪，UI 入口是后续可选的跟进项）。被 @ 与免打扰规则相互独立，不做穿透提醒。
 
 #### 详情面板
 

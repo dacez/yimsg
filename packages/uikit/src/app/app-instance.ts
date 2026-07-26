@@ -72,6 +72,8 @@ interface ChatState {
   messagePageRequestId: number;
   pendingNewMessageCount: number;
   composerMarkdownMode: boolean;
+  /** 输入框里通过 @ 面板选中、仍待发送的提及：uid → 插入时的展示名，发送时按文本里是否还留着该名字过滤。 */
+  composerMentions: Map<string, string>;
   composerQuote: {
     msgId: string;
     fromUid: string;
@@ -217,6 +219,7 @@ export class AppInstance {
     messagePageRequestId: 0,
     pendingNewMessageCount: 0,
     composerMarkdownMode: false,
+    composerMentions: new Map<string, string>(),
     composerQuote: null,
     messageActionMenu: null,
     messageSelectionMode: false,

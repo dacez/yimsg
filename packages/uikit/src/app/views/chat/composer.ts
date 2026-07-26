@@ -77,6 +77,15 @@ export function applyConversationGuards(app: AppInstance) {
   app.$('message-input-area').classList.remove('is-blocked');
 }
 
+/** 取出仍留在文本里的待发送 @ 提及；手动删掉 "@昵称" 片段的会被过滤掉，不当成有效提及发送。 */
+function pendingMentionedUids(app: AppInstance, content: string): string[] {
+  const result: string[] = [];
+  for (const [uid, name] of app.chatState.composerMentions) {
+    if (content.includes(`@${name}`)) result.push(uid);
+  }
+  return result;
+}
+
 export async function sendMessage(app: AppInstance) {
   const input = app.$('msg-input') as HTMLTextAreaElement;
   const content = input.value.trim();
@@ -84,9 +93,24 @@ export async function sendMessage(app: AppInstance) {
 
   const target = app.client.describeConversation(app.chatState.currentConvKey).target;
   try {
+    // @ 提及与引用回复互斥（QuoteBody 不带提及字段，引用优先），与 Markdown 也互斥
+    // （MentionBody 不是富文本）；只要还有提及且没在引用，就按提及消息发送。
+    const mentionedUids = app.chatState.composerQuote ? [] : pendingMentionedUids(app, content);
+    if (mentionedUids.length > 0) {
+      const sendPromise = app.client.sendMention(target, { text: content, mentionedUids });
+      input.value = '';
+      app.chatState.composerMentions = new Map();
+      const result = await sendPromise;
+      appendLiveMessageToPage(app, result.message);
+      app.views.chat?.renderMessages();
+      app.views.chat?.scrollToBottom();
+      return;
+    }
+
     if (app.chatState.composerMarkdownMode && !app.chatState.composerQuote) {
       const sendPromise = app.client.sendMarkdown(target, content);
       input.value = '';
+      app.chatState.composerMentions = new Map();
       const result = await sendPromise;
       appendLiveMessageToPage(app, result.message);
       app.views.chat?.renderMessages();
@@ -96,6 +120,7 @@ export async function sendMessage(app: AppInstance) {
 
     app.client.validateTextMessage(content);
     input.value = '';
+    app.chatState.composerMentions = new Map();
 
     if (app.chatState.composerQuote) {
       const quote = app.chatState.composerQuote;
@@ -164,4 +189,5 @@ export async function maybeTriggerMentionPicker(app: AppInstance, input: HTMLTex
   const cursor = before.length + mentionText.length;
   input.focus();
   input.setSelectionRange(cursor, cursor);
+  app.chatState.composerMentions.set(uid, name);
 }

@@ -11,5 +11,6 @@ export function messageSearchText(body: MessageBody | undefined): string {
   if (body.image) return body.image.caption || '';
   if (body.system) return body.system.text || '';
   if (body.forward) return body.forward.title || '';
+  if (body.mention) return body.mention.text || '';
   return '';
 }

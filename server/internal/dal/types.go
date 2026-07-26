@@ -256,4 +256,5 @@ const (
 	MsgQuote    int8 = 6
 	MsgForward  int8 = 7
 	MsgMarkdown int8 = 8
+	MsgMention  int8 = 9
 )

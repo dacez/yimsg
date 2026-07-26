@@ -671,6 +671,8 @@ export enum MessageType {
   MESSAGE_TYPE_FORWARD = 7,
   /** MESSAGE_TYPE_MARKDOWN - meaning=Markdown 消息 body=markdown */
   MESSAGE_TYPE_MARKDOWN = 8,
+  /** MESSAGE_TYPE_MENTION - meaning=群内@提及消息 body=mention */
+  MESSAGE_TYPE_MENTION = 9,
 }
 
 export function messageTypeFromJSON(object: any): MessageType {
@@ -702,6 +704,9 @@ export function messageTypeFromJSON(object: any): MessageType {
     case 8:
     case "MESSAGE_TYPE_MARKDOWN":
       return MessageType.MESSAGE_TYPE_MARKDOWN;
+    case 9:
+    case "MESSAGE_TYPE_MENTION":
+      return MessageType.MESSAGE_TYPE_MENTION;
     default:
       throw new globalThis.Error("Unrecognized enum value " + object + " for enum MessageType");
   }
@@ -727,6 +732,8 @@ export function messageTypeToJSON(object: MessageType): string {
       return "MESSAGE_TYPE_FORWARD";
     case MessageType.MESSAGE_TYPE_MARKDOWN:
       return "MESSAGE_TYPE_MARKDOWN";
+    case MessageType.MESSAGE_TYPE_MENTION:
+      return "MESSAGE_TYPE_MENTION";
     default:
       throw new globalThis.Error("Unrecognized enum value " + object + " for enum MessageType");
   }
@@ -1313,7 +1320,11 @@ export interface MessageBody {
     | ForwardBody
     | undefined;
   /** MESSAGE_TYPE_MARKDOWN */
-  markdown?: MarkdownBody | undefined;
+  markdown?:
+    | MarkdownBody
+    | undefined;
+  /** MESSAGE_TYPE_MENTION */
+  mention?: MentionBody | undefined;
 }
 
 export interface TextBody {
@@ -1386,6 +1397,20 @@ export interface ForwardBody {
   msg_ids: string[];
   /** optional 转发标题，参与搜索投影 */
   title: string;
+}
+
+/**
+ * MentionBody 表达群内 @ 提及消息；仅群会话可发送，服务端拒绝单聊 target。
+ * mentioned_uids 与 mention_all 至少有一个非空/为真；@全体成员时 mentioned_uids 可为空。
+ * 被 @ 与免打扰规则相互独立：被 @ 的成员若该会话已开启免打扰，仍按免打扰规则处理，不做穿透提醒。
+ */
+export interface MentionBody {
+  /** required 消息文本内容，参与搜索投影 */
+  text: string;
+  /** optional 被 @ 的具体成员 uid 列表；mention_all=true 时可为空 */
+  mentioned_uids: string[];
+  /** optional 是否 @ 全体成员 */
+  mention_all: boolean;
 }
 
 export interface ConversationEntry {
@@ -4373,6 +4398,7 @@ function createBaseMessageBody(): MessageBody {
     quote: undefined,
     forward: undefined,
     markdown: undefined,
+    mention: undefined,
   };
 }
 
@@ -4401,6 +4427,9 @@ export const MessageBody: MessageFns<MessageBody> = {
     }
     if (message.markdown !== undefined) {
       MarkdownBody.encode(message.markdown, writer.uint32(66).fork()).join();
+    }
+    if (message.mention !== undefined) {
+      MentionBody.encode(message.mention, writer.uint32(74).fork()).join();
     }
     return writer;
   },
@@ -4476,6 +4505,14 @@ export const MessageBody: MessageFns<MessageBody> = {
           message.markdown = MarkdownBody.decode(reader, reader.uint32());
           continue;
         }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.mention = MentionBody.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4495,6 +4532,7 @@ export const MessageBody: MessageFns<MessageBody> = {
       quote: isSet(object.quote) ? QuoteBody.fromJSON(object.quote) : undefined,
       forward: isSet(object.forward) ? ForwardBody.fromJSON(object.forward) : undefined,
       markdown: isSet(object.markdown) ? MarkdownBody.fromJSON(object.markdown) : undefined,
+      mention: isSet(object.mention) ? MentionBody.fromJSON(object.mention) : undefined,
     };
   },
 
@@ -4524,6 +4562,9 @@ export const MessageBody: MessageFns<MessageBody> = {
     if (message.markdown !== undefined) {
       obj.markdown = MarkdownBody.toJSON(message.markdown);
     }
+    if (message.mention !== undefined) {
+      obj.mention = MentionBody.toJSON(message.mention);
+    }
     return obj;
   },
 
@@ -4551,6 +4592,9 @@ export const MessageBody: MessageFns<MessageBody> = {
       : undefined;
     message.markdown = (object.markdown !== undefined && object.markdown !== null)
       ? MarkdownBody.fromPartial(object.markdown)
+      : undefined;
+    message.mention = (object.mention !== undefined && object.mention !== null)
+      ? MentionBody.fromPartial(object.mention)
       : undefined;
     return message;
   },
@@ -5282,6 +5326,118 @@ export const ForwardBody: MessageFns<ForwardBody> = {
     const message = createBaseForwardBody();
     message.msg_ids = object.msg_ids?.map((e) => e) || [];
     message.title = object.title ?? "";
+    return message;
+  },
+};
+
+function createBaseMentionBody(): MentionBody {
+  return { text: "", mentioned_uids: [], mention_all: false };
+}
+
+export const MentionBody: MessageFns<MentionBody> = {
+  encode(message: MentionBody, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.text !== "") {
+      writer.uint32(10).string(message.text);
+    }
+    writer.uint32(18).fork();
+    for (const v of message.mentioned_uids) {
+      writer.int64(v);
+    }
+    writer.join();
+    if (message.mention_all !== false) {
+      writer.uint32(24).bool(message.mention_all);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MentionBody {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMentionBody();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag === 16) {
+            message.mentioned_uids.push(reader.int64().toString());
+
+            continue;
+          }
+
+          if (tag === 18) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.mentioned_uids.push(reader.int64().toString());
+            }
+
+            continue;
+          }
+
+          break;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.mention_all = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MentionBody {
+    return {
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      mentioned_uids: globalThis.Array.isArray(object?.mentionedUids)
+        ? object.mentionedUids.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.mentioned_uids)
+        ? object.mentioned_uids.map((e: any) => globalThis.String(e))
+        : [],
+      mention_all: isSet(object.mentionAll)
+        ? globalThis.Boolean(object.mentionAll)
+        : isSet(object.mention_all)
+        ? globalThis.Boolean(object.mention_all)
+        : false,
+    };
+  },
+
+  toJSON(message: MentionBody): unknown {
+    const obj: any = {};
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.mentioned_uids?.length) {
+      obj.mentionedUids = message.mentioned_uids;
+    }
+    if (message.mention_all !== false) {
+      obj.mentionAll = message.mention_all;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<MentionBody>): MentionBody {
+    return MentionBody.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<MentionBody>): MentionBody {
+    const message = createBaseMentionBody();
+    message.text = object.text ?? "";
+    message.mentioned_uids = object.mentioned_uids?.map((e) => e) || [];
+    message.mention_all = object.mention_all ?? false;
     return message;
   },
 };

@@ -14,6 +14,7 @@ const (
 	maxTextRunes         = 4096
 	maxMarkdownBytes     = 20000
 	maxForwardItemsCount = 20
+	maxMentionedUIDs     = 100
 )
 
 // msgTypeForBody 返回 body.kind 对应的 MessageType（int8）；第二返回值表示 oneof 是否已设置。
@@ -38,6 +39,8 @@ func msgTypeForBody(body *pb.MessageBody) (int8, bool) {
 		return dal.MsgForward, true
 	case *pb.MessageBody_Markdown:
 		return dal.MsgMarkdown, true
+	case *pb.MessageBody_Mention:
+		return dal.MsgMention, true
 	default:
 		return 0, false
 	}
@@ -97,6 +100,19 @@ func validateSendBody(msgType int8, body *pb.MessageBody) error {
 		if b.System.GetText() == "" {
 			return errors.New("system text required")
 		}
+	case *pb.MessageBody_Mention:
+		if b.Mention.GetText() == "" {
+			return errors.New("mention text required")
+		}
+		if len([]rune(b.Mention.GetText())) > maxTextRunes {
+			return errors.New("text too long: max 4096 chars")
+		}
+		if !b.Mention.GetMentionAll() && len(b.Mention.GetMentionedUids()) == 0 {
+			return errors.New("mentioned_uids or mention_all required")
+		}
+		if len(b.Mention.GetMentionedUids()) > maxMentionedUIDs {
+			return errors.New("mentioned_uids exceed limit")
+		}
 	}
 	return nil
 }
@@ -122,6 +138,8 @@ func messageSearchText(body *pb.MessageBody) string {
 		return b.System.GetText()
 	case *pb.MessageBody_Forward:
 		return b.Forward.GetTitle()
+	case *pb.MessageBody_Mention:
+		return b.Mention.GetText()
 	case *pb.MessageBody_Recall:
 		return ""
 	default:

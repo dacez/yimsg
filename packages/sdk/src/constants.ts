@@ -6,6 +6,7 @@ export const MSG_TYPE_RECALL = 5 as const;
 export const MSG_TYPE_QUOTE = 6 as const;
 export const MSG_TYPE_FORWARD = 7 as const;
 export const MSG_TYPE_MARKDOWN = 8 as const;
+export const MSG_TYPE_MENTION = 9 as const;
 
 export const CONTACT_FRIEND = 1;
 export const CONTACT_DELETED = 0xff;

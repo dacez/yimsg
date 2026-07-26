@@ -376,6 +376,7 @@ const (
 	MessageType_MESSAGE_TYPE_QUOTE    MessageType = 6 // meaning=引用消息 body=quote
 	MessageType_MESSAGE_TYPE_FORWARD  MessageType = 7 // meaning=转发消息 body=forward
 	MessageType_MESSAGE_TYPE_MARKDOWN MessageType = 8 // meaning=Markdown 消息 body=markdown
+	MessageType_MESSAGE_TYPE_MENTION  MessageType = 9 // meaning=群内@提及消息 body=mention
 )
 
 // Enum value maps for MessageType.
@@ -390,6 +391,7 @@ var (
 		6: "MESSAGE_TYPE_QUOTE",
 		7: "MESSAGE_TYPE_FORWARD",
 		8: "MESSAGE_TYPE_MARKDOWN",
+		9: "MESSAGE_TYPE_MENTION",
 	}
 	MessageType_value = map[string]int32{
 		"MESSAGE_TYPE_INVALID":  0,
@@ -401,6 +403,7 @@ var (
 		"MESSAGE_TYPE_QUOTE":    6,
 		"MESSAGE_TYPE_FORWARD":  7,
 		"MESSAGE_TYPE_MARKDOWN": 8,
+		"MESSAGE_TYPE_MENTION":  9,
 	}
 )
 
@@ -2110,6 +2113,7 @@ type MessageBody struct {
 	//	*MessageBody_Quote
 	//	*MessageBody_Forward
 	//	*MessageBody_Markdown
+	//	*MessageBody_Mention
 	Kind          isMessageBody_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2224,6 +2228,15 @@ func (x *MessageBody) GetMarkdown() *MarkdownBody {
 	return nil
 }
 
+func (x *MessageBody) GetMention() *MentionBody {
+	if x != nil {
+		if x, ok := x.Kind.(*MessageBody_Mention); ok {
+			return x.Mention
+		}
+	}
+	return nil
+}
+
 type isMessageBody_Kind interface {
 	isMessageBody_Kind()
 }
@@ -2260,6 +2273,10 @@ type MessageBody_Markdown struct {
 	Markdown *MarkdownBody `protobuf:"bytes,8,opt,name=markdown,proto3,oneof"` // MESSAGE_TYPE_MARKDOWN
 }
 
+type MessageBody_Mention struct {
+	Mention *MentionBody `protobuf:"bytes,9,opt,name=mention,proto3,oneof"` // MESSAGE_TYPE_MENTION
+}
+
 func (*MessageBody_Text) isMessageBody_Kind() {}
 
 func (*MessageBody_Image) isMessageBody_Kind() {}
@@ -2275,6 +2292,8 @@ func (*MessageBody_Quote) isMessageBody_Kind() {}
 func (*MessageBody_Forward) isMessageBody_Kind() {}
 
 func (*MessageBody_Markdown) isMessageBody_Kind() {}
+
+func (*MessageBody_Mention) isMessageBody_Kind() {}
 
 type TextBody struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2742,6 +2761,69 @@ func (x *ForwardBody) GetTitle() string {
 	return ""
 }
 
+// MentionBody 表达群内 @ 提及消息；仅群会话可发送，服务端拒绝单聊 target。
+// mentioned_uids 与 mention_all 至少有一个非空/为真；@全体成员时 mentioned_uids 可为空。
+// 被 @ 与免打扰规则相互独立：被 @ 的成员若该会话已开启免打扰，仍按免打扰规则处理，不做穿透提醒。
+type MentionBody struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`                                                // required 消息文本内容，参与搜索投影
+	MentionedUids []int64                `protobuf:"varint,2,rep,packed,name=mentioned_uids,json=mentionedUids,proto3" json:"mentioned_uids,omitempty"` // optional 被 @ 的具体成员 uid 列表；mention_all=true 时可为空
+	MentionAll    bool                   `protobuf:"varint,3,opt,name=mention_all,json=mentionAll,proto3" json:"mention_all,omitempty"`                 // optional 是否 @ 全体成员
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MentionBody) Reset() {
+	*x = MentionBody{}
+	mi := &file_yimsg_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MentionBody) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MentionBody) ProtoMessage() {}
+
+func (x *MentionBody) ProtoReflect() protoreflect.Message {
+	mi := &file_yimsg_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MentionBody.ProtoReflect.Descriptor instead.
+func (*MentionBody) Descriptor() ([]byte, []int) {
+	return file_yimsg_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *MentionBody) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *MentionBody) GetMentionedUids() []int64 {
+	if x != nil {
+		return x.MentionedUids
+	}
+	return nil
+}
+
+func (x *MentionBody) GetMentionAll() bool {
+	if x != nil {
+		return x.MentionAll
+	}
+	return false
+}
+
 type ConversationEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Target        *ConversationTarget    `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`                                         // required 会话目标
@@ -2755,7 +2837,7 @@ type ConversationEntry struct {
 
 func (x *ConversationEntry) Reset() {
 	*x = ConversationEntry{}
-	mi := &file_yimsg_proto_msgTypes[29]
+	mi := &file_yimsg_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2767,7 +2849,7 @@ func (x *ConversationEntry) String() string {
 func (*ConversationEntry) ProtoMessage() {}
 
 func (x *ConversationEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[29]
+	mi := &file_yimsg_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2780,7 +2862,7 @@ func (x *ConversationEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConversationEntry.ProtoReflect.Descriptor instead.
 func (*ConversationEntry) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{29}
+	return file_yimsg_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ConversationEntry) GetTarget() *ConversationTarget {
@@ -2832,7 +2914,7 @@ type GroupInfo struct {
 
 func (x *GroupInfo) Reset() {
 	*x = GroupInfo{}
-	mi := &file_yimsg_proto_msgTypes[30]
+	mi := &file_yimsg_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2844,7 +2926,7 @@ func (x *GroupInfo) String() string {
 func (*GroupInfo) ProtoMessage() {}
 
 func (x *GroupInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[30]
+	mi := &file_yimsg_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2857,7 +2939,7 @@ func (x *GroupInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupInfo.ProtoReflect.Descriptor instead.
 func (*GroupInfo) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{30}
+	return file_yimsg_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GroupInfo) GetGroupId() int64 {
@@ -2913,7 +2995,7 @@ type GroupMember struct {
 
 func (x *GroupMember) Reset() {
 	*x = GroupMember{}
-	mi := &file_yimsg_proto_msgTypes[31]
+	mi := &file_yimsg_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2925,7 +3007,7 @@ func (x *GroupMember) String() string {
 func (*GroupMember) ProtoMessage() {}
 
 func (x *GroupMember) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[31]
+	mi := &file_yimsg_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2938,7 +3020,7 @@ func (x *GroupMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupMember.ProtoReflect.Descriptor instead.
 func (*GroupMember) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{31}
+	return file_yimsg_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GroupMember) GetUid() int64 {
@@ -2973,7 +3055,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_yimsg_proto_msgTypes[32]
+	mi := &file_yimsg_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2985,7 +3067,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[32]
+	mi := &file_yimsg_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2998,7 +3080,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{32}
+	return file_yimsg_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *RegisterRequest) GetUsername() string {
@@ -3032,7 +3114,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_yimsg_proto_msgTypes[33]
+	mi := &file_yimsg_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3044,7 +3126,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[33]
+	mi := &file_yimsg_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3057,7 +3139,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{33}
+	return file_yimsg_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *RegisterResponse) GetBase() *BaseResponse {
@@ -3084,7 +3166,7 @@ type LoginRequest struct {
 
 func (x *LoginRequest) Reset() {
 	*x = LoginRequest{}
-	mi := &file_yimsg_proto_msgTypes[34]
+	mi := &file_yimsg_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3096,7 +3178,7 @@ func (x *LoginRequest) String() string {
 func (*LoginRequest) ProtoMessage() {}
 
 func (x *LoginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[34]
+	mi := &file_yimsg_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3109,7 +3191,7 @@ func (x *LoginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginRequest.ProtoReflect.Descriptor instead.
 func (*LoginRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{34}
+	return file_yimsg_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *LoginRequest) GetUsername() string {
@@ -3138,7 +3220,7 @@ type LoginResponse struct {
 
 func (x *LoginResponse) Reset() {
 	*x = LoginResponse{}
-	mi := &file_yimsg_proto_msgTypes[35]
+	mi := &file_yimsg_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3150,7 +3232,7 @@ func (x *LoginResponse) String() string {
 func (*LoginResponse) ProtoMessage() {}
 
 func (x *LoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[35]
+	mi := &file_yimsg_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3163,7 +3245,7 @@ func (x *LoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
 func (*LoginResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{35}
+	return file_yimsg_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *LoginResponse) GetBase() *BaseResponse {
@@ -3203,7 +3285,7 @@ type AuthenticateRequest struct {
 
 func (x *AuthenticateRequest) Reset() {
 	*x = AuthenticateRequest{}
-	mi := &file_yimsg_proto_msgTypes[36]
+	mi := &file_yimsg_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3215,7 +3297,7 @@ func (x *AuthenticateRequest) String() string {
 func (*AuthenticateRequest) ProtoMessage() {}
 
 func (x *AuthenticateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[36]
+	mi := &file_yimsg_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3228,7 +3310,7 @@ func (x *AuthenticateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthenticateRequest.ProtoReflect.Descriptor instead.
 func (*AuthenticateRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{36}
+	return file_yimsg_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *AuthenticateRequest) GetToken() string {
@@ -3249,7 +3331,7 @@ type AuthenticateResponse struct {
 
 func (x *AuthenticateResponse) Reset() {
 	*x = AuthenticateResponse{}
-	mi := &file_yimsg_proto_msgTypes[37]
+	mi := &file_yimsg_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3261,7 +3343,7 @@ func (x *AuthenticateResponse) String() string {
 func (*AuthenticateResponse) ProtoMessage() {}
 
 func (x *AuthenticateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[37]
+	mi := &file_yimsg_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3274,7 +3356,7 @@ func (x *AuthenticateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthenticateResponse.ProtoReflect.Descriptor instead.
 func (*AuthenticateResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{37}
+	return file_yimsg_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AuthenticateResponse) GetBase() *BaseResponse {
@@ -3307,7 +3389,7 @@ type LogoutRequest struct {
 
 func (x *LogoutRequest) Reset() {
 	*x = LogoutRequest{}
-	mi := &file_yimsg_proto_msgTypes[38]
+	mi := &file_yimsg_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3319,7 +3401,7 @@ func (x *LogoutRequest) String() string {
 func (*LogoutRequest) ProtoMessage() {}
 
 func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[38]
+	mi := &file_yimsg_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3332,7 +3414,7 @@ func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
 func (*LogoutRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{38}
+	return file_yimsg_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *LogoutRequest) GetToken() string {
@@ -3351,7 +3433,7 @@ type LogoutResponse struct {
 
 func (x *LogoutResponse) Reset() {
 	*x = LogoutResponse{}
-	mi := &file_yimsg_proto_msgTypes[39]
+	mi := &file_yimsg_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3363,7 +3445,7 @@ func (x *LogoutResponse) String() string {
 func (*LogoutResponse) ProtoMessage() {}
 
 func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[39]
+	mi := &file_yimsg_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3376,7 +3458,7 @@ func (x *LogoutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogoutResponse.ProtoReflect.Descriptor instead.
 func (*LogoutResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{39}
+	return file_yimsg_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *LogoutResponse) GetBase() *BaseResponse {
@@ -3394,7 +3476,7 @@ type PingRequest struct {
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_yimsg_proto_msgTypes[40]
+	mi := &file_yimsg_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3406,7 +3488,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[40]
+	mi := &file_yimsg_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3419,7 +3501,7 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{40}
+	return file_yimsg_proto_rawDescGZIP(), []int{41}
 }
 
 type PingResponse struct {
@@ -3431,7 +3513,7 @@ type PingResponse struct {
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_yimsg_proto_msgTypes[41]
+	mi := &file_yimsg_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3443,7 +3525,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[41]
+	mi := &file_yimsg_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3456,7 +3538,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{41}
+	return file_yimsg_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *PingResponse) GetBase() *BaseResponse {
@@ -3476,7 +3558,7 @@ type UpdateUserInfoRequest struct {
 
 func (x *UpdateUserInfoRequest) Reset() {
 	*x = UpdateUserInfoRequest{}
-	mi := &file_yimsg_proto_msgTypes[42]
+	mi := &file_yimsg_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3488,7 +3570,7 @@ func (x *UpdateUserInfoRequest) String() string {
 func (*UpdateUserInfoRequest) ProtoMessage() {}
 
 func (x *UpdateUserInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[42]
+	mi := &file_yimsg_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3501,7 +3583,7 @@ func (x *UpdateUserInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateUserInfoRequest.ProtoReflect.Descriptor instead.
 func (*UpdateUserInfoRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{42}
+	return file_yimsg_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *UpdateUserInfoRequest) GetNickname() string {
@@ -3527,7 +3609,7 @@ type UpdateUserInfoResponse struct {
 
 func (x *UpdateUserInfoResponse) Reset() {
 	*x = UpdateUserInfoResponse{}
-	mi := &file_yimsg_proto_msgTypes[43]
+	mi := &file_yimsg_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3539,7 +3621,7 @@ func (x *UpdateUserInfoResponse) String() string {
 func (*UpdateUserInfoResponse) ProtoMessage() {}
 
 func (x *UpdateUserInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[43]
+	mi := &file_yimsg_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3552,7 +3634,7 @@ func (x *UpdateUserInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateUserInfoResponse.ProtoReflect.Descriptor instead.
 func (*UpdateUserInfoResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{43}
+	return file_yimsg_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *UpdateUserInfoResponse) GetBase() *BaseResponse {
@@ -3572,7 +3654,7 @@ type UpdatePasswordRequest struct {
 
 func (x *UpdatePasswordRequest) Reset() {
 	*x = UpdatePasswordRequest{}
-	mi := &file_yimsg_proto_msgTypes[44]
+	mi := &file_yimsg_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3584,7 +3666,7 @@ func (x *UpdatePasswordRequest) String() string {
 func (*UpdatePasswordRequest) ProtoMessage() {}
 
 func (x *UpdatePasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[44]
+	mi := &file_yimsg_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3597,7 +3679,7 @@ func (x *UpdatePasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePasswordRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePasswordRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{44}
+	return file_yimsg_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *UpdatePasswordRequest) GetOldPassword() string {
@@ -3623,7 +3705,7 @@ type UpdatePasswordResponse struct {
 
 func (x *UpdatePasswordResponse) Reset() {
 	*x = UpdatePasswordResponse{}
-	mi := &file_yimsg_proto_msgTypes[45]
+	mi := &file_yimsg_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3635,7 +3717,7 @@ func (x *UpdatePasswordResponse) String() string {
 func (*UpdatePasswordResponse) ProtoMessage() {}
 
 func (x *UpdatePasswordResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[45]
+	mi := &file_yimsg_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3648,7 +3730,7 @@ func (x *UpdatePasswordResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePasswordResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePasswordResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{45}
+	return file_yimsg_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *UpdatePasswordResponse) GetBase() *BaseResponse {
@@ -3667,7 +3749,7 @@ type GetUserInfosRequest struct {
 
 func (x *GetUserInfosRequest) Reset() {
 	*x = GetUserInfosRequest{}
-	mi := &file_yimsg_proto_msgTypes[46]
+	mi := &file_yimsg_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3679,7 +3761,7 @@ func (x *GetUserInfosRequest) String() string {
 func (*GetUserInfosRequest) ProtoMessage() {}
 
 func (x *GetUserInfosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[46]
+	mi := &file_yimsg_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3692,7 +3774,7 @@ func (x *GetUserInfosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserInfosRequest.ProtoReflect.Descriptor instead.
 func (*GetUserInfosRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{46}
+	return file_yimsg_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetUserInfosRequest) GetUids() []int64 {
@@ -3712,7 +3794,7 @@ type GetUserInfosResponse struct {
 
 func (x *GetUserInfosResponse) Reset() {
 	*x = GetUserInfosResponse{}
-	mi := &file_yimsg_proto_msgTypes[47]
+	mi := &file_yimsg_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3724,7 +3806,7 @@ func (x *GetUserInfosResponse) String() string {
 func (*GetUserInfosResponse) ProtoMessage() {}
 
 func (x *GetUserInfosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[47]
+	mi := &file_yimsg_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3737,7 +3819,7 @@ func (x *GetUserInfosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserInfosResponse.ProtoReflect.Descriptor instead.
 func (*GetUserInfosResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{47}
+	return file_yimsg_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetUserInfosResponse) GetBase() *BaseResponse {
@@ -3763,7 +3845,7 @@ type SearchUserRequest struct {
 
 func (x *SearchUserRequest) Reset() {
 	*x = SearchUserRequest{}
-	mi := &file_yimsg_proto_msgTypes[48]
+	mi := &file_yimsg_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3775,7 +3857,7 @@ func (x *SearchUserRequest) String() string {
 func (*SearchUserRequest) ProtoMessage() {}
 
 func (x *SearchUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[48]
+	mi := &file_yimsg_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3788,7 +3870,7 @@ func (x *SearchUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchUserRequest.ProtoReflect.Descriptor instead.
 func (*SearchUserRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{48}
+	return file_yimsg_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SearchUserRequest) GetUsername() string {
@@ -3808,7 +3890,7 @@ type SearchUserResponse struct {
 
 func (x *SearchUserResponse) Reset() {
 	*x = SearchUserResponse{}
-	mi := &file_yimsg_proto_msgTypes[49]
+	mi := &file_yimsg_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3820,7 +3902,7 @@ func (x *SearchUserResponse) String() string {
 func (*SearchUserResponse) ProtoMessage() {}
 
 func (x *SearchUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[49]
+	mi := &file_yimsg_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3833,7 +3915,7 @@ func (x *SearchUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchUserResponse.ProtoReflect.Descriptor instead.
 func (*SearchUserResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{49}
+	return file_yimsg_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SearchUserResponse) GetBase() *BaseResponse {
@@ -3860,7 +3942,7 @@ type AddFriendRequest struct {
 
 func (x *AddFriendRequest) Reset() {
 	*x = AddFriendRequest{}
-	mi := &file_yimsg_proto_msgTypes[50]
+	mi := &file_yimsg_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3872,7 +3954,7 @@ func (x *AddFriendRequest) String() string {
 func (*AddFriendRequest) ProtoMessage() {}
 
 func (x *AddFriendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[50]
+	mi := &file_yimsg_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3885,7 +3967,7 @@ func (x *AddFriendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddFriendRequest.ProtoReflect.Descriptor instead.
 func (*AddFriendRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{50}
+	return file_yimsg_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *AddFriendRequest) GetFriendUid() int64 {
@@ -3912,7 +3994,7 @@ type AddFriendResponse struct {
 
 func (x *AddFriendResponse) Reset() {
 	*x = AddFriendResponse{}
-	mi := &file_yimsg_proto_msgTypes[51]
+	mi := &file_yimsg_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3924,7 +4006,7 @@ func (x *AddFriendResponse) String() string {
 func (*AddFriendResponse) ProtoMessage() {}
 
 func (x *AddFriendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[51]
+	mi := &file_yimsg_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3937,7 +4019,7 @@ func (x *AddFriendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddFriendResponse.ProtoReflect.Descriptor instead.
 func (*AddFriendResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{51}
+	return file_yimsg_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AddFriendResponse) GetBase() *BaseResponse {
@@ -3963,7 +4045,7 @@ type AcceptFriendRequest struct {
 
 func (x *AcceptFriendRequest) Reset() {
 	*x = AcceptFriendRequest{}
-	mi := &file_yimsg_proto_msgTypes[52]
+	mi := &file_yimsg_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3975,7 +4057,7 @@ func (x *AcceptFriendRequest) String() string {
 func (*AcceptFriendRequest) ProtoMessage() {}
 
 func (x *AcceptFriendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[52]
+	mi := &file_yimsg_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3988,7 +4070,7 @@ func (x *AcceptFriendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptFriendRequest.ProtoReflect.Descriptor instead.
 func (*AcceptFriendRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{52}
+	return file_yimsg_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *AcceptFriendRequest) GetFriendUid() int64 {
@@ -4007,7 +4089,7 @@ type AcceptFriendResponse struct {
 
 func (x *AcceptFriendResponse) Reset() {
 	*x = AcceptFriendResponse{}
-	mi := &file_yimsg_proto_msgTypes[53]
+	mi := &file_yimsg_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4019,7 +4101,7 @@ func (x *AcceptFriendResponse) String() string {
 func (*AcceptFriendResponse) ProtoMessage() {}
 
 func (x *AcceptFriendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[53]
+	mi := &file_yimsg_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4032,7 +4114,7 @@ func (x *AcceptFriendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptFriendResponse.ProtoReflect.Descriptor instead.
 func (*AcceptFriendResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{53}
+	return file_yimsg_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *AcceptFriendResponse) GetBase() *BaseResponse {
@@ -4051,7 +4133,7 @@ type RejectFriendRequest struct {
 
 func (x *RejectFriendRequest) Reset() {
 	*x = RejectFriendRequest{}
-	mi := &file_yimsg_proto_msgTypes[54]
+	mi := &file_yimsg_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4063,7 +4145,7 @@ func (x *RejectFriendRequest) String() string {
 func (*RejectFriendRequest) ProtoMessage() {}
 
 func (x *RejectFriendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[54]
+	mi := &file_yimsg_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4076,7 +4158,7 @@ func (x *RejectFriendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectFriendRequest.ProtoReflect.Descriptor instead.
 func (*RejectFriendRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{54}
+	return file_yimsg_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *RejectFriendRequest) GetFriendUid() int64 {
@@ -4095,7 +4177,7 @@ type RejectFriendResponse struct {
 
 func (x *RejectFriendResponse) Reset() {
 	*x = RejectFriendResponse{}
-	mi := &file_yimsg_proto_msgTypes[55]
+	mi := &file_yimsg_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4107,7 +4189,7 @@ func (x *RejectFriendResponse) String() string {
 func (*RejectFriendResponse) ProtoMessage() {}
 
 func (x *RejectFriendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[55]
+	mi := &file_yimsg_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4120,7 +4202,7 @@ func (x *RejectFriendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectFriendResponse.ProtoReflect.Descriptor instead.
 func (*RejectFriendResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{55}
+	return file_yimsg_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *RejectFriendResponse) GetBase() *BaseResponse {
@@ -4139,7 +4221,7 @@ type DeleteFriendRequest struct {
 
 func (x *DeleteFriendRequest) Reset() {
 	*x = DeleteFriendRequest{}
-	mi := &file_yimsg_proto_msgTypes[56]
+	mi := &file_yimsg_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4151,7 +4233,7 @@ func (x *DeleteFriendRequest) String() string {
 func (*DeleteFriendRequest) ProtoMessage() {}
 
 func (x *DeleteFriendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[56]
+	mi := &file_yimsg_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4164,7 +4246,7 @@ func (x *DeleteFriendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFriendRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFriendRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{56}
+	return file_yimsg_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *DeleteFriendRequest) GetFriendUid() int64 {
@@ -4184,7 +4266,7 @@ type DeleteFriendResponse struct {
 
 func (x *DeleteFriendResponse) Reset() {
 	*x = DeleteFriendResponse{}
-	mi := &file_yimsg_proto_msgTypes[57]
+	mi := &file_yimsg_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4196,7 +4278,7 @@ func (x *DeleteFriendResponse) String() string {
 func (*DeleteFriendResponse) ProtoMessage() {}
 
 func (x *DeleteFriendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[57]
+	mi := &file_yimsg_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4209,7 +4291,7 @@ func (x *DeleteFriendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFriendResponse.ProtoReflect.Descriptor instead.
 func (*DeleteFriendResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{57}
+	return file_yimsg_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *DeleteFriendResponse) GetBase() *BaseResponse {
@@ -4236,7 +4318,7 @@ type UpdateRemarkRequest struct {
 
 func (x *UpdateRemarkRequest) Reset() {
 	*x = UpdateRemarkRequest{}
-	mi := &file_yimsg_proto_msgTypes[58]
+	mi := &file_yimsg_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4248,7 +4330,7 @@ func (x *UpdateRemarkRequest) String() string {
 func (*UpdateRemarkRequest) ProtoMessage() {}
 
 func (x *UpdateRemarkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[58]
+	mi := &file_yimsg_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4261,7 +4343,7 @@ func (x *UpdateRemarkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRemarkRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRemarkRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{58}
+	return file_yimsg_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *UpdateRemarkRequest) GetTarget() *ContactTarget {
@@ -4287,7 +4369,7 @@ type UpdateRemarkResponse struct {
 
 func (x *UpdateRemarkResponse) Reset() {
 	*x = UpdateRemarkResponse{}
-	mi := &file_yimsg_proto_msgTypes[59]
+	mi := &file_yimsg_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4299,7 +4381,7 @@ func (x *UpdateRemarkResponse) String() string {
 func (*UpdateRemarkResponse) ProtoMessage() {}
 
 func (x *UpdateRemarkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[59]
+	mi := &file_yimsg_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4312,7 +4394,7 @@ func (x *UpdateRemarkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRemarkResponse.ProtoReflect.Descriptor instead.
 func (*UpdateRemarkResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{59}
+	return file_yimsg_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *UpdateRemarkResponse) GetBase() *BaseResponse {
@@ -4333,7 +4415,7 @@ type GetContactsRequest struct {
 
 func (x *GetContactsRequest) Reset() {
 	*x = GetContactsRequest{}
-	mi := &file_yimsg_proto_msgTypes[60]
+	mi := &file_yimsg_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4345,7 +4427,7 @@ func (x *GetContactsRequest) String() string {
 func (*GetContactsRequest) ProtoMessage() {}
 
 func (x *GetContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[60]
+	mi := &file_yimsg_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4358,7 +4440,7 @@ func (x *GetContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetContactsRequest.ProtoReflect.Descriptor instead.
 func (*GetContactsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{60}
+	return file_yimsg_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *GetContactsRequest) GetStatus() ContactStatus {
@@ -4393,7 +4475,7 @@ type GetContactsResponse struct {
 
 func (x *GetContactsResponse) Reset() {
 	*x = GetContactsResponse{}
-	mi := &file_yimsg_proto_msgTypes[61]
+	mi := &file_yimsg_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4405,7 +4487,7 @@ func (x *GetContactsResponse) String() string {
 func (*GetContactsResponse) ProtoMessage() {}
 
 func (x *GetContactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[61]
+	mi := &file_yimsg_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4418,7 +4500,7 @@ func (x *GetContactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetContactsResponse.ProtoReflect.Descriptor instead.
 func (*GetContactsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{61}
+	return file_yimsg_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *GetContactsResponse) GetBase() *BaseResponse {
@@ -4453,7 +4535,7 @@ type SearchContactsRequest struct {
 
 func (x *SearchContactsRequest) Reset() {
 	*x = SearchContactsRequest{}
-	mi := &file_yimsg_proto_msgTypes[62]
+	mi := &file_yimsg_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4465,7 +4547,7 @@ func (x *SearchContactsRequest) String() string {
 func (*SearchContactsRequest) ProtoMessage() {}
 
 func (x *SearchContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[62]
+	mi := &file_yimsg_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4478,7 +4560,7 @@ func (x *SearchContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchContactsRequest.ProtoReflect.Descriptor instead.
 func (*SearchContactsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{62}
+	return file_yimsg_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *SearchContactsRequest) GetKeyword() string {
@@ -4513,7 +4595,7 @@ type SearchContactsResponse struct {
 
 func (x *SearchContactsResponse) Reset() {
 	*x = SearchContactsResponse{}
-	mi := &file_yimsg_proto_msgTypes[63]
+	mi := &file_yimsg_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4525,7 +4607,7 @@ func (x *SearchContactsResponse) String() string {
 func (*SearchContactsResponse) ProtoMessage() {}
 
 func (x *SearchContactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[63]
+	mi := &file_yimsg_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4538,7 +4620,7 @@ func (x *SearchContactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchContactsResponse.ProtoReflect.Descriptor instead.
 func (*SearchContactsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{63}
+	return file_yimsg_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *SearchContactsResponse) GetBase() *BaseResponse {
@@ -4571,7 +4653,7 @@ type GetContactCountRequest struct {
 
 func (x *GetContactCountRequest) Reset() {
 	*x = GetContactCountRequest{}
-	mi := &file_yimsg_proto_msgTypes[64]
+	mi := &file_yimsg_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4583,7 +4665,7 @@ func (x *GetContactCountRequest) String() string {
 func (*GetContactCountRequest) ProtoMessage() {}
 
 func (x *GetContactCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[64]
+	mi := &file_yimsg_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4596,7 +4678,7 @@ func (x *GetContactCountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetContactCountRequest.ProtoReflect.Descriptor instead.
 func (*GetContactCountRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{64}
+	return file_yimsg_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetContactCountRequest) GetStatus() ContactStatus {
@@ -4616,7 +4698,7 @@ type GetContactCountResponse struct {
 
 func (x *GetContactCountResponse) Reset() {
 	*x = GetContactCountResponse{}
-	mi := &file_yimsg_proto_msgTypes[65]
+	mi := &file_yimsg_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4628,7 +4710,7 @@ func (x *GetContactCountResponse) String() string {
 func (*GetContactCountResponse) ProtoMessage() {}
 
 func (x *GetContactCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[65]
+	mi := &file_yimsg_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4641,7 +4723,7 @@ func (x *GetContactCountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetContactCountResponse.ProtoReflect.Descriptor instead.
 func (*GetContactCountResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{65}
+	return file_yimsg_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *GetContactCountResponse) GetBase() *BaseResponse {
@@ -4669,7 +4751,7 @@ type SyncContactsRequest struct {
 
 func (x *SyncContactsRequest) Reset() {
 	*x = SyncContactsRequest{}
-	mi := &file_yimsg_proto_msgTypes[66]
+	mi := &file_yimsg_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4681,7 +4763,7 @@ func (x *SyncContactsRequest) String() string {
 func (*SyncContactsRequest) ProtoMessage() {}
 
 func (x *SyncContactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[66]
+	mi := &file_yimsg_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4694,7 +4776,7 @@ func (x *SyncContactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncContactsRequest.ProtoReflect.Descriptor instead.
 func (*SyncContactsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{66}
+	return file_yimsg_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *SyncContactsRequest) GetLastSeq() int64 {
@@ -4730,7 +4812,7 @@ type SyncContactsResponse struct {
 
 func (x *SyncContactsResponse) Reset() {
 	*x = SyncContactsResponse{}
-	mi := &file_yimsg_proto_msgTypes[67]
+	mi := &file_yimsg_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4742,7 +4824,7 @@ func (x *SyncContactsResponse) String() string {
 func (*SyncContactsResponse) ProtoMessage() {}
 
 func (x *SyncContactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[67]
+	mi := &file_yimsg_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4755,7 +4837,7 @@ func (x *SyncContactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncContactsResponse.ProtoReflect.Descriptor instead.
 func (*SyncContactsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{67}
+	return file_yimsg_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *SyncContactsResponse) GetBase() *BaseResponse {
@@ -4796,7 +4878,7 @@ type FavoriteGroupRequest struct {
 
 func (x *FavoriteGroupRequest) Reset() {
 	*x = FavoriteGroupRequest{}
-	mi := &file_yimsg_proto_msgTypes[68]
+	mi := &file_yimsg_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4808,7 +4890,7 @@ func (x *FavoriteGroupRequest) String() string {
 func (*FavoriteGroupRequest) ProtoMessage() {}
 
 func (x *FavoriteGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[68]
+	mi := &file_yimsg_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4821,7 +4903,7 @@ func (x *FavoriteGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FavoriteGroupRequest.ProtoReflect.Descriptor instead.
 func (*FavoriteGroupRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{68}
+	return file_yimsg_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *FavoriteGroupRequest) GetGroupId() int64 {
@@ -4848,7 +4930,7 @@ type FavoriteGroupResponse struct {
 
 func (x *FavoriteGroupResponse) Reset() {
 	*x = FavoriteGroupResponse{}
-	mi := &file_yimsg_proto_msgTypes[69]
+	mi := &file_yimsg_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4860,7 +4942,7 @@ func (x *FavoriteGroupResponse) String() string {
 func (*FavoriteGroupResponse) ProtoMessage() {}
 
 func (x *FavoriteGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[69]
+	mi := &file_yimsg_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4873,7 +4955,7 @@ func (x *FavoriteGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FavoriteGroupResponse.ProtoReflect.Descriptor instead.
 func (*FavoriteGroupResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{69}
+	return file_yimsg_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *FavoriteGroupResponse) GetBase() *BaseResponse {
@@ -4899,7 +4981,7 @@ type UnfavoriteGroupRequest struct {
 
 func (x *UnfavoriteGroupRequest) Reset() {
 	*x = UnfavoriteGroupRequest{}
-	mi := &file_yimsg_proto_msgTypes[70]
+	mi := &file_yimsg_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4911,7 +4993,7 @@ func (x *UnfavoriteGroupRequest) String() string {
 func (*UnfavoriteGroupRequest) ProtoMessage() {}
 
 func (x *UnfavoriteGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[70]
+	mi := &file_yimsg_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4924,7 +5006,7 @@ func (x *UnfavoriteGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnfavoriteGroupRequest.ProtoReflect.Descriptor instead.
 func (*UnfavoriteGroupRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{70}
+	return file_yimsg_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *UnfavoriteGroupRequest) GetGroupId() int64 {
@@ -4944,7 +5026,7 @@ type UnfavoriteGroupResponse struct {
 
 func (x *UnfavoriteGroupResponse) Reset() {
 	*x = UnfavoriteGroupResponse{}
-	mi := &file_yimsg_proto_msgTypes[71]
+	mi := &file_yimsg_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4956,7 +5038,7 @@ func (x *UnfavoriteGroupResponse) String() string {
 func (*UnfavoriteGroupResponse) ProtoMessage() {}
 
 func (x *UnfavoriteGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[71]
+	mi := &file_yimsg_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4969,7 +5051,7 @@ func (x *UnfavoriteGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnfavoriteGroupResponse.ProtoReflect.Descriptor instead.
 func (*UnfavoriteGroupResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{71}
+	return file_yimsg_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *UnfavoriteGroupResponse) GetBase() *BaseResponse {
@@ -4995,7 +5077,7 @@ type BlockUserRequest struct {
 
 func (x *BlockUserRequest) Reset() {
 	*x = BlockUserRequest{}
-	mi := &file_yimsg_proto_msgTypes[72]
+	mi := &file_yimsg_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5007,7 +5089,7 @@ func (x *BlockUserRequest) String() string {
 func (*BlockUserRequest) ProtoMessage() {}
 
 func (x *BlockUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[72]
+	mi := &file_yimsg_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5020,7 +5102,7 @@ func (x *BlockUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockUserRequest.ProtoReflect.Descriptor instead.
 func (*BlockUserRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{72}
+	return file_yimsg_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *BlockUserRequest) GetUid() int64 {
@@ -5040,7 +5122,7 @@ type BlockUserResponse struct {
 
 func (x *BlockUserResponse) Reset() {
 	*x = BlockUserResponse{}
-	mi := &file_yimsg_proto_msgTypes[73]
+	mi := &file_yimsg_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5052,7 +5134,7 @@ func (x *BlockUserResponse) String() string {
 func (*BlockUserResponse) ProtoMessage() {}
 
 func (x *BlockUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[73]
+	mi := &file_yimsg_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5065,7 +5147,7 @@ func (x *BlockUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockUserResponse.ProtoReflect.Descriptor instead.
 func (*BlockUserResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{73}
+	return file_yimsg_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *BlockUserResponse) GetBase() *BaseResponse {
@@ -5091,7 +5173,7 @@ type UnblockUserRequest struct {
 
 func (x *UnblockUserRequest) Reset() {
 	*x = UnblockUserRequest{}
-	mi := &file_yimsg_proto_msgTypes[74]
+	mi := &file_yimsg_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5103,7 +5185,7 @@ func (x *UnblockUserRequest) String() string {
 func (*UnblockUserRequest) ProtoMessage() {}
 
 func (x *UnblockUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[74]
+	mi := &file_yimsg_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5116,7 +5198,7 @@ func (x *UnblockUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnblockUserRequest.ProtoReflect.Descriptor instead.
 func (*UnblockUserRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{74}
+	return file_yimsg_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *UnblockUserRequest) GetUid() int64 {
@@ -5136,7 +5218,7 @@ type UnblockUserResponse struct {
 
 func (x *UnblockUserResponse) Reset() {
 	*x = UnblockUserResponse{}
-	mi := &file_yimsg_proto_msgTypes[75]
+	mi := &file_yimsg_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5148,7 +5230,7 @@ func (x *UnblockUserResponse) String() string {
 func (*UnblockUserResponse) ProtoMessage() {}
 
 func (x *UnblockUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[75]
+	mi := &file_yimsg_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5161,7 +5243,7 @@ func (x *UnblockUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnblockUserResponse.ProtoReflect.Descriptor instead.
 func (*UnblockUserResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{75}
+	return file_yimsg_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *UnblockUserResponse) GetBase() *BaseResponse {
@@ -5189,7 +5271,7 @@ type GetBlocklistRequest struct {
 
 func (x *GetBlocklistRequest) Reset() {
 	*x = GetBlocklistRequest{}
-	mi := &file_yimsg_proto_msgTypes[76]
+	mi := &file_yimsg_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5201,7 +5283,7 @@ func (x *GetBlocklistRequest) String() string {
 func (*GetBlocklistRequest) ProtoMessage() {}
 
 func (x *GetBlocklistRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[76]
+	mi := &file_yimsg_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5214,7 +5296,7 @@ func (x *GetBlocklistRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlocklistRequest.ProtoReflect.Descriptor instead.
 func (*GetBlocklistRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{76}
+	return file_yimsg_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *GetBlocklistRequest) GetStatus() BlocklistStatus {
@@ -5249,7 +5331,7 @@ type GetBlocklistResponse struct {
 
 func (x *GetBlocklistResponse) Reset() {
 	*x = GetBlocklistResponse{}
-	mi := &file_yimsg_proto_msgTypes[77]
+	mi := &file_yimsg_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5261,7 +5343,7 @@ func (x *GetBlocklistResponse) String() string {
 func (*GetBlocklistResponse) ProtoMessage() {}
 
 func (x *GetBlocklistResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[77]
+	mi := &file_yimsg_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5274,7 +5356,7 @@ func (x *GetBlocklistResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlocklistResponse.ProtoReflect.Descriptor instead.
 func (*GetBlocklistResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{77}
+	return file_yimsg_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *GetBlocklistResponse) GetBase() *BaseResponse {
@@ -5309,7 +5391,7 @@ type SyncBlocklistRequest struct {
 
 func (x *SyncBlocklistRequest) Reset() {
 	*x = SyncBlocklistRequest{}
-	mi := &file_yimsg_proto_msgTypes[78]
+	mi := &file_yimsg_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5321,7 +5403,7 @@ func (x *SyncBlocklistRequest) String() string {
 func (*SyncBlocklistRequest) ProtoMessage() {}
 
 func (x *SyncBlocklistRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[78]
+	mi := &file_yimsg_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5334,7 +5416,7 @@ func (x *SyncBlocklistRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncBlocklistRequest.ProtoReflect.Descriptor instead.
 func (*SyncBlocklistRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{78}
+	return file_yimsg_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *SyncBlocklistRequest) GetLastSeq() int64 {
@@ -5370,7 +5452,7 @@ type SyncBlocklistResponse struct {
 
 func (x *SyncBlocklistResponse) Reset() {
 	*x = SyncBlocklistResponse{}
-	mi := &file_yimsg_proto_msgTypes[79]
+	mi := &file_yimsg_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5382,7 +5464,7 @@ func (x *SyncBlocklistResponse) String() string {
 func (*SyncBlocklistResponse) ProtoMessage() {}
 
 func (x *SyncBlocklistResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[79]
+	mi := &file_yimsg_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5395,7 +5477,7 @@ func (x *SyncBlocklistResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncBlocklistResponse.ProtoReflect.Descriptor instead.
 func (*SyncBlocklistResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{79}
+	return file_yimsg_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *SyncBlocklistResponse) GetBase() *BaseResponse {
@@ -5438,7 +5520,7 @@ type SendMessageRequest struct {
 
 func (x *SendMessageRequest) Reset() {
 	*x = SendMessageRequest{}
-	mi := &file_yimsg_proto_msgTypes[80]
+	mi := &file_yimsg_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5450,7 +5532,7 @@ func (x *SendMessageRequest) String() string {
 func (*SendMessageRequest) ProtoMessage() {}
 
 func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[80]
+	mi := &file_yimsg_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5463,7 +5545,7 @@ func (x *SendMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageRequest.ProtoReflect.Descriptor instead.
 func (*SendMessageRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{80}
+	return file_yimsg_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *SendMessageRequest) GetTarget() *ConversationTarget {
@@ -5505,7 +5587,7 @@ type SendMessageResponse struct {
 
 func (x *SendMessageResponse) Reset() {
 	*x = SendMessageResponse{}
-	mi := &file_yimsg_proto_msgTypes[81]
+	mi := &file_yimsg_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5517,7 +5599,7 @@ func (x *SendMessageResponse) String() string {
 func (*SendMessageResponse) ProtoMessage() {}
 
 func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[81]
+	mi := &file_yimsg_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5530,7 +5612,7 @@ func (x *SendMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendMessageResponse.ProtoReflect.Descriptor instead.
 func (*SendMessageResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{81}
+	return file_yimsg_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *SendMessageResponse) GetBase() *BaseResponse {
@@ -5564,7 +5646,7 @@ type SyncMessagesRequest struct {
 
 func (x *SyncMessagesRequest) Reset() {
 	*x = SyncMessagesRequest{}
-	mi := &file_yimsg_proto_msgTypes[82]
+	mi := &file_yimsg_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5576,7 +5658,7 @@ func (x *SyncMessagesRequest) String() string {
 func (*SyncMessagesRequest) ProtoMessage() {}
 
 func (x *SyncMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[82]
+	mi := &file_yimsg_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5589,7 +5671,7 @@ func (x *SyncMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncMessagesRequest.ProtoReflect.Descriptor instead.
 func (*SyncMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{82}
+	return file_yimsg_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *SyncMessagesRequest) GetLastSeq() int64 {
@@ -5618,7 +5700,7 @@ type SyncMessagesResponse struct {
 
 func (x *SyncMessagesResponse) Reset() {
 	*x = SyncMessagesResponse{}
-	mi := &file_yimsg_proto_msgTypes[83]
+	mi := &file_yimsg_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5630,7 +5712,7 @@ func (x *SyncMessagesResponse) String() string {
 func (*SyncMessagesResponse) ProtoMessage() {}
 
 func (x *SyncMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[83]
+	mi := &file_yimsg_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5643,7 +5725,7 @@ func (x *SyncMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncMessagesResponse.ProtoReflect.Descriptor instead.
 func (*SyncMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{83}
+	return file_yimsg_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *SyncMessagesResponse) GetBase() *BaseResponse {
@@ -5685,7 +5767,7 @@ type GetMessagesRequest struct {
 
 func (x *GetMessagesRequest) Reset() {
 	*x = GetMessagesRequest{}
-	mi := &file_yimsg_proto_msgTypes[84]
+	mi := &file_yimsg_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5697,7 +5779,7 @@ func (x *GetMessagesRequest) String() string {
 func (*GetMessagesRequest) ProtoMessage() {}
 
 func (x *GetMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[84]
+	mi := &file_yimsg_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5710,7 +5792,7 @@ func (x *GetMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMessagesRequest.ProtoReflect.Descriptor instead.
 func (*GetMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{84}
+	return file_yimsg_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *GetMessagesRequest) GetTarget() *ConversationTarget {
@@ -5745,7 +5827,7 @@ type GetMessagesResponse struct {
 
 func (x *GetMessagesResponse) Reset() {
 	*x = GetMessagesResponse{}
-	mi := &file_yimsg_proto_msgTypes[85]
+	mi := &file_yimsg_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5757,7 +5839,7 @@ func (x *GetMessagesResponse) String() string {
 func (*GetMessagesResponse) ProtoMessage() {}
 
 func (x *GetMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[85]
+	mi := &file_yimsg_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5770,7 +5852,7 @@ func (x *GetMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMessagesResponse.ProtoReflect.Descriptor instead.
 func (*GetMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{85}
+	return file_yimsg_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *GetMessagesResponse) GetBase() *BaseResponse {
@@ -5805,7 +5887,7 @@ type SearchMessagesRequest struct {
 
 func (x *SearchMessagesRequest) Reset() {
 	*x = SearchMessagesRequest{}
-	mi := &file_yimsg_proto_msgTypes[86]
+	mi := &file_yimsg_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5817,7 +5899,7 @@ func (x *SearchMessagesRequest) String() string {
 func (*SearchMessagesRequest) ProtoMessage() {}
 
 func (x *SearchMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[86]
+	mi := &file_yimsg_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5830,7 +5912,7 @@ func (x *SearchMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMessagesRequest.ProtoReflect.Descriptor instead.
 func (*SearchMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{86}
+	return file_yimsg_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *SearchMessagesRequest) GetKeyword() string {
@@ -5865,7 +5947,7 @@ type SearchMessagesResponse struct {
 
 func (x *SearchMessagesResponse) Reset() {
 	*x = SearchMessagesResponse{}
-	mi := &file_yimsg_proto_msgTypes[87]
+	mi := &file_yimsg_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5877,7 +5959,7 @@ func (x *SearchMessagesResponse) String() string {
 func (*SearchMessagesResponse) ProtoMessage() {}
 
 func (x *SearchMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[87]
+	mi := &file_yimsg_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5890,7 +5972,7 @@ func (x *SearchMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchMessagesResponse.ProtoReflect.Descriptor instead.
 func (*SearchMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{87}
+	return file_yimsg_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *SearchMessagesResponse) GetBase() *BaseResponse {
@@ -5923,7 +6005,7 @@ type DeleteMessageRequest struct {
 
 func (x *DeleteMessageRequest) Reset() {
 	*x = DeleteMessageRequest{}
-	mi := &file_yimsg_proto_msgTypes[88]
+	mi := &file_yimsg_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5935,7 +6017,7 @@ func (x *DeleteMessageRequest) String() string {
 func (*DeleteMessageRequest) ProtoMessage() {}
 
 func (x *DeleteMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[88]
+	mi := &file_yimsg_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5948,7 +6030,7 @@ func (x *DeleteMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMessageRequest.ProtoReflect.Descriptor instead.
 func (*DeleteMessageRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{88}
+	return file_yimsg_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *DeleteMessageRequest) GetMsgId() string {
@@ -5968,7 +6050,7 @@ type DeleteMessageResponse struct {
 
 func (x *DeleteMessageResponse) Reset() {
 	*x = DeleteMessageResponse{}
-	mi := &file_yimsg_proto_msgTypes[89]
+	mi := &file_yimsg_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5980,7 +6062,7 @@ func (x *DeleteMessageResponse) String() string {
 func (*DeleteMessageResponse) ProtoMessage() {}
 
 func (x *DeleteMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[89]
+	mi := &file_yimsg_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5993,7 +6075,7 @@ func (x *DeleteMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteMessageResponse.ProtoReflect.Descriptor instead.
 func (*DeleteMessageResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{89}
+	return file_yimsg_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *DeleteMessageResponse) GetBase() *BaseResponse {
@@ -6020,7 +6102,7 @@ type GetConversationsRequest struct {
 
 func (x *GetConversationsRequest) Reset() {
 	*x = GetConversationsRequest{}
-	mi := &file_yimsg_proto_msgTypes[90]
+	mi := &file_yimsg_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6032,7 +6114,7 @@ func (x *GetConversationsRequest) String() string {
 func (*GetConversationsRequest) ProtoMessage() {}
 
 func (x *GetConversationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[90]
+	mi := &file_yimsg_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6045,7 +6127,7 @@ func (x *GetConversationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationsRequest.ProtoReflect.Descriptor instead.
 func (*GetConversationsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{90}
+	return file_yimsg_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *GetConversationsRequest) GetPage() *PageQuery {
@@ -6073,7 +6155,7 @@ type GetConversationsResponse struct {
 
 func (x *GetConversationsResponse) Reset() {
 	*x = GetConversationsResponse{}
-	mi := &file_yimsg_proto_msgTypes[91]
+	mi := &file_yimsg_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6085,7 +6167,7 @@ func (x *GetConversationsResponse) String() string {
 func (*GetConversationsResponse) ProtoMessage() {}
 
 func (x *GetConversationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[91]
+	mi := &file_yimsg_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6098,7 +6180,7 @@ func (x *GetConversationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetConversationsResponse.ProtoReflect.Descriptor instead.
 func (*GetConversationsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{91}
+	return file_yimsg_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *GetConversationsResponse) GetBase() *BaseResponse {
@@ -6132,7 +6214,7 @@ type SyncConversationsRequest struct {
 
 func (x *SyncConversationsRequest) Reset() {
 	*x = SyncConversationsRequest{}
-	mi := &file_yimsg_proto_msgTypes[92]
+	mi := &file_yimsg_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6144,7 +6226,7 @@ func (x *SyncConversationsRequest) String() string {
 func (*SyncConversationsRequest) ProtoMessage() {}
 
 func (x *SyncConversationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[92]
+	mi := &file_yimsg_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6157,7 +6239,7 @@ func (x *SyncConversationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncConversationsRequest.ProtoReflect.Descriptor instead.
 func (*SyncConversationsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{92}
+	return file_yimsg_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *SyncConversationsRequest) GetLastSeq() int64 {
@@ -6186,7 +6268,7 @@ type SyncConversationsResponse struct {
 
 func (x *SyncConversationsResponse) Reset() {
 	*x = SyncConversationsResponse{}
-	mi := &file_yimsg_proto_msgTypes[93]
+	mi := &file_yimsg_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6198,7 +6280,7 @@ func (x *SyncConversationsResponse) String() string {
 func (*SyncConversationsResponse) ProtoMessage() {}
 
 func (x *SyncConversationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[93]
+	mi := &file_yimsg_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6211,7 +6293,7 @@ func (x *SyncConversationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncConversationsResponse.ProtoReflect.Descriptor instead.
 func (*SyncConversationsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{93}
+	return file_yimsg_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *SyncConversationsResponse) GetBase() *BaseResponse {
@@ -6250,7 +6332,7 @@ type GetUnreadCountRequest struct {
 
 func (x *GetUnreadCountRequest) Reset() {
 	*x = GetUnreadCountRequest{}
-	mi := &file_yimsg_proto_msgTypes[94]
+	mi := &file_yimsg_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6262,7 +6344,7 @@ func (x *GetUnreadCountRequest) String() string {
 func (*GetUnreadCountRequest) ProtoMessage() {}
 
 func (x *GetUnreadCountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[94]
+	mi := &file_yimsg_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6275,7 +6357,7 @@ func (x *GetUnreadCountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUnreadCountRequest.ProtoReflect.Descriptor instead.
 func (*GetUnreadCountRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{94}
+	return file_yimsg_proto_rawDescGZIP(), []int{95}
 }
 
 type GetUnreadCountResponse struct {
@@ -6288,7 +6370,7 @@ type GetUnreadCountResponse struct {
 
 func (x *GetUnreadCountResponse) Reset() {
 	*x = GetUnreadCountResponse{}
-	mi := &file_yimsg_proto_msgTypes[95]
+	mi := &file_yimsg_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6300,7 +6382,7 @@ func (x *GetUnreadCountResponse) String() string {
 func (*GetUnreadCountResponse) ProtoMessage() {}
 
 func (x *GetUnreadCountResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[95]
+	mi := &file_yimsg_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6313,7 +6395,7 @@ func (x *GetUnreadCountResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUnreadCountResponse.ProtoReflect.Descriptor instead.
 func (*GetUnreadCountResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{95}
+	return file_yimsg_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *GetUnreadCountResponse) GetBase() *BaseResponse {
@@ -6339,7 +6421,7 @@ type ClearUnreadRequest struct {
 
 func (x *ClearUnreadRequest) Reset() {
 	*x = ClearUnreadRequest{}
-	mi := &file_yimsg_proto_msgTypes[96]
+	mi := &file_yimsg_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6351,7 +6433,7 @@ func (x *ClearUnreadRequest) String() string {
 func (*ClearUnreadRequest) ProtoMessage() {}
 
 func (x *ClearUnreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[96]
+	mi := &file_yimsg_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6364,7 +6446,7 @@ func (x *ClearUnreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearUnreadRequest.ProtoReflect.Descriptor instead.
 func (*ClearUnreadRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{96}
+	return file_yimsg_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ClearUnreadRequest) GetTarget() *ConversationTarget {
@@ -6383,7 +6465,7 @@ type ClearUnreadResponse struct {
 
 func (x *ClearUnreadResponse) Reset() {
 	*x = ClearUnreadResponse{}
-	mi := &file_yimsg_proto_msgTypes[97]
+	mi := &file_yimsg_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6395,7 +6477,7 @@ func (x *ClearUnreadResponse) String() string {
 func (*ClearUnreadResponse) ProtoMessage() {}
 
 func (x *ClearUnreadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[97]
+	mi := &file_yimsg_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6408,7 +6490,7 @@ func (x *ClearUnreadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearUnreadResponse.ProtoReflect.Descriptor instead.
 func (*ClearUnreadResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{97}
+	return file_yimsg_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ClearUnreadResponse) GetBase() *BaseResponse {
@@ -6427,7 +6509,7 @@ type DeleteConversationRequest struct {
 
 func (x *DeleteConversationRequest) Reset() {
 	*x = DeleteConversationRequest{}
-	mi := &file_yimsg_proto_msgTypes[98]
+	mi := &file_yimsg_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6439,7 +6521,7 @@ func (x *DeleteConversationRequest) String() string {
 func (*DeleteConversationRequest) ProtoMessage() {}
 
 func (x *DeleteConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[98]
+	mi := &file_yimsg_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6452,7 +6534,7 @@ func (x *DeleteConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConversationRequest.ProtoReflect.Descriptor instead.
 func (*DeleteConversationRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{98}
+	return file_yimsg_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *DeleteConversationRequest) GetTarget() *ConversationTarget {
@@ -6472,7 +6554,7 @@ type DeleteConversationResponse struct {
 
 func (x *DeleteConversationResponse) Reset() {
 	*x = DeleteConversationResponse{}
-	mi := &file_yimsg_proto_msgTypes[99]
+	mi := &file_yimsg_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6484,7 +6566,7 @@ func (x *DeleteConversationResponse) String() string {
 func (*DeleteConversationResponse) ProtoMessage() {}
 
 func (x *DeleteConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[99]
+	mi := &file_yimsg_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6497,7 +6579,7 @@ func (x *DeleteConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteConversationResponse.ProtoReflect.Descriptor instead.
 func (*DeleteConversationResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{99}
+	return file_yimsg_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *DeleteConversationResponse) GetBase() *BaseResponse {
@@ -6523,7 +6605,7 @@ type MuteConversationRequest struct {
 
 func (x *MuteConversationRequest) Reset() {
 	*x = MuteConversationRequest{}
-	mi := &file_yimsg_proto_msgTypes[100]
+	mi := &file_yimsg_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6535,7 +6617,7 @@ func (x *MuteConversationRequest) String() string {
 func (*MuteConversationRequest) ProtoMessage() {}
 
 func (x *MuteConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[100]
+	mi := &file_yimsg_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6548,7 +6630,7 @@ func (x *MuteConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MuteConversationRequest.ProtoReflect.Descriptor instead.
 func (*MuteConversationRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{100}
+	return file_yimsg_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *MuteConversationRequest) GetTarget() *ConversationTarget {
@@ -6568,7 +6650,7 @@ type MuteConversationResponse struct {
 
 func (x *MuteConversationResponse) Reset() {
 	*x = MuteConversationResponse{}
-	mi := &file_yimsg_proto_msgTypes[101]
+	mi := &file_yimsg_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6580,7 +6662,7 @@ func (x *MuteConversationResponse) String() string {
 func (*MuteConversationResponse) ProtoMessage() {}
 
 func (x *MuteConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[101]
+	mi := &file_yimsg_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6593,7 +6675,7 @@ func (x *MuteConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MuteConversationResponse.ProtoReflect.Descriptor instead.
 func (*MuteConversationResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{101}
+	return file_yimsg_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *MuteConversationResponse) GetBase() *BaseResponse {
@@ -6619,7 +6701,7 @@ type UnmuteConversationRequest struct {
 
 func (x *UnmuteConversationRequest) Reset() {
 	*x = UnmuteConversationRequest{}
-	mi := &file_yimsg_proto_msgTypes[102]
+	mi := &file_yimsg_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6631,7 +6713,7 @@ func (x *UnmuteConversationRequest) String() string {
 func (*UnmuteConversationRequest) ProtoMessage() {}
 
 func (x *UnmuteConversationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[102]
+	mi := &file_yimsg_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6644,7 +6726,7 @@ func (x *UnmuteConversationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnmuteConversationRequest.ProtoReflect.Descriptor instead.
 func (*UnmuteConversationRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{102}
+	return file_yimsg_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *UnmuteConversationRequest) GetTarget() *ConversationTarget {
@@ -6664,7 +6746,7 @@ type UnmuteConversationResponse struct {
 
 func (x *UnmuteConversationResponse) Reset() {
 	*x = UnmuteConversationResponse{}
-	mi := &file_yimsg_proto_msgTypes[103]
+	mi := &file_yimsg_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6676,7 +6758,7 @@ func (x *UnmuteConversationResponse) String() string {
 func (*UnmuteConversationResponse) ProtoMessage() {}
 
 func (x *UnmuteConversationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[103]
+	mi := &file_yimsg_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6689,7 +6771,7 @@ func (x *UnmuteConversationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnmuteConversationResponse.ProtoReflect.Descriptor instead.
 func (*UnmuteConversationResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{103}
+	return file_yimsg_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *UnmuteConversationResponse) GetBase() *BaseResponse {
@@ -6717,7 +6799,7 @@ type GetMutelistRequest struct {
 
 func (x *GetMutelistRequest) Reset() {
 	*x = GetMutelistRequest{}
-	mi := &file_yimsg_proto_msgTypes[104]
+	mi := &file_yimsg_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6729,7 +6811,7 @@ func (x *GetMutelistRequest) String() string {
 func (*GetMutelistRequest) ProtoMessage() {}
 
 func (x *GetMutelistRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[104]
+	mi := &file_yimsg_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6742,7 +6824,7 @@ func (x *GetMutelistRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMutelistRequest.ProtoReflect.Descriptor instead.
 func (*GetMutelistRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{104}
+	return file_yimsg_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *GetMutelistRequest) GetStatus() MutelistStatus {
@@ -6777,7 +6859,7 @@ type GetMutelistResponse struct {
 
 func (x *GetMutelistResponse) Reset() {
 	*x = GetMutelistResponse{}
-	mi := &file_yimsg_proto_msgTypes[105]
+	mi := &file_yimsg_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6789,7 +6871,7 @@ func (x *GetMutelistResponse) String() string {
 func (*GetMutelistResponse) ProtoMessage() {}
 
 func (x *GetMutelistResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[105]
+	mi := &file_yimsg_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6802,7 +6884,7 @@ func (x *GetMutelistResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMutelistResponse.ProtoReflect.Descriptor instead.
 func (*GetMutelistResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{105}
+	return file_yimsg_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *GetMutelistResponse) GetBase() *BaseResponse {
@@ -6837,7 +6919,7 @@ type SyncMutelistRequest struct {
 
 func (x *SyncMutelistRequest) Reset() {
 	*x = SyncMutelistRequest{}
-	mi := &file_yimsg_proto_msgTypes[106]
+	mi := &file_yimsg_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6849,7 +6931,7 @@ func (x *SyncMutelistRequest) String() string {
 func (*SyncMutelistRequest) ProtoMessage() {}
 
 func (x *SyncMutelistRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[106]
+	mi := &file_yimsg_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6862,7 +6944,7 @@ func (x *SyncMutelistRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncMutelistRequest.ProtoReflect.Descriptor instead.
 func (*SyncMutelistRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{106}
+	return file_yimsg_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *SyncMutelistRequest) GetLastSeq() int64 {
@@ -6898,7 +6980,7 @@ type SyncMutelistResponse struct {
 
 func (x *SyncMutelistResponse) Reset() {
 	*x = SyncMutelistResponse{}
-	mi := &file_yimsg_proto_msgTypes[107]
+	mi := &file_yimsg_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6910,7 +6992,7 @@ func (x *SyncMutelistResponse) String() string {
 func (*SyncMutelistResponse) ProtoMessage() {}
 
 func (x *SyncMutelistResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[107]
+	mi := &file_yimsg_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6923,7 +7005,7 @@ func (x *SyncMutelistResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncMutelistResponse.ProtoReflect.Descriptor instead.
 func (*SyncMutelistResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{107}
+	return file_yimsg_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *SyncMutelistResponse) GetBase() *BaseResponse {
@@ -6964,7 +7046,7 @@ type CreateGroupRequest struct {
 
 func (x *CreateGroupRequest) Reset() {
 	*x = CreateGroupRequest{}
-	mi := &file_yimsg_proto_msgTypes[108]
+	mi := &file_yimsg_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6976,7 +7058,7 @@ func (x *CreateGroupRequest) String() string {
 func (*CreateGroupRequest) ProtoMessage() {}
 
 func (x *CreateGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[108]
+	mi := &file_yimsg_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6989,7 +7071,7 @@ func (x *CreateGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGroupRequest.ProtoReflect.Descriptor instead.
 func (*CreateGroupRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{108}
+	return file_yimsg_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *CreateGroupRequest) GetName() string {
@@ -7016,7 +7098,7 @@ type CreateGroupResponse struct {
 
 func (x *CreateGroupResponse) Reset() {
 	*x = CreateGroupResponse{}
-	mi := &file_yimsg_proto_msgTypes[109]
+	mi := &file_yimsg_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7028,7 +7110,7 @@ func (x *CreateGroupResponse) String() string {
 func (*CreateGroupResponse) ProtoMessage() {}
 
 func (x *CreateGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[109]
+	mi := &file_yimsg_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7041,7 +7123,7 @@ func (x *CreateGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGroupResponse.ProtoReflect.Descriptor instead.
 func (*CreateGroupResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{109}
+	return file_yimsg_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *CreateGroupResponse) GetBase() *BaseResponse {
@@ -7067,7 +7149,7 @@ type GetGroupInfosRequest struct {
 
 func (x *GetGroupInfosRequest) Reset() {
 	*x = GetGroupInfosRequest{}
-	mi := &file_yimsg_proto_msgTypes[110]
+	mi := &file_yimsg_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7079,7 +7161,7 @@ func (x *GetGroupInfosRequest) String() string {
 func (*GetGroupInfosRequest) ProtoMessage() {}
 
 func (x *GetGroupInfosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[110]
+	mi := &file_yimsg_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7092,7 +7174,7 @@ func (x *GetGroupInfosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupInfosRequest.ProtoReflect.Descriptor instead.
 func (*GetGroupInfosRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{110}
+	return file_yimsg_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *GetGroupInfosRequest) GetGroupIds() []int64 {
@@ -7112,7 +7194,7 @@ type GetGroupInfosResponse struct {
 
 func (x *GetGroupInfosResponse) Reset() {
 	*x = GetGroupInfosResponse{}
-	mi := &file_yimsg_proto_msgTypes[111]
+	mi := &file_yimsg_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7124,7 +7206,7 @@ func (x *GetGroupInfosResponse) String() string {
 func (*GetGroupInfosResponse) ProtoMessage() {}
 
 func (x *GetGroupInfosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[111]
+	mi := &file_yimsg_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7137,7 +7219,7 @@ func (x *GetGroupInfosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupInfosResponse.ProtoReflect.Descriptor instead.
 func (*GetGroupInfosResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{111}
+	return file_yimsg_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *GetGroupInfosResponse) GetBase() *BaseResponse {
@@ -7164,7 +7246,7 @@ type GetGroupMembersRequest struct {
 
 func (x *GetGroupMembersRequest) Reset() {
 	*x = GetGroupMembersRequest{}
-	mi := &file_yimsg_proto_msgTypes[112]
+	mi := &file_yimsg_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7176,7 +7258,7 @@ func (x *GetGroupMembersRequest) String() string {
 func (*GetGroupMembersRequest) ProtoMessage() {}
 
 func (x *GetGroupMembersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[112]
+	mi := &file_yimsg_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7189,7 +7271,7 @@ func (x *GetGroupMembersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupMembersRequest.ProtoReflect.Descriptor instead.
 func (*GetGroupMembersRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{112}
+	return file_yimsg_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *GetGroupMembersRequest) GetGroupId() int64 {
@@ -7217,7 +7299,7 @@ type GetGroupMembersResponse struct {
 
 func (x *GetGroupMembersResponse) Reset() {
 	*x = GetGroupMembersResponse{}
-	mi := &file_yimsg_proto_msgTypes[113]
+	mi := &file_yimsg_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7229,7 +7311,7 @@ func (x *GetGroupMembersResponse) String() string {
 func (*GetGroupMembersResponse) ProtoMessage() {}
 
 func (x *GetGroupMembersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[113]
+	mi := &file_yimsg_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7242,7 +7324,7 @@ func (x *GetGroupMembersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGroupMembersResponse.ProtoReflect.Descriptor instead.
 func (*GetGroupMembersResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{113}
+	return file_yimsg_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *GetGroupMembersResponse) GetBase() *BaseResponse {
@@ -7277,7 +7359,7 @@ type UpdateGroupInfoRequest struct {
 
 func (x *UpdateGroupInfoRequest) Reset() {
 	*x = UpdateGroupInfoRequest{}
-	mi := &file_yimsg_proto_msgTypes[114]
+	mi := &file_yimsg_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7289,7 +7371,7 @@ func (x *UpdateGroupInfoRequest) String() string {
 func (*UpdateGroupInfoRequest) ProtoMessage() {}
 
 func (x *UpdateGroupInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[114]
+	mi := &file_yimsg_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7302,7 +7384,7 @@ func (x *UpdateGroupInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupInfoRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGroupInfoRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{114}
+	return file_yimsg_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *UpdateGroupInfoRequest) GetGroupId() int64 {
@@ -7335,7 +7417,7 @@ type UpdateGroupInfoResponse struct {
 
 func (x *UpdateGroupInfoResponse) Reset() {
 	*x = UpdateGroupInfoResponse{}
-	mi := &file_yimsg_proto_msgTypes[115]
+	mi := &file_yimsg_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7347,7 +7429,7 @@ func (x *UpdateGroupInfoResponse) String() string {
 func (*UpdateGroupInfoResponse) ProtoMessage() {}
 
 func (x *UpdateGroupInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[115]
+	mi := &file_yimsg_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7360,7 +7442,7 @@ func (x *UpdateGroupInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGroupInfoResponse.ProtoReflect.Descriptor instead.
 func (*UpdateGroupInfoResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{115}
+	return file_yimsg_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *UpdateGroupInfoResponse) GetBase() *BaseResponse {
@@ -7380,7 +7462,7 @@ type AddGroupMemberRequest struct {
 
 func (x *AddGroupMemberRequest) Reset() {
 	*x = AddGroupMemberRequest{}
-	mi := &file_yimsg_proto_msgTypes[116]
+	mi := &file_yimsg_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7392,7 +7474,7 @@ func (x *AddGroupMemberRequest) String() string {
 func (*AddGroupMemberRequest) ProtoMessage() {}
 
 func (x *AddGroupMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[116]
+	mi := &file_yimsg_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7405,7 +7487,7 @@ func (x *AddGroupMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddGroupMemberRequest.ProtoReflect.Descriptor instead.
 func (*AddGroupMemberRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{116}
+	return file_yimsg_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *AddGroupMemberRequest) GetGroupId() int64 {
@@ -7431,7 +7513,7 @@ type AddGroupMemberResponse struct {
 
 func (x *AddGroupMemberResponse) Reset() {
 	*x = AddGroupMemberResponse{}
-	mi := &file_yimsg_proto_msgTypes[117]
+	mi := &file_yimsg_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7443,7 +7525,7 @@ func (x *AddGroupMemberResponse) String() string {
 func (*AddGroupMemberResponse) ProtoMessage() {}
 
 func (x *AddGroupMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[117]
+	mi := &file_yimsg_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7456,7 +7538,7 @@ func (x *AddGroupMemberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddGroupMemberResponse.ProtoReflect.Descriptor instead.
 func (*AddGroupMemberResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{117}
+	return file_yimsg_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *AddGroupMemberResponse) GetBase() *BaseResponse {
@@ -7476,7 +7558,7 @@ type RemoveGroupMemberRequest struct {
 
 func (x *RemoveGroupMemberRequest) Reset() {
 	*x = RemoveGroupMemberRequest{}
-	mi := &file_yimsg_proto_msgTypes[118]
+	mi := &file_yimsg_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7488,7 +7570,7 @@ func (x *RemoveGroupMemberRequest) String() string {
 func (*RemoveGroupMemberRequest) ProtoMessage() {}
 
 func (x *RemoveGroupMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[118]
+	mi := &file_yimsg_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7501,7 +7583,7 @@ func (x *RemoveGroupMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveGroupMemberRequest.ProtoReflect.Descriptor instead.
 func (*RemoveGroupMemberRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{118}
+	return file_yimsg_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *RemoveGroupMemberRequest) GetGroupId() int64 {
@@ -7527,7 +7609,7 @@ type RemoveGroupMemberResponse struct {
 
 func (x *RemoveGroupMemberResponse) Reset() {
 	*x = RemoveGroupMemberResponse{}
-	mi := &file_yimsg_proto_msgTypes[119]
+	mi := &file_yimsg_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7539,7 +7621,7 @@ func (x *RemoveGroupMemberResponse) String() string {
 func (*RemoveGroupMemberResponse) ProtoMessage() {}
 
 func (x *RemoveGroupMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[119]
+	mi := &file_yimsg_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7552,7 +7634,7 @@ func (x *RemoveGroupMemberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveGroupMemberResponse.ProtoReflect.Descriptor instead.
 func (*RemoveGroupMemberResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{119}
+	return file_yimsg_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *RemoveGroupMemberResponse) GetBase() *BaseResponse {
@@ -7574,7 +7656,7 @@ type OrgInfo struct {
 
 func (x *OrgInfo) Reset() {
 	*x = OrgInfo{}
-	mi := &file_yimsg_proto_msgTypes[120]
+	mi := &file_yimsg_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7586,7 +7668,7 @@ func (x *OrgInfo) String() string {
 func (*OrgInfo) ProtoMessage() {}
 
 func (x *OrgInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[120]
+	mi := &file_yimsg_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7599,7 +7681,7 @@ func (x *OrgInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OrgInfo.ProtoReflect.Descriptor instead.
 func (*OrgInfo) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{120}
+	return file_yimsg_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *OrgInfo) GetOrgId() int64 {
@@ -7635,7 +7717,7 @@ type TagInfo struct {
 
 func (x *TagInfo) Reset() {
 	*x = TagInfo{}
-	mi := &file_yimsg_proto_msgTypes[121]
+	mi := &file_yimsg_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7647,7 +7729,7 @@ func (x *TagInfo) String() string {
 func (*TagInfo) ProtoMessage() {}
 
 func (x *TagInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[121]
+	mi := &file_yimsg_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7660,7 +7742,7 @@ func (x *TagInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TagInfo.ProtoReflect.Descriptor instead.
 func (*TagInfo) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{121}
+	return file_yimsg_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *TagInfo) GetTagId() int64 {
@@ -7705,7 +7787,7 @@ type Tag struct {
 
 func (x *Tag) Reset() {
 	*x = Tag{}
-	mi := &file_yimsg_proto_msgTypes[122]
+	mi := &file_yimsg_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7717,7 +7799,7 @@ func (x *Tag) String() string {
 func (*Tag) ProtoMessage() {}
 
 func (x *Tag) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[122]
+	mi := &file_yimsg_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7730,7 +7812,7 @@ func (x *Tag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Tag.ProtoReflect.Descriptor instead.
 func (*Tag) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{122}
+	return file_yimsg_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *Tag) GetTagId() int64 {
@@ -7798,7 +7880,7 @@ type GetOrgInfosRequest struct {
 
 func (x *GetOrgInfosRequest) Reset() {
 	*x = GetOrgInfosRequest{}
-	mi := &file_yimsg_proto_msgTypes[123]
+	mi := &file_yimsg_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7810,7 +7892,7 @@ func (x *GetOrgInfosRequest) String() string {
 func (*GetOrgInfosRequest) ProtoMessage() {}
 
 func (x *GetOrgInfosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[123]
+	mi := &file_yimsg_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7823,7 +7905,7 @@ func (x *GetOrgInfosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrgInfosRequest.ProtoReflect.Descriptor instead.
 func (*GetOrgInfosRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{123}
+	return file_yimsg_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *GetOrgInfosRequest) GetOrgIds() []int64 {
@@ -7843,7 +7925,7 @@ type GetOrgInfosResponse struct {
 
 func (x *GetOrgInfosResponse) Reset() {
 	*x = GetOrgInfosResponse{}
-	mi := &file_yimsg_proto_msgTypes[124]
+	mi := &file_yimsg_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7855,7 +7937,7 @@ func (x *GetOrgInfosResponse) String() string {
 func (*GetOrgInfosResponse) ProtoMessage() {}
 
 func (x *GetOrgInfosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[124]
+	mi := &file_yimsg_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7868,7 +7950,7 @@ func (x *GetOrgInfosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrgInfosResponse.ProtoReflect.Descriptor instead.
 func (*GetOrgInfosResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{124}
+	return file_yimsg_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *GetOrgInfosResponse) GetBase() *BaseResponse {
@@ -7895,7 +7977,7 @@ type GetTagInfosRequest struct {
 
 func (x *GetTagInfosRequest) Reset() {
 	*x = GetTagInfosRequest{}
-	mi := &file_yimsg_proto_msgTypes[125]
+	mi := &file_yimsg_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7907,7 +7989,7 @@ func (x *GetTagInfosRequest) String() string {
 func (*GetTagInfosRequest) ProtoMessage() {}
 
 func (x *GetTagInfosRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[125]
+	mi := &file_yimsg_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7920,7 +8002,7 @@ func (x *GetTagInfosRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagInfosRequest.ProtoReflect.Descriptor instead.
 func (*GetTagInfosRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{125}
+	return file_yimsg_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *GetTagInfosRequest) GetOrgId() int64 {
@@ -7947,7 +8029,7 @@ type GetTagInfosResponse struct {
 
 func (x *GetTagInfosResponse) Reset() {
 	*x = GetTagInfosResponse{}
-	mi := &file_yimsg_proto_msgTypes[126]
+	mi := &file_yimsg_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7959,7 +8041,7 @@ func (x *GetTagInfosResponse) String() string {
 func (*GetTagInfosResponse) ProtoMessage() {}
 
 func (x *GetTagInfosResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[126]
+	mi := &file_yimsg_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7972,7 +8054,7 @@ func (x *GetTagInfosResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagInfosResponse.ProtoReflect.Descriptor instead.
 func (*GetTagInfosResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{126}
+	return file_yimsg_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *GetTagInfosResponse) GetBase() *BaseResponse {
@@ -8000,7 +8082,7 @@ type GetTagsRequest struct {
 
 func (x *GetTagsRequest) Reset() {
 	*x = GetTagsRequest{}
-	mi := &file_yimsg_proto_msgTypes[127]
+	mi := &file_yimsg_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8012,7 +8094,7 @@ func (x *GetTagsRequest) String() string {
 func (*GetTagsRequest) ProtoMessage() {}
 
 func (x *GetTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[127]
+	mi := &file_yimsg_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8025,7 +8107,7 @@ func (x *GetTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagsRequest.ProtoReflect.Descriptor instead.
 func (*GetTagsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{127}
+	return file_yimsg_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *GetTagsRequest) GetOrgId() int64 {
@@ -8060,7 +8142,7 @@ type GetTagsResponse struct {
 
 func (x *GetTagsResponse) Reset() {
 	*x = GetTagsResponse{}
-	mi := &file_yimsg_proto_msgTypes[128]
+	mi := &file_yimsg_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8072,7 +8154,7 @@ func (x *GetTagsResponse) String() string {
 func (*GetTagsResponse) ProtoMessage() {}
 
 func (x *GetTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[128]
+	mi := &file_yimsg_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8085,7 +8167,7 @@ func (x *GetTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTagsResponse.ProtoReflect.Descriptor instead.
 func (*GetTagsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{128}
+	return file_yimsg_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *GetTagsResponse) GetBase() *BaseResponse {
@@ -8121,7 +8203,7 @@ type SyncTagsRequest struct {
 
 func (x *SyncTagsRequest) Reset() {
 	*x = SyncTagsRequest{}
-	mi := &file_yimsg_proto_msgTypes[129]
+	mi := &file_yimsg_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8133,7 +8215,7 @@ func (x *SyncTagsRequest) String() string {
 func (*SyncTagsRequest) ProtoMessage() {}
 
 func (x *SyncTagsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[129]
+	mi := &file_yimsg_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8146,7 +8228,7 @@ func (x *SyncTagsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncTagsRequest.ProtoReflect.Descriptor instead.
 func (*SyncTagsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{129}
+	return file_yimsg_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *SyncTagsRequest) GetOrgId() int64 {
@@ -8189,7 +8271,7 @@ type SyncTagsResponse struct {
 
 func (x *SyncTagsResponse) Reset() {
 	*x = SyncTagsResponse{}
-	mi := &file_yimsg_proto_msgTypes[130]
+	mi := &file_yimsg_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8201,7 +8283,7 @@ func (x *SyncTagsResponse) String() string {
 func (*SyncTagsResponse) ProtoMessage() {}
 
 func (x *SyncTagsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[130]
+	mi := &file_yimsg_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8214,7 +8296,7 @@ func (x *SyncTagsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncTagsResponse.ProtoReflect.Descriptor instead.
 func (*SyncTagsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{130}
+	return file_yimsg_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *SyncTagsResponse) GetBase() *BaseResponse {
@@ -8258,7 +8340,7 @@ type CreateOrgTagRequest struct {
 
 func (x *CreateOrgTagRequest) Reset() {
 	*x = CreateOrgTagRequest{}
-	mi := &file_yimsg_proto_msgTypes[131]
+	mi := &file_yimsg_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8270,7 +8352,7 @@ func (x *CreateOrgTagRequest) String() string {
 func (*CreateOrgTagRequest) ProtoMessage() {}
 
 func (x *CreateOrgTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[131]
+	mi := &file_yimsg_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8283,7 +8365,7 @@ func (x *CreateOrgTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrgTagRequest.ProtoReflect.Descriptor instead.
 func (*CreateOrgTagRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{131}
+	return file_yimsg_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *CreateOrgTagRequest) GetOrgId() int64 {
@@ -8331,7 +8413,7 @@ type CreateOrgTagResponse struct {
 
 func (x *CreateOrgTagResponse) Reset() {
 	*x = CreateOrgTagResponse{}
-	mi := &file_yimsg_proto_msgTypes[132]
+	mi := &file_yimsg_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8343,7 +8425,7 @@ func (x *CreateOrgTagResponse) String() string {
 func (*CreateOrgTagResponse) ProtoMessage() {}
 
 func (x *CreateOrgTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[132]
+	mi := &file_yimsg_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8356,7 +8438,7 @@ func (x *CreateOrgTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrgTagResponse.ProtoReflect.Descriptor instead.
 func (*CreateOrgTagResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{132}
+	return file_yimsg_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *CreateOrgTagResponse) GetBase() *BaseResponse {
@@ -8385,7 +8467,7 @@ type RenameOrgTagRequest struct {
 
 func (x *RenameOrgTagRequest) Reset() {
 	*x = RenameOrgTagRequest{}
-	mi := &file_yimsg_proto_msgTypes[133]
+	mi := &file_yimsg_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8397,7 +8479,7 @@ func (x *RenameOrgTagRequest) String() string {
 func (*RenameOrgTagRequest) ProtoMessage() {}
 
 func (x *RenameOrgTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[133]
+	mi := &file_yimsg_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8410,7 +8492,7 @@ func (x *RenameOrgTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameOrgTagRequest.ProtoReflect.Descriptor instead.
 func (*RenameOrgTagRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{133}
+	return file_yimsg_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *RenameOrgTagRequest) GetOrgId() int64 {
@@ -8450,7 +8532,7 @@ type RenameOrgTagResponse struct {
 
 func (x *RenameOrgTagResponse) Reset() {
 	*x = RenameOrgTagResponse{}
-	mi := &file_yimsg_proto_msgTypes[134]
+	mi := &file_yimsg_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8462,7 +8544,7 @@ func (x *RenameOrgTagResponse) String() string {
 func (*RenameOrgTagResponse) ProtoMessage() {}
 
 func (x *RenameOrgTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[134]
+	mi := &file_yimsg_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8475,7 +8557,7 @@ func (x *RenameOrgTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameOrgTagResponse.ProtoReflect.Descriptor instead.
 func (*RenameOrgTagResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{134}
+	return file_yimsg_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *RenameOrgTagResponse) GetBase() *BaseResponse {
@@ -8495,7 +8577,7 @@ type DeleteOrgTagRequest struct {
 
 func (x *DeleteOrgTagRequest) Reset() {
 	*x = DeleteOrgTagRequest{}
-	mi := &file_yimsg_proto_msgTypes[135]
+	mi := &file_yimsg_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8507,7 +8589,7 @@ func (x *DeleteOrgTagRequest) String() string {
 func (*DeleteOrgTagRequest) ProtoMessage() {}
 
 func (x *DeleteOrgTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[135]
+	mi := &file_yimsg_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8520,7 +8602,7 @@ func (x *DeleteOrgTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrgTagRequest.ProtoReflect.Descriptor instead.
 func (*DeleteOrgTagRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{135}
+	return file_yimsg_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *DeleteOrgTagRequest) GetOrgId() int64 {
@@ -8546,7 +8628,7 @@ type DeleteOrgTagResponse struct {
 
 func (x *DeleteOrgTagResponse) Reset() {
 	*x = DeleteOrgTagResponse{}
-	mi := &file_yimsg_proto_msgTypes[136]
+	mi := &file_yimsg_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8558,7 +8640,7 @@ func (x *DeleteOrgTagResponse) String() string {
 func (*DeleteOrgTagResponse) ProtoMessage() {}
 
 func (x *DeleteOrgTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[136]
+	mi := &file_yimsg_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8571,7 +8653,7 @@ func (x *DeleteOrgTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrgTagResponse.ProtoReflect.Descriptor instead.
 func (*DeleteOrgTagResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{136}
+	return file_yimsg_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *DeleteOrgTagResponse) GetBase() *BaseResponse {
@@ -8593,7 +8675,7 @@ type LinkOrgTagRequest struct {
 
 func (x *LinkOrgTagRequest) Reset() {
 	*x = LinkOrgTagRequest{}
-	mi := &file_yimsg_proto_msgTypes[137]
+	mi := &file_yimsg_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8605,7 +8687,7 @@ func (x *LinkOrgTagRequest) String() string {
 func (*LinkOrgTagRequest) ProtoMessage() {}
 
 func (x *LinkOrgTagRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[137]
+	mi := &file_yimsg_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8618,7 +8700,7 @@ func (x *LinkOrgTagRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkOrgTagRequest.ProtoReflect.Descriptor instead.
 func (*LinkOrgTagRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{137}
+	return file_yimsg_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *LinkOrgTagRequest) GetOrgId() int64 {
@@ -8658,7 +8740,7 @@ type LinkOrgTagResponse struct {
 
 func (x *LinkOrgTagResponse) Reset() {
 	*x = LinkOrgTagResponse{}
-	mi := &file_yimsg_proto_msgTypes[138]
+	mi := &file_yimsg_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8670,7 +8752,7 @@ func (x *LinkOrgTagResponse) String() string {
 func (*LinkOrgTagResponse) ProtoMessage() {}
 
 func (x *LinkOrgTagResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[138]
+	mi := &file_yimsg_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8683,7 +8765,7 @@ func (x *LinkOrgTagResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkOrgTagResponse.ProtoReflect.Descriptor instead.
 func (*LinkOrgTagResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{138}
+	return file_yimsg_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *LinkOrgTagResponse) GetBase() *BaseResponse {
@@ -8706,7 +8788,7 @@ type AddOrgMemberRequest struct {
 
 func (x *AddOrgMemberRequest) Reset() {
 	*x = AddOrgMemberRequest{}
-	mi := &file_yimsg_proto_msgTypes[139]
+	mi := &file_yimsg_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8718,7 +8800,7 @@ func (x *AddOrgMemberRequest) String() string {
 func (*AddOrgMemberRequest) ProtoMessage() {}
 
 func (x *AddOrgMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[139]
+	mi := &file_yimsg_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8731,7 +8813,7 @@ func (x *AddOrgMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddOrgMemberRequest.ProtoReflect.Descriptor instead.
 func (*AddOrgMemberRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{139}
+	return file_yimsg_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *AddOrgMemberRequest) GetOrgId() int64 {
@@ -8778,7 +8860,7 @@ type AddOrgMemberResponse struct {
 
 func (x *AddOrgMemberResponse) Reset() {
 	*x = AddOrgMemberResponse{}
-	mi := &file_yimsg_proto_msgTypes[140]
+	mi := &file_yimsg_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8790,7 +8872,7 @@ func (x *AddOrgMemberResponse) String() string {
 func (*AddOrgMemberResponse) ProtoMessage() {}
 
 func (x *AddOrgMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[140]
+	mi := &file_yimsg_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8803,7 +8885,7 @@ func (x *AddOrgMemberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddOrgMemberResponse.ProtoReflect.Descriptor instead.
 func (*AddOrgMemberResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{140}
+	return file_yimsg_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *AddOrgMemberResponse) GetBase() *BaseResponse {
@@ -8824,7 +8906,7 @@ type RemoveOrgMemberRequest struct {
 
 func (x *RemoveOrgMemberRequest) Reset() {
 	*x = RemoveOrgMemberRequest{}
-	mi := &file_yimsg_proto_msgTypes[141]
+	mi := &file_yimsg_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8836,7 +8918,7 @@ func (x *RemoveOrgMemberRequest) String() string {
 func (*RemoveOrgMemberRequest) ProtoMessage() {}
 
 func (x *RemoveOrgMemberRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[141]
+	mi := &file_yimsg_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8849,7 +8931,7 @@ func (x *RemoveOrgMemberRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveOrgMemberRequest.ProtoReflect.Descriptor instead.
 func (*RemoveOrgMemberRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{141}
+	return file_yimsg_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *RemoveOrgMemberRequest) GetOrgId() int64 {
@@ -8882,7 +8964,7 @@ type RemoveOrgMemberResponse struct {
 
 func (x *RemoveOrgMemberResponse) Reset() {
 	*x = RemoveOrgMemberResponse{}
-	mi := &file_yimsg_proto_msgTypes[142]
+	mi := &file_yimsg_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8894,7 +8976,7 @@ func (x *RemoveOrgMemberResponse) String() string {
 func (*RemoveOrgMemberResponse) ProtoMessage() {}
 
 func (x *RemoveOrgMemberResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[142]
+	mi := &file_yimsg_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8907,7 +8989,7 @@ func (x *RemoveOrgMemberResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveOrgMemberResponse.ProtoReflect.Descriptor instead.
 func (*RemoveOrgMemberResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{142}
+	return file_yimsg_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *RemoveOrgMemberResponse) GetBase() *BaseResponse {
@@ -8931,7 +9013,7 @@ type SetOrgItemRankRequest struct {
 
 func (x *SetOrgItemRankRequest) Reset() {
 	*x = SetOrgItemRankRequest{}
-	mi := &file_yimsg_proto_msgTypes[143]
+	mi := &file_yimsg_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8943,7 +9025,7 @@ func (x *SetOrgItemRankRequest) String() string {
 func (*SetOrgItemRankRequest) ProtoMessage() {}
 
 func (x *SetOrgItemRankRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[143]
+	mi := &file_yimsg_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8956,7 +9038,7 @@ func (x *SetOrgItemRankRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetOrgItemRankRequest.ProtoReflect.Descriptor instead.
 func (*SetOrgItemRankRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{143}
+	return file_yimsg_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *SetOrgItemRankRequest) GetOrgId() int64 {
@@ -9010,7 +9092,7 @@ type SetOrgItemRankResponse struct {
 
 func (x *SetOrgItemRankResponse) Reset() {
 	*x = SetOrgItemRankResponse{}
-	mi := &file_yimsg_proto_msgTypes[144]
+	mi := &file_yimsg_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9022,7 +9104,7 @@ func (x *SetOrgItemRankResponse) String() string {
 func (*SetOrgItemRankResponse) ProtoMessage() {}
 
 func (x *SetOrgItemRankResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[144]
+	mi := &file_yimsg_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9035,7 +9117,7 @@ func (x *SetOrgItemRankResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetOrgItemRankResponse.ProtoReflect.Descriptor instead.
 func (*SetOrgItemRankResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{144}
+	return file_yimsg_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *SetOrgItemRankResponse) GetBase() *BaseResponse {
@@ -9056,7 +9138,7 @@ type RenameOrgRequest struct {
 
 func (x *RenameOrgRequest) Reset() {
 	*x = RenameOrgRequest{}
-	mi := &file_yimsg_proto_msgTypes[145]
+	mi := &file_yimsg_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9068,7 +9150,7 @@ func (x *RenameOrgRequest) String() string {
 func (*RenameOrgRequest) ProtoMessage() {}
 
 func (x *RenameOrgRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[145]
+	mi := &file_yimsg_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9081,7 +9163,7 @@ func (x *RenameOrgRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameOrgRequest.ProtoReflect.Descriptor instead.
 func (*RenameOrgRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{145}
+	return file_yimsg_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *RenameOrgRequest) GetOrgId() int64 {
@@ -9114,7 +9196,7 @@ type RenameOrgResponse struct {
 
 func (x *RenameOrgResponse) Reset() {
 	*x = RenameOrgResponse{}
-	mi := &file_yimsg_proto_msgTypes[146]
+	mi := &file_yimsg_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9126,7 +9208,7 @@ func (x *RenameOrgResponse) String() string {
 func (*RenameOrgResponse) ProtoMessage() {}
 
 func (x *RenameOrgResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[146]
+	mi := &file_yimsg_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9139,7 +9221,7 @@ func (x *RenameOrgResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameOrgResponse.ProtoReflect.Descriptor instead.
 func (*RenameOrgResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{146}
+	return file_yimsg_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *RenameOrgResponse) GetBase() *BaseResponse {
@@ -9160,7 +9242,7 @@ type GrantOrgAdminRequest struct {
 
 func (x *GrantOrgAdminRequest) Reset() {
 	*x = GrantOrgAdminRequest{}
-	mi := &file_yimsg_proto_msgTypes[147]
+	mi := &file_yimsg_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9172,7 +9254,7 @@ func (x *GrantOrgAdminRequest) String() string {
 func (*GrantOrgAdminRequest) ProtoMessage() {}
 
 func (x *GrantOrgAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[147]
+	mi := &file_yimsg_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9185,7 +9267,7 @@ func (x *GrantOrgAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrantOrgAdminRequest.ProtoReflect.Descriptor instead.
 func (*GrantOrgAdminRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{147}
+	return file_yimsg_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *GrantOrgAdminRequest) GetOrgId() int64 {
@@ -9218,7 +9300,7 @@ type GrantOrgAdminResponse struct {
 
 func (x *GrantOrgAdminResponse) Reset() {
 	*x = GrantOrgAdminResponse{}
-	mi := &file_yimsg_proto_msgTypes[148]
+	mi := &file_yimsg_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9230,7 +9312,7 @@ func (x *GrantOrgAdminResponse) String() string {
 func (*GrantOrgAdminResponse) ProtoMessage() {}
 
 func (x *GrantOrgAdminResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[148]
+	mi := &file_yimsg_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9243,7 +9325,7 @@ func (x *GrantOrgAdminResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrantOrgAdminResponse.ProtoReflect.Descriptor instead.
 func (*GrantOrgAdminResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{148}
+	return file_yimsg_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *GrantOrgAdminResponse) GetBase() *BaseResponse {
@@ -9264,7 +9346,7 @@ type RevokeOrgAdminRequest struct {
 
 func (x *RevokeOrgAdminRequest) Reset() {
 	*x = RevokeOrgAdminRequest{}
-	mi := &file_yimsg_proto_msgTypes[149]
+	mi := &file_yimsg_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9276,7 +9358,7 @@ func (x *RevokeOrgAdminRequest) String() string {
 func (*RevokeOrgAdminRequest) ProtoMessage() {}
 
 func (x *RevokeOrgAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[149]
+	mi := &file_yimsg_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9289,7 +9371,7 @@ func (x *RevokeOrgAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeOrgAdminRequest.ProtoReflect.Descriptor instead.
 func (*RevokeOrgAdminRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{149}
+	return file_yimsg_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *RevokeOrgAdminRequest) GetOrgId() int64 {
@@ -9322,7 +9404,7 @@ type RevokeOrgAdminResponse struct {
 
 func (x *RevokeOrgAdminResponse) Reset() {
 	*x = RevokeOrgAdminResponse{}
-	mi := &file_yimsg_proto_msgTypes[150]
+	mi := &file_yimsg_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9334,7 +9416,7 @@ func (x *RevokeOrgAdminResponse) String() string {
 func (*RevokeOrgAdminResponse) ProtoMessage() {}
 
 func (x *RevokeOrgAdminResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[150]
+	mi := &file_yimsg_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9347,7 +9429,7 @@ func (x *RevokeOrgAdminResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeOrgAdminResponse.ProtoReflect.Descriptor instead.
 func (*RevokeOrgAdminResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{150}
+	return file_yimsg_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *RevokeOrgAdminResponse) GetBase() *BaseResponse {
@@ -9367,7 +9449,7 @@ type ListOrgAdminsRequest struct {
 
 func (x *ListOrgAdminsRequest) Reset() {
 	*x = ListOrgAdminsRequest{}
-	mi := &file_yimsg_proto_msgTypes[151]
+	mi := &file_yimsg_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9379,7 +9461,7 @@ func (x *ListOrgAdminsRequest) String() string {
 func (*ListOrgAdminsRequest) ProtoMessage() {}
 
 func (x *ListOrgAdminsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[151]
+	mi := &file_yimsg_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9392,7 +9474,7 @@ func (x *ListOrgAdminsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrgAdminsRequest.ProtoReflect.Descriptor instead.
 func (*ListOrgAdminsRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{151}
+	return file_yimsg_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *ListOrgAdminsRequest) GetOrgId() int64 {
@@ -9419,7 +9501,7 @@ type ListOrgAdminsResponse struct {
 
 func (x *ListOrgAdminsResponse) Reset() {
 	*x = ListOrgAdminsResponse{}
-	mi := &file_yimsg_proto_msgTypes[152]
+	mi := &file_yimsg_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9431,7 +9513,7 @@ func (x *ListOrgAdminsResponse) String() string {
 func (*ListOrgAdminsResponse) ProtoMessage() {}
 
 func (x *ListOrgAdminsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[152]
+	mi := &file_yimsg_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9444,7 +9526,7 @@ func (x *ListOrgAdminsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrgAdminsResponse.ProtoReflect.Descriptor instead.
 func (*ListOrgAdminsResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{152}
+	return file_yimsg_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *ListOrgAdminsResponse) GetBase() *BaseResponse {
@@ -9473,7 +9555,7 @@ type CreateOrgRequest struct {
 
 func (x *CreateOrgRequest) Reset() {
 	*x = CreateOrgRequest{}
-	mi := &file_yimsg_proto_msgTypes[153]
+	mi := &file_yimsg_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9485,7 +9567,7 @@ func (x *CreateOrgRequest) String() string {
 func (*CreateOrgRequest) ProtoMessage() {}
 
 func (x *CreateOrgRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[153]
+	mi := &file_yimsg_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9498,7 +9580,7 @@ func (x *CreateOrgRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrgRequest.ProtoReflect.Descriptor instead.
 func (*CreateOrgRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{153}
+	return file_yimsg_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *CreateOrgRequest) GetName() string {
@@ -9525,7 +9607,7 @@ type CreateOrgResponse struct {
 
 func (x *CreateOrgResponse) Reset() {
 	*x = CreateOrgResponse{}
-	mi := &file_yimsg_proto_msgTypes[154]
+	mi := &file_yimsg_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9537,7 +9619,7 @@ func (x *CreateOrgResponse) String() string {
 func (*CreateOrgResponse) ProtoMessage() {}
 
 func (x *CreateOrgResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[154]
+	mi := &file_yimsg_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9550,7 +9632,7 @@ func (x *CreateOrgResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOrgResponse.ProtoReflect.Descriptor instead.
 func (*CreateOrgResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{154}
+	return file_yimsg_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *CreateOrgResponse) GetBase() *BaseResponse {
@@ -9579,7 +9661,7 @@ type DeleteOrgRequest struct {
 
 func (x *DeleteOrgRequest) Reset() {
 	*x = DeleteOrgRequest{}
-	mi := &file_yimsg_proto_msgTypes[155]
+	mi := &file_yimsg_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9591,7 +9673,7 @@ func (x *DeleteOrgRequest) String() string {
 func (*DeleteOrgRequest) ProtoMessage() {}
 
 func (x *DeleteOrgRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[155]
+	mi := &file_yimsg_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9604,7 +9686,7 @@ func (x *DeleteOrgRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrgRequest.ProtoReflect.Descriptor instead.
 func (*DeleteOrgRequest) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{155}
+	return file_yimsg_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *DeleteOrgRequest) GetOrgId() int64 {
@@ -9623,7 +9705,7 @@ type DeleteOrgResponse struct {
 
 func (x *DeleteOrgResponse) Reset() {
 	*x = DeleteOrgResponse{}
-	mi := &file_yimsg_proto_msgTypes[156]
+	mi := &file_yimsg_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9635,7 +9717,7 @@ func (x *DeleteOrgResponse) String() string {
 func (*DeleteOrgResponse) ProtoMessage() {}
 
 func (x *DeleteOrgResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_yimsg_proto_msgTypes[156]
+	mi := &file_yimsg_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9648,7 +9730,7 @@ func (x *DeleteOrgResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteOrgResponse.ProtoReflect.Descriptor instead.
 func (*DeleteOrgResponse) Descriptor() ([]byte, []int) {
-	return file_yimsg_proto_rawDescGZIP(), []int{156}
+	return file_yimsg_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *DeleteOrgResponse) GetBase() *BaseResponse {
@@ -9749,7 +9831,7 @@ const file_yimsg_proto_rawDesc = "" +
 	"\bmsg_type\x18\x06 \x01(\x0e2\x1b.yimsg.protocol.MessageTypeR\amsgType\x12/\n" +
 	"\x04body\x18\a \x01(\v2\x1b.yimsg.protocol.MessageBodyR\x04body\x12\x1b\n" +
 	"\tsend_time\x18\b \x01(\x03R\bsendTime\x125\n" +
-	"\x06status\x18\t \x01(\x0e2\x1d.yimsg.protocol.MessageStatusR\x06status\"\xbc\x03\n" +
+	"\x06status\x18\t \x01(\x0e2\x1d.yimsg.protocol.MessageStatusR\x06status\"\xf5\x03\n" +
 	"\vMessageBody\x12.\n" +
 	"\x04text\x18\x01 \x01(\v2\x18.yimsg.protocol.TextBodyH\x00R\x04text\x121\n" +
 	"\x05image\x18\x02 \x01(\v2\x19.yimsg.protocol.ImageBodyH\x00R\x05image\x124\n" +
@@ -9758,7 +9840,8 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x06recall\x18\x05 \x01(\v2\x1a.yimsg.protocol.RecallBodyH\x00R\x06recall\x121\n" +
 	"\x05quote\x18\x06 \x01(\v2\x19.yimsg.protocol.QuoteBodyH\x00R\x05quote\x127\n" +
 	"\aforward\x18\a \x01(\v2\x1b.yimsg.protocol.ForwardBodyH\x00R\aforward\x12:\n" +
-	"\bmarkdown\x18\b \x01(\v2\x1c.yimsg.protocol.MarkdownBodyH\x00R\bmarkdownB\x06\n" +
+	"\bmarkdown\x18\b \x01(\v2\x1c.yimsg.protocol.MarkdownBodyH\x00R\bmarkdown\x127\n" +
+	"\amention\x18\t \x01(\v2\x1b.yimsg.protocol.MentionBodyH\x00R\amentionB\x06\n" +
 	"\x04kind\"\x1e\n" +
 	"\bTextBody\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\"*\n" +
@@ -9793,7 +9876,12 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x04text\x18\x03 \x01(\v2\x18.yimsg.protocol.TextBodyR\x04text\"<\n" +
 	"\vForwardBody\x12\x17\n" +
 	"\amsg_ids\x18\x01 \x03(\tR\x06msgIds\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\"\xfd\x01\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\"i\n" +
+	"\vMentionBody\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12%\n" +
+	"\x0ementioned_uids\x18\x02 \x03(\x03R\rmentionedUids\x12\x1f\n" +
+	"\vmention_all\x18\x03 \x01(\bR\n" +
+	"mentionAll\"\xfd\x01\n" +
 	"\x11ConversationEntry\x12:\n" +
 	"\x06target\x18\x01 \x01(\v2\".yimsg.protocol.ConversationTargetR\x06target\x12\x19\n" +
 	"\blast_seq\x18\x02 \x01(\x03R\alastSeq\x122\n" +
@@ -10431,7 +10519,7 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x12\x16\n" +
 	"\x11ERROR_SEQ_TOO_OLD\x10\xdd\v\x12\x1f\n" +
 	"\x1aERROR_BATCH_LIMIT_EXCEEDED\x10\xde\v\x12\x19\n" +
-	"\x14ERROR_INTERNAL_ERROR\x10\xa9F*\xec\x01\n" +
+	"\x14ERROR_INTERNAL_ERROR\x10\xa9F*\x86\x02\n" +
 	"\vMessageType\x12\x18\n" +
 	"\x14MESSAGE_TYPE_INVALID\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_TYPE_TEXT\x10\x01\x12\x16\n" +
@@ -10441,7 +10529,8 @@ const file_yimsg_proto_rawDesc = "" +
 	"\x13MESSAGE_TYPE_RECALL\x10\x05\x12\x16\n" +
 	"\x12MESSAGE_TYPE_QUOTE\x10\x06\x12\x18\n" +
 	"\x14MESSAGE_TYPE_FORWARD\x10\a\x12\x19\n" +
-	"\x15MESSAGE_TYPE_MARKDOWN\x10\b*\xad\x01\n" +
+	"\x15MESSAGE_TYPE_MARKDOWN\x10\b\x12\x18\n" +
+	"\x14MESSAGE_TYPE_MENTION\x10\t*\xad\x01\n" +
 	"\rContactStatus\x12\x1a\n" +
 	"\x16CONTACT_STATUS_INVALID\x10\x00\x12\x19\n" +
 	"\x15CONTACT_STATUS_FRIEND\x10\x01\x12#\n" +
@@ -10491,7 +10580,7 @@ func file_yimsg_proto_rawDescGZIP() []byte {
 }
 
 var file_yimsg_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
-var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 157)
+var file_yimsg_proto_msgTypes = make([]protoimpl.MessageInfo, 158)
 var file_yimsg_proto_goTypes = []any{
 	(Type)(0),                                    // 0: yimsg.protocol.Type
 	(ErrorCode)(0),                               // 1: yimsg.protocol.ErrorCode
@@ -10533,134 +10622,135 @@ var file_yimsg_proto_goTypes = []any{
 	(*RecallBody)(nil),                           // 37: yimsg.protocol.RecallBody
 	(*QuoteBody)(nil),                            // 38: yimsg.protocol.QuoteBody
 	(*ForwardBody)(nil),                          // 39: yimsg.protocol.ForwardBody
-	(*ConversationEntry)(nil),                    // 40: yimsg.protocol.ConversationEntry
-	(*GroupInfo)(nil),                            // 41: yimsg.protocol.GroupInfo
-	(*GroupMember)(nil),                          // 42: yimsg.protocol.GroupMember
-	(*RegisterRequest)(nil),                      // 43: yimsg.protocol.RegisterRequest
-	(*RegisterResponse)(nil),                     // 44: yimsg.protocol.RegisterResponse
-	(*LoginRequest)(nil),                         // 45: yimsg.protocol.LoginRequest
-	(*LoginResponse)(nil),                        // 46: yimsg.protocol.LoginResponse
-	(*AuthenticateRequest)(nil),                  // 47: yimsg.protocol.AuthenticateRequest
-	(*AuthenticateResponse)(nil),                 // 48: yimsg.protocol.AuthenticateResponse
-	(*LogoutRequest)(nil),                        // 49: yimsg.protocol.LogoutRequest
-	(*LogoutResponse)(nil),                       // 50: yimsg.protocol.LogoutResponse
-	(*PingRequest)(nil),                          // 51: yimsg.protocol.PingRequest
-	(*PingResponse)(nil),                         // 52: yimsg.protocol.PingResponse
-	(*UpdateUserInfoRequest)(nil),                // 53: yimsg.protocol.UpdateUserInfoRequest
-	(*UpdateUserInfoResponse)(nil),               // 54: yimsg.protocol.UpdateUserInfoResponse
-	(*UpdatePasswordRequest)(nil),                // 55: yimsg.protocol.UpdatePasswordRequest
-	(*UpdatePasswordResponse)(nil),               // 56: yimsg.protocol.UpdatePasswordResponse
-	(*GetUserInfosRequest)(nil),                  // 57: yimsg.protocol.GetUserInfosRequest
-	(*GetUserInfosResponse)(nil),                 // 58: yimsg.protocol.GetUserInfosResponse
-	(*SearchUserRequest)(nil),                    // 59: yimsg.protocol.SearchUserRequest
-	(*SearchUserResponse)(nil),                   // 60: yimsg.protocol.SearchUserResponse
-	(*AddFriendRequest)(nil),                     // 61: yimsg.protocol.AddFriendRequest
-	(*AddFriendResponse)(nil),                    // 62: yimsg.protocol.AddFriendResponse
-	(*AcceptFriendRequest)(nil),                  // 63: yimsg.protocol.AcceptFriendRequest
-	(*AcceptFriendResponse)(nil),                 // 64: yimsg.protocol.AcceptFriendResponse
-	(*RejectFriendRequest)(nil),                  // 65: yimsg.protocol.RejectFriendRequest
-	(*RejectFriendResponse)(nil),                 // 66: yimsg.protocol.RejectFriendResponse
-	(*DeleteFriendRequest)(nil),                  // 67: yimsg.protocol.DeleteFriendRequest
-	(*DeleteFriendResponse)(nil),                 // 68: yimsg.protocol.DeleteFriendResponse
-	(*UpdateRemarkRequest)(nil),                  // 69: yimsg.protocol.UpdateRemarkRequest
-	(*UpdateRemarkResponse)(nil),                 // 70: yimsg.protocol.UpdateRemarkResponse
-	(*GetContactsRequest)(nil),                   // 71: yimsg.protocol.GetContactsRequest
-	(*GetContactsResponse)(nil),                  // 72: yimsg.protocol.GetContactsResponse
-	(*SearchContactsRequest)(nil),                // 73: yimsg.protocol.SearchContactsRequest
-	(*SearchContactsResponse)(nil),               // 74: yimsg.protocol.SearchContactsResponse
-	(*GetContactCountRequest)(nil),               // 75: yimsg.protocol.GetContactCountRequest
-	(*GetContactCountResponse)(nil),              // 76: yimsg.protocol.GetContactCountResponse
-	(*SyncContactsRequest)(nil),                  // 77: yimsg.protocol.SyncContactsRequest
-	(*SyncContactsResponse)(nil),                 // 78: yimsg.protocol.SyncContactsResponse
-	(*FavoriteGroupRequest)(nil),                 // 79: yimsg.protocol.FavoriteGroupRequest
-	(*FavoriteGroupResponse)(nil),                // 80: yimsg.protocol.FavoriteGroupResponse
-	(*UnfavoriteGroupRequest)(nil),               // 81: yimsg.protocol.UnfavoriteGroupRequest
-	(*UnfavoriteGroupResponse)(nil),              // 82: yimsg.protocol.UnfavoriteGroupResponse
-	(*BlockUserRequest)(nil),                     // 83: yimsg.protocol.BlockUserRequest
-	(*BlockUserResponse)(nil),                    // 84: yimsg.protocol.BlockUserResponse
-	(*UnblockUserRequest)(nil),                   // 85: yimsg.protocol.UnblockUserRequest
-	(*UnblockUserResponse)(nil),                  // 86: yimsg.protocol.UnblockUserResponse
-	(*GetBlocklistRequest)(nil),                  // 87: yimsg.protocol.GetBlocklistRequest
-	(*GetBlocklistResponse)(nil),                 // 88: yimsg.protocol.GetBlocklistResponse
-	(*SyncBlocklistRequest)(nil),                 // 89: yimsg.protocol.SyncBlocklistRequest
-	(*SyncBlocklistResponse)(nil),                // 90: yimsg.protocol.SyncBlocklistResponse
-	(*SendMessageRequest)(nil),                   // 91: yimsg.protocol.SendMessageRequest
-	(*SendMessageResponse)(nil),                  // 92: yimsg.protocol.SendMessageResponse
-	(*SyncMessagesRequest)(nil),                  // 93: yimsg.protocol.SyncMessagesRequest
-	(*SyncMessagesResponse)(nil),                 // 94: yimsg.protocol.SyncMessagesResponse
-	(*GetMessagesRequest)(nil),                   // 95: yimsg.protocol.GetMessagesRequest
-	(*GetMessagesResponse)(nil),                  // 96: yimsg.protocol.GetMessagesResponse
-	(*SearchMessagesRequest)(nil),                // 97: yimsg.protocol.SearchMessagesRequest
-	(*SearchMessagesResponse)(nil),               // 98: yimsg.protocol.SearchMessagesResponse
-	(*DeleteMessageRequest)(nil),                 // 99: yimsg.protocol.DeleteMessageRequest
-	(*DeleteMessageResponse)(nil),                // 100: yimsg.protocol.DeleteMessageResponse
-	(*GetConversationsRequest)(nil),              // 101: yimsg.protocol.GetConversationsRequest
-	(*GetConversationsResponse)(nil),             // 102: yimsg.protocol.GetConversationsResponse
-	(*SyncConversationsRequest)(nil),             // 103: yimsg.protocol.SyncConversationsRequest
-	(*SyncConversationsResponse)(nil),            // 104: yimsg.protocol.SyncConversationsResponse
-	(*GetUnreadCountRequest)(nil),                // 105: yimsg.protocol.GetUnreadCountRequest
-	(*GetUnreadCountResponse)(nil),               // 106: yimsg.protocol.GetUnreadCountResponse
-	(*ClearUnreadRequest)(nil),                   // 107: yimsg.protocol.ClearUnreadRequest
-	(*ClearUnreadResponse)(nil),                  // 108: yimsg.protocol.ClearUnreadResponse
-	(*DeleteConversationRequest)(nil),            // 109: yimsg.protocol.DeleteConversationRequest
-	(*DeleteConversationResponse)(nil),           // 110: yimsg.protocol.DeleteConversationResponse
-	(*MuteConversationRequest)(nil),              // 111: yimsg.protocol.MuteConversationRequest
-	(*MuteConversationResponse)(nil),             // 112: yimsg.protocol.MuteConversationResponse
-	(*UnmuteConversationRequest)(nil),            // 113: yimsg.protocol.UnmuteConversationRequest
-	(*UnmuteConversationResponse)(nil),           // 114: yimsg.protocol.UnmuteConversationResponse
-	(*GetMutelistRequest)(nil),                   // 115: yimsg.protocol.GetMutelistRequest
-	(*GetMutelistResponse)(nil),                  // 116: yimsg.protocol.GetMutelistResponse
-	(*SyncMutelistRequest)(nil),                  // 117: yimsg.protocol.SyncMutelistRequest
-	(*SyncMutelistResponse)(nil),                 // 118: yimsg.protocol.SyncMutelistResponse
-	(*CreateGroupRequest)(nil),                   // 119: yimsg.protocol.CreateGroupRequest
-	(*CreateGroupResponse)(nil),                  // 120: yimsg.protocol.CreateGroupResponse
-	(*GetGroupInfosRequest)(nil),                 // 121: yimsg.protocol.GetGroupInfosRequest
-	(*GetGroupInfosResponse)(nil),                // 122: yimsg.protocol.GetGroupInfosResponse
-	(*GetGroupMembersRequest)(nil),               // 123: yimsg.protocol.GetGroupMembersRequest
-	(*GetGroupMembersResponse)(nil),              // 124: yimsg.protocol.GetGroupMembersResponse
-	(*UpdateGroupInfoRequest)(nil),               // 125: yimsg.protocol.UpdateGroupInfoRequest
-	(*UpdateGroupInfoResponse)(nil),              // 126: yimsg.protocol.UpdateGroupInfoResponse
-	(*AddGroupMemberRequest)(nil),                // 127: yimsg.protocol.AddGroupMemberRequest
-	(*AddGroupMemberResponse)(nil),               // 128: yimsg.protocol.AddGroupMemberResponse
-	(*RemoveGroupMemberRequest)(nil),             // 129: yimsg.protocol.RemoveGroupMemberRequest
-	(*RemoveGroupMemberResponse)(nil),            // 130: yimsg.protocol.RemoveGroupMemberResponse
-	(*OrgInfo)(nil),                              // 131: yimsg.protocol.OrgInfo
-	(*TagInfo)(nil),                              // 132: yimsg.protocol.TagInfo
-	(*Tag)(nil),                                  // 133: yimsg.protocol.Tag
-	(*GetOrgInfosRequest)(nil),                   // 134: yimsg.protocol.GetOrgInfosRequest
-	(*GetOrgInfosResponse)(nil),                  // 135: yimsg.protocol.GetOrgInfosResponse
-	(*GetTagInfosRequest)(nil),                   // 136: yimsg.protocol.GetTagInfosRequest
-	(*GetTagInfosResponse)(nil),                  // 137: yimsg.protocol.GetTagInfosResponse
-	(*GetTagsRequest)(nil),                       // 138: yimsg.protocol.GetTagsRequest
-	(*GetTagsResponse)(nil),                      // 139: yimsg.protocol.GetTagsResponse
-	(*SyncTagsRequest)(nil),                      // 140: yimsg.protocol.SyncTagsRequest
-	(*SyncTagsResponse)(nil),                     // 141: yimsg.protocol.SyncTagsResponse
-	(*CreateOrgTagRequest)(nil),                  // 142: yimsg.protocol.CreateOrgTagRequest
-	(*CreateOrgTagResponse)(nil),                 // 143: yimsg.protocol.CreateOrgTagResponse
-	(*RenameOrgTagRequest)(nil),                  // 144: yimsg.protocol.RenameOrgTagRequest
-	(*RenameOrgTagResponse)(nil),                 // 145: yimsg.protocol.RenameOrgTagResponse
-	(*DeleteOrgTagRequest)(nil),                  // 146: yimsg.protocol.DeleteOrgTagRequest
-	(*DeleteOrgTagResponse)(nil),                 // 147: yimsg.protocol.DeleteOrgTagResponse
-	(*LinkOrgTagRequest)(nil),                    // 148: yimsg.protocol.LinkOrgTagRequest
-	(*LinkOrgTagResponse)(nil),                   // 149: yimsg.protocol.LinkOrgTagResponse
-	(*AddOrgMemberRequest)(nil),                  // 150: yimsg.protocol.AddOrgMemberRequest
-	(*AddOrgMemberResponse)(nil),                 // 151: yimsg.protocol.AddOrgMemberResponse
-	(*RemoveOrgMemberRequest)(nil),               // 152: yimsg.protocol.RemoveOrgMemberRequest
-	(*RemoveOrgMemberResponse)(nil),              // 153: yimsg.protocol.RemoveOrgMemberResponse
-	(*SetOrgItemRankRequest)(nil),                // 154: yimsg.protocol.SetOrgItemRankRequest
-	(*SetOrgItemRankResponse)(nil),               // 155: yimsg.protocol.SetOrgItemRankResponse
-	(*RenameOrgRequest)(nil),                     // 156: yimsg.protocol.RenameOrgRequest
-	(*RenameOrgResponse)(nil),                    // 157: yimsg.protocol.RenameOrgResponse
-	(*GrantOrgAdminRequest)(nil),                 // 158: yimsg.protocol.GrantOrgAdminRequest
-	(*GrantOrgAdminResponse)(nil),                // 159: yimsg.protocol.GrantOrgAdminResponse
-	(*RevokeOrgAdminRequest)(nil),                // 160: yimsg.protocol.RevokeOrgAdminRequest
-	(*RevokeOrgAdminResponse)(nil),               // 161: yimsg.protocol.RevokeOrgAdminResponse
-	(*ListOrgAdminsRequest)(nil),                 // 162: yimsg.protocol.ListOrgAdminsRequest
-	(*ListOrgAdminsResponse)(nil),                // 163: yimsg.protocol.ListOrgAdminsResponse
-	(*CreateOrgRequest)(nil),                     // 164: yimsg.protocol.CreateOrgRequest
-	(*CreateOrgResponse)(nil),                    // 165: yimsg.protocol.CreateOrgResponse
-	(*DeleteOrgRequest)(nil),                     // 166: yimsg.protocol.DeleteOrgRequest
-	(*DeleteOrgResponse)(nil),                    // 167: yimsg.protocol.DeleteOrgResponse
+	(*MentionBody)(nil),                          // 40: yimsg.protocol.MentionBody
+	(*ConversationEntry)(nil),                    // 41: yimsg.protocol.ConversationEntry
+	(*GroupInfo)(nil),                            // 42: yimsg.protocol.GroupInfo
+	(*GroupMember)(nil),                          // 43: yimsg.protocol.GroupMember
+	(*RegisterRequest)(nil),                      // 44: yimsg.protocol.RegisterRequest
+	(*RegisterResponse)(nil),                     // 45: yimsg.protocol.RegisterResponse
+	(*LoginRequest)(nil),                         // 46: yimsg.protocol.LoginRequest
+	(*LoginResponse)(nil),                        // 47: yimsg.protocol.LoginResponse
+	(*AuthenticateRequest)(nil),                  // 48: yimsg.protocol.AuthenticateRequest
+	(*AuthenticateResponse)(nil),                 // 49: yimsg.protocol.AuthenticateResponse
+	(*LogoutRequest)(nil),                        // 50: yimsg.protocol.LogoutRequest
+	(*LogoutResponse)(nil),                       // 51: yimsg.protocol.LogoutResponse
+	(*PingRequest)(nil),                          // 52: yimsg.protocol.PingRequest
+	(*PingResponse)(nil),                         // 53: yimsg.protocol.PingResponse
+	(*UpdateUserInfoRequest)(nil),                // 54: yimsg.protocol.UpdateUserInfoRequest
+	(*UpdateUserInfoResponse)(nil),               // 55: yimsg.protocol.UpdateUserInfoResponse
+	(*UpdatePasswordRequest)(nil),                // 56: yimsg.protocol.UpdatePasswordRequest
+	(*UpdatePasswordResponse)(nil),               // 57: yimsg.protocol.UpdatePasswordResponse
+	(*GetUserInfosRequest)(nil),                  // 58: yimsg.protocol.GetUserInfosRequest
+	(*GetUserInfosResponse)(nil),                 // 59: yimsg.protocol.GetUserInfosResponse
+	(*SearchUserRequest)(nil),                    // 60: yimsg.protocol.SearchUserRequest
+	(*SearchUserResponse)(nil),                   // 61: yimsg.protocol.SearchUserResponse
+	(*AddFriendRequest)(nil),                     // 62: yimsg.protocol.AddFriendRequest
+	(*AddFriendResponse)(nil),                    // 63: yimsg.protocol.AddFriendResponse
+	(*AcceptFriendRequest)(nil),                  // 64: yimsg.protocol.AcceptFriendRequest
+	(*AcceptFriendResponse)(nil),                 // 65: yimsg.protocol.AcceptFriendResponse
+	(*RejectFriendRequest)(nil),                  // 66: yimsg.protocol.RejectFriendRequest
+	(*RejectFriendResponse)(nil),                 // 67: yimsg.protocol.RejectFriendResponse
+	(*DeleteFriendRequest)(nil),                  // 68: yimsg.protocol.DeleteFriendRequest
+	(*DeleteFriendResponse)(nil),                 // 69: yimsg.protocol.DeleteFriendResponse
+	(*UpdateRemarkRequest)(nil),                  // 70: yimsg.protocol.UpdateRemarkRequest
+	(*UpdateRemarkResponse)(nil),                 // 71: yimsg.protocol.UpdateRemarkResponse
+	(*GetContactsRequest)(nil),                   // 72: yimsg.protocol.GetContactsRequest
+	(*GetContactsResponse)(nil),                  // 73: yimsg.protocol.GetContactsResponse
+	(*SearchContactsRequest)(nil),                // 74: yimsg.protocol.SearchContactsRequest
+	(*SearchContactsResponse)(nil),               // 75: yimsg.protocol.SearchContactsResponse
+	(*GetContactCountRequest)(nil),               // 76: yimsg.protocol.GetContactCountRequest
+	(*GetContactCountResponse)(nil),              // 77: yimsg.protocol.GetContactCountResponse
+	(*SyncContactsRequest)(nil),                  // 78: yimsg.protocol.SyncContactsRequest
+	(*SyncContactsResponse)(nil),                 // 79: yimsg.protocol.SyncContactsResponse
+	(*FavoriteGroupRequest)(nil),                 // 80: yimsg.protocol.FavoriteGroupRequest
+	(*FavoriteGroupResponse)(nil),                // 81: yimsg.protocol.FavoriteGroupResponse
+	(*UnfavoriteGroupRequest)(nil),               // 82: yimsg.protocol.UnfavoriteGroupRequest
+	(*UnfavoriteGroupResponse)(nil),              // 83: yimsg.protocol.UnfavoriteGroupResponse
+	(*BlockUserRequest)(nil),                     // 84: yimsg.protocol.BlockUserRequest
+	(*BlockUserResponse)(nil),                    // 85: yimsg.protocol.BlockUserResponse
+	(*UnblockUserRequest)(nil),                   // 86: yimsg.protocol.UnblockUserRequest
+	(*UnblockUserResponse)(nil),                  // 87: yimsg.protocol.UnblockUserResponse
+	(*GetBlocklistRequest)(nil),                  // 88: yimsg.protocol.GetBlocklistRequest
+	(*GetBlocklistResponse)(nil),                 // 89: yimsg.protocol.GetBlocklistResponse
+	(*SyncBlocklistRequest)(nil),                 // 90: yimsg.protocol.SyncBlocklistRequest
+	(*SyncBlocklistResponse)(nil),                // 91: yimsg.protocol.SyncBlocklistResponse
+	(*SendMessageRequest)(nil),                   // 92: yimsg.protocol.SendMessageRequest
+	(*SendMessageResponse)(nil),                  // 93: yimsg.protocol.SendMessageResponse
+	(*SyncMessagesRequest)(nil),                  // 94: yimsg.protocol.SyncMessagesRequest
+	(*SyncMessagesResponse)(nil),                 // 95: yimsg.protocol.SyncMessagesResponse
+	(*GetMessagesRequest)(nil),                   // 96: yimsg.protocol.GetMessagesRequest
+	(*GetMessagesResponse)(nil),                  // 97: yimsg.protocol.GetMessagesResponse
+	(*SearchMessagesRequest)(nil),                // 98: yimsg.protocol.SearchMessagesRequest
+	(*SearchMessagesResponse)(nil),               // 99: yimsg.protocol.SearchMessagesResponse
+	(*DeleteMessageRequest)(nil),                 // 100: yimsg.protocol.DeleteMessageRequest
+	(*DeleteMessageResponse)(nil),                // 101: yimsg.protocol.DeleteMessageResponse
+	(*GetConversationsRequest)(nil),              // 102: yimsg.protocol.GetConversationsRequest
+	(*GetConversationsResponse)(nil),             // 103: yimsg.protocol.GetConversationsResponse
+	(*SyncConversationsRequest)(nil),             // 104: yimsg.protocol.SyncConversationsRequest
+	(*SyncConversationsResponse)(nil),            // 105: yimsg.protocol.SyncConversationsResponse
+	(*GetUnreadCountRequest)(nil),                // 106: yimsg.protocol.GetUnreadCountRequest
+	(*GetUnreadCountResponse)(nil),               // 107: yimsg.protocol.GetUnreadCountResponse
+	(*ClearUnreadRequest)(nil),                   // 108: yimsg.protocol.ClearUnreadRequest
+	(*ClearUnreadResponse)(nil),                  // 109: yimsg.protocol.ClearUnreadResponse
+	(*DeleteConversationRequest)(nil),            // 110: yimsg.protocol.DeleteConversationRequest
+	(*DeleteConversationResponse)(nil),           // 111: yimsg.protocol.DeleteConversationResponse
+	(*MuteConversationRequest)(nil),              // 112: yimsg.protocol.MuteConversationRequest
+	(*MuteConversationResponse)(nil),             // 113: yimsg.protocol.MuteConversationResponse
+	(*UnmuteConversationRequest)(nil),            // 114: yimsg.protocol.UnmuteConversationRequest
+	(*UnmuteConversationResponse)(nil),           // 115: yimsg.protocol.UnmuteConversationResponse
+	(*GetMutelistRequest)(nil),                   // 116: yimsg.protocol.GetMutelistRequest
+	(*GetMutelistResponse)(nil),                  // 117: yimsg.protocol.GetMutelistResponse
+	(*SyncMutelistRequest)(nil),                  // 118: yimsg.protocol.SyncMutelistRequest
+	(*SyncMutelistResponse)(nil),                 // 119: yimsg.protocol.SyncMutelistResponse
+	(*CreateGroupRequest)(nil),                   // 120: yimsg.protocol.CreateGroupRequest
+	(*CreateGroupResponse)(nil),                  // 121: yimsg.protocol.CreateGroupResponse
+	(*GetGroupInfosRequest)(nil),                 // 122: yimsg.protocol.GetGroupInfosRequest
+	(*GetGroupInfosResponse)(nil),                // 123: yimsg.protocol.GetGroupInfosResponse
+	(*GetGroupMembersRequest)(nil),               // 124: yimsg.protocol.GetGroupMembersRequest
+	(*GetGroupMembersResponse)(nil),              // 125: yimsg.protocol.GetGroupMembersResponse
+	(*UpdateGroupInfoRequest)(nil),               // 126: yimsg.protocol.UpdateGroupInfoRequest
+	(*UpdateGroupInfoResponse)(nil),              // 127: yimsg.protocol.UpdateGroupInfoResponse
+	(*AddGroupMemberRequest)(nil),                // 128: yimsg.protocol.AddGroupMemberRequest
+	(*AddGroupMemberResponse)(nil),               // 129: yimsg.protocol.AddGroupMemberResponse
+	(*RemoveGroupMemberRequest)(nil),             // 130: yimsg.protocol.RemoveGroupMemberRequest
+	(*RemoveGroupMemberResponse)(nil),            // 131: yimsg.protocol.RemoveGroupMemberResponse
+	(*OrgInfo)(nil),                              // 132: yimsg.protocol.OrgInfo
+	(*TagInfo)(nil),                              // 133: yimsg.protocol.TagInfo
+	(*Tag)(nil),                                  // 134: yimsg.protocol.Tag
+	(*GetOrgInfosRequest)(nil),                   // 135: yimsg.protocol.GetOrgInfosRequest
+	(*GetOrgInfosResponse)(nil),                  // 136: yimsg.protocol.GetOrgInfosResponse
+	(*GetTagInfosRequest)(nil),                   // 137: yimsg.protocol.GetTagInfosRequest
+	(*GetTagInfosResponse)(nil),                  // 138: yimsg.protocol.GetTagInfosResponse
+	(*GetTagsRequest)(nil),                       // 139: yimsg.protocol.GetTagsRequest
+	(*GetTagsResponse)(nil),                      // 140: yimsg.protocol.GetTagsResponse
+	(*SyncTagsRequest)(nil),                      // 141: yimsg.protocol.SyncTagsRequest
+	(*SyncTagsResponse)(nil),                     // 142: yimsg.protocol.SyncTagsResponse
+	(*CreateOrgTagRequest)(nil),                  // 143: yimsg.protocol.CreateOrgTagRequest
+	(*CreateOrgTagResponse)(nil),                 // 144: yimsg.protocol.CreateOrgTagResponse
+	(*RenameOrgTagRequest)(nil),                  // 145: yimsg.protocol.RenameOrgTagRequest
+	(*RenameOrgTagResponse)(nil),                 // 146: yimsg.protocol.RenameOrgTagResponse
+	(*DeleteOrgTagRequest)(nil),                  // 147: yimsg.protocol.DeleteOrgTagRequest
+	(*DeleteOrgTagResponse)(nil),                 // 148: yimsg.protocol.DeleteOrgTagResponse
+	(*LinkOrgTagRequest)(nil),                    // 149: yimsg.protocol.LinkOrgTagRequest
+	(*LinkOrgTagResponse)(nil),                   // 150: yimsg.protocol.LinkOrgTagResponse
+	(*AddOrgMemberRequest)(nil),                  // 151: yimsg.protocol.AddOrgMemberRequest
+	(*AddOrgMemberResponse)(nil),                 // 152: yimsg.protocol.AddOrgMemberResponse
+	(*RemoveOrgMemberRequest)(nil),               // 153: yimsg.protocol.RemoveOrgMemberRequest
+	(*RemoveOrgMemberResponse)(nil),              // 154: yimsg.protocol.RemoveOrgMemberResponse
+	(*SetOrgItemRankRequest)(nil),                // 155: yimsg.protocol.SetOrgItemRankRequest
+	(*SetOrgItemRankResponse)(nil),               // 156: yimsg.protocol.SetOrgItemRankResponse
+	(*RenameOrgRequest)(nil),                     // 157: yimsg.protocol.RenameOrgRequest
+	(*RenameOrgResponse)(nil),                    // 158: yimsg.protocol.RenameOrgResponse
+	(*GrantOrgAdminRequest)(nil),                 // 159: yimsg.protocol.GrantOrgAdminRequest
+	(*GrantOrgAdminResponse)(nil),                // 160: yimsg.protocol.GrantOrgAdminResponse
+	(*RevokeOrgAdminRequest)(nil),                // 161: yimsg.protocol.RevokeOrgAdminRequest
+	(*RevokeOrgAdminResponse)(nil),               // 162: yimsg.protocol.RevokeOrgAdminResponse
+	(*ListOrgAdminsRequest)(nil),                 // 163: yimsg.protocol.ListOrgAdminsRequest
+	(*ListOrgAdminsResponse)(nil),                // 164: yimsg.protocol.ListOrgAdminsResponse
+	(*CreateOrgRequest)(nil),                     // 165: yimsg.protocol.CreateOrgRequest
+	(*CreateOrgResponse)(nil),                    // 166: yimsg.protocol.CreateOrgResponse
+	(*DeleteOrgRequest)(nil),                     // 167: yimsg.protocol.DeleteOrgRequest
+	(*DeleteOrgResponse)(nil),                    // 168: yimsg.protocol.DeleteOrgResponse
 }
 var file_yimsg_proto_depIdxs = []int32{
 	25,  // 0: yimsg.protocol.MessagesReceivedNotification.target:type_name -> yimsg.protocol.ConversationTarget
@@ -10686,137 +10776,138 @@ var file_yimsg_proto_depIdxs = []int32{
 	38,  // 20: yimsg.protocol.MessageBody.quote:type_name -> yimsg.protocol.QuoteBody
 	39,  // 21: yimsg.protocol.MessageBody.forward:type_name -> yimsg.protocol.ForwardBody
 	33,  // 22: yimsg.protocol.MessageBody.markdown:type_name -> yimsg.protocol.MarkdownBody
-	32,  // 23: yimsg.protocol.QuoteBody.text:type_name -> yimsg.protocol.TextBody
-	25,  // 24: yimsg.protocol.ConversationEntry.target:type_name -> yimsg.protocol.ConversationTarget
-	30,  // 25: yimsg.protocol.ConversationEntry.last_msg:type_name -> yimsg.protocol.Message
-	6,   // 26: yimsg.protocol.ConversationEntry.status:type_name -> yimsg.protocol.ConversationStatus
-	20,  // 27: yimsg.protocol.RegisterResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 28: yimsg.protocol.LoginResponse.base:type_name -> yimsg.protocol.BaseResponse
-	23,  // 29: yimsg.protocol.LoginResponse.client_config:type_name -> yimsg.protocol.ClientConfig
-	20,  // 30: yimsg.protocol.AuthenticateResponse.base:type_name -> yimsg.protocol.BaseResponse
-	23,  // 31: yimsg.protocol.AuthenticateResponse.client_config:type_name -> yimsg.protocol.ClientConfig
-	20,  // 32: yimsg.protocol.LogoutResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 33: yimsg.protocol.PingResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 34: yimsg.protocol.UpdateUserInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 35: yimsg.protocol.UpdatePasswordResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 36: yimsg.protocol.GetUserInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	24,  // 37: yimsg.protocol.GetUserInfosResponse.profiles:type_name -> yimsg.protocol.UserInfo
-	20,  // 38: yimsg.protocol.SearchUserResponse.base:type_name -> yimsg.protocol.BaseResponse
-	24,  // 39: yimsg.protocol.SearchUserResponse.profile:type_name -> yimsg.protocol.UserInfo
-	20,  // 40: yimsg.protocol.AddFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 41: yimsg.protocol.AcceptFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 42: yimsg.protocol.RejectFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 43: yimsg.protocol.DeleteFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
-	26,  // 44: yimsg.protocol.UpdateRemarkRequest.target:type_name -> yimsg.protocol.ContactTarget
-	20,  // 45: yimsg.protocol.UpdateRemarkResponse.base:type_name -> yimsg.protocol.BaseResponse
-	3,   // 46: yimsg.protocol.GetContactsRequest.status:type_name -> yimsg.protocol.ContactStatus
-	26,  // 47: yimsg.protocol.GetContactsRequest.targets:type_name -> yimsg.protocol.ContactTarget
-	21,  // 48: yimsg.protocol.GetContactsRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 49: yimsg.protocol.GetContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	27,  // 50: yimsg.protocol.GetContactsResponse.contacts:type_name -> yimsg.protocol.Contact
-	22,  // 51: yimsg.protocol.GetContactsResponse.page:type_name -> yimsg.protocol.PageInfo
-	3,   // 52: yimsg.protocol.SearchContactsRequest.status:type_name -> yimsg.protocol.ContactStatus
-	21,  // 53: yimsg.protocol.SearchContactsRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 54: yimsg.protocol.SearchContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	27,  // 55: yimsg.protocol.SearchContactsResponse.contacts:type_name -> yimsg.protocol.Contact
-	22,  // 56: yimsg.protocol.SearchContactsResponse.page:type_name -> yimsg.protocol.PageInfo
-	3,   // 57: yimsg.protocol.GetContactCountRequest.status:type_name -> yimsg.protocol.ContactStatus
-	20,  // 58: yimsg.protocol.GetContactCountResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 59: yimsg.protocol.SyncContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	27,  // 60: yimsg.protocol.SyncContactsResponse.contacts:type_name -> yimsg.protocol.Contact
-	20,  // 61: yimsg.protocol.FavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 62: yimsg.protocol.UnfavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 63: yimsg.protocol.BlockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 64: yimsg.protocol.UnblockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
-	4,   // 65: yimsg.protocol.GetBlocklistRequest.status:type_name -> yimsg.protocol.BlocklistStatus
-	21,  // 66: yimsg.protocol.GetBlocklistRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 67: yimsg.protocol.GetBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	28,  // 68: yimsg.protocol.GetBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
-	22,  // 69: yimsg.protocol.GetBlocklistResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 70: yimsg.protocol.SyncBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	28,  // 71: yimsg.protocol.SyncBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
-	25,  // 72: yimsg.protocol.SendMessageRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	2,   // 73: yimsg.protocol.SendMessageRequest.msg_type:type_name -> yimsg.protocol.MessageType
-	31,  // 74: yimsg.protocol.SendMessageRequest.body:type_name -> yimsg.protocol.MessageBody
-	20,  // 75: yimsg.protocol.SendMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 76: yimsg.protocol.SyncMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
-	30,  // 77: yimsg.protocol.SyncMessagesResponse.messages:type_name -> yimsg.protocol.Message
-	25,  // 78: yimsg.protocol.GetMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 79: yimsg.protocol.GetMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 80: yimsg.protocol.GetMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
-	30,  // 81: yimsg.protocol.GetMessagesResponse.messages:type_name -> yimsg.protocol.Message
-	22,  // 82: yimsg.protocol.GetMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
-	25,  // 83: yimsg.protocol.SearchMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 84: yimsg.protocol.SearchMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 85: yimsg.protocol.SearchMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
-	30,  // 86: yimsg.protocol.SearchMessagesResponse.messages:type_name -> yimsg.protocol.Message
-	22,  // 87: yimsg.protocol.SearchMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 88: yimsg.protocol.DeleteMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
-	21,  // 89: yimsg.protocol.GetConversationsRequest.page:type_name -> yimsg.protocol.PageQuery
-	25,  // 90: yimsg.protocol.GetConversationsRequest.targets:type_name -> yimsg.protocol.ConversationTarget
-	20,  // 91: yimsg.protocol.GetConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	40,  // 92: yimsg.protocol.GetConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
-	22,  // 93: yimsg.protocol.GetConversationsResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 94: yimsg.protocol.SyncConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	40,  // 95: yimsg.protocol.SyncConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
-	20,  // 96: yimsg.protocol.GetUnreadCountResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 97: yimsg.protocol.ClearUnreadRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	20,  // 98: yimsg.protocol.ClearUnreadResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 99: yimsg.protocol.DeleteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	20,  // 100: yimsg.protocol.DeleteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 101: yimsg.protocol.MuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	20,  // 102: yimsg.protocol.MuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
-	25,  // 103: yimsg.protocol.UnmuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
-	20,  // 104: yimsg.protocol.UnmuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
-	7,   // 105: yimsg.protocol.GetMutelistRequest.status:type_name -> yimsg.protocol.MutelistStatus
-	25,  // 106: yimsg.protocol.GetMutelistRequest.targets:type_name -> yimsg.protocol.ConversationTarget
-	21,  // 107: yimsg.protocol.GetMutelistRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 108: yimsg.protocol.GetMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	29,  // 109: yimsg.protocol.GetMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
-	22,  // 110: yimsg.protocol.GetMutelistResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 111: yimsg.protocol.SyncMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
-	29,  // 112: yimsg.protocol.SyncMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
-	20,  // 113: yimsg.protocol.CreateGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 114: yimsg.protocol.GetGroupInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	41,  // 115: yimsg.protocol.GetGroupInfosResponse.groups:type_name -> yimsg.protocol.GroupInfo
-	21,  // 116: yimsg.protocol.GetGroupMembersRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 117: yimsg.protocol.GetGroupMembersResponse.base:type_name -> yimsg.protocol.BaseResponse
-	42,  // 118: yimsg.protocol.GetGroupMembersResponse.members:type_name -> yimsg.protocol.GroupMember
-	22,  // 119: yimsg.protocol.GetGroupMembersResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 120: yimsg.protocol.UpdateGroupInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 121: yimsg.protocol.AddGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 122: yimsg.protocol.RemoveGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
-	9,   // 123: yimsg.protocol.Tag.child_type:type_name -> yimsg.protocol.TagChildType
-	8,   // 124: yimsg.protocol.Tag.status:type_name -> yimsg.protocol.TagStatus
-	20,  // 125: yimsg.protocol.GetOrgInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	131, // 126: yimsg.protocol.GetOrgInfosResponse.orgs:type_name -> yimsg.protocol.OrgInfo
-	20,  // 127: yimsg.protocol.GetTagInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
-	132, // 128: yimsg.protocol.GetTagInfosResponse.tags:type_name -> yimsg.protocol.TagInfo
-	21,  // 129: yimsg.protocol.GetTagsRequest.page:type_name -> yimsg.protocol.PageQuery
-	20,  // 130: yimsg.protocol.GetTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	133, // 131: yimsg.protocol.GetTagsResponse.tags:type_name -> yimsg.protocol.Tag
-	22,  // 132: yimsg.protocol.GetTagsResponse.page:type_name -> yimsg.protocol.PageInfo
-	20,  // 133: yimsg.protocol.SyncTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	133, // 134: yimsg.protocol.SyncTagsResponse.tags:type_name -> yimsg.protocol.Tag
-	20,  // 135: yimsg.protocol.CreateOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 136: yimsg.protocol.RenameOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 137: yimsg.protocol.DeleteOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 138: yimsg.protocol.LinkOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 139: yimsg.protocol.AddOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 140: yimsg.protocol.RemoveOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
-	9,   // 141: yimsg.protocol.SetOrgItemRankRequest.child_type:type_name -> yimsg.protocol.TagChildType
-	20,  // 142: yimsg.protocol.SetOrgItemRankResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 143: yimsg.protocol.RenameOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 144: yimsg.protocol.GrantOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 145: yimsg.protocol.RevokeOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 146: yimsg.protocol.ListOrgAdminsResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 147: yimsg.protocol.CreateOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
-	20,  // 148: yimsg.protocol.DeleteOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
-	149, // [149:149] is the sub-list for method output_type
-	149, // [149:149] is the sub-list for method input_type
-	149, // [149:149] is the sub-list for extension type_name
-	149, // [149:149] is the sub-list for extension extendee
-	0,   // [0:149] is the sub-list for field type_name
+	40,  // 23: yimsg.protocol.MessageBody.mention:type_name -> yimsg.protocol.MentionBody
+	32,  // 24: yimsg.protocol.QuoteBody.text:type_name -> yimsg.protocol.TextBody
+	25,  // 25: yimsg.protocol.ConversationEntry.target:type_name -> yimsg.protocol.ConversationTarget
+	30,  // 26: yimsg.protocol.ConversationEntry.last_msg:type_name -> yimsg.protocol.Message
+	6,   // 27: yimsg.protocol.ConversationEntry.status:type_name -> yimsg.protocol.ConversationStatus
+	20,  // 28: yimsg.protocol.RegisterResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 29: yimsg.protocol.LoginResponse.base:type_name -> yimsg.protocol.BaseResponse
+	23,  // 30: yimsg.protocol.LoginResponse.client_config:type_name -> yimsg.protocol.ClientConfig
+	20,  // 31: yimsg.protocol.AuthenticateResponse.base:type_name -> yimsg.protocol.BaseResponse
+	23,  // 32: yimsg.protocol.AuthenticateResponse.client_config:type_name -> yimsg.protocol.ClientConfig
+	20,  // 33: yimsg.protocol.LogoutResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 34: yimsg.protocol.PingResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 35: yimsg.protocol.UpdateUserInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 36: yimsg.protocol.UpdatePasswordResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 37: yimsg.protocol.GetUserInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	24,  // 38: yimsg.protocol.GetUserInfosResponse.profiles:type_name -> yimsg.protocol.UserInfo
+	20,  // 39: yimsg.protocol.SearchUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	24,  // 40: yimsg.protocol.SearchUserResponse.profile:type_name -> yimsg.protocol.UserInfo
+	20,  // 41: yimsg.protocol.AddFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 42: yimsg.protocol.AcceptFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 43: yimsg.protocol.RejectFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 44: yimsg.protocol.DeleteFriendResponse.base:type_name -> yimsg.protocol.BaseResponse
+	26,  // 45: yimsg.protocol.UpdateRemarkRequest.target:type_name -> yimsg.protocol.ContactTarget
+	20,  // 46: yimsg.protocol.UpdateRemarkResponse.base:type_name -> yimsg.protocol.BaseResponse
+	3,   // 47: yimsg.protocol.GetContactsRequest.status:type_name -> yimsg.protocol.ContactStatus
+	26,  // 48: yimsg.protocol.GetContactsRequest.targets:type_name -> yimsg.protocol.ContactTarget
+	21,  // 49: yimsg.protocol.GetContactsRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 50: yimsg.protocol.GetContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	27,  // 51: yimsg.protocol.GetContactsResponse.contacts:type_name -> yimsg.protocol.Contact
+	22,  // 52: yimsg.protocol.GetContactsResponse.page:type_name -> yimsg.protocol.PageInfo
+	3,   // 53: yimsg.protocol.SearchContactsRequest.status:type_name -> yimsg.protocol.ContactStatus
+	21,  // 54: yimsg.protocol.SearchContactsRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 55: yimsg.protocol.SearchContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	27,  // 56: yimsg.protocol.SearchContactsResponse.contacts:type_name -> yimsg.protocol.Contact
+	22,  // 57: yimsg.protocol.SearchContactsResponse.page:type_name -> yimsg.protocol.PageInfo
+	3,   // 58: yimsg.protocol.GetContactCountRequest.status:type_name -> yimsg.protocol.ContactStatus
+	20,  // 59: yimsg.protocol.GetContactCountResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 60: yimsg.protocol.SyncContactsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	27,  // 61: yimsg.protocol.SyncContactsResponse.contacts:type_name -> yimsg.protocol.Contact
+	20,  // 62: yimsg.protocol.FavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 63: yimsg.protocol.UnfavoriteGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 64: yimsg.protocol.BlockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 65: yimsg.protocol.UnblockUserResponse.base:type_name -> yimsg.protocol.BaseResponse
+	4,   // 66: yimsg.protocol.GetBlocklistRequest.status:type_name -> yimsg.protocol.BlocklistStatus
+	21,  // 67: yimsg.protocol.GetBlocklistRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 68: yimsg.protocol.GetBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	28,  // 69: yimsg.protocol.GetBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
+	22,  // 70: yimsg.protocol.GetBlocklistResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 71: yimsg.protocol.SyncBlocklistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	28,  // 72: yimsg.protocol.SyncBlocklistResponse.users:type_name -> yimsg.protocol.BlocklistUser
+	25,  // 73: yimsg.protocol.SendMessageRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	2,   // 74: yimsg.protocol.SendMessageRequest.msg_type:type_name -> yimsg.protocol.MessageType
+	31,  // 75: yimsg.protocol.SendMessageRequest.body:type_name -> yimsg.protocol.MessageBody
+	20,  // 76: yimsg.protocol.SendMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 77: yimsg.protocol.SyncMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
+	30,  // 78: yimsg.protocol.SyncMessagesResponse.messages:type_name -> yimsg.protocol.Message
+	25,  // 79: yimsg.protocol.GetMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 80: yimsg.protocol.GetMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 81: yimsg.protocol.GetMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
+	30,  // 82: yimsg.protocol.GetMessagesResponse.messages:type_name -> yimsg.protocol.Message
+	22,  // 83: yimsg.protocol.GetMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
+	25,  // 84: yimsg.protocol.SearchMessagesRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 85: yimsg.protocol.SearchMessagesRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 86: yimsg.protocol.SearchMessagesResponse.base:type_name -> yimsg.protocol.BaseResponse
+	30,  // 87: yimsg.protocol.SearchMessagesResponse.messages:type_name -> yimsg.protocol.Message
+	22,  // 88: yimsg.protocol.SearchMessagesResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 89: yimsg.protocol.DeleteMessageResponse.base:type_name -> yimsg.protocol.BaseResponse
+	21,  // 90: yimsg.protocol.GetConversationsRequest.page:type_name -> yimsg.protocol.PageQuery
+	25,  // 91: yimsg.protocol.GetConversationsRequest.targets:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 92: yimsg.protocol.GetConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	41,  // 93: yimsg.protocol.GetConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
+	22,  // 94: yimsg.protocol.GetConversationsResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 95: yimsg.protocol.SyncConversationsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	41,  // 96: yimsg.protocol.SyncConversationsResponse.conversations:type_name -> yimsg.protocol.ConversationEntry
+	20,  // 97: yimsg.protocol.GetUnreadCountResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 98: yimsg.protocol.ClearUnreadRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 99: yimsg.protocol.ClearUnreadResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 100: yimsg.protocol.DeleteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 101: yimsg.protocol.DeleteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 102: yimsg.protocol.MuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 103: yimsg.protocol.MuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	25,  // 104: yimsg.protocol.UnmuteConversationRequest.target:type_name -> yimsg.protocol.ConversationTarget
+	20,  // 105: yimsg.protocol.UnmuteConversationResponse.base:type_name -> yimsg.protocol.BaseResponse
+	7,   // 106: yimsg.protocol.GetMutelistRequest.status:type_name -> yimsg.protocol.MutelistStatus
+	25,  // 107: yimsg.protocol.GetMutelistRequest.targets:type_name -> yimsg.protocol.ConversationTarget
+	21,  // 108: yimsg.protocol.GetMutelistRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 109: yimsg.protocol.GetMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	29,  // 110: yimsg.protocol.GetMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
+	22,  // 111: yimsg.protocol.GetMutelistResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 112: yimsg.protocol.SyncMutelistResponse.base:type_name -> yimsg.protocol.BaseResponse
+	29,  // 113: yimsg.protocol.SyncMutelistResponse.mutes:type_name -> yimsg.protocol.MutelistEntry
+	20,  // 114: yimsg.protocol.CreateGroupResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 115: yimsg.protocol.GetGroupInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	42,  // 116: yimsg.protocol.GetGroupInfosResponse.groups:type_name -> yimsg.protocol.GroupInfo
+	21,  // 117: yimsg.protocol.GetGroupMembersRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 118: yimsg.protocol.GetGroupMembersResponse.base:type_name -> yimsg.protocol.BaseResponse
+	43,  // 119: yimsg.protocol.GetGroupMembersResponse.members:type_name -> yimsg.protocol.GroupMember
+	22,  // 120: yimsg.protocol.GetGroupMembersResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 121: yimsg.protocol.UpdateGroupInfoResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 122: yimsg.protocol.AddGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 123: yimsg.protocol.RemoveGroupMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	9,   // 124: yimsg.protocol.Tag.child_type:type_name -> yimsg.protocol.TagChildType
+	8,   // 125: yimsg.protocol.Tag.status:type_name -> yimsg.protocol.TagStatus
+	20,  // 126: yimsg.protocol.GetOrgInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	132, // 127: yimsg.protocol.GetOrgInfosResponse.orgs:type_name -> yimsg.protocol.OrgInfo
+	20,  // 128: yimsg.protocol.GetTagInfosResponse.base:type_name -> yimsg.protocol.BaseResponse
+	133, // 129: yimsg.protocol.GetTagInfosResponse.tags:type_name -> yimsg.protocol.TagInfo
+	21,  // 130: yimsg.protocol.GetTagsRequest.page:type_name -> yimsg.protocol.PageQuery
+	20,  // 131: yimsg.protocol.GetTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	134, // 132: yimsg.protocol.GetTagsResponse.tags:type_name -> yimsg.protocol.Tag
+	22,  // 133: yimsg.protocol.GetTagsResponse.page:type_name -> yimsg.protocol.PageInfo
+	20,  // 134: yimsg.protocol.SyncTagsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	134, // 135: yimsg.protocol.SyncTagsResponse.tags:type_name -> yimsg.protocol.Tag
+	20,  // 136: yimsg.protocol.CreateOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 137: yimsg.protocol.RenameOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 138: yimsg.protocol.DeleteOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 139: yimsg.protocol.LinkOrgTagResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 140: yimsg.protocol.AddOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 141: yimsg.protocol.RemoveOrgMemberResponse.base:type_name -> yimsg.protocol.BaseResponse
+	9,   // 142: yimsg.protocol.SetOrgItemRankRequest.child_type:type_name -> yimsg.protocol.TagChildType
+	20,  // 143: yimsg.protocol.SetOrgItemRankResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 144: yimsg.protocol.RenameOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 145: yimsg.protocol.GrantOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 146: yimsg.protocol.RevokeOrgAdminResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 147: yimsg.protocol.ListOrgAdminsResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 148: yimsg.protocol.CreateOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	20,  // 149: yimsg.protocol.DeleteOrgResponse.base:type_name -> yimsg.protocol.BaseResponse
+	150, // [150:150] is the sub-list for method output_type
+	150, // [150:150] is the sub-list for method input_type
+	150, // [150:150] is the sub-list for extension type_name
+	150, // [150:150] is the sub-list for extension extendee
+	0,   // [0:150] is the sub-list for field type_name
 }
 
 func init() { file_yimsg_proto_init() }
@@ -10842,21 +10933,22 @@ func file_yimsg_proto_init() {
 		(*MessageBody_Quote)(nil),
 		(*MessageBody_Forward)(nil),
 		(*MessageBody_Markdown)(nil),
+		(*MessageBody_Mention)(nil),
 	}
-	file_yimsg_proto_msgTypes[60].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[62].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[76].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[104].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[131].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[137].OneofWrappers = []any{}
-	file_yimsg_proto_msgTypes[139].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[61].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[63].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[77].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[105].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[132].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[138].OneofWrappers = []any{}
+	file_yimsg_proto_msgTypes[140].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_yimsg_proto_rawDesc), len(file_yimsg_proto_rawDesc)),
 			NumEnums:      11,
-			NumMessages:   157,
+			NumMessages:   158,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

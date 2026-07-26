@@ -204,6 +204,11 @@ func (s *AppState) sendMessage(info *BaseInfo, req *pb.SendMessageRequest) SendM
 		return s.recallViaSend(info, msgID, toUID, groupID, body)
 	}
 
+	// @ 提及只在群会话里有意义，单聊直接拒绝。
+	if msgType == dal.MsgMention && groupID == 0 {
+		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, "mention only allowed in group conversations")}
+	}
+
 	if err := validateSendBody(msgType, body); err != nil {
 		return SendMessageResult{Response: appmsg.ErrInvalidArgument(reqID, err.Error())}
 	}

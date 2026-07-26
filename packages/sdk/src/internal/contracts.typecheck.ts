@@ -3,6 +3,7 @@ import type { YimsgClient } from "../client";
 import type {
   ConversationTarget,
   MessageBody,
+  SendMentionInput,
   SendQuotedTextInput,
   SessionSnapshot,
 } from "../types";
@@ -88,6 +89,12 @@ async function assertPublicMessageShape() {
   await client.sendQuotedTextMessage(target, quoteInput);
   await client.forwardMessages(target, [result.message], "转发");
   await client.recallMessage(result.message);
+
+  const mentionInput: SendMentionInput = { text: "@Bob hi", mentionedUids: ["2"] };
+  await client.sendMention(target, mentionInput);
+  const mentionDetails = client.describeMessage(result.message);
+  const mentionAll: boolean = mentionDetails.mention?.mentionAll ?? false;
+  void mentionAll;
 
   // @ts-expect-error 公开消息不再暴露 snake_case 字段
   result.message.msg_id;
