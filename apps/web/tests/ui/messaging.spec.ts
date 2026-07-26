@@ -443,6 +443,51 @@ test.describe('Messaging', () => {
     await ctx2.close();
   });
 
+  test('selection bar buttons follow language switch without recreation', async ({ browser }) => {
+    const u1 = uniqueUser('mforlang1');
+    const u2 = uniqueUser('mforlang2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, u1, password, 'MultiForwardLangUser1');
+    await register(page2, u2, password, 'MultiForwardLangUser2');
+    await addFriend(page1, page2, u2);
+    await openDMFromContacts(page1, 'MultiForwardLangUser2');
+
+    await sendMessage(page1, 'lang switch item');
+    await expectMessage(page1, 'lang switch item');
+
+    await page1.locator('.message-row').first().hover();
+    await page1.locator('.message-actions-trigger').first().click();
+    await page1.locator('.message-action-item').getByText('多选').click();
+
+    await expect(page1.locator('#msg-selection-bar')).toBeVisible();
+    await expect(page1.locator('#msg-selection-cancel')).toHaveText('取消');
+    await expect(page1.locator('#msg-selection-forward')).toHaveText('转发');
+
+    // 选择模式下切到设置页切换语言，验证已存在的选择栏按钮文案会同步更新，
+    // 而不是停留在创建时的旧语言（复现之前的中文界面残留英文按钮的问题）。
+    await page1.click('[data-view="settings"]');
+    await page1.click('#lang-en-btn');
+    await page1.click('[data-view="chat"]');
+
+    await expect(page1.locator('#msg-selection-bar')).toBeVisible();
+    await expect(page1.locator('#msg-selection-cancel')).toHaveText('Cancel');
+    await expect(page1.locator('#msg-selection-forward')).toHaveText('Forward');
+
+    await page1.click('[data-view="settings"]');
+    await page1.click('#lang-zh-btn');
+    await page1.click('[data-view="chat"]');
+
+    await expect(page1.locator('#msg-selection-cancel')).toHaveText('取消');
+    await expect(page1.locator('#msg-selection-forward')).toHaveText('转发');
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
   test('multi-select forward summarizes message count and title', async ({ browser }) => {
     const u1 = uniqueUser('fpreview1');
     const u2 = uniqueUser('fpreview2');

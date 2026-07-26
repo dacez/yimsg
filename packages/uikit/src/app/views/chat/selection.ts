@@ -35,7 +35,10 @@ export function updateSelectionBar(app: AppInstance) {
   ensureSelectionBar(app);
   const count = app.chatState.selectedMessageIds.size;
   app.$('msg-selection-count').textContent = app.t('chat.multiSelectCount', { n: String(count) });
-  (app.$('msg-selection-forward') as HTMLButtonElement).disabled = count === 0;
+  app.$('msg-selection-cancel').textContent = app.t('chat.multiSelectCancel');
+  const forwardBtn = app.$('msg-selection-forward') as HTMLButtonElement;
+  forwardBtn.textContent = app.t('chat.multiSelectForward');
+  forwardBtn.disabled = count === 0;
   app.$('msg-selection-bar').classList.toggle('hidden', !app.chatState.messageSelectionMode);
 }
 
