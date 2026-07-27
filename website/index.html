@@ -88,7 +88,7 @@
             <div class="command-item">
               <div class="command-item-label" data-i18n="downloadPlatformWindows">Windows x86-64</div>
               <div class="command-row">
-                <pre class="code-block"><code data-i18n="downloadCmdWindows">curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\yimsg.exe</code></pre>
+                <pre class="code-block"><code data-i18n="downloadCmdWindows">curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath .; Rename-Item yimsg-0.1.2-windows-x86_64 yimsg; cd yimsg; .\yimsg.exe</code></pre>
                 <button type="button" class="copy-btn" aria-label="Copy command">Copy</button>
               </div>
             </div>
@@ -396,7 +396,7 @@ const handle = YimsgUIKit.mount(host, {
           downloadPlatformLinuxX86: 'Linux x86-64',
           downloadPlatformLinuxArm: 'Linux ARM64',
           downloadPlatformMacos: 'macOS Apple Silicon',
-          downloadCmdWindows: 'curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\\yimsg.exe',
+          downloadCmdWindows: 'curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath .; Rename-Item yimsg-0.1.2-windows-x86_64 yimsg; cd yimsg; .\\yimsg.exe',
           downloadCmdLinuxX86: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-linux-x86_64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
           downloadCmdLinuxArm: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-linux-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
           downloadCmdMacos: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-macos-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
@@ -514,7 +514,7 @@ const handle = YimsgUIKit.mount(host, {
           downloadPlatformLinuxX86: 'Linux x86-64',
           downloadPlatformLinuxArm: 'Linux ARM64',
           downloadPlatformMacos: 'macOS Apple Silicon',
-          downloadCmdWindows: 'curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath yimsg; cd yimsg; .\\yimsg.exe',
+          downloadCmdWindows: 'curl.exe -L -o yimsg.zip https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-windows-x86_64.zip; Expand-Archive yimsg.zip -DestinationPath .; Rename-Item yimsg-0.1.2-windows-x86_64 yimsg; cd yimsg; .\\yimsg.exe',
           downloadCmdLinuxX86: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-linux-x86_64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
           downloadCmdLinuxArm: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-linux-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
           downloadCmdMacos: 'curl -fsSL -o yimsg.tar.gz https://github.com/dacez/yimsg/releases/download/v0.1.2/yimsg-0.1.2-macos-arm64.tar.gz && mkdir yimsg && tar -xzf yimsg.tar.gz -C yimsg --strip-components=1 && cd yimsg && ./yimsg',
