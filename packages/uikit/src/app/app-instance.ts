@@ -498,6 +498,8 @@ export class AppInstance {
     if (contactsTopbarTitle) contactsTopbarTitle.textContent = this.t('nav.contacts');
     const contactsAddBtn = this.dom.getElementById('contacts-add-btn');
     if (contactsAddBtn) contactsAddBtn.title = this.t('contacts.addWithRemark');
+    const settingsTopbarTitle = this.dom.getElementById('settings-topbar-title');
+    if (settingsTopbarTitle) settingsTopbarTitle.textContent = this.t('nav.settings');
 
     const chatEmpty = this.dom.getElementById('chat-empty');
     if (chatEmpty) chatEmpty.textContent = this.t('chat.selectConversation');
