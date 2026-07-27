@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "要发布的语义化版本，例如 0.1.1"
+        description: "要发布的语义化版本，例如 0.1.2"
         required: true
-        default: "0.1.1"
+        default: "0.1.2"
 
 permissions:
   contents: write
