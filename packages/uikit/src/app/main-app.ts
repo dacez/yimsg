@@ -103,8 +103,6 @@ export function startApp(app: AppInstance): () => void {
   const openContactsSearchTab = () => {
     app.dom.querySelector<HTMLElement>('.tab[data-ctab="search"]')?.click();
   };
-  app.$('chat-list-avatar').addEventListener('click', () => app.views.chat?.switchView('settings'));
-
   let closePlusMenu: (() => void) | null = null;
   app.$('chat-list-start-btn').addEventListener('click', () => {
     if (closePlusMenu) {

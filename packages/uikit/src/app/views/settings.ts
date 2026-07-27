@@ -134,7 +134,6 @@ export function createSettingsView(app: AppInstance) {
       nickname: ud.nickname || app.t('chat.unknown'),
     });
     app.$('settings-avatar').innerHTML = avatarHtml;
-    app.$('chat-list-avatar').innerHTML = avatarHtml;
 
     const lang = app.getLang();
     const langZhBtn = app.$('lang-zh-btn');

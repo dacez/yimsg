@@ -490,8 +490,6 @@ export class AppInstance {
 
     const chatListTitle = this.dom.getElementById('chat-list-title');
     if (chatListTitle) chatListTitle.textContent = this.t('nav.chat');
-    const chatListAvatar = this.dom.getElementById('chat-list-avatar');
-    if (chatListAvatar) chatListAvatar.title = this.t('nav.settings');
     const chatListStartBtn = this.dom.getElementById('chat-list-start-btn');
     if (chatListStartBtn) chatListStartBtn.title = this.t('chat.startConversation');
     const chatBackBtn = this.dom.getElementById('chat-back-btn');
