@@ -606,7 +606,7 @@ uploadAndSend(file, type):
 
 - 撤回入口：消息操作菜单会在“自己发送、仍处于撤回时限内、且消息不是 recall event / recall placeholder”时显示 `撤回`。
 - 引用发送：`client.sendQuotedTextMessage(target, { text, quote })`
-- 转发发送：转发弹窗按会话分页读取目标候选，最多选择 500 个目标会话，并对每个目标调用 `client.forwardMessages(target, messages, comment)`
+- 转发发送：转发弹窗分「最近会话」「通讯录」两个 tab 提供目标候选，均按分页读取（`client.getConversations()` / `client.getContacts({status: CONTACT_FRIEND})`，通讯录 tab 支持关键字搜索时改走 `client.searchContacts()`），组织类通讯录条目不是会话目标会被过滤掉；两个 tab 共用同一份选中 key 集合（`client.describeConversation` 统一转换为 `u:`/`g:` key），因此可以同时勾选尚未开始会话的联系人和已有会话，最多选择 500 个目标，并对每个目标调用 `client.forwardMessages(target, messages, comment)`——目标此前没有会话也能直接转发成功，服务端按发消息的既有语义新建会话
 - 转发渲染：`client.describeMessage(message).forward`（标题与被转发的 msg_ids）；气泡里的“转发 N 条（点击查看）”块可点击，点击后 `views/chat/message-detail.ts` 的 `showForwardDetailModal` 用 `client.getMessagesByIds(messageIds)` 按 msg_ids 批量拉取被转发消息全文，在弹窗（`.modal-content-wide`）里逐条渲染（复用 `fillMessageBubble`，图片/文件与正常消息一致可点开/下载）；已被删除的条目展示“消息不存在或已被删除”占位。
 - 引用渲染：气泡里的引用预览块可点击，点击后 `showQuoteDetailModal` 用 `client.getMessagesByIds([quote.messageId])` 拉取被引用原始消息全文并在同一弹窗展示；原消息已不存在时退回展示 `quote.preview` 摘要。
 - ext / markdown 渲染：`client.describeMessage(message)`
@@ -1076,7 +1076,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 全局搜索结果 | `views/chat/global-search.ts` | 一次性列表，不分页 | `client.searchContacts()` + `client.searchMessages()` |
 | 好友请求 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
 | 群成员 | `views/chat/detail-panel.ts` | 有界滑动窗口，双向翻页 | `client.getGroupMembers()` |
-| 转发候选 | `views/chat/forward.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
+| 转发候选（最近会话 tab） | `views/chat/forward.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
+| 转发候选（通讯录 tab） | `views/chat/forward.ts` | 有界滑动窗口，双向翻页，切到该 tab 才首次拉取 | `client.getContacts({status: CONTACT_FRIEND})` / `client.searchContacts()`（关键字非空时） |
 | 建群候选 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
 
 数据层 `bounded-page-window.ts` 与渲染层 `bounded-stream-window.ts`：

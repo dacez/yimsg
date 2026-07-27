@@ -413,6 +413,60 @@ test.describe('Messaging', () => {
     await ctx2.close();
   });
 
+  test('forward modal can pick a contact that has no existing conversation yet', async ({ browser }) => {
+    const u1 = uniqueUser('fwdcontact1');
+    const u2 = uniqueUser('fwdcontact2');
+    const u3 = uniqueUser('fwdcontact3');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, u1, password, 'FwdContactUser1');
+    await register(page2, u2, password, 'FwdContactUser2');
+    await register(page3, u3, password, 'FwdContactUser3');
+    await addFriend(page1, page2, u2);
+    // 只加好友、不开会话：FwdContactUser3 应该只出现在转发弹窗的「通讯录」tab，不出现在「最近会话」tab。
+    await addFriend(page1, page3, u3);
+    await openDMFromContacts(page1, 'FwdContactUser2');
+
+    await sendMessage(page1, 'origin for contact forward');
+    await expectMessage(page1, 'origin for contact forward');
+
+    await page1.locator('.message-row').first().hover();
+    await page1.locator('.message-actions-trigger').first().click();
+    await page1.locator('.message-action-item').getByText('转发').click();
+
+    await expect(page1.locator('#forward-conversation-list')).toBeVisible();
+    // 取消默认勾选的当前会话（FwdContactUser2），只转发给通讯录里挑的联系人。
+    await page1
+      .locator('#forward-conversation-list .forward-conversation-item', { hasText: 'FwdContactUser2' })
+      .locator('input[type=checkbox]')
+      .uncheck();
+
+    await page1.locator('#forward-target-tabs [data-target-tab="contacts"]').click();
+    await expect(page1.locator('#forward-contact-list')).toBeVisible();
+    const contactItem = page1.locator('#forward-contact-list .forward-conversation-item', { hasText: 'FwdContactUser3' });
+    await expect(contactItem).toBeVisible({ timeout: 10_000 });
+    await contactItem.locator('input[type=checkbox]').check();
+
+    await page1.locator('#forward-comment-input').fill('转发给通讯录联系人');
+    await page1.locator('#forward-confirm-btn').click();
+
+    await expect(page1.locator('#toast-container .toast', { hasText: /转发成功|Forwarded/ })).toBeVisible({ timeout: 10_000 });
+
+    // 此前 u1/u3 之间没有任何会话，转发后应该新建会话并送达。
+    await openConversation(page1, 'FwdContactUser3');
+    await expect(page1.locator('.message-forward-block').last()).toContainText('转发 1 条');
+    await expectMessage(page1, '转发给通讯录联系人');
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+
   test('multi-select forward sends merged forward block', async ({ browser }) => {
     const u1 = uniqueUser('mforward1');
     const u2 = uniqueUser('mforward2');
