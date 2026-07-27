@@ -58,9 +58,7 @@ export const APP_SHELL_HTML = `
       <section id="view-chat" class="view">
         <div id="left-panel">
           <div id="chat-list-topbar" class="mobile-topbar">
-            <div class="topbar-slot topbar-lead">
-              <div class="avatar avatar-sm avatar-clickable" id="chat-list-avatar" title="设置"></div>
-            </div>
+            <div class="topbar-slot topbar-lead"></div>
             <div class="topbar-slot topbar-mid">
               <h1 class="topbar-title" id="chat-list-title"></h1>
             </div>

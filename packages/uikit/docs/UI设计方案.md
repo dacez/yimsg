@@ -146,7 +146,7 @@
 ```mermaid
 graph LR
     subgraph 左栏["#left-panel · 280px"]
-        L0["#chat-list-topbar.mobile-topbar<br/>移动端专属：头像（进设置）+ 标题 + 加号按钮（弹出下拉菜单：创建群聊 / 添加好友）"]
+        L0["#chat-list-topbar.mobile-topbar<br/>移动端专属：标题 + 加号按钮（弹出下拉菜单：创建群聊 / 添加好友），左侧 topbar-lead 留空占位（同 #contacts-topbar）"]
         L1["全局搜索输入 + 取消按钮<br/>类似微信「搜索」"]
         L2["#conversation-list<br/>滚动分页"]
         L3["#global-search-results<br/>联系人 + 聊天记录分组，默认 hidden"]
