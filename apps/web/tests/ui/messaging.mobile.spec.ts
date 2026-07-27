@@ -228,4 +228,43 @@ test.describe('Mobile layout & recall', () => {
     expect(layout).toBe('desktop');
     await ctx.close();
   });
+
+  test('conversation list plus button opens a menu with create-group and add-friend', async ({ browser }) => {
+    const ctx1 = await browser.newContext({ ...iphone, ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ...iphone, ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    const u1 = uniqueUser('plus1');
+    const u2 = uniqueUser('plus2');
+    await register(page1, u1, password, 'PlusOwner');
+    await register(page2, u2, password, 'PlusFriend');
+    await addFriend(page1, page2, u2);
+
+    // addFriend 结束后停留在通讯录视图，加号按钮属于会话列表视图，需先切回去
+    await page1.click('[data-view="chat"]');
+
+    // 点击左上角加号弹出下拉菜单（创建群聊 + 添加好友）
+    await page1.click('#chat-list-start-btn');
+    await expect(page1.locator('.plus-menu [data-action="create-group"]')).toBeVisible();
+    await expect(page1.locator('.plus-menu [data-action="add-friend"]')).toBeVisible();
+
+    // 点击菜单外部应关闭菜单，不触发任何菜单项动作
+    await page1.click('#conversation-list');
+    await expect(page1.locator('.plus-menu')).toHaveCount(0);
+
+    // 点击"创建群聊"直接弹出建群 Modal
+    await page1.click('#chat-list-start-btn');
+    await page1.click('.plus-menu [data-action="create-group"]');
+    await expect(page1.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+    await page1.click('#modal-cancel');
+
+    // 点击"添加好友"跳到通讯录搜索 Tab
+    await page1.click('#chat-list-start-btn');
+    await page1.click('.plus-menu [data-action="add-friend"]');
+    await expect(page1.locator('#search-tab')).not.toHaveClass(/hidden/);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
 });

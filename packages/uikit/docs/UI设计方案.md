@@ -146,7 +146,7 @@
 ```mermaid
 graph LR
     subgraph 左栏["#left-panel · 280px"]
-        L0["#chat-list-topbar.mobile-topbar<br/>移动端专属：头像（进设置）+ 标题 + 发起会话按钮（跳到通讯录搜索 Tab）"]
+        L0["#chat-list-topbar.mobile-topbar<br/>移动端专属：头像（进设置）+ 标题 + 加号按钮（弹出下拉菜单：创建群聊 / 添加好友）"]
         L1["全局搜索输入 + 取消按钮<br/>类似微信「搜索」"]
         L2["#conversation-list<br/>滚动分页"]
         L3["#global-search-results<br/>联系人 + 聊天记录分组，默认 hidden"]
@@ -809,19 +809,24 @@ searchUser():
 
 #### 建群 Modal
 
+会话列表左上角加号按钮点击后弹出下拉菜单（`#chat-list-topbar` 内的 `.plus-menu`，样式复用消息输入区附件菜单 `.attach-menu`），菜单项"创建群聊"直接调用 `showCreateGroupModal()`（不切视图，Modal 走全局 `#modal-overlay`），"添加好友"沿用原有跳转逻辑（切到通讯录 + 搜索 Tab）。桌面端仍可从通讯录页底部 `#create-group-btn` 进入同一个 Modal。
+
 ```
 showCreateGroupModal():
   friends = 按 keyset 游标累加 client.getContacts({ status: CONTACT_FRIEND, cursor, limit: 80 })
 
   渲染 Modal:
-    群名输入框 #group-name-input
+    群名输入框 #group-name-input（placeholder 提示"留空则用成员昵称自动命名"）
     好友复选框列表 #member-select-list（最多选 500 人）
     选中计数 #member-count
     [Cancel] / [Create] 按钮
 
   Create 点击:
-    name = #group-name-input.value
-    selectedUids = 选中的 checkbox 的 value
+    selectedUids = 选中的 checkbox 的 value（至少 1 个，否则 toast 报错并中止）
+    name = #group-name-input.value.trim()
+    if !name:
+      // 群名留空时默认取已选成员的展示名（displayUserName），用逗号拼接后截取前 8 个字符
+      name = selectedUids.map(displayUserName).join(',').slice(0, 8)
     memberUids = selectedUids + 当前用户 UID
     await client.createGroup(name, memberUids)
     closeModal()

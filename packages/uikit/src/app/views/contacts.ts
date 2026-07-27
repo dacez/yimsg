@@ -968,10 +968,16 @@ export function createContactsView(app: AppInstance) {
 
     app.$('modal-cancel').addEventListener('click', () => app.closeModal());
     app.$('modal-create').addEventListener('click', async () => {
-      const name = (app.$('group-name-input') as HTMLInputElement).value.trim();
-      if (!name) { app.showToast(app.t('group.nameRequired'), 'error'); return; }
       const memberUids = Array.from(selectedUids);
       if (memberUids.length === 0) { app.showToast(app.t('group.selectAtLeastOne'), 'error'); return; }
+      // 未填群名时默认用成员昵称逗号拼接，最多截取 8 个字。
+      let name = (app.$('group-name-input') as HTMLInputElement).value.trim();
+      if (!name) {
+        name = memberUids
+          .map((uid) => displayUserName(app.client.getUserInfos([uid]).get(uid), uid))
+          .join(',')
+          .slice(0, 8);
+      }
       memberUids.push(app.client.getSessionSnapshot().currentUid);
       try {
         await app.client.createGroup(name, memberUids);
@@ -1059,5 +1065,6 @@ export function createContactsView(app: AppInstance) {
     refreshContactsDisplay,
     updateContactBadges,
     refreshOrgPanel,
+    showCreateGroupModal,
   };
 }

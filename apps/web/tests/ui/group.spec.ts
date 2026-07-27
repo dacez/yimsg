@@ -75,7 +75,7 @@ test.describe('Group Chat', () => {
     await ctx2.close();
   });
 
-  test('create group requires a name', async ({ browser }) => {
+  test('create group without a name defaults to member nicknames, truncated to 8 chars', async ({ browser }) => {
     const owner = uniqueUser('gnn');
     const friend = uniqueUser('gnnf');
     const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -99,8 +99,10 @@ test.describe('Group Chat', () => {
     await memberCheckbox.check();
     await page1.click('#modal-create');
 
-    // Should show error toast (no name)
-    await expect(page1.locator('.toast-error')).toBeVisible({ timeout: 5000 });
+    // 未填群名时默认取成员昵称拼接，并截取前 8 个字符（"FriendForGroup" -> "FriendFo"）。
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'FriendFo' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
 
     await ctx1.close();
     await ctx2.close();

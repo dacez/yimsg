@@ -104,9 +104,52 @@ export function startApp(app: AppInstance): () => void {
     app.dom.querySelector<HTMLElement>('.tab[data-ctab="search"]')?.click();
   };
   app.$('chat-list-avatar').addEventListener('click', () => app.views.chat?.switchView('settings'));
+
+  let closePlusMenu: (() => void) | null = null;
   app.$('chat-list-start-btn').addEventListener('click', () => {
-    app.views.chat?.switchView('contacts');
-    openContactsSearchTab();
+    if (closePlusMenu) {
+      closePlusMenu();
+      return;
+    }
+
+    const menu = app.dom.ownerDocument.createElement('div');
+    menu.className = 'attach-menu plus-menu';
+    menu.innerHTML = `
+      <button class="attach-menu-item" data-action="create-group">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        ${app.t('contacts.createGroup')}
+      </button>
+      <button class="attach-menu-item" data-action="add-friend">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
+        ${app.t('contacts.addWithRemark')}
+      </button>
+    `;
+    app.$('chat-list-topbar').appendChild(menu);
+
+    let outsideHandler: ((event: Event) => void) | null = null;
+    closePlusMenu = () => {
+      menu.remove();
+      closePlusMenu = null;
+      if (outsideHandler) app.dom.ownerDocument.removeEventListener('click', outsideHandler);
+    };
+    menu.querySelector('[data-action="create-group"]')?.addEventListener('click', () => {
+      closePlusMenu?.();
+      void app.views.contacts?.showCreateGroupModal();
+    });
+    menu.querySelector('[data-action="add-friend"]')?.addEventListener('click', () => {
+      closePlusMenu?.();
+      app.views.chat?.switchView('contacts');
+      openContactsSearchTab();
+    });
+
+    setTimeout(() => {
+      outsideHandler = (event: Event) => {
+        if (!menu.contains(event.target as Node) && (event.target as HTMLElement).id !== 'chat-list-start-btn') {
+          closePlusMenu?.();
+        }
+      };
+      app.dom.ownerDocument.addEventListener('click', outsideHandler);
+    }, 0);
   });
   app.$('contacts-add-btn').addEventListener('click', openContactsSearchTab);
 
