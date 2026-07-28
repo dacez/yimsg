@@ -196,6 +196,92 @@ describe('BoundedList / A 构造与默认值', () => {
     expect(registeredBoundedListIds()).not.toContain('ctor.registered');
   });
 
+  it('A9 pageSize / maxPages 非法时构造直接抛错，不静默退化', () => {
+    const host = createHost();
+    const source = createInstantSource(() => []);
+    for (const pageSize of [0, -1, 1.5, Number.NaN]) {
+      expect(() => createBoundedList(baseOptions(host, source, { pageSize }))).toThrow(RangeError);
+    }
+    for (const maxPages of [0, -1, 2.5, Number.NaN]) {
+      expect(() => createBoundedList(baseOptions(host, source, { maxPages }))).toThrow(RangeError);
+    }
+  });
+
+  it('A10 selection.store 与 selection.max 同时给出时构造抛错（避免 max 被静默忽略）', () => {
+    const host = createHost();
+    const store = new SelectionStore();
+    expect(() => createBoundedList(baseOptions(host, createInstantSource(() => []), {
+      selection: { mode: 'multi', store, max: 1 },
+    }))).toThrow(TypeError);
+  });
+
+  it('A11 构造时给滚动容器补上 a11y 属性，dispose 时清理干净', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      selection: { mode: 'multi' },
+    }));
+    expect(host.scroller.getAttribute('tabindex')).toBe('0');
+    expect(host.scroller.getAttribute('role')).toBe('listbox');
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBe('true');
+    await list.reset();
+    expect(host.scroller.children[0].getAttribute('role')).toBe('option');
+    expect(host.scroller.children[0].getAttribute('aria-selected')).toBe('false');
+    host.scroller.dispatch('click', { target: host.scroller.children[0] });
+    expect(host.scroller.children[0].getAttribute('aria-selected')).toBe('true');
+
+    list.dispose();
+    expect(host.scroller.getAttribute('tabindex')).toBeNull();
+    expect(host.scroller.getAttribute('role')).toBeNull();
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBeNull();
+  });
+
+  it('A12 未开启 selection 时行上只有 role=option，没有 aria-selected', async () => {
+    const items = makeTestItems(2);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
+    await list.reset();
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBeNull();
+    expect(host.scroller.children[0].getAttribute('role')).toBe('option');
+    expect(host.scroller.children[0].getAttribute('aria-selected')).toBeNull();
+    list.dispose();
+  });
+
+  it('A13 register 提供时登记到宿主注册表而非模块级注册表（多实例隔离）', async () => {
+    const items = makeTestItems(2);
+    const host = createHost();
+    const hostRegistry = new Map<string, { id: string; invalidate(): void | Promise<void> }>();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      id: 'host-owned',
+      register: (instance) => {
+        hostRegistry.set(instance.id, instance);
+        return () => hostRegistry.delete(instance.id);
+      },
+    }));
+    expect(hostRegistry.has('host-owned')).toBe(true);
+    expect(registeredBoundedListIds()).not.toContain('host-owned');
+
+    // 宿主注册表广播得到的就是组件实例本身，invalidate 走的是组件的决策树。
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    void hostRegistry.get('host-owned')!.invalidate();
+    expect(list.getState().stale).toBe(true);
+
+    list.dispose();
+    expect(hostRegistry.size).toBe(0);
+  });
+
+  it('A14 目录入口不再被同名旧模块遮蔽：`app/bounded-list` 解析到组件的公开导出面', async () => {
+    // 历史上 src/app/ 下同时有 bounded-list.ts（旧 BoundedListController 接口）与
+    // bounded-list/ 目录，.ts 文件优先导致公开入口只能写 './bounded-list/index'。
+    const entry = await import('../../../src/app/bounded-list');
+    expect(Object.keys(entry)).toEqual(expect.arrayContaining([
+      'createBoundedList', 'BoundedList', 'serverPageSource', 'localPageSource',
+      'SelectionStore', 'invalidateAllBoundedLists', 'registeredBoundedListIds',
+    ]));
+    expect(typeof entry.createBoundedList).toBe('function');
+  });
+
   it('A8 selection 不传 store 时按 max 自建一个内部 store', async () => {
     const items = makeTestItems(3);
     const host = createHost();
@@ -533,6 +619,183 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     list.dispose();
   });
 
+  it('C13 翻页失败后不再自动重试：贴边且内容不足一屏也只发一次请求', async () => {
+    const host = createHost();
+    host.scroller.clientHeight = 120;
+    host.scroller.scrollHeight = 120; // 内容不足一屏 → checkReach 恒判定贴底
+    let calls = 0;
+    const source = {
+      async fetch() {
+        calls++;
+        if (calls === 1) return pageOf(makeTestItems(3), '0', '3', false, true);
+        throw new Error('network');
+      },
+    };
+    const onError = vi.fn();
+    const list = createBoundedList(baseOptions(host, source, { onError }));
+    await list.reset({ pinEdge: false });
+    await flushAsync();
+    expect(calls).toBe(2); // 首页 + 一次失败的自动续翻，然后停下
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(list.getState().loadingAfter).toBe(false);
+    list.dispose();
+  });
+
+  it('C14 自动续翻暂停后：显式 loadMore 会重试，滚离该端也会解除暂停', async () => {
+    const host = createHost();
+    host.scroller.clientHeight = 100;
+    host.scroller.scrollHeight = 1000;
+    let calls = 0;
+    let failing = true;
+    const all = makeTestItems(30);
+    const source = {
+      async fetch(req: { cursor?: string; backward: boolean; limit: number; query: void }) {
+        calls++;
+        if (calls > 1 && failing) throw new Error('network');
+        return createAnchoredSource(() => all, 0).fetch(req);
+      },
+    };
+    const list = createBoundedList(baseOptions(host, source, { onError: () => {}, reachPx: 10 }));
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 895; // 贴底
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    const afterFailure = calls;
+    expect(afterFailure).toBe(2);
+
+    // 仍然贴底再滚一次：被暂停挡住，不会重复轰炸。
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    expect(calls).toBe(afterFailure);
+
+    // 显式调用视为用户主动重试（成功后会照常继续链式补页，所以只断言「确实又发了请求」）。
+    failing = false;
+    await list.loadMore('forward');
+    await flushAsync();
+    expect(calls).toBeGreaterThan(afterFailure);
+    expect(list.getState().count).toBeGreaterThan(3);
+    list.dispose();
+  });
+
+  it('C15 滚离触界范围会解除自动续翻暂停，滚回去可以自然重试', async () => {
+    const host = createHost();
+    host.scroller.clientHeight = 100;
+    host.scroller.scrollHeight = 1000;
+    let calls = 0;
+    let failing = true;
+    const all = makeTestItems(30);
+    const source = {
+      async fetch(req: { cursor?: string; backward: boolean; limit: number; query: void }) {
+        calls++;
+        if (calls > 1 && failing) throw new Error('network');
+        return createAnchoredSource(() => all, 0).fetch(req);
+      },
+    };
+    const list = createBoundedList(baseOptions(host, source, { onError: () => {}, reachPx: 10 }));
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 895;
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    expect(calls).toBe(2);
+
+    host.scroller.scrollTop = 400; // 滚离底部 → 解除暂停
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    failing = false;
+    host.scroller.scrollTop = 895; // 滚回底部 → 自然重试
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    expect(calls).toBeGreaterThan(2);
+    expect(list.getState().count).toBeGreaterThan(3);
+    list.dispose();
+  });
+
+  it('C16 服务端把空页报成「还有更多」时该端照样收敛，不会无限补页', async () => {
+    const host = createHost();
+    host.scroller.clientHeight = 120;
+    host.scroller.scrollHeight = 120;
+    let calls = 0;
+    const source = {
+      async fetch() {
+        calls++;
+        if (calls === 1) return pageOf(makeTestItems(3), '0', '3', false, true);
+        return pageOf([], '3', '3', false, true); // 违反契约：空页却说还有更多
+      },
+    };
+    const list = createBoundedList(baseOptions(host, source));
+    await list.reset({ pinEdge: false });
+    await flushAsync();
+    expect(calls).toBe(2);
+    expect(list.getState().hasMoreAfter).toBe(false);
+    list.dispose();
+  });
+
+  it('C17 空首页但服务端说还有更多时继续补页，不会定格在空态', async () => {
+    const host = createHost();
+    host.scroller.clientHeight = 120;
+    host.scroller.scrollHeight = 120;
+    let calls = 0;
+    const source = {
+      async fetch() {
+        calls++;
+        if (calls === 1) return pageOf([], 'sEmpty', 'eEmpty', false, true);
+        return pageOf(makeTestItems(2, 5), 'sEmpty', 'e2', false, false);
+      },
+    };
+    const list = createBoundedList(baseOptions(host, source));
+    await list.reset({ pinEdge: false });
+    await flushAsync();
+    expect(calls).toBe(2);
+    expect(renderedRows(host)).toEqual(['row-5', 'row-6']);
+    list.dispose();
+  });
+
+  it('C18 服务端说还有更多但没给出可用游标时不发空游标请求', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, { freshEdge: 'tail' }));
+    const p = list.reset({ pinEdge: false });
+    // 首页为空且边界游标也是空串：服务端说前面还有，但客户端没有任何锚点可用。
+    pending[0].resolve(pageOf([], '', '', true, false));
+    await p;
+    expect(list.getState().hasMoreBefore).toBe(true);
+    await list.loadMore('backward');
+    expect(pending).toHaveLength(1); // 没有发出第二个请求
+    list.dispose();
+  });
+
+  it('C19 只有本端并入条目的窗口如实报告「两端都没有更多」，不会带空游标续翻', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, { freshEdge: 'tail' }));
+    const p = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf([], '', '', true, false));
+    await p;
+    list.upsertLocal({ id: 1, label: 'local' });
+    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreAfter).toBe(false);
+    await list.loadMore('backward');
+    await list.loadMore('forward');
+    expect(pending).toHaveLength(1);
+    list.dispose();
+  });
+
+  it('C20 空首页带有真实边界游标时，续翻用的就是它（锚点不丢）', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source));
+    const p = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf([], 'sEmpty', 'eEmpty', true, false));
+    await p;
+    const lp = list.loadMore('backward');
+    expect(pending).toHaveLength(2);
+    expect(pending[1].req.cursor).toBe('sEmpty');
+    pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+    await lp;
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
+    list.dispose();
+  });
+
   it('C9 loadMore 拿到空页时回调 onEmptyPage 并收敛该端 hasMore', async () => {
     const all = makeTestItems(3);
     const host = createHost();
@@ -703,6 +966,36 @@ describe('BoundedList / D setQuery 与防抖', () => {
     }
   });
 
+  it('D8 配置 onLoadProgress 时 reset 请求带上 onProgress，全量拉取进度如实回流', async () => {
+    const host = createHost();
+    const progressed: number[] = [];
+    const source = localPageSource<TestItem, void>({
+      loadAll: async (_q, onProgress) => {
+        onProgress?.(40);
+        onProgress?.(80);
+        return makeTestItems(80);
+      },
+    });
+    const list = createBoundedList(baseOptions(host, source, {
+      pageSize: 40,
+      maxPages: 2,
+      onLoadProgress: (n) => progressed.push(n),
+    }));
+    await list.reset({ pinEdge: false });
+    expect(progressed).toEqual([40, 80]);
+    expect(list.getState().count).toBe(40);
+    list.dispose();
+  });
+
+  it('D9 未配置 onLoadProgress 时请求里不带 onProgress 字段（请求形状保持最小）', async () => {
+    const host = createHost();
+    const fetchSpy = vi.fn(async () => pageOf([], '0', '0', false, false));
+    const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }, { pageSize: 40 }));
+    await list.reset();
+    expect(fetchSpy).toHaveBeenCalledWith({ cursor: undefined, backward: false, limit: 40, query: undefined });
+    list.dispose();
+  });
+
   it('D7 setQuery 触发的 reset 会重置窗口并回到新鲜端', async () => {
     const host = createHost();
     const all = makeTestItems(1000).map((item) => ({ ...item, label: item.id % 2 === 0 ? `even-${item.id}` : `odd-${item.id}` }));
@@ -754,6 +1047,17 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     expect(list.getState().stale).toBe(true);
     expect(list.getState().pendingCount).toBe(3);
     expect(list.getState().count).toBe(3); // 窗口没有被重拉
+    list.dispose();
+  });
+
+  it('E1b isActive() 为 false 时仍然重渲一次，提示条与状态同步（切回可见即所见即最新）', async () => {
+    const items = makeTestItems(10);
+    const { host, list } = setupInvalidateList(items, { isActive: () => false });
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    list.invalidate({ count: 3 });
+    expect(pillOf(host).classList.contains('hidden')).toBe(false);
+    expect(pillOf(host).textContent).toBe('有更新(3)');
     list.dispose();
   });
 
@@ -902,6 +1206,55 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await flushAsync();
     expect(fetcher.calls[0]).toEqual(['1', '2']);
     fetcher.settle(0, []);
+    list.dispose();
+  });
+
+  it('E11b 定向刷新期间提示条立刻亮起，不等请求返回', async () => {
+    const items = makeTestItems(10);
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity });
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    list.invalidate({ identities: ['1'], count: 2 });
+    await flushAsync();
+    expect(pillOf(host).classList.contains('hidden')).toBe(false);
+    expect(pillOf(host).textContent).toBe('有更新(2)');
+    fetcher.settle(0, [{ id: 1, label: 'patched' }]);
+    await flushAsync();
+    expect(pillOf(host).classList.contains('hidden')).toBe(false);
+    list.dispose();
+  });
+
+  it('E12b 定向刷新期间发生 reset：陈旧结果被整体丢弃，不会误删新窗口里的条目', async () => {
+    const items = makeTestItems(10);
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity });
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+    expect(fetcher.calls).toHaveLength(1);
+
+    await list.reset({ pinEdge: false }); // 窗口整体重建，旧请求的上下文已经作废
+    fetcher.settle(0, []);                // 陈旧结果：id=1「不存在」
+    await flushAsync();
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2']);
+    list.dispose();
+  });
+
+  it('E12c 定向刷新失败但期间发生过 reset 时不上报错误（结果已作废）', async () => {
+    const items = makeTestItems(10);
+    const onError = vi.fn();
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity, onError });
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+    await list.reset({ pinEdge: false });
+    fetcher.fail(0, new Error('已经不关心了'));
+    await flushAsync();
+    expect(onError).not.toHaveBeenCalled();
     list.dispose();
   });
 
@@ -1131,6 +1484,51 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     list.dispose();
   });
 
+  it('F9 未提供 text.updatePill 时不显示提示条（不再出现空白色块）', async () => {
+    const items = makeTestItems(10);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      text: { loading: () => '加载中', empty: () => '暂无数据' },
+    }));
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    list.invalidate({ count: 3 });
+    expect(list.getState().stale).toBe(true); // 状态照常记账
+    expect(pillOf(host).classList.contains('hidden')).toBe(true);
+    list.dispose();
+  });
+
+  it('F10 非空的最后一页把 hasMore 收敛为 false 时提示条一并消失', async () => {
+    const items = makeTestItems(4); // pageSize=3 → 第二页只有 1 条（非空）
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 500;
+    list.invalidate({ count: 4 });
+    expect(list.getState().stale).toBe(true);
+
+    await list.loadMore('forward');
+    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().stale).toBe(false);
+    expect(list.getState().pendingCount).toBe(0);
+    expect(pillOf(host).classList.contains('hidden')).toBe(true);
+    list.dispose();
+  });
+
+  it('F11 非新鲜端方向翻到尽头不清提示条', async () => {
+    const items = makeTestItems(4);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'head' }));
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 500;
+    list.invalidate({ count: 4 });
+    await list.loadMore('forward'); // forward 不是 head 的新鲜方向
+    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().stale).toBe(true);
+    expect(list.getState().pendingCount).toBe(4);
+    list.dispose();
+  });
+
   it('F8 没有待追平更新时滚回新鲜端不会触发任何请求', async () => {
     const host = createHost();
     const fetchSpy = vi.fn(createInstantSource(() => makeTestItems(10)).fetch);
@@ -1264,6 +1662,67 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     list.dispose();
   });
 
+  it('G8b removeLocal 只摘掉被删的那一个身份，共享 store 里其它实例的选中项不受影响', async () => {
+    const store = new SelectionStore();
+    const itemsA = makeTestItems(3);
+    const itemsB = makeTestItems(3, 100);
+    const hostA = createHost();
+    const hostB = createHost();
+    const listA = createBoundedList(baseOptions(hostA, createInstantSource(() => itemsA), { id: 'forward.conversations', selection: { mode: 'multi', store } }));
+    const listB = createBoundedList(baseOptions(hostB, createInstantSource(() => itemsB), { id: 'forward.contacts', selection: { mode: 'multi', store } }));
+    await listA.reset();
+    await listB.reset();
+    store.toggle('100'); // 通讯录 tab 选的目标
+    store.toggle('0');   // 最近会话 tab 选的目标
+
+    listA.removeLocal('1'); // 与两个已选目标都无关
+    expect(store.snapshotIds()).toEqual(new Set(['100', '0']));
+
+    listA.removeLocal('0'); // 删掉的正是已选目标 → 只摘它
+    expect(store.snapshotIds()).toEqual(new Set(['100']));
+    listA.dispose();
+    listB.dispose();
+  });
+
+  it('G8c removeLocal 不会误删 pinnedItems 的选中项', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const pinned: TestItem = { id: -1, label: '所有人' };
+    const store = new SelectionStore();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      pinnedItems: () => [pinned],
+      selection: { mode: 'multi', store },
+    }));
+    await list.reset();
+    host.scroller.dispatch('click', { target: host.scroller.children[0] }); // 选中 pinned
+    list.removeLocal('1');
+    expect(store.has('-1')).toBe(true);
+    list.dispose();
+  });
+
+  it('G11 重复 upsertLocal 同一条目是幂等的，不会渲染两遍', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    await list.reset({ pinEdge: false });
+    list.upsertLocal({ id: 100, label: 'local' });
+    list.upsertLocal({ id: 100, label: 'local-retry' });
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-100']);
+    expect(list.getState().count).toBe(4);
+    list.dispose();
+  });
+
+  it('G12 upsertLocal 一条已在窗口里的条目时先摘旧再并入新鲜端', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    await list.reset({ pinEdge: false });
+    list.upsertLocal({ id: 0, label: 'moved-to-tail' });
+    expect(renderedRows(host)).toEqual(['row-1', 'row-2', 'row-0']);
+    expect(list.getState().count).toBe(3);
+    list.dispose();
+  });
+
   it('G9 patch 不改变窗口条目数，因此不触发 onLoadStateChange', async () => {
     const items = makeTestItems(3);
     const host = createHost();
@@ -1379,7 +1838,7 @@ describe('BoundedList / H 渲染与文案', () => {
     list.dispose();
   });
 
-  it('H8 查询条件含循环引用时降级为引用比较，不抛错', async () => {
+  it('H8 查询条件含循环引用时不抛错：同一引用视为未过滤，结构不同视为已过滤', async () => {
     const host = createHost();
     type Cyclic = { self?: unknown };
     const cyclic: Cyclic = {};
@@ -1388,8 +1847,111 @@ describe('BoundedList / H 渲染与文案', () => {
       ...(baseOptions(host, { async fetch() { return pageOf([], '0', '0', false, false); } }) as unknown as BoundedListOptions<TestItem, Cyclic>),
       initialQuery: cyclic,
     });
+    await expect(list.reset()).resolves.toBeUndefined();
+    expect(host.scroller.children[0].textContent).toBe('暂无数据'); // 同一引用 → 未过滤
     await expect(list.reset({ query: { self: undefined } })).resolves.toBeUndefined();
-    expect(host.scroller.children[0].textContent).toBe('无搜索结果'); // 引用不同 → 视为已过滤
+    expect(host.scroller.children[0].textContent).toBe('无搜索结果'); // 结构不同 → 已过滤
+    list.dispose();
+  });
+
+  it('H8b 查询条件按结构比较，键的书写顺序不影响「是否已过滤」的判定', async () => {
+    const host = createHost();
+    const list = createBoundedList<TestItem, { a: number; b: number[] }>({
+      ...(baseOptions(host, { async fetch() { return pageOf([], '0', '0', false, false); } }) as unknown as BoundedListOptions<TestItem, { a: number; b: number[] }>),
+      initialQuery: { a: 1, b: [1, 2] },
+    });
+    await list.reset({ query: { b: [1, 2], a: 1 } as { a: number; b: number[] } });
+    expect(host.scroller.children[0].textContent).toBe('暂无数据');
+    await list.reset({ query: { a: 1, b: [1, 3] } });
+    expect(host.scroller.children[0].textContent).toBe('无搜索结果');
+    list.dispose();
+  });
+
+  it('H8c 查询条件的结构比较覆盖各类不相等形态（数组 vs 对象、键数不同、键名不同、超深嵌套）', async () => {
+    const host = createHost();
+    const nest = (depth: number, leaf: unknown): unknown =>
+      (depth === 0 ? leaf : { next: nest(depth - 1, leaf) });
+
+    async function emptyTextFor(initial: unknown, next: unknown): Promise<string> {
+      const list = createBoundedList<TestItem, unknown>({
+        ...(baseOptions(host, { async fetch() { return pageOf([], '0', '0', false, false); } }) as unknown as BoundedListOptions<TestItem, unknown>),
+        initialQuery: initial,
+      });
+      await list.reset({ query: next });
+      const text = host.scroller.children[0].textContent;
+      list.dispose();
+      return text;
+    }
+
+    // 数组与普通对象：键集合可能相同，但形态不同 → 已过滤
+    expect(await emptyTextFor({ 0: 'a' }, ['a'])).toBe('无搜索结果');
+    // 键数量不同 → 已过滤
+    expect(await emptyTextFor({ a: 1 }, { a: 1, b: 2 })).toBe('无搜索结果');
+    // 键数量相同但键名不同 → 已过滤
+    expect(await emptyTextFor({ a: 1 }, { b: 1 })).toBe('无搜索结果');
+    // 嵌套超过深度上限：不再展开，一律视为已过滤
+    expect(await emptyTextFor(nest(12, 1), nest(12, 1))).toBe('无搜索结果');
+    // 深度上限之内的等价结构仍然判为未过滤
+    expect(await emptyTextFor(nest(3, 1), nest(3, 1))).toBe('暂无数据');
+  });
+
+  it('H13 首屏失败时显示错误态文案而不是空态，成功一次后恢复', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, {
+      onError: () => {},
+      text: {
+        loading: () => '加载中',
+        empty: () => '暂无数据',
+        error: (err) => `加载失败：${(err as Error).message}`,
+        retry: () => '点击重试',
+      },
+    }));
+    const p = list.reset();
+    pending[0].reject(new Error('network down'));
+    await p;
+    expect(host.scroller.children[0].className).toBe('list-error-state');
+    expect(host.scroller.children[0].textContent).toBe('加载失败：network down');
+    expect(list.getState().failed).toBe(true);
+    // 提示条位置变成重试入口。
+    expect(pillOf(host).classList.contains('hidden')).toBe(false);
+    expect(pillOf(host).textContent).toBe('点击重试');
+
+    pillOf(host).dispatch('click');
+    pending[1].resolve(pageOf(makeTestItems(2), '0', '2', false, false));
+    await flushAsync();
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
+    expect(list.getState().failed).toBe(false);
+    expect(pillOf(host).classList.contains('hidden')).toBe(true);
+    list.dispose();
+  });
+
+  it('H14 没有提供 error 文案时保持原来的空态渲染（向后兼容）', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, { onError: () => {} }));
+    const p = list.reset();
+    pending[0].reject(new Error('network down'));
+    await p;
+    expect(host.scroller.children[0].className).toBe('empty-state');
+    expect(list.getState().failed).toBe(true); // 状态照样如实上报
+    expect(pillOf(host).classList.contains('hidden')).toBe(true);
+    list.dispose();
+  });
+
+  it('H15 首屏失败但窗口里仍有条目（后续 upsertLocal）时不显示错误态', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, {
+      onError: () => {},
+      freshEdge: 'tail',
+      text: { loading: () => '加载中', empty: () => '暂无数据', error: () => '加载失败' },
+    }));
+    const p = list.reset({ pinEdge: false });
+    pending[0].reject(new Error('boom'));
+    await p;
+    list.upsertLocal({ id: 1, label: 'local' });
+    expect(renderedRows(host)).toEqual(['row-1']);
     list.dispose();
   });
 
@@ -1617,6 +2179,25 @@ describe('BoundedList / I 交互与选中态', () => {
     expect(onSelectionChange).toHaveBeenCalledWith({ ids: new Set(['0']), count: 1, items: [items[0]] });
     host.scroller.dispatch('click', { target: host.scroller.children[2] });
     expect(onSelectionChange).toHaveBeenLastCalledWith({ ids: new Set(['0', '2']), count: 2, items: [items[0], items[2]] });
+    list.dispose();
+  });
+
+  it('I9b onSelectionChange 的 items 顺序与渲染顺序一致（pinnedItems 在前）', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const pinned: TestItem = { id: -1, label: '所有人' };
+    const onSelectionChange = vi.fn();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      pinnedItems: () => [pinned],
+      selection: { mode: 'multi' },
+      onSelectionChange,
+    }));
+    await list.reset();
+    host.scroller.dispatch('click', { target: host.scroller.children[1] }); // id=0
+    host.scroller.dispatch('click', { target: host.scroller.children[0] }); // pinned
+    const last = onSelectionChange.mock.calls[onSelectionChange.mock.calls.length - 1][0];
+    expect(renderedRows(host)).toEqual(['row--1', 'row-0', 'row-1', 'row-2']);
+    expect(last.items.map((i: TestItem) => i.id)).toEqual([-1, 0]);
     list.dispose();
   });
 
@@ -1876,6 +2457,22 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     // parent 下原本是 [scroller, pill] 两个子节点；dispose 后提示条应被移除。
     expect(host.parent.children).toHaveLength(1);
     expect(host.parent.children[0]).toBe(host.scroller);
+    // 组件自己补的 a11y 属性也要还回去。
+    expect(host.scroller.getAttribute('tabindex')).toBeNull();
+    expect(host.scroller.getAttribute('role')).toBeNull();
+  });
+
+  it('L11 dispose 后 pinToFreshEdge 已排队的帧不再触碰宿主的滚动位置', async () => {
+    await withFramesAsync(async (frames) => {
+      const items = makeTestItems(3);
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', settleFrames: 4 }));
+      await list.reset({ pinEdge: true });
+      list.dispose();
+      host.scroller.scrollTop = 12345; // 宿主在 dispose 之后自己设置的滚动位置
+      frames.run();
+      expect(host.scroller.scrollTop).toBe(12345);
+    });
   });
 
   it('L2 dispose 之后调用其它命令均为空操作，不抛错', async () => {
@@ -2017,7 +2614,7 @@ describe('BoundedList / M 只读状态 getState', () => {
     expect(list.getState()).toEqual({
       loaded: false, loading: false, loadingBefore: false, loadingAfter: false,
       hasMoreBefore: false, hasMoreAfter: false, count: 0, total: -1,
-      stale: false, pendingCount: 0, atFreshEdge: false,
+      stale: false, pendingCount: 0, atFreshEdge: false, failed: false,
     });
     list.dispose();
   });
@@ -2082,6 +2679,55 @@ describe('BoundedList / M 只读状态 getState', () => {
     const snapshot = list.getState() as { count: number };
     snapshot.count = 999;
     expect(list.getState().count).toBe(3);
+    list.dispose();
+  });
+
+  it('M8 freshEdge=tail 时图片等异步增高内容加载完会重新贴底；此前不贴底则不动', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    host.scroller.scrollHeight = 1000;
+    host.scroller.clientHeight = 100;
+    await list.reset(); // pinEdge → 贴底，缓存的贴边状态为真
+    host.scroller.scrollHeight = 5000; // 图片加载完把内容撑高
+    host.scroller.dispatch('load');
+    expect(host.scroller.scrollTop).toBe(5000);
+
+    // 用户主动滚离底部之后，异步增高不再把他拽回去。
+    host.scroller.scrollTop = 100;
+    host.scroller.dispatch('scroll');
+    host.scroller.scrollHeight = 9000;
+    host.scroller.dispatch('load');
+    expect(host.scroller.scrollTop).toBe(100);
+    list.dispose();
+  });
+
+  it('M9 freshEdge=head 的列表不因内容异步增高改动滚动位置', async () => {
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 321;
+    host.scroller.scrollHeight = 9000;
+    host.scroller.dispatch('load');
+    expect(host.scroller.scrollTop).toBe(321);
+    list.dispose();
+  });
+
+  it('M10 failed 字段：失败置真、重新 reset 立即回到假', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, { onError: () => {} }));
+    const p1 = list.reset();
+    pending[0].reject(new Error('boom'));
+    await p1;
+    expect(list.getState().failed).toBe(true);
+
+    const p2 = list.reset();
+    expect(list.getState().failed).toBe(false); // 重新开始加载就不再是失败态
+    pending[1].resolve(pageOf(makeTestItems(1), '0', '1', false, false));
+    await p2;
+    expect(list.getState().failed).toBe(false);
     list.dispose();
   });
 

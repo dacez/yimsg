@@ -101,6 +101,10 @@ export class FakeElement {
     return this.attributes.get(name) ?? null;
   }
 
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+
   addEventListener(type: string, handler: (ev: any) => void, options?: boolean | { capture?: boolean }): void {
     const capture = typeof options === 'boolean' ? options : !!options?.capture;
     const list = this.listeners.get(type) ?? [];

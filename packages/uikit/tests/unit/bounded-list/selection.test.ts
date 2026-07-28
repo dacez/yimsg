@@ -79,6 +79,30 @@ describe('SelectionStore / A 基础语义', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('A8 delete 精确摘掉一个身份，只在确实删掉时通知；未命中返回 false', () => {
+    const store = new SelectionStore();
+    store.toggle('a');
+    store.toggle('b');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.delete('a')).toBe(true);
+    expect(store.snapshotIds()).toEqual(new Set(['b']));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    listener.mockClear();
+    expect(store.delete('a')).toBe(false);
+    expect(store.delete('不存在')).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('A9 delete 只动指定身份，不影响其它实例共享进来的选中项', () => {
+    const store = new SelectionStore();
+    for (const id of ['u:1', 'u:2', 'g:9']) store.toggle(id);
+    store.delete('u:2');
+    expect(store.snapshotIds()).toEqual(new Set(['u:1', 'g:9']));
+  });
+
   it('A7 retainOnly 传空集合等价于清空', () => {
     const store = new SelectionStore();
     store.toggle('a');
@@ -191,6 +215,29 @@ describe('SelectionStore / C 订阅通知', () => {
     calls.length = 0;
     store.toggle('b');
     expect(calls).toEqual(['other']);
+  });
+
+  it('C6 通知前先快照订阅者集合：本轮新增的订阅不会被本轮通知到', () => {
+    const store = new SelectionStore();
+    const late = vi.fn();
+    store.subscribe(() => { store.subscribe(late); });
+    store.toggle('a');
+    expect(late).not.toHaveBeenCalled(); // 本轮不通知，下一轮才算数
+    store.toggle('b');
+    expect(late).toHaveBeenCalledTimes(1);
+  });
+
+  it('C7 通知期间注销的订阅者仍会收到本轮通知（快照语义确定，不依赖遍历顺序）', () => {
+    const store = new SelectionStore();
+    const order: string[] = [];
+    let unsubscribeSecond: (() => void) | null = null;
+    store.subscribe(() => { order.push('first'); unsubscribeSecond?.(); });
+    unsubscribeSecond = store.subscribe(() => order.push('second'));
+    store.toggle('a');
+    expect(order).toEqual(['first', 'second']);
+    order.length = 0;
+    store.toggle('b');
+    expect(order).toEqual(['first']);
   });
 });
 

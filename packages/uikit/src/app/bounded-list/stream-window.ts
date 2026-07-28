@@ -11,7 +11,7 @@
 // 其余渲染语义（先读后清、锚点保持、边界提示、指针按下期间推迟重建）与旧版一致，
 // 原理见 packages/uikit/docs/有界消息流窗口设计方案.md §2.5、§2.6、§7.3。
 
-const DEFAULT_REACH_PX = 160;
+export const DEFAULT_REACH_PX = 160;
 
 export interface BoundedStreamWindowOptions {
   readonly scrollElement: HTMLElement;
@@ -36,6 +36,8 @@ export interface BoundedStreamWindowRenderState<T> {
   readonly loadingBefore?: boolean;
   readonly loadingAfter?: boolean;
   readonly emptyText?: string;
+  /** 首屏加载失败时代替空态显示；提供时优先于 emptyText。 */
+  readonly errorText?: string;
   readonly loadingText?: string;
   readonly topBoundaryText?: string;
   readonly bottomBoundaryText?: string;
@@ -183,7 +185,10 @@ export class BoundedStreamWindow<T> {
     const doc = content.ownerDocument;
     const scrollOffset = scroller.scrollTop;
     const anchor = this.captureAnchor(content);
-    const focusedKey = this.focusedIndex >= 0 && this.focusedIndex < state.items.length
+    // 焦点行可能因裁剪/翻页不再存在：先钳制回有效范围再取焦点键，
+    // 否则窗口变短的那一次渲染会整帧丢失高亮。
+    if (this.focusedIndex >= state.items.length) this.focusedIndex = state.items.length - 1;
+    const focusedKey = this.focusedIndex >= 0
       ? state.keyOf(state.items[this.focusedIndex], this.focusedIndex)
       : null;
     content.innerHTML = '';
@@ -193,13 +198,17 @@ export class BoundedStreamWindow<T> {
       return;
     }
     if (state.items.length === 0) {
-      if (state.emptyText) {
-        const empty = doc.createElement('div');
-        empty.className = 'empty-state';
-        empty.textContent = state.emptyText;
-        content.appendChild(empty);
+      const placeholderText = state.errorText ?? state.emptyText;
+      if (placeholderText) {
+        const placeholder = doc.createElement('div');
+        placeholder.className = state.errorText !== undefined ? 'list-error-state' : 'empty-state';
+        placeholder.textContent = placeholderText;
+        content.appendChild(placeholder);
       }
       this.focusedIndex = -1;
+      // 空列表同样要做触界检测：服务端可能返回「空页但还有更多」（around 锚点加载
+      // 的乐观策略、全过滤命中为空等），不检测就会永久定格在空态。
+      this.checkReach();
       return;
     }
 
@@ -227,8 +236,6 @@ export class BoundedStreamWindow<T> {
 
     if (scroller.scrollTop !== scrollOffset) scroller.scrollTop = scrollOffset;
     if (anchor) this.restoreAnchor(content, anchor);
-    // 焦点行可能因裁剪/翻页不再存在，钳制回有效范围。
-    if (this.focusedIndex >= state.items.length) this.focusedIndex = state.items.length - 1;
     this.checkReach();
   }
 

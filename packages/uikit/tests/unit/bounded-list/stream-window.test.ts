@@ -200,6 +200,28 @@ describe('BoundedStreamWindow / B 状态与边界提示', () => {
     expect(scroller.children[2].textContent).toBe('最新');
   });
 
+  it('B8 errorText 提供时用错误态代替空态（首屏加载失败不能显示成「暂无数据」）', () => {
+    const { scroller, view } = makeView<number>();
+    view.render({ items: [], emptyText: '暂无数据', errorText: '加载失败', keyOf: String, renderItem: () => [] });
+    expect(renderedClassNames(scroller)).toEqual(['list-error-state']);
+    expect(scroller.children[0].textContent).toBe('加载失败');
+
+    view.render({ items: [], emptyText: '暂无数据', keyOf: String, renderItem: () => [] });
+    expect(renderedClassNames(scroller)).toEqual(['empty-state']);
+  });
+
+  it('B9 errorText 为空串时仍走错误态分支（空串是有意的「不显示文字」而不是缺省）', () => {
+    const { scroller, view } = makeView<number>();
+    view.render({ items: [], emptyText: '暂无数据', errorText: '', keyOf: String, renderItem: () => [] });
+    expect(scroller.children).toHaveLength(0);
+  });
+
+  it('B10 有条目时 errorText 不参与渲染（错误态只在列表为空时代替空态）', () => {
+    const { scroller, view, doc } = makeView<number>();
+    view.render({ items: [1], errorText: '加载失败', keyOf: String, renderItem: () => [asElement(row(doc, 'row-1'))] });
+    expect(renderedClassNames(scroller)).toEqual(['row-1']);
+  });
+
   it('B7 两端提示与条目的相对顺序固定为 [头部提示, ...条目, 尾部提示]', () => {
     const { scroller, view, doc } = makeView<number>();
     view.render({
@@ -281,12 +303,23 @@ describe('BoundedStreamWindow / C 触界检测', () => {
     expect(loadAfter).not.toHaveBeenCalled();
   });
 
-  it('C5 空列表（items 为空）时同样不做触界检测——列表会停在空态不补页（BL-BUG-08）', () => {
+  it('C5 空列表（items 为空）但该端仍有更多时照样触界补页，不会定格在空态', () => {
+    const { scroller, view } = makeView<number>();
+    scroller.clientHeight = 120;
+    scroller.scrollHeight = 120;
+    const loadBefore = vi.fn();
+    const loadAfter = vi.fn();
+    view.render({ items: [], emptyText: '空', hasMoreBefore: true, hasMoreAfter: true, loadBefore, loadAfter, keyOf: String, renderItem: () => [] });
+    expect(loadBefore).toHaveBeenCalledTimes(1);
+    expect(loadAfter).toHaveBeenCalledTimes(1);
+  });
+
+  it('C5b 空列表且两端都没有更多时不触发任何加载', () => {
     const { scroller, view } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
     const loadAfter = vi.fn();
-    view.render({ items: [], emptyText: '空', hasMoreAfter: true, loadAfter, keyOf: String, renderItem: () => [] });
+    view.render({ items: [], emptyText: '空', hasMoreAfter: false, loadAfter, keyOf: String, renderItem: () => [] });
     expect(loadAfter).not.toHaveBeenCalled();
   });
 
@@ -877,15 +910,15 @@ describe('BoundedStreamWindow / I 键盘导航', () => {
     expect(scroller.children[0].className).toContain('row-a');
   });
 
-  it('I13 窗口变短到焦点越界时把 focusedIndex 钳制回末尾（本次渲染丢高亮，见 BL-BUG-15）', () => {
+  it('I13 窗口变短到焦点越界时先钳制再取焦点键，本次渲染就保住高亮', () => {
     const { doc, scroller, view } = makeView<string>();
     const renderItem = (item: string) => [asElement(row(doc, `row-${item}`))];
     view.render({ items: ['a', 'b', 'c'], keyOf: (s) => s, renderItem });
     for (let i = 0; i < 3; i++) scroller.dispatch('keydown', { key: 'ArrowDown' }); // focusedIndex=2
     view.render({ items: ['a'], keyOf: (s) => s, renderItem });
-    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(false); // 本次丢失
+    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);
     view.render({ items: ['a'], keyOf: (s) => s, renderItem });
-    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);  // 下一次恢复
+    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);
   });
 
   it('I14 列表清空后 focusedIndex 归位，重新有条目时从头开始', () => {

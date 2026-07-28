@@ -14,7 +14,7 @@ import type { LayoutChoice } from './session-storage';
 import { detectLocale } from '../i18n';
 import { translations, type Lang } from './i18n';
 import { APP_CONFIG } from '../app-config';
-import type { BoundedListController } from './bounded-list';
+import type { BoundedListController } from './bounded-list/registry';
 import { BoundedPageWindow } from './bounded-page-window';
 import { conversationIdentity, contactIdentity } from './list-identity';
 import { createMessageWindow } from './views/chat/message-page';
@@ -319,7 +319,15 @@ export class AppInstance {
     this.$('status-bar').className = 'status-bar hidden';
   }
 
-  /** 注册一个有界列表控制器；返回值用于注销（同 id 重复注册会互相覆盖）。 */
+  /**
+   * 注册一个有界列表控制器；返回值用于注销（同 id 重复注册会互相覆盖）。
+   *
+   * 注册表刻意保持**按 AppInstance 隔离**：同一页面可以并存多个实例（嵌入式 UIKit 的
+   * 多格子场景），它们的列表 id 完全相同，共用一份进程级注册表会互相覆盖。
+   * BoundedList 组件通过构造参数 `register` 接入这里：
+   *   createBoundedList({ ..., register: (c) => app.registerBoundedList(c) })
+   * 这样重连时的 invalidateBoundedLists() 广播才能覆盖到组件化之后的列表。
+   */
   registerBoundedList(controller: BoundedListController): () => void {
     this.boundedLists.set(controller.id, controller);
     return () => {

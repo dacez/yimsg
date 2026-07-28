@@ -84,6 +84,56 @@ describe('PageWindow / A 基础记账', () => {
     expect(window.hasMoreBefore).toBe(false);
   });
 
+  it('A11 续翻拿到空页时强制收敛该端 hasMore（服务端违反契约也不会无限补页）', () => {
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([1, 2], 's1', 'e1', true, true));
+    // 服务端违反契约：空页却仍然报「还有更多」。
+    window.appendForward(page([], 'sx', 'ex', true, true));
+    expect(window.hasMoreAfter).toBe(false);
+    window.prependBackward(page([], 'sy', 'ey', true, true));
+    expect(window.hasMoreBefore).toBe(false);
+    // 非空页仍然如实透传服务端给的 hasMore。
+    window.appendForward(page([3], 's2', 'e2', true, true));
+    expect(window.hasMoreAfter).toBe(true);
+  });
+
+  it('A12 空首页保留边界游标，窗口暂时为空时仍有可用的续翻锚点', () => {
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([], 'sEmpty', 'eEmpty', false, true));
+    expect(window.loaded).toBe(false);
+    expect(window.count).toBe(0);
+    expect(window.backwardCursor).toBe('sEmpty');
+    expect(window.forwardCursor).toBe('eEmpty');
+    expect(window.hasMoreAfter).toBe(true);
+    // 用这个锚点继续翻，拿到真实数据后游标改由保留页提供。
+    window.appendForward(page([1, 2], 's1', 'e1', false, false));
+    expect(window.items).toEqual([1, 2]);
+    expect(window.forwardCursor).toBe('e1');
+  });
+
+  it('A13 reset 同时清掉空首页留下的 fallback 游标', () => {
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([], 'sEmpty', 'eEmpty', true, true));
+    window.reset();
+    expect(window.backwardCursor).toBe('');
+    expect(window.forwardCursor).toBe('');
+  });
+
+  it('A14 maxPages 小于 1 时被夹到 1，setInitial 与 mergeLive 的裁剪口径一致', () => {
+    const zero = new PageWindow<number>(0);
+    zero.setInitial(page([1, 2], 's', 'e', false, false));
+    expect(zero.count).toBe(2);
+    zero.mergeLive(3, 'tail');
+    expect(zero.items).toEqual([1, 2, 3]); // 不会被整页裁光
+    expect(zero.hasMoreBefore).toBe(false);
+
+    const negative = new PageWindow<number>(-5);
+    negative.setInitial(page([1], 's', 'e', false, true));
+    negative.appendForward(page([2], 's2', 'e2', false, false));
+    expect(negative.items).toEqual([2]); // 仍按 1 页裁剪
+    expect(negative.hasMoreBefore).toBe(true);
+  });
+
   it('A7 normalize 作用于每一页入窗前（setInitial / appendForward / prependBackward 都生效）', () => {
     const normalize = vi.fn((items: readonly number[]) => [...items].sort((a, b) => a - b));
     const window = new PageWindow<number>(3, normalize);
@@ -396,11 +446,26 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.hasMoreBefore).toBe(false);
   });
 
-  it('E3 窗口为空时自建一页并标记已加载', () => {
+  it('E3 窗口为空时自建一页并标记已加载；没有可用游标时两端 hasMore 一并置 false', () => {
     const window = new PageWindow<number>(2);
     window.mergeLive(1, 'tail');
     expect(window.items).toEqual([1]);
     expect(window.loaded).toBe(true);
+    // 从未加载过 → 没有任何边界游标，如实报告「两端都没有更多」，避免带着空游标去请求。
+    expect(window.backwardCursor).toBe('');
+    expect(window.forwardCursor).toBe('');
+    expect(window.hasMoreBefore).toBe(false);
+    expect(window.hasMoreAfter).toBe(false);
+  });
+
+  it('E3b 空首页留下的 fallback 游标会被自建页继承，续翻锚点不丢', () => {
+    const window = new PageWindow<number>(2);
+    window.setInitial(page([], 'sEmpty', 'eEmpty', true, false));
+    window.mergeLive(1, 'tail');
+    expect(window.items).toEqual([1]);
+    expect(window.backwardCursor).toBe('sEmpty');
+    expect(window.hasMoreBefore).toBe(true); // 有锚点就照常保留
+    expect(window.hasMoreAfter).toBe(false); // 新鲜端已追平
   });
 
   it('E4 多页窗口下 mergeLive 只并入新鲜端那一页，页数不变、不触发裁剪', () => {
@@ -425,12 +490,29 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.items).toEqual([1, 3, 5]);
   });
 
-  it('E6 mergeLive 不参与跨页去重：条目已在别的页时会重复（设计取舍，由 normalize 兜底）', () => {
+  it('E6 mergeLive 同样做跨页去重：条目已在别的页时先摘掉旧的再并入', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
     window.appendForward(page([3, 4], 's2', 'e2', true, false));
     window.mergeLive(1, 'tail'); // 1 已经在首页
-    expect(window.items).toEqual([1, 2, 3, 4, 1]);
+    expect(window.items).toEqual([2, 3, 4, 1]);
+  });
+
+  it('E6b 重复 mergeLive 同一身份是幂等的（本端重发 / 重复回包不会渲染两遍）', () => {
+    const window = new PageWindow<number>(3, undefined, asKey);
+    window.setInitial(page([1, 2], 's1', 'e1', false, false));
+    window.mergeLive(9, 'tail');
+    window.mergeLive(9, 'tail');
+    window.mergeLive(9, 'tail');
+    expect(window.items).toEqual([1, 2, 9]);
+  });
+
+  it('E6c 未提供 identityOf 时 mergeLive 不去重（由 normalize 兜底，保持消息窗口原行为）', () => {
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([1, 2], 's1', 'e1', false, false));
+    window.mergeLive(9, 'tail');
+    window.mergeLive(9, 'tail');
+    expect(window.items).toEqual([1, 2, 9, 9]);
   });
 
   it('E7 连续 mergeLive 大量条目不会突破页数上限（只撑大单页）', () => {

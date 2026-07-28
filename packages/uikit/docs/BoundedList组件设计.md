@@ -49,6 +49,9 @@
   - [13.6 渲染时序](#136-渲染时序)
 - [14. 不变量与宿主约定](#14-不变量与宿主约定)
 - [15. 与目标态契约的差异](#15-与目标态契约的差异)
+  - [15.1 刻意偏离](#151-对-有界消息流窗口设计方案md-4-的刻意偏离)
+  - [15.2 相对契约新增的能力](#152-相对契约新增的能力)
+  - [15.3 缺陷状态](#153-缺陷状态)
 
 ---
 
@@ -64,7 +67,7 @@
 
 原理层面的取舍（为什么全量渲染、为什么按页记账、什么是新鲜端）见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §2，本文不重复。
 
-**当前接入状态**：组件本身已完整实现并有 100% 覆盖率的单测，但**还没有任何视图迁移过来**（对应 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §8.2 的「阶段 1：抽出组件外壳，先不迁移任何调用方」）。会话列表、消息列表、通讯录等仍在用组件化之前的手写胶水。迁移之前必须先处理 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6 里标为「迁移前必须做」的两条（BL-BUG-24 / BL-BUG-25）。
+**当前接入状态**：组件本身已完整实现并有 100% 覆盖率的单测，但**还没有任何视图迁移过来**（对应 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §8.2 的「阶段 1：抽出组件外壳，先不迁移任何调用方」）。会话列表、消息列表、通讯录等仍在用组件化之前的手写胶水。迁移所需的前置条件（注册表接线、模块入口）已经就绪，见 §11 与 §15。
 
 ### 1.2 模块分层
 
@@ -101,7 +104,7 @@ flowchart TD
 
 `page-source.ts` 不被组件外壳直接引用——数据源是**调用方构造好之后作为参数注入**的，组件只认 `PageSource<T, Q>` 这个接口。
 
-> ⚠️ `packages/uikit/src/app/` 下同时还存在一个**旧的同名文件** `bounded-list.ts`（只有 `BoundedListController` 接口，是组件化之前的重连广播契约）。按 bundler 解析规则 `.ts` 文件优先于目录的 `index.ts`，因此 `import ... from './bounded-list'` 拿到的是旧模块，本组件的公开入口目前只能写成 `./bounded-list/index`。详见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6.3 的 BL-BUG-25。
+旧的同名文件 `packages/uikit/src/app/bounded-list.ts`（只有 `BoundedListController` 接口）已经删除，该契约并入 `registry.ts`，因此 `import ... from './bounded-list'` 直接拿到本组件的公开导出面，不再被同名 `.ts` 遮蔽。
 
 ### 1.3 数据流
 
@@ -135,10 +138,11 @@ flowchart LR
 | `localPageSource<T, Q>(options)` | 函数 | 本地全量数组切片数据源。 |
 | `SelectionStore` | 类 | 可跨实例共享的选中集。 |
 | `invalidateAllBoundedLists()` | 函数 | 向全部已注册实例各广播一次 `invalidate()`。 |
+| `registerBoundedList()` / `unregisterBoundedList()` | 函数 | 进程级注册表的登记 / 注销；宿主自建注册表时用得上（见 §11）。 |
 | `registeredBoundedListIds()` | 函数 | 当前已注册的实例 id 快照（调试 / 测试用）。 |
-| 类型 | `BoundedListOptions`、`BoundedListState`、`BoundedListText`、`Direction`、`ErrorPhase`、`FetchPageRequest`、`FreshEdge`、`PageLoadResult`、`PageSource`、`RenderItemContext`、`SelectionConfig`、`SelectionSnapshot`、`LocalPageSourceOptions`、`ToggleResult` | 见 §3。 |
+| 类型 | `BoundedListOptions`、`BoundedListState`、`BoundedListText`、`BoundedListController`、`Invalidatable`、`Direction`、`ErrorPhase`、`FetchPageRequest`、`FreshEdge`、`PageLoadResult`、`PageSource`、`RegisterBoundedList`、`RenderItemContext`、`SelectionConfig`、`SelectionSnapshot`、`LocalPageSourceOptions`、`ToggleResult` | 见 §3。 |
 
-`PageWindow`、`BoundedStreamWindow`、`createUpdatePill`、`registerBoundedList` / `unregisterBoundedList` **不在** `index.ts` 的导出面里：它们是组件内部实现，只有单测按路径直接 import。
+`PageWindow`、`BoundedStreamWindow`、`createUpdatePill` **不在** `index.ts` 的导出面里：它们是组件内部实现，只有单测按路径直接 import。
 
 ---
 
@@ -170,6 +174,7 @@ interface FetchPageRequest<Q> {
   readonly backward: boolean; // true = 向更靠前 / 更旧的方向
   readonly limit: number;     // 等于构造参数 pageSize
   readonly query: Q;          // 当前查询条件
+  readonly onProgress?: (loaded: number) => void; // 仅 reset 且配置了 onLoadProgress 时出现
 }
 
 interface PageLoadResult<T> {
@@ -192,7 +197,9 @@ interface PageSource<T, Q> {
 2. **游标对组件不透明**：组件既不解析也不构造游标，只在「首页 `startCursor`」「尾页 `endCursor`」之间原样搬运。
 3. `PageLoadResult` 与 SDK 各 `get_*` 返回的 `PageInfo` 同构，调用方在 `serverPageSource` 的 `map` 里做一次结构整理即可。
 
-`hasMoreBackward` / `hasMoreForward` 由**服务端**决定，不看条数：一页返回不足 `limit` 条也可能仍然「还有更多」。
+`hasMoreBackward` / `hasMoreForward` 由**服务端**决定，不看条数：一页返回不足 `limit` 条也可能仍然「还有更多」。**唯一的例外是续翻拿到空页**——`items` 为空意味着该方向确实没有数据了，窗口会把该端强制收敛为 `false`，不管服务端怎么说（§8）。这是防止服务端违反契约时触界检测无限补页的兜底。
+
+`onProgress` 只在 `reset` 且调用方配置了 `onLoadProgress` 时出现，用于把 `localPageSource` 的全量拉取进度透出去；没配置时请求对象里根本不会有这个键。
 
 ### 3.3 渲染上下文与文案
 
@@ -212,10 +219,12 @@ interface BoundedListText {
   readonly headBoundary?: () => string;
   readonly tailBoundary?: () => string;
   readonly updatePill?: (count: number) => string;
+  readonly error?: (error: unknown) => string;
+  readonly retry?: () => string;
 }
 ```
 
-文案一律是**函数**而不是字符串，因为语言可以在运行时切换；每次渲染都重新求值。全部字段可选，不提供就不渲染对应元素（`updatePill` 例外，见 §15 的 BL-BUG-05）。
+文案一律是**函数**而不是字符串，因为语言可以在运行时切换；每次渲染都重新求值。全部字段可选，**不提供就不渲染对应元素**——`updatePill` 缺省时提示条整个不出现，而不是显示一个空白色块。
 
 | 文案 | 出现位置 | 生效条件 |
 |---|---|---|
@@ -224,9 +233,11 @@ interface BoundedListText {
 | `emptyFiltered` | 有查询条件但无结果；缺省时回退到 `empty` | `loaded && items.length === 0 && 查询生效` |
 | `headBoundary` | 固定显示在头部 | `!hasMoreBefore` |
 | `tailBoundary` | 固定显示在尾部 | `!hasMoreAfter` |
-| `updatePill` | 提示条文案，接收 `pendingCount` | 每次渲染都同步 |
+| `updatePill` | 提示条文案，接收 `pendingCount` | `stale === true` **且**提供了本文案；不提供就不显示提示条 |
+| `error` | 首屏加载失败时代替空态显示 | `failed && 列表为空`；不提供则退化为空态文案 |
+| `retry` | 首屏失败时提示条变成重试入口（点击即 `reset`） | `failed`；不提供则失败后不显示提示条 |
 
-「查询生效」的判定：`JSON.stringify(当前 query) !== JSON.stringify(initialQuery)`；序列化抛错（循环引用等）时降级为引用比较。
+「查询生效」的判定是**结构比较**（不看引用，也不看对象键的书写顺序）：同一引用直接判等；否则逐层比对数组 / 普通对象的键集合与取值，嵌套超过 8 层不再展开、一律视为不相等（这个深度上限同时兼作环引用兜底）。
 
 ### 3.4 状态与快照
 
@@ -243,6 +254,7 @@ interface BoundedListState {
   readonly stale: boolean;         // 有待追平的背景更新（提示条是否亮）
   readonly pendingCount: number;   // 待追平条数
   readonly atFreshEdge: boolean;   // 当前是否贴在新鲜端（实时读 DOM）
+  readonly failed: boolean;        // 首屏是否加载失败（重新发起 reset 即回到 false）
 }
 
 interface SelectionSnapshot<T> {
@@ -268,7 +280,8 @@ type ErrorPhase = 'reset' | 'forward' | 'backward' | 'refresh';
 | `scrollElement` | `HTMLElement` | 是 | — | 原生滚动容器。组件在它上面挂 `scroll` / `pointerdown` / `pointerup` / `pointercancel` / `keydown`，并读它的 `scrollTop` / `scrollHeight` / `clientHeight` 做触界与贴边判定。**必须有确定高度和 `overflow-y: auto`**。 |
 | `contentElement` | `HTMLElement` | 否 | `scrollElement` | 内容容器。两个 tab 共用一个滚动容器时（通讯录的好友 / 请求），各实例指向自己的内容节点。`click` 与 `load` 委托挂在它上面。 |
 | `pillHost` | `HTMLElement \| false` | 否 | `scrollElement.parentElement ?? false` | 提示条挂载点。传 `false`（或滚动容器没有父元素）时不创建任何提示条 DOM，提示条相关方法退化为空操作，但 `state.stale` / `state.pendingCount` 仍照常记账。 |
-| `isActive` | `() => boolean` | 否 | 恒 `true` | 宿主可见性判定。返回 `false` 时 `invalidate()` 只记 stale、不发任何请求、**也不重渲**（见 §15 的 BL-BUG-07）。可见性优先于贴边判定：不可见时即使贴在新鲜端也不追平。 |
+| `isActive` | `() => boolean` | 否 | 恒 `true` | 宿主可见性判定。返回 `false` 时 `invalidate()` 只记 stale、不发任何请求，但**仍会重渲一次**（提示条要在宿主切回可见的那一刻就是最新的）。可见性优先于贴边判定：不可见时即使贴在新鲜端也不追平。 |
+| `register` | `RegisterBoundedList` | 否 | 进程级注册表 | 把自己登记到宿主注册表并返回注销函数。**同一页面并存多个 AppInstance 时必须传**，否则各实例的同名列表会在进程级注册表里互相覆盖（§11）。 |
 
 ### 4.2 数据源
 
@@ -321,7 +334,7 @@ interface SelectionConfig<T> {
 | 字段 | 语义 |
 |---|---|
 | `mode` | `'single'`：点击 → `replaceSingle(identity)` **并且**触发 `onActivate`（单选常等价于确认）。`'multi'`：点击 → `toggle(identity)`，**不**触发 `onActivate`。 |
-| `max` | 多选上限。**仅在没有传 `store` 时生效**——传了 `store` 就以该 store 自己的 `max` 为准（见 §15 的 BL-BUG-20）。 |
+| `max` | 多选上限，只用于组件自建 store。**与 `store` 互斥**：两者同时给出会在构造时抛 `TypeError`（共享 store 的上限只能由该 store 自己决定，静默忽略一个会埋隐患）。 |
 | `store` | 外部共享的选中集。多个实例共享同一个 `store` 时，任一实例改动它，组件负责通知所有共享实例各自重渲，调用方不需要手工互调对方的 `render`。 |
 | `onExceed` | 多选达上限且当前未选中时被拒绝的回调（宿主一般 `showToast`）。 |
 
@@ -344,12 +357,13 @@ interface SelectionConfig<T> {
 | 回调 | 签名 | 触发时机 |
 |---|---|---|
 | `onActivate` | `(item: T, ev: Event) => void` | 点击某一行（未开启 selection，或 `single` 模式），或键盘 `Enter` / `Space` 落在聚焦行。点不到条目（陈旧 DOM）时不触发。 |
-| `onSelectionChange` | `(snapshot: SelectionSnapshot<T>) => void` | 选中集变化（含共享 `store` 被其它实例改动）。`snapshot.items` 由「窗口条目 + pinnedItems」按此顺序过滤得到（见 §15 的 BL-BUG-18）。 |
+| `onSelectionChange` | `(snapshot: SelectionSnapshot<T>) => void` | 选中集变化（含共享 `store` 被其它实例改动）。`snapshot.items` 由「pinnedItems + 窗口条目」按此顺序过滤得到，与渲染顺序一致。 |
 | `onLoadStateChange` | `(state: BoundedListState) => void` | `reset` 开始 / 结束、`loadMore` 开始 / 结束、`upsertLocal`、命中的 `removeLocal`、定向刷新落地之后。组件**不做前后 diff**，同样的状态也可能连续上报。 |
 | `onStaleChange` | `(stale: boolean, pendingCount: number) => void` | `reset` 开始时（清零）、`invalidate` 决策落定时、提示条路径② 清零时。 |
 | `onItemsChanged` | `(items: readonly T[]) => void` | 窗口内容变化：`reset` 成功、`loadMore` 成功、`upsertLocal`、命中的 `patch`、命中的 `removeLocal`、定向刷新落地。参数是**窗口条目**，不含 `pinnedItems`。 |
 | `onError` | `(error: unknown, phase: ErrorPhase) => void` | 任一次拉取失败。未提供时组件 `console.warn`，**绝不产生未处理的 Promise 拒绝**。过期请求（已被更新的 `reset` 取代）与已 `dispose` 的实例上的失败都被静默丢弃，不上报。 |
 | `onEmptyPage` | `(dir: Direction) => void` | `loadMore` 某方向返回空页。先于「路径② 清提示条」执行。 |
+| `onLoadProgress` | `(loaded: number) => void` | `reset` 阶段数据源上报全量拉取进度时（只有 `localPageSource` 这类需要 `loadAll` 的数据源会报）。配置了它，`reset` 的请求才会带上 `onProgress`。 |
 
 ---
 
@@ -359,15 +373,17 @@ interface SelectionConfig<T> {
 |---|---|---|---|
 | `id` | `get id(): string` | 只读，返回构造时的 `id`。 | — |
 | `reset` | `(opts?: { query?: Q; pinEdge?: boolean }) => Promise<void>` | 清空窗口、清 `stale` / `pendingCount`、无游标拉首页重建。`pinEdge` 默认 `true`：渲染后把滚动摁到 `freshEdge`（覆盖锚点恢复）。传 `query` 同时更新查询条件。 | 递增内部 requestId，旧请求返回后整体丢弃；`reset` 期间再调 `reset` 以最后一次为准。**返回的 Promise 永远 resolve，不会 reject**。 |
-| `loadMore` | `(dir: Direction) => Promise<void>` | 按该方向边界游标续翻一页，超限整页裁剪。 | 该方向 `hasMore === false` 或同方向已在加载时**直接返回，不发请求**；反方向可以并发。捕获当前 requestId，被 `reset` 取代后结果整体丢弃。返回的 Promise 永远 resolve。 |
+| `loadMore` | `(dir: Direction) => Promise<void>` | 按该方向边界游标续翻一页，超限整页裁剪。显式调用视为「用户主动重试」，会解除该方向的自动续翻暂停（§13.3）。 | 该方向 `hasMore === false`、同方向已在加载、或该方向没有可用边界游标（空串）时**直接返回，不发请求**；反方向可以并发。捕获当前 requestId，被 `reset` 取代后结果整体丢弃。返回的 Promise 永远 resolve。 |
 | `setQuery` | `(query: Q, opts?: { debounceMs?: number }) => void` | 更新查询条件并 `reset`。`debounceMs` 默认 `300`；`<= 0` 时同步发起 `reset`。 | 新的调用会取消上一次尚未触发的计时器；`dispose()` 也会取消。 |
 | `invalidate` | `(opts?: { identities?: readonly string[]; count?: number }) => void` | **轻通知唯一入口**，按 §13.1 决策树处理。`count` 用于「有 N 条新消息」的累加，`identities` 用于定向刷新。 | 合并到下一帧执行；同一帧内多次调用只跑一次决策，`count` 累加、`identities` 按 Set 去重合并。 |
-| `upsertLocal` | `(item: T) => void` | 本端产生的新条目并入新鲜端所在页（`tail` → 尾页、`head` → 首页），经 `normalize`，并把新鲜端方向的 `hasMore` 置 `false`。窗口为空时自建一页。 | 同步，不发请求。**不参与跨页去重**，幂等性由 `normalize` 负责。 |
+| `upsertLocal` | `(item: T) => void` | 本端产生的新条目并入新鲜端所在页（`tail` → 尾页、`head` → 首页），经 `normalize`，并把新鲜端方向的 `hasMore` 置 `false`。窗口为空时自建一页。 | 同步，不发请求。**并入前先做跨页去重**，因此对同一身份是幂等的：重发 / 重复回包不会渲染两遍，条目已在别的页时也会先摘旧再并入新鲜端。 |
 | `patch` | `(id: string, update: (item: T) => T) => boolean` | 就地更新窗口内该身份的全部条目，页结构与边界游标不变。返回是否命中。命中才重渲并触发 `onItemsChanged`。 | 同步。不影响 `count`，因此不触发 `onLoadStateChange`。 |
-| `removeLocal` | `(id: string) => boolean` | 就地删除窗口内该身份的条目，剩余条目自然往上补齐。返回是否命中。命中时同时把选中集修剪为「仍在本实例窗口内的身份」。 | 同步。共享 `store` 时会误伤其它实例的选中项，见 §15 的 BL-BUG-02。 |
+| `removeLocal` | `(id: string) => boolean` | 就地删除窗口内该身份的条目，剩余条目自然往上补齐。返回是否命中。命中时**只精确摘掉这一个身份**的选中态。 | 同步。共享 `store` 时其它实例、`pinnedItems`、以及已被裁剪出窗口的选中项都不受影响。 |
 | `render` | `() => void` | 用当前状态重渲（`pinnedItems` 重新求值、`text` 重新求值、`renderItem` 全部重跑），并同步提示条。展示资料异步到达（`display:updated`）时宿主调它。 | 不发任何请求、不改变滚动位置。指针按下期间只记账不动 DOM，抬起后下一帧应用。 |
 | `scrollToIdentity` | `(id: string, opts?: { block?: 'center' \| 'nearest' }) => boolean` | 把某个身份的行滚进视口，`block` 默认 `'nearest'`。返回是否找到。 | 同步。身份必须**既在窗口 / pinnedItems 里、又已经渲染出带锚点的节点**，否则返回 `false`。 |
-| `dispose` | `() => void` | 注销全部监听（含 window 级 pointer 兜底）、移除提示条 DOM、取消防抖计时器与帧调度、取消选中态订阅、从注册表注销、丢弃所有未完成请求的结果。 | 幂等。调用后其它命令均为空操作（`patch` / `removeLocal` / `scrollToIdentity` 返回 `false`），但 `getState()` 仍可读。 |
+| `dispose` | `() => void` | 注销全部监听（含 window 级 pointer 兜底）、移除提示条 DOM、还原组件补上的 a11y 属性、取消防抖计时器与帧调度、取消选中态订阅、从注册表注销、丢弃所有未完成请求的结果与已排队的滚动定位帧。 | 幂等。调用后其它命令均为空操作（`patch` / `removeLocal` / `scrollToIdentity` 返回 `false`），但 `getState()` 仍可读。 |
+
+**构造期校验**：`pageSize` 与 `maxPages` 必须是不小于 1 的整数，否则构造直接抛 `RangeError`；`selection.store` 与 `selection.max` 同时给出抛 `TypeError`。参数不合法宁可当场炸掉，也不静默退化成「永远空窗口」这类难查的行为。
 
 **约定**：弹窗 / 面板级列表必须在关闭路径上 `dispose()`；页面级列表在宿主的 disposer 里 `dispose()`。同 id 重建实例前必须先 `dispose()` 旧实例。
 
@@ -382,6 +398,7 @@ interface SelectionConfig<T> {
 - `total` 直接透传服务端 `PageInfo.total`；续翻页未带 `total` 时保留上一次已知值；`reset` 后回到 `-1`。
 - `atFreshEdge` 是**实时读 DOM** 计算的，不是缓存值；`dispose()` 之后仍按当前 DOM 返回结果。
 - `count` 不含 `pinnedItems`。
+- `failed` 表示「上一次首屏加载以失败告终」：`reset` 一开始就清零，成功落定后保持 `false`。它和 `loaded` 一起才能区分三种状态——`!loaded` 加载中、`loaded && !failed` 有结果（可能是空）、`loaded && failed` 加载失败。
 
 ---
 
@@ -428,17 +445,17 @@ function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSourc
 
 游标编码是**字符串化的下标**，`startCursor` / `endCursor` 分别是该页在 `entries` 里的 `[start, end)` 半开区间端点。这套编码完全是内部实现细节，与服务端不透明游标不共享、不混用，也不会外传给服务端。
 
-边界处理：两端下标都经 `Math.max(0, Math.min(x, entries.length))` 夹紧，`clampedEnd >= clampedStart` 恒成立，因此**永远不会产生负下标切片或越界条目**。`total` 恒等于 `entries.length`（过滤后的条数）。
+边界处理：游标先经 `Number.isFinite` 校验，无法解析成有限数（`'abc'`、`''`、`'NaN'`、`'Infinity'`…）一律按 `0` 处理，**绝不产出 `"NaN"` 这种此后永远翻不动的游标**；两端下标再经 `Math.max(0, Math.min(x, entries.length))` 夹紧，`clampedEnd >= clampedStart` 恒成立，因此永远不会产生负下标切片或越界条目。`total` 恒等于 `entries.length`（过滤后的条数）。
 
 `filter` / `compare` 都作用在 `loadAll` 返回数组的**副本**上，不会污染调用方数组。
 
-非法游标（`Number(cursor)` 得到 `NaN`）当前没有防御，见 §15 的 BL-BUG-11。
+`req.onProgress` 原样透传给 `loadAll` 的第二个参数：只有 reset（`cursor === undefined`）会真的重新 `loadAll`，续翻走缓存切片，因此进度不会重复上报。
 
 ---
 
 ## 8. PageWindow 数据窗口接口
 
-`class PageWindow<T>`（内部模块，不在 `index.ts` 导出面）。
+`class PageWindow<T>`（内部模块，不在 `index.ts` 导出面）。`maxPages` 会被夹到不小于 1（`Math.max(1, Math.floor(maxPages))`），保证 `setInitial` 与 `mergeLive` 对同一配置的解释一致。
 
 ```typescript
 constructor(
@@ -457,19 +474,19 @@ constructor(
 | `total` | `number` | `-1` 表示未知。 |
 | `items` | `T[]` | 每次调用都重新 flatten 拼接一个新数组。 |
 | `count` | `number` | 各页条目数之和。 |
-| `backwardCursor` | `string` | 首页 `startCursor`；无页时为 `''`。 |
-| `forwardCursor` | `string` | 尾页 `endCursor`；无页时为 `''`。 |
+| `backwardCursor` | `string` | 首页 `startCursor`；窗口没有页时退回到 `setInitial` 留下的 fallback 游标，从未加载过才是 `''`。 |
+| `forwardCursor` | `string` | 尾页 `endCursor`；同上。 |
 
 | 方法 | 语义 |
 |---|---|
 | `hasIdentity(id): boolean` | 逐页逐条比对 `identityOf`。未提供 `identityOf` 时恒 `false`。 |
 | `reset(): void` | 清空全部页、两端 `hasMore`、`total`。 |
-| `setInitial(page): void` | 清空后放入这一页（**空页则 `pages = []`**），两端 `hasMore` 与 `total` 取该页。**不做 `maxPages` 裁剪**。 |
-| `appendForward(page): void` | 先用新页身份清理其它页的同身份旧条目 → 非空则尾部追加 → `after = page.hasMoreForward` → `total` 更新（未提供则保留旧值）→ 超 `maxPages` 时 `shift()` 裁首并 `before = true`。 |
-| `prependBackward(page): void` | 对称：清理去重 → 非空则头部插入 → `before = page.hasMoreBackward` → `total` 更新 → 超限 `pop()` 裁尾并 `after = true`。 |
+| `setInitial(page): void` | 清空后放入这一页（**空页则 `pages = []`，但它的两端游标会作为 fallback 留下来**，否则窗口为空时就没有任何续翻锚点），两端 `hasMore` 与 `total` 取该页。页数至多 1，不需要裁剪。 |
+| `appendForward(page): void` | 先用新页身份清理其它页的同身份旧条目 → 非空则尾部追加 → `after = 空页 ? false : page.hasMoreForward` → `total` 更新（未提供则保留旧值）→ 超 `maxPages` 时 `shift()` 裁首并 `before = true`。 |
+| `prependBackward(page): void` | 对称：清理去重 → 非空则头部插入 → `before = 空页 ? false : page.hasMoreBackward` → `total` 更新 → 超限 `pop()` 裁尾并 `after = true`。 |
 | `updateMatching(match, update): boolean` | 就地替换全部匹配条目，页结构与边界游标不变。返回是否命中。 |
 | `removeMatching(match): boolean` | 就地删除全部匹配条目。页可能变空甚至全空，但**页本身与其边界游标保留**。返回是否命中。 |
-| `mergeLive(item, edge): void` | 窗口为空时自建一页（游标为空串）；否则并入 `edge` 侧那一页并对整页跑 `normalize`。随后把该端 `hasMore` 置 `false` 并对另一端做整页裁剪。**不参与跨页去重**。 |
+| `mergeLive(item, edge): void` | **先跨页去重**（摘掉窗口里同身份的旧条目）→ 窗口为空时自建一页（游标沿用 fallback；连 fallback 都没有时把两端 `hasMore` 一并置 `false`，避免带着空游标去请求），否则并入 `edge` 侧那一页并对整页跑 `normalize` → 把该端 `hasMore` 置 `false`。并入不会增加页数，因此不需要裁剪。 |
 
 跨页去重的时机是「新页入窗**之前**」，删除的是其它保留页里的同身份旧条目——**新拉的页代表服务端当前真值，用新的覆盖旧的**。被清空的旧页仍占一个 `maxPages` 名额且仍保留有效边界游标，这是已知取舍。
 
@@ -499,6 +516,7 @@ interface BoundedStreamWindowRenderState<T> {
   readonly loadingBefore?: boolean;
   readonly loadingAfter?: boolean;
   readonly emptyText?: string;
+  readonly errorText?: string;        // 提供时在列表为空的分支里代替 emptyText
   readonly loadingText?: string;
   readonly topBoundaryText?: string;
   readonly bottomBoundaryText?: string;
@@ -557,6 +575,7 @@ class SelectionStore {
   snapshotIds(): ReadonlySet<string>;
   subscribe(listener: () => void): () => void;
   toggle(id: string): ToggleResult;
+  delete(id: string): boolean;
   replaceSingle(id: string): void;
   clear(): void;
   retainOnly(existing: ReadonlySet<string>): void;
@@ -570,11 +589,12 @@ class SelectionStore {
 | `snapshotIds()` | 返回**拷贝**，改它不影响 store。 | — |
 | `subscribe(listener)` | 返回取消函数（幂等）。`listeners` 是 `Set`，同一函数重复订阅只登记一份。 | — |
 | `toggle(id)` | 已选中 → 删除并返回 `'removed'`；未选中且已达 `max` → 返回 `'rejected'`；否则加入并返回 `'added'`。 | 仅 `added` / `removed` 通知 |
+| `delete(id)` | 精确移除一个身份，返回是否真的删掉了。`removeLocal` 用它，只动这一个身份。 | 仅在确实删掉时通知 |
 | `replaceSingle(id)` | 选中集替换为仅含该 id，**不受 `max` 约束**。 | 总是通知 |
 | `clear()` | 清空。 | 仅在原本非空时通知 |
 | `retainOnly(existing)` | 删除所有不在 `existing` 里的身份。 | 仅在确实删掉了东西时通知 |
 
-`max = 0` 表示「任何 id 都不可选」。通知是同步遍历 `listeners` 执行，订阅者在回调里增删订阅是安全的（不抛错），但**新增的订阅可能被本轮通知到、删除的会被跳过**——组件本身不依赖这个顺序。
+`max = 0` 表示「任何 id 都不可选」。通知**先快照订阅者集合再遍历**，因此语义是确定的：本轮新增的订阅不会被本轮通知到，本轮注销的仍会收到本轮通知，不依赖 `Set` 的遍历时机。
 
 ---
 
@@ -585,22 +605,29 @@ interface Invalidatable {
   readonly id: string;
   invalidate(): void | Promise<void>;
 }
+type BoundedListController = Invalidatable; // 宿主侧沿用的历史名字
 
-function registerBoundedList(instance: Invalidatable): void;   // 内部：构造时自动调用
-function unregisterBoundedList(instance: Invalidatable): void; // 内部：dispose 时自动调用
-function invalidateAllBoundedLists(): void;                    // 公开
-function registeredBoundedListIds(): string[];                 // 公开
+function registerBoundedList(instance: Invalidatable): void;
+function unregisterBoundedList(instance: Invalidatable): void;
+function invalidateAllBoundedLists(): void;
+function registeredBoundedListIds(): string[];
 ```
 
 模块级 `Map<string, Invalidatable>` 单例，按 `id` 收敛：
 
 - 同 id 重复注册**互相覆盖**（旧实例应当已经 `dispose`）；
 - `unregisterBoundedList` 只在「注册表里那个实例就是传入的这个」时才删除，因此不会误删已经覆盖它的新实例；
-- `invalidateAllBoundedLists()` 用 `void instance.invalidate()` 逐个广播，**不 await**；广播过程中订阅者注销自己是安全的。
+- `invalidateAllBoundedLists()` **同步**逐个调用（宿主依赖「广播即触发」的时序），但同步抛错与异步拒绝都在这里兜住并降级为 `console.warn`：既不产生未处理的 Promise 拒绝，也不让一个实例的失败中断整轮广播；广播前先对实例集合快照，广播过程中注销自己是安全的。
 
 用途单一：重连成功等「广播一次 invalidate」的场景，调用方不需要感知具体有哪些列表实例。
 
-> ⚠️ 目前仓库里有**两套互不连通的注册表**：本模块，以及 `app-instance.ts` 自带的 `boundedLists` Map（`main-app.ts` 手工登记三个条目，重连时调的是 `app.invalidateBoundedLists()`）。视图迁移到 `createBoundedList` 之前必须先把两者合并，否则迁移后的列表收不到重连广播。详见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6.3 的 BL-BUG-24。
+**与宿主注册表的关系**：`app-instance.ts` 另有一份**按 AppInstance 隔离**的注册表（`main-app.ts` 登记三个条目，重连时调 `app.invalidateBoundedLists()`）。这份隔离是必要的——同一页面可以并存多个 AppInstance（嵌入式 UIKit 的多格子场景），它们的列表 id 完全相同，共用进程级注册表会互相覆盖。因此组件提供构造参数 `register`：
+
+```typescript
+const list = createBoundedList({ ..., register: (c) => app.registerBoundedList(c) });
+```
+
+传了 `register` 就登记到宿主注册表（重连广播能覆盖到它），不传才退化为本模块的进程级注册表（独立使用与单测场景）。`BoundedList` 本身满足 `BoundedListController` 契约（有 `id` 与 `invalidate()`），可以直接传进去。
 
 ---
 
@@ -655,10 +682,10 @@ flowchart TD
 | # | 路径 | 触发条件 | 效果 |
 |---|---|---|---|
 | ① | 用户自己滚回新鲜端 | 每个滚动帧检查 `stale && !loadingBefore && !loadingAfter && atFreshEdge` | 自动 `reset({ pinEdge: true })` |
-| ② | 翻页翻到新鲜端的尽头 | `loadMore(freshDirection)` 返回**空页** | `stale` 与 `pendingCount` **一并**清零 |
+| ② | 翻页翻到新鲜端的尽头 | `loadMore(freshDirection)` 之后该端 `hasMore` 收敛为 `false` | `stale` 与 `pendingCount` **一并**清零 |
 | ③ | 调用方主动 `reset` | 切换会话、切 tab、点击提示条 | `stale` 与 `pendingCount` 归零 |
 
-路径② 只认「空页」，不认「非空的最后一页把 `hasMore` 收敛为 false」，见 §15 的 BL-BUG-04。
+路径② 的判定是「该端 `hasMore` 变成 `false`」而不是「拿到空页」：非空的最后一页同样意味着新鲜端之后再无未加载数据，提示条必须一起消失。`onEmptyPage` 仍然只在真的拿到空页时回调，两者不是一回事。
 
 ### 13.3 触界检测与链式补页
 
@@ -672,9 +699,14 @@ maxScrollTop - scrollTop ≤ reachPx 且 hasMoreAfter  → loadAfter()
 
 引擎只用 `hasMore*` **快照**粗滤，真正的并发与终止守卫在 `loadMore` 内部（实时读 `loadingBefore` / `loadingAfter` / `hasMore*`）。
 
-「首屏不足一屏」由同一条循环覆盖：每次渲染后都触界检测，内容不满一屏就继续补页，直到填满视窗或某方向返回空页。正常情况下循环必然终止（每轮要么窗口变长、要么某端 `hasMore` 收敛为 `false`）；服务端违反契约或请求持续失败时不会终止，见 §15 的 BL-BUG-01。
+「首屏不足一屏」由同一条循环覆盖：每次渲染后都触界检测，内容不满一屏就继续补页，直到填满视窗或某方向返回空页。**列表为空时同样做触界检测**——服务端可能返回「空页但还有更多」（`around` 锚点加载的乐观策略、全过滤命中为空等），不检测就会永久定格在空态。只有 `loaded === false`（首屏尚未落定）这一条 early return 不检测。
 
-两条 early return **不做触界检测**：`loaded === false`（首屏未落定）与 `items.length === 0`（空列表）。后者会导致「空首页 + `hasMore=true`」停在空态不补页，见 §15 的 BL-BUG-08。
+循环的终止性由两道闸门保证：
+
+1. **空页强制收敛**：续翻拿到空页时窗口把该端 `hasMore` 置 `false`，不管服务端怎么说（§8）。服务端违反契约也停得下来。
+2. **失败退避**：某方向请求失败后，触界驱动的自动续翻在该方向被暂停，避免「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环（页面会因此完全卡住）。暂停在三种情况下解除——用户把该端滚离触界范围（`reachPx` 之外）、宿主显式调用 `loadMore(dir)`、或发生 `reset`。**暂停只挡自动触发，不挡显式调用**，所以「滚开再滚回来」这个最自然的重试手势照常可用。
+
+另外，某方向没有可用边界游标（空串）时 `loadMore` 直接返回不发请求：空串不是 reset 语义，发出去只会让服务端按未定义行为处理。窗口为空但服务端给过真实游标时，那个游标会作为 fallback 保留下来继续可用（§8）。
 
 ### 13.4 请求并发与丢弃
 
@@ -699,7 +731,7 @@ sequenceDiagram
 - `reset` 一进来就把 `loadingBefore` / `loadingAfter` 归零，因此被丢弃的 `loadMore` 不会留下悬空的加载标志。
 - 被丢弃的请求（无论成功还是失败）都**不触发任何回调**：不 `onError`、不 `onItemsChanged`、不重渲。
 - `dispose()` 之后同理：所有在飞请求的结果被丢弃。
-- **定向刷新（`fetchByIdentity`）只有 `disposed` 守卫，没有 requestId 守卫**，见 §15 的 BL-BUG-03。
+- **定向刷新（`fetchByIdentity`）用同一套守卫**：进入时捕获 `requestId`，`then` / `catch` 里比对，期间发生过 `reset` 就整体丢弃——否则陈旧结果会按身份 patch / remove 到已经重建过的新窗口上，最坏情况是误删新窗口里存在的条目。
 
 ### 13.5 点击与键盘的事件分发
 
@@ -725,23 +757,26 @@ flowchart TD
 1. pendingRender = false
 2. 先读：scrollOffset = scrollElement.scrollTop
         anchor = 视口顶部第一条可见条目 { key, delta }   // 拿不到布局信息时为 null
-        focusedKey = 当前聚焦下标对应的 key              // 越界时为 null
+        focusedIndex 越界则先钳制回 items.length - 1     // 必须早于下一行
+        focusedKey = 当前聚焦下标对应的 key              // 无焦点时为 null
 3. 后清：contentElement.innerHTML = ''
 4. loaded === false  → 只渲染 loadingText，直接返回（不恢复 scrollTop、不触界检测）
-   items.length === 0 → 只渲染 emptyText，focusedIndex 归 -1，直接返回（同上）
+   items.length === 0 → 渲染 errorText ?? emptyText，focusedIndex 归 -1，
+                        做一次触界检测后返回（不恢复 scrollTop）
 5. 头部：!hasMoreBefore && topBoundaryText → 边界提示
         否则 loadingBefore && loadingText  → 加载提示
 6. 逐条 renderItem(item, index)；首元素打 data-bsw-key；key === focusedKey 时加焦点 class
 7. 尾部：!hasMoreAfter && bottomBoundaryText → 边界提示
         否则 loadingAfter && loadingText    → 加载提示
 8. scrollTop 若被夹动则恢复；anchor 存在则按公式校正
-9. focusedIndex 越界时钳制回 items.length - 1
-10. checkReach()
+9. checkReach()
 ```
 
 **为什么「先读后清」**：`innerHTML = ''` 之后容器内容高度瞬间归零，浏览器会把 `scrollTop` 夹回 0，所以滚动位置与锚点都必须在清空前确定。
 
 锚点校正公式：`scrollTop += (锚点行新顶 - 视口顶) - delta`，对头部插入、尾部裁剪、双端同时变化一视同仁。前提是渲染后读到的行位置就是最终布局，这正是全量渲染（无估算）才能给出的保证。
+
+**焦点钳制必须早于取焦点键**：窗口变短时若先按旧下标取键、再钳制，这一次渲染会整帧丢失高亮，要再渲染一次才恢复。
 
 **指针按下期间不重建 DOM**：整列表重建会销毁鼠标按下的那一行节点，`mouseup` 落到新节点上，浏览器因「按下与抬起不在同一节点」而不再派发 `click`。因此按下到抬起之间的 `render` 只更新 `lastState` 并标记积压，抬起后的**下一帧**才应用；抬起到下一帧之间若又发生一次正常渲染，积压的冲刷退化为空操作。
 
@@ -753,10 +788,11 @@ flowchart TD
 
 1. **窗口有界**：`state.count ≤ pageSize × maxPages`（`upsertLocal` 撑大单页的软上界除外，会在下一次真实翻页时被整页裁剪收敛）。
 2. **DOM 有界**：条目节点数正比于 `state.count`，与数据总量无关。
-3. **身份唯一**：提供 `identityOf` 时，窗口内同一身份至多出现一次（页内重复与 `mergeLive` 除外，由 `normalize` 负责）。
-4. **游标只来自保留页**：续翻永远使用首页 `startCursor` / 尾页 `endCursor`，从不在客户端重建游标。
-5. **不产生未处理的 Promise 拒绝**：`reset` / `loadMore` 返回的 Promise 永远 resolve。
-6. **可完全释放**：`dispose()` 之后 `scrollElement`、`contentElement`、`window` 上由组件挂的监听数全部归 0，提示条 DOM 被摘除，注册表不再含该实例。
+3. **身份唯一**：提供 `identityOf` 时，窗口内同一身份至多出现一次——续翻与 `upsertLocal` 都做跨页去重，只有「同一页内部自带重复」这一种情况留给 `normalize`。
+4. **游标只来自保留页**：续翻永远使用首页 `startCursor` / 尾页 `endCursor`（窗口为空时退回 `setInitial` 的 fallback），从不在客户端重建游标；没有可用游标时宁可不发请求。
+5. **不产生未处理的 Promise 拒绝**：`reset` / `loadMore` 返回的 Promise 永远 resolve；注册表广播里的异步拒绝也被兜住。
+6. **自动加载必然终止**：空页强制收敛 + 失败退避，任何服务端行为下触界补页都不会变成不让出主线程的死循环。
+7. **可完全释放**：`dispose()` 之后 `scrollElement`、`contentElement`、`window` 上由组件挂的监听数全部归 0，提示条 DOM 被摘除，a11y 属性还原，已排队的滚动定位帧不再触碰 DOM，注册表不再含该实例。
 
 宿主必须保证的：
 
@@ -766,7 +802,8 @@ flowchart TD
 | 生命周期 | 弹窗 / 面板级实例在关闭路径 `dispose()`；页面级实例在宿主 disposer 里 `dispose()`；同 id 重建前先 `dispose()` 旧实例。 |
 | 事件路由 | 组件不订阅 SDK 事件。宿主把 SDK 事件翻译成 `invalidate()` / `render()` / `upsertLocal()` / `removeLocal()` / `reset()` 调用（路由表见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §4.7）。 |
 | 展示资料 | 昵称 / 头像走 SDK `DisplayInfoCache`；宿主在渲染前为窗口内条目批量预取，`display:updated` 到达后调 `render()`（不重拉、不动滚动位置）。 |
-| 键盘可达性 | 组件不设置 `tabindex` / `role`；需要键盘导航的宿主要自己让 `scrollElement` 可聚焦（见 §15 的 BL-BUG-21）。 |
+| 键盘可达性 | 组件自己补 `tabindex="0"` / `role="listbox"`（多选再加 `aria-multiselectable`），并给每行首元素补 `role="option"` 与（开启 selection 时）`aria-selected`；`dispose()` 会把容器上这几个属性还回去。宿主如果对这些属性有自己的安排，需要在 `dispose()` 之后重设。 |
+| 多实例 | 同一页面并存多个 AppInstance 时，创建列表必须传 `register: (c) => app.registerBoundedList(c)`，否则重连广播会因为 id 相同而互相覆盖。 |
 
 ---
 
@@ -776,33 +813,23 @@ flowchart TD
 
 | # | 契约原文 | 实现 | 原因 |
 |---|---|---|---|
-| 1 | `state.loaded` = 首屏是否已加载 | 用组件自己的 `firstLoadDone`，而不是 `PageWindow.loaded` | `PageWindow` 对「真实为空的首页」和「尚未加载」都表现为 `pages.length === 0`，无法区分「还在转圈」与「确认没有数据」。 |
+| 1 | `state.loaded` = 首屏是否已加载 | 用组件自己的 `firstLoadDone`，而不是 `PageWindow.loaded`；另加 `state.failed` 区分「加载失败」 | `PageWindow` 对「真实为空的首页」和「尚未加载」都表现为 `pages.length === 0`，无法区分「还在转圈」与「确认没有数据」；而只有 `loaded` 一个布尔量也分不出「没有数据」与「加载失败」。 |
 | 2 | §4.5 决策图：多选**点击复选框**才检查上限 | 无论点在行的哪个区域都检查上限 | 按原图，点击复选框以外的区域会绕开上限判断直接翻转选中，等于允许点几下行内空白就突破 `max`——这是真实可利用的上限绕过，不是有意的产品行为。 |
+| 3 | §5.3 路径②：触界续翻拿到**空页** | 判定改为「新鲜端 `hasMore` 收敛为 `false`」 | 非空的最后一页同样意味着新鲜端之后再无未加载数据，只认空页会让提示条继续亮着。 |
 
-### 15.2 尚未实现的契约项
+### 15.2 相对契约新增的能力
 
-| 契约项 | 现状 | 缺陷编号 |
-|---|---|---|
-| `load` 捕获 → `freshEdge='tail'` 且贴边时摁回底部 | 渲染引擎支持 `onContentLoad`，但组件外壳没有接线 | BL-BUG-06 |
-| `localPageSource` 的 `loadAll` 进度反馈（「已加载 N 人」） | `PageSource.fetch` 没有透传 `onProgress` 的入口，形参恒为 `undefined` | BL-BUG-19 |
-| a11y（`role` / `tabindex` / 方向键可达） | 键盘处理已实现，但组件不设置任何可访问性属性 | BL-BUG-21 |
-| 加载失败的错误态 | 失败后窗口为空 + `loaded = true`，界面显示「暂无数据」 | BL-BUG-16 |
+这几项是实现过程中补出来的，契约文档里没有，属于本文先行：
 
-### 15.3 已确认的缺陷
+| 能力 | 说明 |
+|---|---|
+| `register` 构造参数 | 把实例登记到宿主注册表而不是进程级注册表，保证多 AppInstance 场景下重连广播不串台（§11）。 |
+| `text.error` / `text.retry` + `state.failed` | 首屏失败时显示错误态而不是「暂无数据」，提示条位置复用为重试入口（§3.3、§6）。 |
+| `onLoadProgress` + `FetchPageRequest.onProgress` | 把 `localPageSource` 的全量拉取进度透给宿主（「已加载 N 人」）（§4.8、§7.2）。 |
+| a11y 属性 | `tabindex` / `role=listbox` / `role=option` / `aria-selected` / `aria-multiselectable`，`dispose()` 时还原（§14）。 |
+| 构造期参数校验 | `pageSize` / `maxPages` 必须 ≥ 1 的整数，`selection.store` 与 `selection.max` 互斥，违者抛错（§5）。 |
+| 自动加载终止性 | 空页强制收敛 + 失败退避 + 空游标短路，保证触界补页在任何服务端行为下都会停（§13.3）。 |
 
-完整清单（成因、复现、修复建议、优先级）见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6，每条都有锁定当前行为的回归用例。摘要：
+### 15.3 缺陷状态
 
-| 编号 | 优先级 | 一句话 |
-|---|---|---|
-| BL-BUG-01 | P0 | 翻页失败后立即重试，贴边且窗口不足一屏时形成不让出主线程的无限重试 |
-| BL-BUG-02 | P0 | `removeLocal` 的选中集修剪会清掉共享 `SelectionStore` 中属于其它实例 / `pinnedItems` 的选中项 |
-| BL-BUG-03 | P0 | 定向刷新回调没有 requestId 守卫，`reset` 之后陈旧结果仍会作用到新窗口 |
-| BL-BUG-04 | P1 | 非空的最后一页把 `hasMore` 收敛为 `false` 时提示条不消失 |
-| BL-BUG-05 | P1 | 未提供 `text.updatePill` 时提示条仍以空文案显示 |
-| BL-BUG-06 | P1 | `onContentLoad` 未接线 |
-| BL-BUG-07 | P1 | `isActive() === false` 时不重渲，提示条与状态脱节 |
-| BL-BUG-08 | P1 | 空首页 + `hasMoreForward=true` 时停在空态不补页 |
-| BL-BUG-09 | P1 | `upsertLocal` 不做身份去重，重复并入会重复渲染 |
-| BL-BUG-10 | P1 | `mergeLive` 在空窗口自建页时游标为空串，后续续翻带着空游标请求 |
-| BL-BUG-24 | P1 | 存在两套互不连通的注册表，重连广播打不到 `createBoundedList` 创建的实例 |
-| BL-BUG-11…23、25 | P2 | 见测试方案 §6 |
+首轮评审列出的 25 条缺陷（BL-BUG-01 ~ BL-BUG-25）**已全部修复**，每条都有对应的回归用例守着。清单、成因与对应用例见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6。

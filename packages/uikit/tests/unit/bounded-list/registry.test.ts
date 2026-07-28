@@ -94,9 +94,38 @@ describe('BoundedList 注册表 / B 广播', () => {
     expect(settled).toBe(false); // 没有被 await
     await new Promise((resolve) => setTimeout(resolve, 1));
     expect(settled).toBe(true);
-    // 注意：广播用 `void instance.invalidate()` 丢弃返回值，异步实现一旦拒绝就会变成
-    // 未处理拒绝（见 BL-BUG-23）；当前仓库里的 BoundedList.invalidate 是同步 void，
-    // 因此这条风险还没有被真实触发。
+  });
+
+  it('B5 异步 invalidate 拒绝时只记日志，不产生未处理的 Promise 拒绝', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const rejecting = track({ id: 'registry.reject', invalidate: () => Promise.reject(new Error('boom')) });
+      const healthy = track(fakeList('registry.after-reject'));
+      registerBoundedList(rejecting);
+      registerBoundedList(healthy);
+      expect(() => invalidateAllBoundedLists()).not.toThrow();
+      expect(healthy.invalidate).toHaveBeenCalledTimes(1); // 一个失败不中断整轮广播
+      // 让潜在的未处理拒绝有机会冒出来（vitest 会把它算作失败）。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('B6 同步抛错的 invalidate 同样被兜住，后续实例照常收到广播', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const throwing = track({ id: 'registry.throw', invalidate: () => { throw new Error('sync boom'); } });
+      const healthy = track(fakeList('registry.after-throw'));
+      registerBoundedList(throwing);
+      registerBoundedList(healthy);
+      expect(() => invalidateAllBoundedLists()).not.toThrow();
+      expect(healthy.invalidate).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('B3 空注册表广播是空操作', () => {

@@ -165,13 +165,36 @@ describe('PageSource / B localPageSource', () => {
     await expect(source.fetch({ backward: false, limit: 10, query: undefined })).rejects.toThrow('全量拉取失败');
   });
 
-  it('B8 loadAll 的 onProgress 形参存在，但 fetch 当前不透传（见 BL-BUG-19）', async () => {
+  it('B8 reset 请求携带的 onProgress 会透传给 loadAll，进度如实回流给调用方', async () => {
+    const progressed: number[] = [];
+    const source = localPageSource<Item, void>({
+      loadAll: async (_q, onProgress) => {
+        onProgress?.(100);
+        onProgress?.(200);
+        return makeItems(3);
+      },
+    });
+    await source.fetch({ backward: false, limit: 3, query: undefined, onProgress: (n) => progressed.push(n) });
+    expect(progressed).toEqual([100, 200]);
+  });
+
+  it('B9 请求里没有 onProgress 时 loadAll 拿到的就是 undefined（不硬造一个空回调）', async () => {
     const seen: Array<unknown> = [];
     const source = localPageSource<Item, void>({
       loadAll: async (_q, onProgress) => { seen.push(onProgress); return makeItems(3); },
     });
     await source.fetch({ backward: false, limit: 3, query: undefined });
     expect(seen).toEqual([undefined]);
+  });
+
+  it('B10 续翻（走缓存切片）不重新 loadAll，因此也不会重复上报进度', async () => {
+    const progressed: number[] = [];
+    const source = localPageSource<Item, void>({
+      loadAll: async (_q, onProgress) => { onProgress?.(10); return makeItems(10); },
+    });
+    await source.fetch({ backward: false, limit: 4, query: undefined, onProgress: (n) => progressed.push(n) });
+    await source.fetch({ cursor: '4', backward: false, limit: 4, query: undefined, onProgress: (n) => progressed.push(n) });
+    expect(progressed).toEqual([10]);
   });
 });
 
@@ -249,6 +272,23 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     expect(page.startCursor).toBe('0');
     expect(page.endCursor).toBe('3');
     expect(page.hasMoreBackward).toBe(false);
+  });
+
+  it('C8 非法游标（无法解析成有限数）按 0 处理，绝不产出 "NaN" 这种再也翻不动的游标', async () => {
+    const source = localPageSource<Item, void>({ loadAll: async () => makeItems(5) });
+    await source.fetch({ backward: false, limit: 5, query: undefined });
+
+    for (const bad of ['not-a-number', '', 'Infinity', '1e', 'NaN']) {
+      const forward = await source.fetch({ cursor: bad, backward: false, limit: 2, query: undefined });
+      expect(forward.items.map((i) => i.id)).toEqual([0, 1]);
+      expect(forward.startCursor).toBe('0');
+      expect(forward.endCursor).toBe('2');
+
+      const backward = await source.fetch({ cursor: bad, backward: true, limit: 2, query: undefined });
+      expect(backward.items).toEqual([]);
+      expect(backward.startCursor).toBe('0');
+      expect(backward.hasMoreBackward).toBe(false);
+    }
   });
 
   it('C7 reload 之后旧下标游标不再指向同一条目，但仍被夹紧到合法区间（不越界、不抛错）', async () => {

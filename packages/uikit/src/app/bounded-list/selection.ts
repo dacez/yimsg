@@ -46,6 +46,13 @@ export class SelectionStore {
     return 'added';
   }
 
+  /** 精确移除某个 id；返回是否真的删掉了（只在删掉时通知）。 */
+  delete(id: string): boolean {
+    if (!this.ids.delete(id)) return false;
+    this.notify();
+    return true;
+  }
+
   /** 单选场景：选中集替换为仅含该 id。 */
   replaceSingle(id: string): void {
     this.ids = new Set([id]);
@@ -70,7 +77,9 @@ export class SelectionStore {
     if (changed) this.notify();
   }
 
+  // 先快照再遍历：订阅者在回调里增删订阅时，本轮通知的对象集合是确定的
+  // （新增的不会被本轮通知到，注销的仍会收到本轮通知），避免顺序相关的隐式契约。
   private notify(): void {
-    for (const listener of this.listeners) listener();
+    for (const listener of [...this.listeners]) listener();
   }
 }

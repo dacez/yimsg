@@ -29,7 +29,8 @@ export interface LocalPageSourceOptions<T, Q> {
  *
  * 游标编码：字符串化的下标，startCursor/endCursor 分别是该页在 entries 里的
  * [start, end) 半开区间端点。这套编码完全是 localPageSource 内部实现细节，
- * 与服务端不透明游标不共享、不混用。
+ * 与服务端不透明游标不共享、不混用。非法游标（无法解析成有限数）按 0 处理，
+ * 绝不产出 "NaN" 这种此后永远翻不动的游标。
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
   let entries: T[] = [];
@@ -53,13 +54,18 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
     };
   }
 
+  function parseCursor(raw: string): number {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
   return {
     async fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>> {
       if (req.cursor === undefined) {
-        await reload(req.query);
+        await reload(req.query, req.onProgress);
         return slice(0, req.limit);
       }
-      const cursor = Number(req.cursor);
+      const cursor = parseCursor(req.cursor);
       if (req.backward) {
         return slice(cursor - req.limit, cursor);
       }
