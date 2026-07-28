@@ -1,8 +1,8 @@
 # UIKit 方案
 
-> 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`。
-> 最后复核：2026-07-25。
-> 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物或宿主回调变化时同步更新。
+> 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`、`packages/uikit/src/app/bounded-list/` 与 `apps/web/tests/ui/bounded-list/`。
+> 最后复核：2026-07-28。
+> 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物、宿主回调或 UIKit 核心组件测试入口变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
 ## 目录
@@ -256,7 +256,7 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 - **事件桥接**：嵌入态通过 `AppRuntimeContext` 暴露稳定 widget 回调，不要求宿主理解 SDK 内部事件流。
 - **主题隔离**：`theme.ts` 输出 `--mc-*` 变量并映射到应用 CSS 变量；`unmount()` 只清理 UIKit 自己注入的变量。
 - **安全渲染**：外部 URL 必须经过 `safe-dom.ts` allowlist；普通文本默认走 `textContent` 或统一转义；HTML 只能通过显式 `SafeHtml`。
-- **大列表**：会话、消息、好友、好友请求、群成员、转发候选、建群候选均使用分页读取或有界窗口渲染。
+- **大列表**：生产视图中已接入的会话、消息、好友、好友请求、群成员、转发候选和建群候选使用分页读取或旧有界窗口渲染；统一 BoundedList 核心已独立实现但生产调用方尚未迁移，未接入场景与状态见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)。
 - **不使用 URL 路由**：当前视图和打开中的会话只存于内存，不读写 `location`/`history`，不支持深链；应用内任何操作都不写浏览器历史，保证浏览器"后退"始终直接离开应用。宿主页面需要程序化打开指定会话时用 `handle.openConversation(target)`。
 - **弹层不挣脱宿主容器**：`.modal-overlay`/`.toast-container`/`.msg-viewer-overlay` 等用 `position:fixed` 铺满可视区域；Shadow DOM 边界本身不会限制 `fixed` 定位的包含块（依然相对浏览器视口），嵌入态宿主容器通常远小于视口。`style.css` 用 `.mc-app-shell[data-embedded]{position:relative;contain:layout}` 给 shell 根节点建立新的包含块（CSS Containment），使这些 `fixed` 元素被约束在宿主容器范围内；独立部署（非嵌入）时 `.mc-app-shell` 本就铺满视口，不加这条规则也一样。
 
@@ -268,13 +268,18 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | 单元测试 | `packages/uikit/tests/unit/uikit-theme-i18n.test.ts` | 主题变量、locale 覆盖、运行期切换 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-mode.test.ts`、`startup-mode.test.ts` | mode 分支、布局决策 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-navigation.test.ts` | `switchView` 在 `chat-only` / `contacts-only` 显示范围下强制落回对应视图 |
-| 单元测试 | `packages/uikit/tests/unit/uikit-bounded-stream-window.test.ts` | 分页列表引擎：窗口切片、全量渲染、边界提示、触界加载 |
+| 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | 独立 BoundedList 核心：组件外壳、PageWindow、PageSource、SelectionStore、registry、StreamWindow、提示条 |
+| 单元测试 | `packages/uikit/tests/unit/uikit-bounded-stream-window.test.ts`、`uikit-bounded-page-window.test.ts` | 生产视图仍使用的旧分页窗口：全量渲染、边界提示、触界加载 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-security.test.ts` | URL allowlist、SafeHtml、转义约束 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-settings-clear-data.test.ts` | 设置页「清除数据」按钮：仅 persistent 模式展示、确认弹窗、resetLocalData=current-user 重新初始化、失败与降级分支 |
 | UI 测试 | `apps/web/tests/ui/uikit-embed.spec.ts` | ESM 挂载、Shadow DOM、认证、句柄、主题、卸载、`viewMode: 'chat-only'` 隐藏底部导航栏 |
 | UI 测试 | `apps/web/tests/ui/security.spec.ts` | 恶意输入不执行、不生成危险 DOM |
 | UI 测试 | `apps/web/tests/ui/settings.spec.ts` | 「清除数据」按钮可见性与端到端清空重同步 |
+| UI 组件测试 | `apps/web/tests/ui/bounded-list/bounded-list.spec.ts` | 真实 Chromium 中覆盖全部 BoundedList 参数、命令、回调、DOM 事件、并发、错误、选择与生命周期 |
+| UI 性能测试 | `apps/web/tests/ui/bounded-list/bounded-list.performance.spec.ts` | 100,000 条本地数据、逻辑 1,000,000 条、长程分页、事件风暴、创建 / 销毁与实时插入的容量和性能门禁 |
 | UI 测试 | `apps/web/tests/ui/*.spec.ts` | 主应用持久存储全量能力 |
+
+BoundedList 专项截至 2026-07-28 共 40 个 Playwright 用例、11 个唯一已知缺陷。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)，OPEN 缺陷见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。
 
 ## 11. 已知边界
 
@@ -286,6 +291,8 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 
 - 前端总览：[`前端设计方案.md`](../../../docs/architecture/前端设计方案.md)
 - UI 视图与有界消息流窗口：[`UI设计方案.md`](UI设计方案.md)
+- BoundedList 完整设计：[`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)
+- BoundedList 缺陷：[`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)
 - SDK 内核：[`sdk设计方案.md`](../../sdk/docs/sdk设计方案.md)
 - SDK 对外接口：[`sdk接口说明.md`](../../sdk/docs/sdk接口说明.md)
 - 测试口径：[`../../测试方案.md`](../../../docs/development/测试方案.md)

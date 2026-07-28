@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
+const boundedListStandalone = process.env.BOUNDED_LIST_STANDALONE === '1';
+
 export default defineConfig({
   testDir: './tests/ui',
   // UI E2E 会在全量脚本中与服务端和多浏览器上下文共同运行；
@@ -15,13 +17,15 @@ export default defineConfig({
   // 可用 PLAYWRIGHT_WORKERS 覆盖（数字或百分比，如 "4" / "50%"）。环境变量恒为字符串，
   // 而 Playwright 校验只接受真正的 number 类型或以 "%" 结尾的字符串，纯数字字符串会被
   // 拒绝，因此这里做一次数字字符串到 number 的转换。
-  workers: (() => {
+  workers: boundedListStandalone ? 1 : (() => {
     const raw = process.env.PLAYWRIGHT_WORKERS;
     if (!raw) return '100%';
     return /^\d+$/.test(raw) ? Number(raw) : raw;
   })(),
-  globalSetup: './tests/ui/global-setup.ts',
-  globalTeardown: './tests/ui/global-teardown.ts',
+  // BoundedList fixture 完全由 route.fulfill 提供，无账号、数据库或后端依赖；
+  // 专项调试可显式跳过昂贵的全局 seed/build/server，常规全量测试保持原流程。
+  globalSetup: boundedListStandalone ? undefined : './tests/ui/global-setup.ts',
+  globalTeardown: boundedListStandalone ? undefined : './tests/ui/global-teardown.ts',
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:18080',
     ignoreHTTPSErrors: false,
@@ -30,10 +34,21 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: '**/*.performance.spec.ts',
       // 使用完整 chromium 构建（channel: 'chromium'）以新版无头模式运行，
       // 而非单独的 chrome-headless-shell 二进制：后者是一个额外的大体积下载，
       // 在受限代理 / 沙箱网络下最易被中断而导致整轮 UI 测试失败；
       // 完整 chromium 构建下载更稳定，且功能与无头能力完全一致。
+      use: { browserName: 'chromium', channel: 'chromium' },
+    },
+    {
+      // 性能门禁依赖普通 Chromium 回归先通过；本项目仅匹配一个顺序执行的 spec，
+      // 因而独占单 worker，且关闭 retry，避免并发争抢或重试掩盖真实性能退化。
+      name: 'chromium-bounded-list-performance',
+      testMatch: '**/*.performance.spec.ts',
+      dependencies: boundedListStandalone ? [] : ['chromium'],
+      fullyParallel: false,
+      retries: 0,
       use: { browserName: 'chromium', channel: 'chromium' },
     },
   ],
