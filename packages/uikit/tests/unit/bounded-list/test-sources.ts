@@ -46,6 +46,61 @@ export function createInstantSource(getAll: () => TestItem[], opts?: { withTotal
   };
 }
 
+/**
+ * 以「窗口中部」为起点的数据源：首页从 anchor 处切，两端都还有更多。
+ * 用于双向续翻、双向裁剪、以及 around 锚点加载的场景。
+ */
+export function createAnchoredSource(getAll: () => TestItem[], anchorIndex: number): PageSource<TestItem, void> {
+  return {
+    async fetch(req: FetchPageRequest<void>): Promise<PageLoadResult<TestItem>> {
+      const all = getAll();
+      const clamp = (n: number) => Math.max(0, Math.min(n, all.length));
+      let start: number;
+      let end: number;
+      if (req.cursor === undefined) {
+        start = clamp(anchorIndex);
+        end = clamp(anchorIndex + req.limit);
+      } else if (req.backward) {
+        end = clamp(Number(req.cursor));
+        start = clamp(end - req.limit);
+      } else {
+        start = clamp(Number(req.cursor));
+        end = clamp(start + req.limit);
+      }
+      return {
+        items: all.slice(start, end),
+        startCursor: String(start),
+        endCursor: String(end),
+        hasMoreBackward: start > 0,
+        hasMoreForward: end < all.length,
+      };
+    },
+  };
+}
+
+/**
+ * 「乐观 hasMore」数据源：满页时先乐观认为可能还有更多（真实 keyset 分页在拿到一整页
+ * 之前无法确定是否已到末尾），只有真正拿到一页空结果才收敛为 false。
+ * 用于覆盖「触界续翻拿到空页」这条路径。
+ */
+export function createOptimisticSource(getAll: () => TestItem[]): PageSource<TestItem, void> {
+  return {
+    async fetch(req: FetchPageRequest<void>): Promise<PageLoadResult<TestItem>> {
+      const all = getAll();
+      const cursor = req.cursor === undefined ? 0 : Number(req.cursor);
+      const end = Math.min(all.length, cursor + req.limit);
+      const page = all.slice(cursor, end);
+      return {
+        items: page,
+        startCursor: String(cursor),
+        endCursor: String(end),
+        hasMoreBackward: cursor > 0,
+        hasMoreForward: page.length === req.limit,
+      };
+    },
+  };
+}
+
 export interface PendingFetch<T, Q> {
   readonly req: FetchPageRequest<Q>;
   resolve: (page: PageLoadResult<T>) => void;
@@ -63,6 +118,28 @@ export function createControllableSource<T, Q = void>(): { source: PageSource<T,
     },
   };
   return { source, pending };
+}
+
+/** 手动控制的定向拉取（fetchByIdentity），配合 invalidate 的竞态与失败路径断言。 */
+export function createControllableFetcher<T>(): {
+  fetchByIdentity: (ids: readonly string[]) => Promise<readonly T[]>;
+  calls: string[][];
+  settle: (index: number, result: readonly T[]) => void;
+  fail: (index: number, err: unknown) => void;
+} {
+  const calls: string[][] = [];
+  const settlers: Array<{ resolve: (v: readonly T[]) => void; reject: (e: unknown) => void }> = [];
+  return {
+    calls,
+    fetchByIdentity: (ids: readonly string[]) => {
+      calls.push([...ids]);
+      return new Promise<readonly T[]>((resolve, reject) => {
+        settlers.push({ resolve, reject });
+      });
+    },
+    settle: (index, result) => settlers[index].resolve(result),
+    fail: (index, err) => settlers[index].reject(err),
+  };
 }
 
 export function pageOf(items: TestItem[], startCursor: string, endCursor: string, hasMoreBackward: boolean, hasMoreForward: boolean, total?: number): PageLoadResult<TestItem> {

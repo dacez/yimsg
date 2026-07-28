@@ -156,11 +156,36 @@ export class FakeWindow {
 }
 
 export class FakeDocument {
-  readonly defaultView = new FakeWindow();
+  readonly defaultView: FakeWindow | null;
+
+  /** withView=false 模拟 `ownerDocument.defaultView` 为 null 的宿主（detached document / 某些嵌入环境）。 */
+  constructor(options: { withView?: boolean } = {}) {
+    this.defaultView = options.withView === false ? null : new FakeWindow();
+  }
 
   createElement(_tag?: string): FakeElement {
     return new FakeElement(this);
   }
+}
+
+/** 取 fake window（默认构造的 FakeDocument 一定有；withView:false 的文档不应调用本函数）。 */
+export function viewOf(doc: FakeDocument): FakeWindow {
+  if (!doc.defaultView) throw new Error('该 FakeDocument 没有 defaultView');
+  return doc.defaultView;
+}
+
+/**
+ * 去掉元素的 getBoundingClientRect，模拟「拿不到布局信息」的宿主环境
+ * （渲染引擎的锚点、scrollToKey 都对此有显式降级分支）。
+ */
+export function stripBoundingRect(el: FakeElement): FakeElement {
+  Object.defineProperty(el, 'getBoundingClientRect', { value: undefined, configurable: true });
+  return el;
+}
+
+/** 取出某个元素上已注册的某类监听器（用于「注销之后仍被残留调用」这类白盒断言）。 */
+export function capturedListeners(el: FakeElement, type: string): Array<(ev: any) => void> {
+  return (el.listeners.get(type) ?? []).map((entry) => entry.handler);
 }
 
 export function createScroller(doc: FakeDocument = new FakeDocument()): FakeElement {
