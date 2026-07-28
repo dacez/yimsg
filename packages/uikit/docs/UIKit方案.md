@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`、`packages/uikit/src/app/bounded-list/` 与 `apps/web/tests/ui/bounded-list/`。
-> 最后复核：2026-07-28。
+> 最后复核：2026-07-29。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物、宿主回调或 UIKit 核心组件测试入口变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -279,7 +279,7 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | UI 性能测试 | `apps/web/tests/ui/bounded-list/bounded-list.performance.spec.ts` | 100,000 条本地数据、逻辑 1,000,000 条、长程分页、事件风暴、创建 / 销毁与实时插入的容量和性能门禁 |
 | UI 测试 | `apps/web/tests/ui/*.spec.ts` | 主应用持久存储全量能力 |
 
-BoundedList 专项截至 2026-07-28 共 40 个 Playwright 用例、11 个唯一已知缺陷。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)，OPEN 缺陷见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。
+BoundedList 专项截至 2026-07-29 共 57 个 Playwright 用例（51 个功能用例、6 个性能用例），全部通过；此前登记的 12 个唯一缺陷均已关闭。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)，关闭证据见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。
 
 ## 11. 已知边界
 

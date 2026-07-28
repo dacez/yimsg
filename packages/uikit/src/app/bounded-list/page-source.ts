@@ -34,23 +34,36 @@ export interface LocalPageSourceOptions<T, Q> {
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
   let entries: T[] = [];
+  let reloadGeneration = 0;
 
-  async function reload(query: Q, onProgress?: (loaded: number) => void): Promise<void> {
-    const all = await options.loadAll(query, onProgress);
+  async function reload(query: Q, onProgress?: (loaded: number) => void): Promise<T[]> {
+    const generation = ++reloadGeneration;
+    const all = await options.loadAll(
+      query,
+      onProgress
+        ? (loaded) => {
+          if (generation === reloadGeneration) onProgress(loaded);
+        }
+        : undefined,
+    );
     const filtered = options.filter ? all.filter((item) => options.filter!(item, query)) : all.slice();
-    entries = options.compare ? filtered.sort(options.compare) : filtered;
+    const prepared = options.compare ? filtered.sort(options.compare) : filtered;
+    // 两个 reset 可能并发：旧查询晚返回时，它自己的首页结果仍可交给上层世代守卫丢弃，
+    // 但绝不能覆盖新查询已经建立的共享续翻快照。
+    if (generation === reloadGeneration) entries = prepared;
+    return prepared;
   }
 
-  function slice(start: number, end: number): PageLoadResult<T> {
-    const clampedStart = Math.max(0, Math.min(start, entries.length));
-    const clampedEnd = Math.max(clampedStart, Math.min(end, entries.length));
+  function slice(source: readonly T[], start: number, end: number): PageLoadResult<T> {
+    const clampedStart = Math.max(0, Math.min(start, source.length));
+    const clampedEnd = Math.max(clampedStart, Math.min(end, source.length));
     return {
-      items: entries.slice(clampedStart, clampedEnd),
+      items: source.slice(clampedStart, clampedEnd),
       startCursor: String(clampedStart),
       endCursor: String(clampedEnd),
       hasMoreBackward: clampedStart > 0,
-      hasMoreForward: clampedEnd < entries.length,
-      total: entries.length,
+      hasMoreForward: clampedEnd < source.length,
+      total: source.length,
     };
   }
 
@@ -62,14 +75,14 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
   return {
     async fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>> {
       if (req.cursor === undefined) {
-        await reload(req.query, req.onProgress);
-        return slice(0, req.limit);
+        const snapshot = await reload(req.query, req.onProgress);
+        return slice(snapshot, 0, req.limit);
       }
       const cursor = parseCursor(req.cursor);
       if (req.backward) {
-        return slice(cursor - req.limit, cursor);
+        return slice(entries, cursor - req.limit, cursor);
       }
-      return slice(cursor, cursor + req.limit);
+      return slice(entries, cursor, cursor + req.limit);
     },
   };
 }

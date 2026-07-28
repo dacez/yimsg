@@ -199,12 +199,16 @@ describe('BoundedList / A 构造与默认值', () => {
   it('A9 pageSize / maxPages 非法时构造直接抛错，不静默退化', () => {
     const host = createHost();
     const source = createInstantSource(() => []);
-    for (const pageSize of [0, -1, 1.5, Number.NaN]) {
+    for (const pageSize of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
       expect(() => createBoundedList(baseOptions(host, source, { pageSize }))).toThrow(RangeError);
     }
-    for (const maxPages of [0, -1, 2.5, Number.NaN]) {
+    for (const maxPages of [0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
       expect(() => createBoundedList(baseOptions(host, source, { maxPages }))).toThrow(RangeError);
     }
+    expect(() => createBoundedList(baseOptions(host, source, {
+      pageSize: Number.MAX_SAFE_INTEGER,
+      maxPages: 2,
+    }))).toThrow(RangeError);
   });
 
   it('A10 selection.store 与 selection.max 同时给出时构造抛错（避免 max 被静默忽略）', () => {
@@ -245,6 +249,24 @@ describe('BoundedList / A 构造与默认值', () => {
     expect(host.scroller.children[0].getAttribute('role')).toBe('option');
     expect(host.scroller.children[0].getAttribute('aria-selected')).toBeNull();
     list.dispose();
+  });
+
+  it('A12b dispose 精确恢复宿主原有 a11y 属性，而不是一律删除', () => {
+    const host = createHost();
+    host.scroller.setAttribute('tabindex', '7');
+    host.scroller.setAttribute('role', 'feed');
+    host.scroller.setAttribute('aria-multiselectable', 'false');
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => []), {
+      selection: { mode: 'multi' },
+    }));
+    expect(host.scroller.getAttribute('tabindex')).toBe('0');
+    expect(host.scroller.getAttribute('role')).toBe('listbox');
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBe('true');
+
+    list.dispose();
+    expect(host.scroller.getAttribute('tabindex')).toBe('7');
+    expect(host.scroller.getAttribute('role')).toBe('feed');
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBe('false');
   });
 
   it('A13 register 提供时登记到宿主注册表而非模块级注册表（多实例隔离）', async () => {
@@ -468,6 +490,56 @@ describe('BoundedList / B reset 首屏', () => {
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }, { pageSize: 40 }));
     await list.reset();
     expect(fetchSpy).toHaveBeenCalledWith({ cursor: undefined, backward: false, limit: 40, query: undefined });
+    list.dispose();
+  });
+
+  it('B13 普通 reset 在飞期间的 upsert/patch/remove 按 identity 最终态重放', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    let latest: readonly TestItem[] = [];
+    const list = createBoundedList(baseOptions(host, source, {
+      freshEdge: 'tail',
+      pageSize: 3,
+      maxPages: 2,
+      onItemsChanged: (items) => { latest = items; },
+    }));
+
+    const resetting = list.reset({ pinEdge: false });
+    list.upsertLocal({ id: 1, label: 'local-remove' });
+    list.upsertLocal({ id: 2, label: 'local-draft' });
+    expect(list.patch('2', (item) => ({ ...item, label: 'local-draft-v2' }))).toBe(true);
+    expect(list.removeLocal('1')).toBe(true);
+
+    pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+    await resetting;
+    expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+    expect(latest.find((item) => item.id === 2)?.label).toBe('local-draft-v2');
+    expect(list.getState().count).toBe(2);
+    list.dispose();
+  });
+
+  it('B14 reset 在飞 mutation 超过硬预算时拒绝旧响应，不自动循环请求也不清空本地窗口', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const onError = vi.fn();
+    const list = createBoundedList(baseOptions(host, source, {
+      freshEdge: 'tail',
+      pageSize: 2,
+      maxPages: 1,
+      onError,
+    }));
+
+    const resetting = list.reset({ pinEdge: false });
+    list.upsertLocal({ id: 10, label: 'local-10' });
+    list.upsertLocal({ id: 11, label: 'local-11' });
+    list.upsertLocal({ id: 12, label: 'local-12' });
+    pending[0].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
+    await resetting;
+
+    expect(pending).toHaveLength(1);
+    expect(renderedRows(host)).toEqual(['row-11', 'row-12']);
+    expect(list.getState()).toMatchObject({ loaded: true, failed: true, stale: true, count: 2 });
+    expect(onError).toHaveBeenCalledWith(expect.any(RangeError), 'reset');
     list.dispose();
   });
 });
@@ -809,6 +881,34 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     list.dispose();
   });
 
+  it('C9b normalize 后为空按 accepted count 回调，但下一次续翻使用已前进的新游标', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    const onEmptyPage = vi.fn();
+    const list = createBoundedList(baseOptions(host, source, {
+      pageSize: 1,
+      maxPages: 3,
+      normalize: (items) => items.filter((item) => item.id !== 1),
+      onEmptyPage,
+    }));
+    const initial = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf([{ id: 0, label: 'item-0' }], 's0', 'e0', false, true));
+    await initial;
+
+    const filtered = list.loadMore('forward');
+    pending[1].resolve(pageOf([{ id: 1, label: 'filtered' }], 's1', 'e1', true, true));
+    await filtered;
+    expect(onEmptyPage).toHaveBeenCalledWith('forward');
+    expect(list.getState().hasMoreAfter).toBe(true);
+
+    const next = list.loadMore('forward');
+    expect(pending[2].req.cursor).toBe('e1');
+    pending[2].resolve(pageOf([{ id: 2, label: 'item-2' }], 's2', 'e2', true, false));
+    await next;
+    expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+    list.dispose();
+  });
+
   it('C10 loadMore 期间发生 reset：陈旧结果被丢弃，loading 标志由 reset 归零', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
@@ -857,6 +957,33 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     }));
     await list.reset({ pinEdge: false });
     expect(rendered(host)).toEqual(['row-2', 'row-1', 'row-0']);
+    list.dispose();
+  });
+
+  it('C21 loadMore 在飞期间的本地更新不会被返回页中的同 identity 旧值覆盖', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const host = createHost();
+    let latest: readonly TestItem[] = [];
+    const list = createBoundedList(baseOptions(host, source, {
+      freshEdge: 'tail',
+      pageSize: 2,
+      maxPages: 2,
+      onItemsChanged: (items) => { latest = items; },
+    }));
+    const initial = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, true));
+    await initial;
+
+    const loading = list.loadMore('forward');
+    list.upsertLocal({ id: 2, label: 'local-2' });
+    expect(list.patch('2', (item) => ({ ...item, label: 'local-2-v2' }))).toBe(true);
+    list.upsertLocal({ id: 3, label: 'local-remove' });
+    expect(list.removeLocal('3')).toBe(true);
+    pending[1].resolve(pageOf(makeTestItems(2, 2), 's1', 'e1', true, false));
+    await loading;
+
+    expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-v2');
+    expect(latest.map((item) => item.id).sort((a, b) => a - b)).toEqual([0, 1, 2]);
     list.dispose();
   });
 });
@@ -1258,6 +1385,221 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     list.dispose();
   });
 
+  it('E12d 不同 identity 的并发定向刷新互不淘汰，分别按各自结果落地', async () => {
+    const items = makeTestItems(10);
+    const latest: TestItem[][] = [];
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, {
+      fetchByIdentity: fetcher.fetchByIdentity,
+      onItemsChanged: (changed) => latest.push([...changed]),
+    });
+    await list.reset();
+    host.scroller.scrollTop = 100;
+
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+    list.invalidate({ identities: ['2'] });
+    await flushAsync();
+    expect(fetcher.calls).toEqual([['1'], ['2']]);
+
+    fetcher.settle(1, [{ id: 2, label: 'fresh-2' }]);
+    await flushAsync();
+    fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
+    await flushAsync();
+    const final = latest.at(-1)!;
+    expect(final.find((item) => item.id === 1)?.label).toBe('fresh-1');
+    expect(final.find((item) => item.id === 2)?.label).toBe('fresh-2');
+    list.dispose();
+  });
+
+  it('E12e 在飞定向刷新不会覆盖同 identity 的后续 patch/remove/upsertLocal', async () => {
+    const items = makeTestItems(10);
+    const latest: TestItem[][] = [];
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, {
+      fetchByIdentity: fetcher.fetchByIdentity,
+      onItemsChanged: (changed) => latest.push([...changed]),
+      freshEdge: 'tail',
+    });
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 100;
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+
+    expect(list.patch('1', (item) => ({ ...item, label: 'local-patch' }))).toBe(true);
+    fetcher.settle(0, [{ id: 1, label: 'stale-refresh' }]);
+    await flushAsync();
+    expect(latest.at(-1)?.find((item) => item.id === 1)?.label).toBe('local-patch');
+
+    list.invalidate({ identities: ['2'] });
+    await flushAsync();
+    expect(list.removeLocal('2')).toBe(true);
+    fetcher.settle(1, [{ id: 2, label: 'stale-refresh' }]);
+    await flushAsync();
+    expect(latest.at(-1)?.some((item) => item.id === 2)).toBe(false);
+
+    list.invalidate({ identities: ['0'] });
+    await flushAsync();
+    list.upsertLocal({ id: 0, label: 'local-upsert' });
+    fetcher.settle(2, [{ id: 0, label: 'stale-refresh' }]);
+    await flushAsync();
+    expect(latest.at(-1)?.find((item) => item.id === 0)?.label).toBe('local-upsert');
+    list.dispose();
+  });
+
+  it('E12f 定向刷新 token 只为真实命中且在飞的 identity 存活，落定后立即释放', async () => {
+    const items = makeTestItems(10);
+    const fetcher = createControllableFetcher<TestItem>();
+    const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity });
+    const tokens = (list as unknown as { refreshTokenByIdentity: Map<string, symbol> }).refreshTokenByIdentity;
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 100;
+
+    for (let index = 0; index < 1_000; index++) {
+      list.invalidate({ identities: [`missing-${index}`] });
+    }
+    await flushAsync();
+    expect(tokens.size).toBe(0);
+    expect(fetcher.calls).toHaveLength(0);
+
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+    expect(tokens.size).toBe(1);
+    fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
+    await flushAsync();
+    expect(tokens.size).toBe(0);
+    list.dispose();
+  });
+
+  it('E12g fetchByIdentity 同步抛错也进入 refresh 错误流并释放 token', async () => {
+    const items = makeTestItems(10);
+    const onError = vi.fn();
+    const { host, list } = setupInvalidateList(items, {
+      fetchByIdentity: (() => { throw new Error('sync-refresh-failure'); }) as never,
+      onError,
+    });
+    const tokens = (list as unknown as { refreshTokenByIdentity: Map<string, symbol> }).refreshTokenByIdentity;
+    await list.reset({ pinEdge: false });
+    host.scroller.scrollTop = 100;
+
+    list.invalidate({ identities: ['1'] });
+    await flushAsync();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'sync-refresh-failure' }), 'refresh');
+    expect(tokens.size).toBe(0);
+    list.dispose();
+  });
+
+  it('E12h 已接受的同 identity refresh 会淘汰旧 overlay，后续 reconcile 不回退到 v1', async () => {
+    let sourceItems = makeTestItems(2);
+    const fetcher = createControllableFetcher<TestItem>();
+    const host = createHost();
+    host.scroller.clientHeight = 100;
+    host.scroller.scrollHeight = 1_000;
+    host.scroller.scrollTop = 0;
+    let latest: readonly TestItem[] = [];
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => sourceItems), {
+      freshEdge: 'tail',
+      pageSize: 2,
+      maxPages: 1,
+      fetchByIdentity: fetcher.fetchByIdentity,
+      onItemsChanged: (items) => { latest = items; },
+    }));
+    const mutations = (list as unknown as { pendingMutations: Map<string, unknown> }).pendingMutations;
+    await list.reset({ pinEdge: false });
+    list.upsertLocal({ id: 2, label: 'local-v1' });
+    list.invalidate({ identities: ['2'] });
+    await flushAsync();
+    expect(fetcher.calls).toEqual([['2']]);
+    expect(mutations.has('2')).toBe(true);
+
+    fetcher.settle(0, [{ id: 2, label: 'authority-v2' }]);
+    await flushAsync();
+    expect(latest.find((item) => item.id === 2)?.label).toBe('authority-v2');
+    expect(mutations.has('2')).toBe(false);
+
+    sourceItems = [{ id: 1, label: 'row-1' }, { id: 2, label: 'authority-v2' }];
+    await list.loadMore('backward');
+    expect(latest.find((item) => item.id === 2)?.label).toBe('authority-v2');
+    list.dispose();
+  });
+
+  it('E12i live 裁剪作废普通分页时同步释放被 requestId 作废的 refresh token', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const fetcher = createControllableFetcher<TestItem>();
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, source, {
+      freshEdge: 'tail',
+      pageSize: 2,
+      maxPages: 2,
+      fetchByIdentity: fetcher.fetchByIdentity,
+    }));
+    const tokens = (list as unknown as { refreshTokenByIdentity: Map<string, symbol> }).refreshTokenByIdentity;
+    const initial = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, true));
+    await initial;
+    const fill = list.loadMore('forward');
+    pending[1].resolve(pageOf(makeTestItems(2, 2), 's1', 'e1', true, true));
+    await fill;
+
+    host.scroller.clientHeight = 100;
+    host.scroller.scrollHeight = 1_000;
+    host.scroller.scrollTop = 0;
+    list.invalidate({ identities: ['0'] });
+    await flushAsync();
+    expect(tokens.size).toBe(1);
+
+    const stalePage = list.loadMore('forward');
+    list.upsertLocal({ id: 4, label: 'local-4' }); // 满预算 eviction → 作废旧分页与并发 refresh
+    expect(tokens.size).toBe(0);
+    pending[2].resolve(pageOf(makeTestItems(2, 4), 's2', 'e2', true, false));
+    await stalePage;
+    fetcher.settle(0, [{ id: 0, label: 'stale-refresh' }]);
+    await flushAsync();
+    expect(tokens.size).toBe(0);
+    list.dispose();
+  });
+
+  it('E12j refresh 先于旧分页返回时，新值不回退且删除项不复活', async () => {
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const fetcher = createControllableFetcher<TestItem>();
+    const host = createHost();
+    host.scroller.clientHeight = 100;
+    host.scroller.scrollHeight = 1_000;
+    host.scroller.scrollTop = 0;
+    let latest: readonly TestItem[] = [];
+    const list = createBoundedList(baseOptions(host, source, {
+      freshEdge: 'tail',
+      pageSize: 3,
+      maxPages: 2,
+      fetchByIdentity: fetcher.fetchByIdentity,
+      onItemsChanged: (items) => { latest = items; },
+    }));
+    const initial = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf(makeTestItems(3), 's0', 'e0', false, true));
+    await initial;
+
+    list.invalidate({ identities: ['1', '2'] });
+    await flushAsync();
+    expect(fetcher.calls).toEqual([['1', '2']]);
+    const stalePage = list.loadMore('forward');
+
+    fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
+    await flushAsync();
+    expect(latest.find((item) => item.id === 1)?.label).toBe('fresh-1');
+    expect(latest.some((item) => item.id === 2)).toBe(false);
+
+    pending[1].resolve(pageOf([
+      { id: 1, label: 'stale-page-1' },
+      { id: 2, label: 'stale-page-2' },
+      { id: 3, label: 'row-3' },
+    ], 's1', 'e1', true, false));
+    await stalePage;
+    expect(latest.find((item) => item.id === 1)?.label).toBe('fresh-1');
+    expect(latest.some((item) => item.id === 2)).toBe(false);
+    expect(latest.map((item) => item.id)).toEqual([0, 1, 3]);
+    list.dispose();
+  });
+
   it('E12 定向刷新失败时上报 refresh 阶段错误，列表保持原样', async () => {
     const items = makeTestItems(10);
     const onError = vi.fn();
@@ -1568,7 +1910,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     list.dispose();
   });
 
-  it('G3 mergeLive 并入已存在的页，不新增页，因此不触发整页裁剪', async () => {
+  it('G3 mergeLive 到达硬预算后从非新鲜端裁剪，并保留新条目', async () => {
     const items = makeTestItems(9);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', maxPages: 2, pageSize: 3 }));
@@ -1576,9 +1918,373 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     await list.loadMore('forward');
     expect(list.getState().count).toBe(6);
     list.upsertLocal({ id: 100, label: 'local' });
-    expect(list.getState().count).toBe(7);
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().count).toBe(6);
+    expect(list.getState().hasMoreBefore).toBe(false); // 旧游标失效，权威追平前禁止继续分页
+    expect(rendered(host)).toContain('row-100');
     list.dispose();
+  });
+
+  it('G3b 硬裁剪后旧端游标立即封锁，显式 loadMore 转为无游标权威追平', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 'old-start', 'old-end', false, false));
+      await initial;
+
+      host.scroller.scrollTop = 0;
+      host.scroller.dispatch('scroll');
+      frames.run();
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      expect(list.getState().hasMoreBefore).toBe(false);
+      expect(pending).toHaveLength(1); // render 不得用 old-start 自动翻页
+      frames.run(); // away-edge invalidate 只置 stale
+      expect(pending).toHaveLength(1);
+
+      const reconcile = list.loadMore('backward');
+      expect(pending).toHaveLength(2);
+      expect(pending[1].req.cursor).toBeUndefined();
+      expect(renderedRows(host)).toEqual(['row-1', 'row-2']);
+      pending[1].resolve(pageOf(makeTestItems(2, 10), 'fresh-start', 'fresh-end', false, false));
+      await reconcile;
+      expect(renderedRows(host)).toEqual(['row-11', 'row-2']);
+      list.dispose();
+    });
+  });
+
+  it('G3c staged reconcile 请求在飞时不清空 DOM，期间 upsert 在响应后仍保留', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      const capped = renderedRows(host);
+      frames.run();
+      expect(pending).toHaveLength(2);
+      expect(list.getState().loading).toBe(true);
+      expect(renderedRows(host)).toEqual(capped);
+
+      list.upsertLocal({ id: 3, label: 'local-3' });
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+      expect(renderedRows(host)).toContain('row-3');
+      expect(list.getState().count).toBeLessThanOrEqual(2);
+      list.dispose();
+    });
+  });
+
+  it('G3d staged reconcile 失败时保留 capped rows，并暴露 failed/retry', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const onError = vi.fn();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        onError,
+        text: {
+          empty: () => '暂无数据',
+          updatePill: (count) => `有更新(${count})`,
+          error: () => '加载失败',
+          retry: () => '重新加载',
+        },
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      const capped = renderedRows(host);
+      frames.run();
+      expect(renderedRows(host)).toEqual(capped);
+      pending[1].reject(new Error('reconcile failed'));
+      await flushAsync();
+
+      expect(renderedRows(host)).toEqual(capped);
+      expect(list.getState()).toMatchObject({ loaded: true, loading: false, failed: true, count: 2 });
+      expect(pillOf(host).textContent).toBe('重新加载');
+      expect(onError).toHaveBeenCalledWith(expect.any(Error), 'reset');
+      list.dispose();
+    });
+  });
+
+  it('G3e 显式追平先于已排队自动帧完成时不会重复发送 reset', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' }); // 排队自动 reconcile
+      const explicit = list.loadMore('backward'); // 同帧由显式入口先接管
+      expect(pending).toHaveLength(2);
+      pending[1].resolve(pageOf(makeTestItems(2, 10), 's1', 'e1', false, false));
+      await explicit;
+
+      frames.run(); // 原自动帧即使到达，也必须已被显式入口取消
+      await flushAsync();
+      expect(pending).toHaveLength(2);
+      list.dispose();
+    });
+  });
+
+  it('G3f 容量 mutation 按 identity 合并，重复 upsert 不会挤掉较早的 remove', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      let latest: readonly TestItem[] = [];
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        onItemsChanged: (items) => { latest = items; },
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2-a' });
+      expect(list.removeLocal('1')).toBe(true);
+      list.upsertLocal({ id: 2, label: 'local-2-b' });
+      list.upsertLocal({ id: 2, label: 'local-2-final' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+
+      expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+      expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-final');
+      expect(renderedRows(host)).not.toContain('row-1');
+      list.dispose();
+    });
+  });
+
+  it('G3g pinEdge=false 后即使没有 scroll 事件也按真实几何判断为已离开尾部', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      host.scroller.clientHeight = 100;
+      host.scroller.scrollHeight = 1_000;
+      host.scroller.scrollTop = 0;
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset({ pinEdge: false });
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      frames.run();
+      expect(pending).toHaveLength(1);
+      expect(list.getState()).toMatchObject({ stale: true, loading: false });
+      list.dispose();
+    });
+  });
+
+  it('G3h staged reconcile 在飞时把 identity 刷新延后到新窗口提交之后', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const fetcher = createControllableFetcher<TestItem>();
+      const host = createHost();
+      let latest: readonly TestItem[] = [];
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        fetchByIdentity: fetcher.fetchByIdentity,
+        onItemsChanged: (items) => { latest = items; },
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+
+      host.scroller.clientHeight = 100;
+      host.scroller.scrollHeight = 1_000;
+      host.scroller.scrollTop = 0;
+      host.scroller.dispatch('scroll');
+      frames.run();
+      list.invalidate({ identities: ['1'], count: 3 });
+      frames.run();
+      expect(fetcher.calls).toHaveLength(0);
+      expect(list.getState().pendingCount).toBe(3);
+
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+      frames.run();
+      expect(fetcher.calls).toEqual([['1']]);
+      fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
+      await flushAsync();
+      expect(latest.find((item) => item.id === 1)?.label).toBe('fresh-1');
+      expect(list.getState().pendingCount).toBe(3);
+      list.dispose();
+    });
+  });
+
+  it('G3i mutation identity 超过硬预算时保留窗口并失败，显式重试再建立新快照', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+      list.upsertLocal({ id: 3, label: 'local-3' });
+      list.upsertLocal({ id: 4, label: 'local-4' }); // 第三个 identity 令 H=2 的 overlay overflow
+      const capped = renderedRows(host);
+
+      pending[1].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
+      await flushAsync();
+      expect(pending).toHaveLength(2);
+      expect(renderedRows(host)).toEqual(capped);
+      expect(list.getState()).toMatchObject({ failed: true, stale: true, loading: false });
+
+      const retry = list.loadMore('backward');
+      expect(pending).toHaveLength(3);
+      pending[2].resolve(pageOf(makeTestItems(2, 3), 'fresh-s', 'fresh-e', false, false));
+      await retry;
+      expect(renderedRows(host)).toEqual(['row-3', 'row-4']);
+      list.dispose();
+    });
+  });
+
+  it('G3j 显式追平撞上已溢出的在途 reconcile 时立即用新快照作废旧请求', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const onError = vi.fn();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        onError,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+      list.upsertLocal({ id: 3, label: 'local-3' });
+      list.upsertLocal({ id: 4, label: 'local-4' });
+
+      const retry = list.loadMore('backward');
+      expect(pending).toHaveLength(3);
+      pending[1].resolve(pageOf(makeTestItems(2, 10), 'old-s', 'old-e', false, false));
+      await flushAsync();
+      expect(renderedRows(host)).not.toEqual(['row-10', 'row-11']);
+
+      pending[2].resolve(pageOf(makeTestItems(2, 3), 'fresh-s', 'fresh-e', false, false));
+      await retry;
+      expect(renderedRows(host)).toEqual(['row-3', 'row-4']);
+      expect(onError).not.toHaveBeenCalled();
+      list.dispose();
+    });
+  });
+
+  it('G3k reconcile 在飞时的 live 裁剪由当前请求重放，不再排第二次追平', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+      host.scroller.clientHeight = 100;
+      host.scroller.scrollHeight = 1_000;
+      host.scroller.scrollTop = 0;
+      list.upsertLocal({ id: 3, label: 'local-3' });
+
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+      host.scroller.scrollHeight = 0; // 若残留 deferred invalidate，此时会误判贴边并再发 reset
+      frames.run();
+      await flushAsync();
+      expect(pending).toHaveLength(2);
+      expect(renderedRows(host)).toEqual(['row-2', 'row-3']);
+      list.dispose();
+    });
+  });
+
+  it('G3l patch 继承既有 upsert 的重放顺序，不把身份移动到新鲜端', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      let latest: readonly TestItem[] = [];
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 3,
+        maxPages: 1,
+        settleFrames: 1,
+        onItemsChanged: (items) => { latest = items; },
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(3), 's0', 'e0', false, false));
+      await initial;
+
+      list.upsertLocal({ id: 3, label: 'local-3' });
+      list.upsertLocal({ id: 4, label: 'local-4' });
+      expect(list.patch('3', (item) => ({ ...item, label: 'local-3-patched' }))).toBe(true);
+      frames.run();
+      pending[1].resolve(pageOf(makeTestItems(3), 's1', 'e1', false, false));
+      await flushAsync();
+
+      expect(latest.map((item) => item.id)).toEqual([2, 3, 4]);
+      expect(latest.find((item) => item.id === 3)?.label).toBe('local-3-patched');
+      list.dispose();
+    });
   });
 
   it('G4 upsertLocal 经 normalize 处理（可去重 + 排序）', async () => {

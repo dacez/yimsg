@@ -206,15 +206,16 @@ describe('BoundedList 压力 / C 高频事件', () => {
     }
   });
 
-  it('C2 连续 2000 次 upsertLocal：窗口只长一页，DOM 与窗口仍一一对应', async () => {
+  it('C2 连续 2000 次 upsertLocal：窗口与 DOM 始终受 pageSize×maxPages 硬预算约束', async () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(40), 0), { freshEdge: 'tail', pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     for (let i = 0; i < 2000; i++) list.upsertLocal({ id: 10000 + i, label: `local-${i}` });
     const state = list.getState();
-    expect(state.count).toBe(40 + 2000);
+    expect(state.count).toBe(40 * 5);
     expect(rowNodes(host)).toHaveLength(state.count);
     expect(state.hasMoreAfter).toBe(false);
+    expect(rowNodes(host).at(-1)?.className).toContain('row-11999');
     list.dispose();
   });
 

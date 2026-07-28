@@ -27,13 +27,18 @@ export class PageWindow<T> {
   private fallbackStartCursor = '';
   private fallbackEndCursor = '';
   private readonly maxPages: number;
+  private readonly pageSize: number;
+  private readonly hardBudget: number;
 
   constructor(
     maxPages: number,
     private readonly normalize: (items: readonly T[]) => T[] = (items) => [...items],
     private readonly identityOf?: (item: T) => string,
+    pageSize = Number.POSITIVE_INFINITY,
   ) {
     this.maxPages = Math.max(1, Math.floor(maxPages));
+    this.pageSize = pageSize;
+    this.hardBudget = pageSize * this.maxPages;
   }
 
   get hasMoreBefore(): boolean {
@@ -92,6 +97,41 @@ export class PageWindow<T> {
     }
   }
 
+  private normalizeSourcePage(items: readonly T[]): T[] {
+    const normalized = this.normalize(items);
+    if (normalized.length > this.pageSize) {
+      throw new RangeError(
+        `PageSource 返回 ${normalized.length} 条，超过本次 pageSize=${this.pageSize}`,
+      );
+    }
+    return normalized;
+  }
+
+  /**
+   * 实时并入不会带来新的服务端游标，所以允许新鲜端所在页临时变大，但整个窗口仍必须
+   * 遵守 pageSize×maxPages 硬预算。超出时从非新鲜端逐条裁剪，并由上层安排权威 reset
+   * 修复被裁边界的游标。
+   */
+  private trimToHardBudget(edge: 'head' | 'tail'): number {
+    if (!Number.isFinite(this.hardBudget)) return 0;
+    let remaining = Math.max(0, this.count - this.hardBudget);
+    const evicted = remaining;
+    while (remaining > 0 && this.pages.length > 0) {
+      const pageIndex = edge === 'tail' ? 0 : this.pages.length - 1;
+      const page = this.pages[pageIndex];
+      const take = Math.min(remaining, page.items.length);
+      if (edge === 'tail') page.items.splice(0, take);
+      else page.items.splice(page.items.length - take, take);
+      remaining -= take;
+      if (page.items.length === 0) this.pages.splice(pageIndex, 1);
+    }
+    if (evicted > 0) {
+      if (edge === 'tail') this.before = true;
+      else this.after = true;
+    }
+    return evicted;
+  }
+
   reset(): void {
     this.pages = [];
     this.before = false;
@@ -102,7 +142,7 @@ export class PageWindow<T> {
   }
 
   setInitial(page: PageLoadResult<T>): void {
-    const items = this.normalize(page.items);
+    const items = this.normalizeSourcePage(page.items);
     this.pages = items.length ? [{ items, startCursor: page.startCursor, endCursor: page.endCursor }] : [];
     // 空首页不占页位，但它的边界游标必须留下来：否则窗口为空时两端都没有续翻锚点。
     this.fallbackStartCursor = page.startCursor;
@@ -112,10 +152,13 @@ export class PageWindow<T> {
     this.totalCount = page.total ?? -1;
   }
 
-  appendForward(page: PageLoadResult<T>): void {
-    const items = this.normalize(page.items);
+  appendForward(page: PageLoadResult<T>): number {
+    const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
-    if (items.length) this.pages.push({ items, startCursor: page.startCursor, endCursor: page.endCursor });
+    // 原始页非空但 normalize 后为空时仍保留该页游标，保证下一次续翻会前进而不是重复旧 cursor。
+    if (page.items.length > 0) {
+      this.pages.push({ items, startCursor: page.startCursor, endCursor: page.endCursor });
+    }
     // 空页 = 该方向已经没有数据，无论服务端怎么说都收敛为 false。
     this.after = page.items.length === 0 ? false : page.hasMoreForward;
     this.totalCount = page.total ?? this.totalCount;
@@ -123,18 +166,22 @@ export class PageWindow<T> {
       this.pages.shift();
       this.before = true;
     }
+    return items.length;
   }
 
-  prependBackward(page: PageLoadResult<T>): void {
-    const items = this.normalize(page.items);
+  prependBackward(page: PageLoadResult<T>): number {
+    const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
-    if (items.length) this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
+    if (page.items.length > 0) {
+      this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
+    }
     this.before = page.items.length === 0 ? false : page.hasMoreBackward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.pop();
       this.after = true;
     }
+    return items.length;
   }
 
   updateMatching(match: (item: T) => boolean, update: (item: T) => T): boolean {
@@ -166,7 +213,7 @@ export class PageWindow<T> {
    * 并入前先做跨页去重，保证同一身份在窗口里至多出现一次；
    * 并入后新鲜端方向视为已追平最新，对应 hasMore 置为 false。
    */
-  mergeLive(item: T, edge: 'head' | 'tail'): void {
+  mergeLive(item: T, edge: 'head' | 'tail'): number {
     this.dropIdsFromExistingPages([item]);
     if (this.pages.length === 0) {
       // 窗口里一页都没有：自建页只能用 fallback 游标；连 fallback 都没有（从未加载过）
@@ -185,8 +232,7 @@ export class PageWindow<T> {
       const head = this.pages[0];
       head.items = this.normalize([item, ...head.items]);
     }
-    // 并入不会增加页数（要么并进已有页，要么在空窗口上建出第一页），
-    // 因此这里不需要整页裁剪：能新增页的只有 appendForward / prependBackward。
     if (edge === 'tail') this.after = false; else this.before = false;
+    return this.trimToHardBudget(edge);
   }
 }

@@ -319,7 +319,10 @@ run_tests() {
     run_step "frontend uikit test" npm run test:uikit
     run_step "frontend web test" npm run test:web
     # Playwright globalSetup 复用脚本已编译的服务端二进制与已构建的 web/，避免重复 go build 与前端构建。
-    run_step "frontend test:ui" env YIMSG_PREBUILT_SERVER="${SERVER_BIN}" YIMSG_SKIP_FRONTEND_BUILD=1 npm run test:e2e
+    # chromium 项目会发现全部常规 UI（含 BoundedList 功能 spec），并由配置排除 *.performance.spec.ts；
+    # 显式选项目既避免性能专项进入日常全量，也避免为了单列 BoundedList 而重复跑同一批功能用例。
+    # 全量门禁关闭 retry：并发失败必须暴露并修复，不能靠重跑掩盖。
+    run_step "frontend test:ui (including BoundedList functional)" env YIMSG_PREBUILT_SERVER="${SERVER_BIN}" YIMSG_SKIP_FRONTEND_BUILD=1 npm run test:ui -w @yimsg/web -- --project=chromium --retries=0
   )
 }
 

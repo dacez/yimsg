@@ -31,7 +31,9 @@ type TextKey =
   | 'emptyFiltered'
   | 'headBoundary'
   | 'tailBoundary'
-  | 'updatePill';
+  | 'updatePill'
+  | 'error'
+  | 'retry';
 
 interface MountConfig {
   readonly id?: string;
@@ -65,6 +67,15 @@ interface MountConfig {
   readonly fetchByIdentity?: boolean;
   readonly fetchDelayMs?: number;
   readonly overflowPageBy?: number;
+  readonly register?: 'global' | 'custom';
+  readonly onLoadProgress?: boolean;
+  readonly progressValues?: readonly number[];
+  readonly progressByKeyword?: Readonly<Record<string, readonly number[]>>;
+  readonly initialA11y?: {
+    readonly tabindex?: string;
+    readonly role?: string;
+    readonly ariaMultiselectable?: string;
+  };
   readonly autoReset?: boolean;
   readonly callbacks?: boolean;
 }
@@ -75,6 +86,7 @@ interface FetchCall {
   readonly limit: number;
   readonly query: TestQuery;
   readonly phase: ErrorPhase;
+  readonly hasOnProgress?: boolean;
 }
 
 interface HarnessEvent {
@@ -109,6 +121,8 @@ interface HarnessEntry {
       | 'fetchByIdentity'
       | 'fetchDelayMs'
       | 'overflowPageBy'
+      | 'register'
+      | 'onLoadProgress'
       | 'callbacks'
     >
   > &
@@ -134,6 +148,10 @@ interface HarnessEntry {
 
 const entries = new Map<string, HarnessEntry>();
 const sharedStores = new Map<string, SelectionStore>();
+const customRegistry = new Map<
+  string,
+  { readonly id: string; invalidate(): void | Promise<void> }
+>();
 let sequence = 0;
 
 function createItems(count: number, prefix = 'item', start = 0): TestItem[] {
@@ -265,6 +283,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     headBoundary: '已到开头',
     tailBoundary: '已到结尾',
     updatePill: '有 {count} 条更新',
+    error: '加载失败：{message}',
+    retry: '重新加载',
   };
   const value = (key: TextKey): string | false =>
     config.text && Object.prototype.hasOwnProperty.call(config.text, key)
@@ -276,6 +296,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
   const headBoundary = value('headBoundary');
   const tailBoundary = value('tailBoundary');
   const updatePill = value('updatePill');
+  const error = value('error');
+  const retry = value('retry');
   return {
     ...(loading === false ? {} : { loading: () => loading }),
     ...(empty === false ? {} : { empty: () => empty }),
@@ -285,7 +307,31 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     ...(updatePill === false
       ? {}
       : { updatePill: (count: number) => updatePill.replace('{count}', String(count)) }),
+    ...(error === false
+      ? {}
+      : {
+        error: (reason: unknown) => error.replace(
+          '{message}',
+          reason instanceof Error ? reason.message : String(reason),
+        ),
+      }),
+    ...(retry === false ? {} : { retry: () => retry }),
   };
+}
+
+function recordFetchCall(
+  fetchCalls: FetchCall[],
+  req: FetchPageRequest<TestQuery>,
+  phase: ErrorPhase,
+): void {
+  fetchCalls.push({
+    ...(req.cursor === undefined ? {} : { cursor: req.cursor }),
+    backward: req.backward,
+    limit: req.limit,
+    query: cloneQuery(req.query),
+    phase,
+    ...(req.onProgress ? { hasOnProgress: true } : {}),
+  });
 }
 
 function eventPayload(value: unknown): unknown {
@@ -321,8 +367,16 @@ function createHost(config: MountConfig, key: string): {
 
   const scroller = document.createElement('div');
   scroller.className = 'bl-scroller';
-  scroller.tabIndex = 0;
   scroller.setAttribute('aria-label', `BoundedList ${key}`);
+  if (config.initialA11y?.tabindex !== undefined) {
+    scroller.setAttribute('tabindex', config.initialA11y.tabindex);
+  }
+  if (config.initialA11y?.role !== undefined) {
+    scroller.setAttribute('role', config.initialA11y.role);
+  }
+  if (config.initialA11y?.ariaMultiselectable !== undefined) {
+    scroller.setAttribute('aria-multiselectable', config.initialA11y.ariaMultiselectable);
+  }
 
   const content = config.separateContent ? document.createElement('div') : scroller;
   if (config.separateContent) {
@@ -354,6 +408,8 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     fetchByIdentity: configInput.fetchByIdentity ?? false,
     fetchDelayMs: configInput.fetchDelayMs ?? 0,
     overflowPageBy: configInput.overflowPageBy ?? 0,
+    register: configInput.register ?? 'global',
+    onLoadProgress: configInput.onLoadProgress ?? false,
     callbacks: configInput.callbacks ?? true,
     ...configInput,
   };
@@ -385,7 +441,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
 
   const fetchPage = async (req: FetchPageRequest<TestQuery>): Promise<PageLoadResult<TestItem>> => {
     const phase = phaseOf(req);
-    fetchCalls.push({ ...req, query: cloneQuery(req.query), phase });
+    recordFetchCall(fetchCalls, req, phase);
     await waitForGate(entryShell as HarnessEntry, 'page');
     if (config.fetchDelayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, config.fetchDelayMs));
@@ -396,20 +452,25 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
 
   const source = config.sourceKind === 'local'
     ? localPageSource<TestItem, TestQuery>({
-      loadAll: async (query) => {
+      loadAll: async (query, onProgress) => {
+        const progressValues = [
+          ...(config.progressByKeyword?.[query?.keyword ?? ''] ?? config.progressValues ?? []),
+        ];
         const syntheticReq: FetchPageRequest<TestQuery> = {
           cursor: undefined,
           backward: false,
           limit: config.pageSize,
           query,
+          ...(onProgress ? { onProgress } : {}),
         };
         const phase = phaseOf(syntheticReq);
-        fetchCalls.push({ ...syntheticReq, query: cloneQuery(query), phase });
+        recordFetchCall(fetchCalls, syntheticReq, phase);
         await waitForGate(entryShell as HarnessEntry, 'page');
         if (config.fetchDelayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, config.fetchDelayMs));
         }
         if (failNext.delete('reset')) throw new Error('reset-failure');
+        for (const loaded of progressValues) onProgress?.(loaded);
         if (entryShell.logicalCount > 0) {
           return createItems(entryShell.logicalCount);
         }
@@ -442,6 +503,18 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     ...(config.separateContent ? { contentElement: host.content } : {}),
     ...(pillHost === undefined ? {} : { pillHost }),
     ...(configInput.active === undefined ? {} : { isActive: () => entryShell.active }),
+    ...(config.register === 'custom'
+      ? {
+        register: (instance: { readonly id: string; invalidate(): void | Promise<void> }) => {
+          customRegistry.set(instance.id, instance);
+          pushEvent(entryShell, 'register', instance.id);
+          return () => {
+            if (customRegistry.get(instance.id) === instance) customRegistry.delete(instance.id);
+            pushEvent(entryShell, 'unregister', instance.id);
+          };
+        },
+      }
+      : {}),
     pageSize: config.pageSize,
     maxPages: config.maxPages,
     source,
@@ -523,6 +596,12 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           pushEvent(entryShell, 'onError', { error, phase }),
         onEmptyPage: (direction: Direction) =>
           pushEvent(entryShell, 'onEmptyPage', direction),
+        ...(config.onLoadProgress
+          ? {
+            onLoadProgress: (loaded: number) =>
+              pushEvent(entryShell, 'onLoadProgress', loaded),
+          }
+          : {}),
       }
       : {}),
   };
@@ -634,6 +713,14 @@ const api = {
   registryIds(): string[] {
     return registeredBoundedListIds();
   },
+  customRegistryIds(): string[] {
+    return [...customRegistry.keys()];
+  },
+  customInvalidateAll(): void {
+    for (const instance of [...customRegistry.values()]) {
+      void Promise.resolve(instance.invalidate()).catch(() => undefined);
+    }
+  },
   events(key: string): HarnessEvent[] {
     return structuredClone(getEntry(key).events);
   },
@@ -724,6 +811,15 @@ const api = {
     if (dispatchLoad) {
       row.dispatchEvent(new Event('load', { bubbles: false }));
     }
+  },
+  scrollThenLoadSameFrame(key: string, scrollTop: number, id: string, extraHeight: number): void {
+    const entry = getEntry(key);
+    const row = entry.content.querySelector<HTMLElement>(`.bl-row[data-id="${CSS.escape(id)}"]`);
+    if (!row) throw new Error(`Row ${id} not found`);
+    entry.scroller.scrollTop = scrollTop;
+    entry.scroller.dispatchEvent(new Event('scroll'));
+    row.style.height = `${row.getBoundingClientRect().height + extraHeight}px`;
+    row.dispatchEvent(new Event('load', { bubbles: false }));
   },
   scrollMetrics(key: string) {
     const { scroller } = getEntry(key);

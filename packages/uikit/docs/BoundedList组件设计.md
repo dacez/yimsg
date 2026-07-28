@@ -1,7 +1,7 @@
 # BoundedList 组件设计与接口说明
 
 > 主要对照：`packages/uikit/src/app/bounded-list/index.ts`、`packages/uikit/src/app/bounded-list/types.ts`、`packages/uikit/src/app/bounded-list/bounded-list.ts`、`packages/uikit/src/app/bounded-list/page-window.ts`、`packages/uikit/src/app/bounded-list/page-source.ts`、`packages/uikit/src/app/bounded-list/stream-window.ts`、`packages/uikit/src/app/bounded-list/selection.ts`、`packages/uikit/src/app/bounded-list/registry.ts`、`packages/uikit/src/app/bounded-list/update-pill.ts`。
-> 最后复核：2026-07-28。
+> 最后复核：2026-07-29。
 > 触发更新：`bounded-list/` 目录下任一模块的导出、参数、方法、事件、默认值、状态字段或行为规则变化时同步更新；测试口径同步 [`BoundedList测试方案.md`](BoundedList测试方案.md)。
 > 入口关系：上级索引见 [`../../../docs/architecture/前端文档索引.md`](../../../docs/architecture/前端文档索引.md)；原理与场景矩阵见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)（目标态契约在其 §4），**本文是 `bounded-list/` 实际实现的接口单一事实源**，两者不一致时以本文为准并回头修订该文。
 
@@ -44,7 +44,7 @@
   - [13.1 invalidate 决策树](#131-invalidate-决策树)
   - [13.2 提示条自动消失的三条路径](#132-提示条自动消失的三条路径)
   - [13.3 触界检测与链式补页](#133-触界检测与链式补页)
-  - [13.4 请求并发与丢弃](#134-请求并发与丢弃)
+  - [13.4 请求并发、容量追平与丢弃](#134-请求并发容量追平与丢弃)
   - [13.5 点击与键盘的事件分发](#135-点击与键盘的事件分发)
   - [13.6 渲染时序](#136-渲染时序)
 - [14. 不变量与宿主约定](#14-不变量与宿主约定)
@@ -61,13 +61,13 @@
 
 `BoundedList<T, Q>` 把「**有界滑动窗口 + 全量渲染 + 双向翻页**」这一套列表机制封装成一个泛型组件：`T` 是条目类型，`Q` 是查询条件类型（无查询条件时为 `void`）。
 
-它负责：分页拉取编排、窗口记账与整页裁剪、跨页去重、就地增删改、清空重建渲染、滚动锚点、空态 / 加载态 / 边界提示、提示条、选中态、触界翻页、键盘导航、以及**自己挂的全部监听的注销**。
+它负责：分页拉取编排、窗口记账与正常翻页的整页裁剪、live 路径的全局硬预算裁剪、失效游标封锁与 staged 权威 reconcile、跨页去重、就地增删改、清空重建渲染、滚动锚点、空态 / 加载态 / 边界提示、提示条、选中态、触界翻页、键盘导航、以及**自己挂的全部监听的注销**。
 
 它不负责：调哪个 SDK 方法（由 `source` 注入）、单行长什么样（由 `renderItem` 注入）、容器的 CSS 高度与 `overflow`（由宿主保证）、订阅 SDK 事件（宿主把事件翻译成一次 `invalidate()`）。
 
 原理层面的取舍（为什么全量渲染、为什么按页记账、什么是新鲜端）见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §2，本文不重复。
 
-**当前接入状态**：组件本身已完整实现并有 100% 覆盖率的单测，但**还没有任何视图迁移过来**（对应 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §8.2 的「阶段 1：抽出组件外壳，先不迁移任何调用方」）。会话列表、消息列表、通讯录等仍在用组件化之前的手写胶水。迁移所需的前置条件（注册表接线、模块入口）已经就绪，见 §11 与 §15。
+**当前接入状态**：组件本身已完整实现，当前 BoundedList 单元测试为 441/441；实测覆盖率见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §5，不能写成 100%。生产调用方迁移状态以 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §8 为准；迁移所需的注册表接线、模块入口已经就绪，见 §11 与 §15。
 
 ### 1.2 模块分层
 
@@ -112,7 +112,7 @@ flowchart TD
 flowchart LR
     SRC["完整数据集<br/>服务端 / 本地全量数组"]
     PS["PageSource.fetch<br/>取一页"]
-    PW["PageWindow<br/>≤ maxPages 页"]
+    PW["PageWindow<br/>≤ pageSize × maxPages 条"]
     SW["BoundedStreamWindow<br/>真实 DOM"]
     V["视窗"]
 
@@ -199,6 +199,8 @@ interface PageSource<T, Q> {
 
 `hasMoreBackward` / `hasMoreForward` 由**服务端**决定，不看条数：一页返回不足 `limit` 条也可能仍然「还有更多」。**唯一的例外是续翻拿到空页**——`items` 为空意味着该方向确实没有数据了，窗口会把该端强制收敛为 `false`，不管服务端怎么说（§8）。这是防止服务端违反契约时触界检测无限补页的兜底。
 
+source 必须遵守请求的 `limit`：每次 `PageLoadResult.items` 经 `normalize` 后都不得超过该次 `pageSize`。`setInitial`、`appendForward`、`prependBackward` 三条入窗路径统一校验；超量时抛 `RangeError`，由 BoundedList 进入对应的 `reset` / `forward` / `backward` 错误流程。组件不会静默截断，因为截断会让服务端游标与实际接纳条目不一致并可能跳过数据。
+
 `onProgress` 只在 `reset` 且调用方配置了 `onLoadProgress` 时出现，用于把 `localPageSource` 的全量拉取进度透出去；没配置时请求对象里根本不会有这个键。
 
 ### 3.3 渲染上下文与文案
@@ -235,7 +237,7 @@ interface BoundedListText {
 | `tailBoundary` | 固定显示在尾部 | `!hasMoreAfter` |
 | `updatePill` | 提示条文案，接收 `pendingCount` | `stale === true` **且**提供了本文案；不提供就不显示提示条 |
 | `error` | 首屏加载失败时代替空态显示 | `failed && 列表为空`；不提供则退化为空态文案 |
-| `retry` | 首屏失败时提示条变成重试入口（点击即 `reset`） | `failed`；不提供则失败后不显示提示条 |
+| `retry` | 数据请求失败时提示条变成重试入口（容量游标失效时走显式 staged reconcile，否则 `reset`） | `failed`；不提供则失败后不显示提示条 |
 
 「查询生效」的判定是**结构比较**（不看引用，也不看对象键的书写顺序）：同一引用直接判等；否则逐层比对数组 / 普通对象的键集合与取值，嵌套超过 8 层不再展开、一律视为不相等（这个深度上限同时兼作环引用兜底）。
 
@@ -244,7 +246,7 @@ interface BoundedListText {
 ```typescript
 interface BoundedListState {
   readonly loaded: boolean;        // 首屏是否已落定（含「失败落定」）
-  readonly loading: boolean;       // loadingBefore || loadingAfter
+  readonly loading: boolean;       // loadingBefore || loadingAfter || staged reconcile
   readonly loadingBefore: boolean; // 头部方向正在加载
   readonly loadingAfter: boolean;  // 尾部方向正在加载
   readonly hasMoreBefore: boolean;
@@ -254,7 +256,7 @@ interface BoundedListState {
   readonly stale: boolean;         // 有待追平的背景更新（提示条是否亮）
   readonly pendingCount: number;   // 待追平条数
   readonly atFreshEdge: boolean;   // 当前是否贴在新鲜端（实时读 DOM）
-  readonly failed: boolean;        // 首屏是否加载失败（重新发起 reset 即回到 false）
+  readonly failed: boolean;        // 最近一次首页 reset / 容量 reconcile 是否失败
 }
 
 interface SelectionSnapshot<T> {
@@ -287,8 +289,8 @@ type ErrorPhase = 'reset' | 'forward' | 'backward' | 'refresh';
 
 | 参数 | 类型 | 必填 | 默认 | 语义 |
 |---|---|---|---|---|
-| `pageSize` | `number` | 是 | — | 每次拉取条数，原样作为 `FetchPageRequest.limit` 透传给 `source`。组件不校验取值（传 `0` 会得到恒空窗口）。 |
-| `maxPages` | `number` | 是 | — | 窗口最多保留页数，超出按**整页**从相反端裁剪。`pageSize × maxPages` 就是这个列表的内存与 DOM 上界。 |
+| `pageSize` | `number` | 是 | — | 每次拉取条数，原样作为 `FetchPageRequest.limit` 透传给 `source`；必须是正安全整数。source 经 normalize 后单页超过它会快速失败。 |
+| `maxPages` | `number` | 是 | — | 正常翻页最多保留页数，超出按**整页**从相反端裁剪；必须是正安全整数。`pageSize × maxPages` 是所有路径统一执行的内存与 DOM 硬上界。 |
 | `source` | `PageSource<T, Q>` | 是 | — | 「怎么取一页」，见 §7。 |
 | `fetchByIdentity` | `(ids: readonly string[]) => Promise<readonly T[]>` | 否 | — | **定向拉单条**（批量）。`invalidate({ identities })` 命中窗口内条目时用它按身份精确拉当前状态；返回结果里没有的身份视为已删除并就地移除。不提供则 `invalidate` 退化为「只点亮提示条」。 |
 | `normalize` | `(items: readonly T[]) => T[]` | 否 | `(items) => [...items]` | 每页入窗前的归一化。作用于 `setInitial` / `appendForward` / `prependBackward` 的**该页条目**，以及 `mergeLive` 的**整页条目**。消息列表用它做「同 messageId 保留最新、删除态剔除、按 seq 升序」。 |
@@ -342,6 +344,8 @@ interface SelectionConfig<T> {
 
 **上限检查没有绕过路径**：无论点在行的哪个区域（复选框、头像、空白），多选都统一走 `SelectionStore.toggle` 内置的上限检查。
 
+`selection.store` 与 `selection.max` **构造互斥**：共享 store 的上限必须在 `new SelectionStore(max)` 时确定，不能再给组件一个会被误解为覆盖 store 配置的 `max`；同时传入会抛 `TypeError`。
+
 ### 4.7 查询条件
 
 | 参数 | 类型 | 语义 |
@@ -358,12 +362,12 @@ interface SelectionConfig<T> {
 |---|---|---|
 | `onActivate` | `(item: T, ev: Event) => void` | 点击某一行（未开启 selection，或 `single` 模式），或键盘 `Enter` / `Space` 落在聚焦行。点不到条目（陈旧 DOM）时不触发。 |
 | `onSelectionChange` | `(snapshot: SelectionSnapshot<T>) => void` | 选中集变化（含共享 `store` 被其它实例改动）。`snapshot.items` 由「pinnedItems + 窗口条目」按此顺序过滤得到，与渲染顺序一致。 |
-| `onLoadStateChange` | `(state: BoundedListState) => void` | `reset` 开始 / 结束、`loadMore` 开始 / 结束、`upsertLocal`、命中的 `removeLocal`、定向刷新落地之后。组件**不做前后 diff**，同样的状态也可能连续上报。 |
-| `onStaleChange` | `(stale: boolean, pendingCount: number) => void` | `reset` 开始时（清零）、`invalidate` 决策落定时、提示条路径② 清零时。 |
-| `onItemsChanged` | `(items: readonly T[]) => void` | 窗口内容变化：`reset` 成功、`loadMore` 成功、`upsertLocal`、命中的 `patch`、命中的 `removeLocal`、定向刷新落地。参数是**窗口条目**，不含 `pinnedItems`。 |
-| `onError` | `(error: unknown, phase: ErrorPhase) => void` | 任一次拉取失败。未提供时组件 `console.warn`，**绝不产生未处理的 Promise 拒绝**。过期请求（已被更新的 `reset` 取代）与已 `dispose` 的实例上的失败都被静默丢弃，不上报。 |
+| `onLoadStateChange` | `(state: BoundedListState) => void` | `reset`、`loadMore`、staged reconcile 的开始 / 结束，及 `upsertLocal`、命中的 `removeLocal`、定向刷新落地之后。组件**不做前后 diff**，同样的状态也可能连续上报。 |
+| `onStaleChange` | `(stale: boolean, pendingCount: number) => void` | `reset` 开始时（清零）、`invalidate` 决策落定时、提示条路径②清零、staged reconcile 成功但重放后仍有 eviction 或 reconcile 失败时。 |
+| `onItemsChanged` | `(items: readonly T[]) => void` | 窗口内容变化：`reset` / staged reconcile / `loadMore` 成功、`upsertLocal`、命中的 `patch` / `removeLocal`、定向刷新落地。参数是**窗口条目**，不含 `pinnedItems`。 |
+| `onError` | `(error: unknown, phase: ErrorPhase) => void` | 任一次拉取失败；容量 reconcile 仍按首页权威请求上报 `phase='reset'`。未提供时组件 `console.warn`，**绝不产生未处理的 Promise 拒绝**。过期请求与已 `dispose` 实例上的失败都被静默丢弃，不上报。 |
 | `onEmptyPage` | `(dir: Direction) => void` | `loadMore` 某方向返回空页。先于「路径② 清提示条」执行。 |
-| `onLoadProgress` | `(loaded: number) => void` | `reset` 阶段数据源上报全量拉取进度时（只有 `localPageSource` 这类需要 `loadAll` 的数据源会报）。配置了它，`reset` 的请求才会带上 `onProgress`。 |
+| `onLoadProgress` | `(loaded: number) => void` | 无游标首页请求（公开 `reset` 或容量 reconcile）上报全量拉取进度时。只有 `localPageSource` 这类需要 `loadAll` 的数据源会报；配置后请求才带 `onProgress`。 |
 
 ---
 
@@ -372,18 +376,18 @@ interface SelectionConfig<T> {
 | 方法 | 签名 | 语义 | 并发与幂等 |
 |---|---|---|---|
 | `id` | `get id(): string` | 只读，返回构造时的 `id`。 | — |
-| `reset` | `(opts?: { query?: Q; pinEdge?: boolean }) => Promise<void>` | 清空窗口、清 `stale` / `pendingCount`、无游标拉首页重建。`pinEdge` 默认 `true`：渲染后把滚动摁到 `freshEdge`（覆盖锚点恢复）。传 `query` 同时更新查询条件。 | 递增内部 requestId，旧请求返回后整体丢弃；`reset` 期间再调 `reset` 以最后一次为准。**返回的 Promise 永远 resolve，不会 reject**。 |
-| `loadMore` | `(dir: Direction) => Promise<void>` | 按该方向边界游标续翻一页，超限整页裁剪。显式调用视为「用户主动重试」，会解除该方向的自动续翻暂停（§13.3）。 | 该方向 `hasMore === false`、同方向已在加载、或该方向没有可用边界游标（空串）时**直接返回，不发请求**；反方向可以并发。捕获当前 requestId，被 `reset` 取代后结果整体丢弃。返回的 Promise 永远 resolve。 |
+| `reset` | `(opts?: { query?: Q; pinEdge?: boolean }) => Promise<void>` | 清空窗口、清 `stale` / `pendingCount`、无游标拉首页重建。`pinEdge` 默认 `true`：渲染后把滚动摁到 `freshEdge`。传 `query` 同时更新查询条件。 | 递增 `requestId`，后发 reset 胜出；请求在飞期间的本地 upsert / patch / remove 按 identity 记录最终态，在首页候选窗口上重放后再提交。overlay 溢出时拒绝响应并保留当前有界本地窗口，进入 `failed + stale`，不自动重取。返回 Promise 永远 resolve。 |
+| `loadMore` | `(dir: Direction) => Promise<void>` | 正常情况下按该方向可信边界游标续翻一页，超限整页裁剪。显式调用视为「用户主动重试」，会解除该方向的自动续翻暂停（§13.3）。 | live eviction 已使该端游标失效时，不读旧游标，发起 staged 权威 reconcile；若已溢出的 reconcile 仍在飞，立即以新 `requestId` 作废它并新发无游标请求。普通分页期间的本地最终态在返回页并入后重放；无法完整重放时丢弃该页、封锁两端游标并进入 stale / 显式 staged reconcile，但不把 `state.failed` 置真，也不自动循环。返回 Promise 永远 resolve。 |
 | `setQuery` | `(query: Q, opts?: { debounceMs?: number }) => void` | 更新查询条件并 `reset`。`debounceMs` 默认 `300`；`<= 0` 时同步发起 `reset`。 | 新的调用会取消上一次尚未触发的计时器；`dispose()` 也会取消。 |
 | `invalidate` | `(opts?: { identities?: readonly string[]; count?: number }) => void` | **轻通知唯一入口**，按 §13.1 决策树处理。`count` 用于「有 N 条新消息」的累加，`identities` 用于定向刷新。 | 合并到下一帧执行；同一帧内多次调用只跑一次决策，`count` 累加、`identities` 按 Set 去重合并。 |
-| `upsertLocal` | `(item: T) => void` | 本端产生的新条目并入新鲜端所在页（`tail` → 尾页、`head` → 首页），经 `normalize`，并把新鲜端方向的 `hasMore` 置 `false`。窗口为空时自建一页。 | 同步，不发请求。**并入前先做跨页去重**，因此对同一身份是幂等的：重发 / 重复回包不会渲染两遍，条目已在别的页时也会先摘旧再并入新鲜端。 |
-| `patch` | `(id: string, update: (item: T) => T) => boolean` | 就地更新窗口内该身份的全部条目，页结构与边界游标不变。返回是否命中。命中才重渲并触发 `onItemsChanged`。 | 同步。不影响 `count`，因此不触发 `onLoadStateChange`。 |
-| `removeLocal` | `(id: string) => boolean` | 就地删除窗口内该身份的条目，剩余条目自然往上补齐。返回是否命中。命中时**只精确摘掉这一个身份**的选中态。 | 同步。共享 `store` 时其它实例、`pinnedItems`、以及已被裁剪出窗口的选中项都不受影响。 |
+| `upsertLocal` | `(item: T) => void` | 本端产生的新条目并入新鲜端，经 `normalize`，并把新鲜端方向的 `hasMore` 置 `false`。窗口为空时自建一页。 | 同步跨页去重并裁到硬预算；eviction 后立即封锁被裁端游标，并作废基于旧边界的在飞普通分页。任一 reset / loadMore / reconcile 数据请求在飞时，upsert 都记入有界 mutation overlay 并在候选结果上重放；已有权威请求在飞时不再额外安排第二次追平。 |
+| `patch` | `(id: string, update: (item: T) => T) => boolean` | 就地更新窗口内该身份的全部条目，页结构与边界游标不变。返回是否命中。命中才重渲并触发 `onItemsChanged`。 | 同步；使该 identity 的在飞定向刷新失效。任一数据请求在飞或容量游标已失效时，同时记录 replace overlay。 |
+| `removeLocal` | `(id: string) => boolean` | 就地删除窗口内该身份的条目，剩余条目自然往上补齐。返回是否命中。命中时**只精确摘掉这一个身份**的选中态。 | 同步；使该 identity 的在飞定向刷新失效，并在任一数据请求期间记录 remove overlay。共享 `store` 时其它实例、`pinnedItems`、已被裁剪出窗口的选中项不受影响。 |
 | `render` | `() => void` | 用当前状态重渲（`pinnedItems` 重新求值、`text` 重新求值、`renderItem` 全部重跑），并同步提示条。展示资料异步到达（`display:updated`）时宿主调它。 | 不发任何请求、不改变滚动位置。指针按下期间只记账不动 DOM，抬起后下一帧应用。 |
 | `scrollToIdentity` | `(id: string, opts?: { block?: 'center' \| 'nearest' }) => boolean` | 把某个身份的行滚进视口，`block` 默认 `'nearest'`。返回是否找到。 | 同步。身份必须**既在窗口 / pinnedItems 里、又已经渲染出带锚点的节点**，否则返回 `false`。 |
-| `dispose` | `() => void` | 注销全部监听（含 window 级 pointer 兜底）、移除提示条 DOM、还原组件补上的 a11y 属性、取消防抖计时器与帧调度、取消选中态订阅、从注册表注销、丢弃所有未完成请求的结果与已排队的滚动定位帧。 | 幂等。调用后其它命令均为空操作（`patch` / `removeLocal` / `scrollToIdentity` 返回 `false`），但 `getState()` 仍可读。 |
+| `dispose` | `() => void` | 注销全部监听、移除提示条 DOM、还原 a11y 属性、取消防抖及普通 / 容量帧调度、清空 staged mutation overlay、取消选中订阅、从注册表注销，并丢弃所有未完成请求与定位帧。 | 幂等。调用后其它命令均为空操作（`patch` / `removeLocal` / `scrollToIdentity` 返回 `false`），但 `getState()` 仍可读。 |
 
-**构造期校验**：`pageSize` 与 `maxPages` 必须是不小于 1 的整数，否则构造直接抛 `RangeError`；`selection.store` 与 `selection.max` 同时给出抛 `TypeError`。参数不合法宁可当场炸掉，也不静默退化成「永远空窗口」这类难查的行为。
+**构造期校验**：`pageSize` 与 `maxPages` 必须是不小于 1 的安全整数，二者乘积也必须是安全整数，否则构造直接抛 `RangeError`；`selection.store` 与 `selection.max` 同时给出抛 `TypeError`。参数不合法宁可当场失败，也不静默退化成空窗口或失真的容量预算。
 
 **约定**：弹窗 / 面板级列表必须在关闭路径上 `dispose()`；页面级列表在宿主的 disposer 里 `dispose()`。同 id 重建实例前必须先 `dispose()` 旧实例。
 
@@ -394,11 +398,12 @@ interface SelectionConfig<T> {
 `getState(): BoundedListState` 每次返回**新对象**，改它不影响组件。字段语义见 §3.4，几条容易踩的细节：
 
 - `loaded` 用的是组件自己的 `firstLoadDone`，不是 `PageWindow.loaded`。**`reset` 失败也会把它置 `true`**——否则界面会永久卡在「加载中」。因此 `loaded === true` 只表示「首屏已落定」，不表示「首屏成功」。
-- `hasMoreBefore` / `hasMoreAfter` 在组件里是**只读**的，只由分页结果与裁剪驱动，没有任何外部直写入口。
+- `hasMoreBefore` / `hasMoreAfter` 在组件里是**只读**的。正常分页取自 `PageWindow`；live eviction 使某端游标失效时，该端立即对外屏蔽为 `false`，从而阻止渲染引擎用旧游标自动续翻。
 - `total` 直接透传服务端 `PageInfo.total`；续翻页未带 `total` 时保留上一次已知值；`reset` 后回到 `-1`。
 - `atFreshEdge` 是**实时读 DOM** 计算的，不是缓存值；`dispose()` 之后仍按当前 DOM 返回结果。
 - `count` 不含 `pinnedItems`。
-- `failed` 表示「上一次首屏加载以失败告终」：`reset` 一开始就清零，成功落定后保持 `false`。它和 `loaded` 一起才能区分三种状态——`!loaded` 加载中、`loaded && !failed` 有结果（可能是空）、`loaded && failed` 加载失败。
+- `loading` 还包含 staged 容量 reconcile；因此 reconcile 请求在飞时 `loading=true`，但当前窗口与 DOM 不被清空。
+- `failed` 表示最近一次权威首页 reset / 容量 reconcile 失败，也包含这两类请求因 mutation overlay 溢出而安全拒绝。公开 `reset` 开始会清空旧窗口，但期间进入的本地条目仍受硬预算保护；容量 reconcile 失败时保留当前 capped rows。两类权威请求的 overlay 溢出后保持 `loaded=true && failed=true && stale=true`，等待显式 retry。普通 loadMore 的不完整页沿用分页错误模型：丢弃页、封锁两端游标并进入 stale，但 `failed` 不置真。
 
 ---
 
@@ -439,7 +444,7 @@ function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSourc
 
 | 情况 | 行为 |
 |---|---|
-| `cursor === undefined`（reset / setQuery） | 重新 `loadAll(query)` → 应用 `filter` → 应用 `compare` → 缓存为 `entries` → 返回 `[0, limit)` 切片 |
+| `cursor === undefined`（reset / setQuery） | 重新 `loadAll(query)` → 应用 `filter` → 应用 `compare` → 只让最新 reload 世代发布为共享 `entries` → 用本次私有 snapshot 返回 `[0, limit)` 切片 |
 | `backward === true` | 对 `entries` 取 `[cursor - limit, cursor)` 切片，**不重新 loadAll** |
 | `backward === false` | 对 `entries` 取 `[cursor, cursor + limit)` 切片，**不重新 loadAll** |
 
@@ -449,19 +454,20 @@ function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSourc
 
 `filter` / `compare` 都作用在 `loadAll` 返回数组的**副本**上，不会污染调用方数组。
 
-`req.onProgress` 原样透传给 `loadAll` 的第二个参数：只有 reset（`cursor === undefined`）会真的重新 `loadAll`，续翻走缓存切片，因此进度不会重复上报。
+`req.onProgress` 只在 reset（`cursor === undefined`）时传给 `loadAll`，续翻走缓存切片，因此进度不会重复上报。多个 reset 并发时，generation 守卫只允许最新世代发布共享缓存和进度；旧世代自己的首页 snapshot 仍可返回给上层，由 BoundedList 的 `requestId` 丢弃。
 
 ---
 
 ## 8. PageWindow 数据窗口接口
 
-`class PageWindow<T>`（内部模块，不在 `index.ts` 导出面）。`maxPages` 会被夹到不小于 1（`Math.max(1, Math.floor(maxPages))`），保证 `setInitial` 与 `mergeLive` 对同一配置的解释一致。
+`class PageWindow<T>`（内部模块，不在 `index.ts` 导出面）。生产 BoundedList 总会把已经验证的 `pageSize` 传入，PageWindow 据此建立 `hardBudget = pageSize × maxPages`；直接构造时保留默认无限 pageSize 仅用于内部兼容，不属于 BoundedList 对外契约。
 
 ```typescript
 constructor(
   maxPages: number,
   normalize: (items: readonly T[]) => T[] = (items) => [...items],
   identityOf?: (item: T) => string,
+  pageSize: number = Number.POSITIVE_INFINITY,
 )
 ```
 
@@ -481,14 +487,16 @@ constructor(
 |---|---|
 | `hasIdentity(id): boolean` | 逐页逐条比对 `identityOf`。未提供 `identityOf` 时恒 `false`。 |
 | `reset(): void` | 清空全部页、两端 `hasMore`、`total`。 |
-| `setInitial(page): void` | 清空后放入这一页（**空页则 `pages = []`，但它的两端游标会作为 fallback 留下来**，否则窗口为空时就没有任何续翻锚点），两端 `hasMore` 与 `total` 取该页。页数至多 1，不需要裁剪。 |
-| `appendForward(page): void` | 先用新页身份清理其它页的同身份旧条目 → 非空则尾部追加 → `after = 空页 ? false : page.hasMoreForward` → `total` 更新（未提供则保留旧值）→ 超 `maxPages` 时 `shift()` 裁首并 `before = true`。 |
-| `prependBackward(page): void` | 对称：清理去重 → 非空则头部插入 → `before = 空页 ? false : page.hasMoreBackward` → `total` 更新 → 超限 `pop()` 裁尾并 `after = true`。 |
+| `setInitial(page): void` | 先 normalize 并校验单页不超过 `pageSize`，再清空后放入这一页；空页不占页位但保留两端 fallback 游标。超量抛 `RangeError`，不接纳部分数据。 |
+| `appendForward(page): number` | 先 normalize + 单页上限校验，再用新页身份清理其它页同身份旧条目 → 原 source 页非空时即保留该页及新边界游标（即使 normalize 后 0 条）→ 更新 `after` / `total` → 超 `maxPages` 时整页裁首。返回实际接纳条数。 |
+| `prependBackward(page): number` | 对称处理并返回实际接纳条数。原 source 页非空但 normalize 后为空时仍推进边界游标，避免下一次续翻重复请求旧 cursor；真正的空 source 页才收敛该方向。 |
 | `updateMatching(match, update): boolean` | 就地替换全部匹配条目，页结构与边界游标不变。返回是否命中。 |
 | `removeMatching(match): boolean` | 就地删除全部匹配条目。页可能变空甚至全空，但**页本身与其边界游标保留**。返回是否命中。 |
-| `mergeLive(item, edge): void` | **先跨页去重**（摘掉窗口里同身份的旧条目）→ 窗口为空时自建一页（游标沿用 fallback；连 fallback 都没有时把两端 `hasMore` 一并置 `false`，避免带着空游标去请求），否则并入 `edge` 侧那一页并对整页跑 `normalize` → 把该端 `hasMore` 置 `false`。并入不会增加页数，因此不需要裁剪。 |
+| `mergeLive(item, edge): number` | 先跨页去重 → 并入新鲜端并 normalize → 把该端 `hasMore` 置 `false` → 若超过 `hardBudget`，从非新鲜端逐条同步裁剪。返回被裁条数，供上层封锁失效游标并安排 staged reconcile。 |
 
 跨页去重的时机是「新页入窗**之前**」，删除的是其它保留页里的同身份旧条目——**新拉的页代表服务端当前真值，用新的覆盖旧的**。被清空的旧页仍占一个 `maxPages` 名额且仍保留有效边界游标，这是已知取舍。
+
+live 裁剪与普通翻页裁剪不同：普通翻页有服务端页游标，可整页裁剪；live 条目没有新游标，只能先按条同步裁到硬预算。只要 `mergeLive` 返回 eviction，BoundedList 就把被裁端游标标为失效并对外屏蔽该端 `hasMore`，同时作废所有基于旧边界的在飞普通分页；自动 / 手动续翻都不得再携旧 cursor。后续追平使用 `cursor: undefined` 的 staged 权威 reconcile：当前 capped 窗口继续显示，候选首页在独立 `PageWindow` 中构造并重放在飞本地变更，成功后才原子替换；失败则保留现有数据和 retry 入口。
 
 ---
 
@@ -545,11 +553,11 @@ interface BoundedStreamWindowRenderState<T> {
 | `scroll` | `scrollElement` | 经 `requestAnimationFrame` 帧合并 → `onScroll?.()` → `checkReach()` |
 | `pointerdown` | `scrollElement` | 标记指针按下，之后的 `render` 只记账不动 DOM |
 | `pointerup` / `pointercancel` | `scrollElement` **和** `window` | 清标记；有积压则安排到下一帧重建。挂 `window` 是因为指针可能在列表外抬起；**这两个必须在 `dispose()` 里移除**。`ownerDocument.defaultView` 为空时跳过。 |
-| `click` | `contentElement`（事件委托） | 从 `ev.target` 沿 `parentElement` 上溯到 `contentElement`，找到第一个带 `data-bsw-key` 的祖先 → `onInteract(key, ev, false)`。上溯途中会跳过没有 `getAttribute` 的节点。找不到就什么都不做。 |
+| `click` | `contentElement`（事件委托） | 从 `ev.target` 沿 `parentElement` 上溯，找到第一个带 `data-bsw-interact-key` 的祖先 → `onInteract(key, ev, false)`。每个 `renderItem` 平级根元素都带交互键；只有首根带 `data-bsw-key` 作为滚动锚点。 |
 | `keydown` | `scrollElement` | `↑` / `↓` 移动焦点行（首次 `↓` 落在第 0 条、首次 `↑` 落在最后一条；越界时改为触发对应方向的 `loadBefore` / `loadAfter` 且**不移动焦点**），`Enter` / `Space` 激活当前聚焦行 → `onInteract(key, ev, true)`。方向键与激活键会 `preventDefault()`；其它按键完全不消费。 |
 | `load`（捕获） | `contentElement` | `onContentLoad?.()`。图片等异步增高内容加载完成的钩子。 |
 
-焦点行用 `bsw-row-focused` class 标记，且**跟随下标而不是身份**：头部插入内容后高亮会落到新的同下标行上。
+焦点行用 `bsw-row-focused` class 标记，同时持久保存 `focusedKey`。重渲时优先按 identity 在新数组中找回下标；只有原身份已被裁掉时才钳制到最近合法下标，因此 prepend 不会让焦点漂到另一条数据。
 
 ### 9.4 辅助导出
 
@@ -647,7 +655,7 @@ function createUpdatePill(host: HTMLElement | false, onClick: () => void): Updat
 - `setVisible(visible, text)`：`text` 为 `undefined` 时**保留上次文案**；传空串会真的清空文案。
 - `dispose()`：注销点击监听并把节点从 DOM 上摘除；幂等，之后 `setVisible` 不再影响 `host`。
 
-组件在每次 `render()` 末尾调 `setVisible(this.stale, text.updatePill?.(pendingCount) ?? '')`。
+组件在每次 `render()` 末尾同步提示条：首屏失败时仅在提供 `text.retry` 时显示重试入口；正常 stale 状态仅在 `text.updatePill` 实际返回文案时显示，文案缺省绝不出现空白可点击提示条。
 
 ---
 
@@ -658,9 +666,9 @@ function createUpdatePill(host: HTMLElement | false, onClick: () => void): Updat
 ```mermaid
 flowchart TD
     I["invalidate({ identities, count })<br/>合并到下一帧"] --> V{"isActive()？"}
-    V -->|"否"| S0["stale = true<br/>pendingCount += count<br/>不发请求、不重渲"]
+    V -->|"否"| S0["stale = true<br/>pendingCount += count<br/>不发请求、同步重渲提示状态"]
     V -->|"是"| E{"贴在新鲜端？<br/>head: scrollTop ≤ stickyPx<br/>tail: 距底 ≤ stickyPx"}
-    E -->|"是"| R["reset({ pinEdge: true })<br/>stale 与 pendingCount 归零"]
+    E -->|"是"| R["catchUp()<br/>普通 stale：reset<br/>容量游标失效：staged reconcile"]
     E -->|"否"| P["stale = true<br/>pendingCount += count"]
     P --> H{"identities ∩ 窗口身份 ≠ ∅<br/>且提供了 fetchByIdentity？"}
     H -->|"否"| N["render()<br/>同步提示条"]
@@ -674,6 +682,7 @@ flowchart TD
 1. **只拉看得见的**。不在窗口里的身份不发请求；它的最新状态会在用户滚到那里或整体追平时自然带回来。
 2. **一次批量**。`fetchByIdentity` 收的是数组不是单个 id。
 3. **「拉不回来」等于「已删除」**。这让删除通知不需要单独的处理路径。
+4. **按 identity 判陈旧**。每个实际命中且在飞的 identity 都有独立 generation/token；同 identity 的后发刷新或本地 `patch` / `removeLocal` / `upsertLocal` 使旧响应失效，不同 identity 的并发请求可以分别落地。refresh 先于旧普通分页落地时，接受的 found / absent 最终态必须写入 overlay，让晚到旧页重放后不回退新值、不复活删除项；backward / forward 双向并发时，首个方向落定后 overlay 仍保留，两个方向都落定后才清理。没有旧分页在飞时则淘汰同 identity 旧 overlay。token 在成功、同步/异步失败、本地写入或窗口世代作废后立即释放。
 
 定向刷新落地时**页结构与边界游标完全不变**，续翻锚点不受影响。
 
@@ -681,7 +690,7 @@ flowchart TD
 
 | # | 路径 | 触发条件 | 效果 |
 |---|---|---|---|
-| ① | 用户自己滚回新鲜端 | 每个滚动帧检查 `stale && !loadingBefore && !loadingAfter && atFreshEdge` | 自动 `reset({ pinEdge: true })` |
+| ① | 用户自己滚回新鲜端 | 每个滚动帧检查 `stale && !loadingBefore && !loadingAfter && atFreshEdge` | 普通 stale 自动 `reset`；若容量游标失效则 staged reconcile |
 | ② | 翻页翻到新鲜端的尽头 | `loadMore(freshDirection)` 之后该端 `hasMore` 收敛为 `false` | `stale` 与 `pendingCount` **一并**清零 |
 | ③ | 调用方主动 `reset` | 切换会话、切 tab、点击提示条 | `stale` 与 `pendingCount` 归零 |
 
@@ -697,7 +706,7 @@ scrollTop ≤ reachPx                且 hasMoreBefore → loadBefore()
 maxScrollTop - scrollTop ≤ reachPx 且 hasMoreAfter  → loadAfter()
 ```
 
-引擎只用 `hasMore*` **快照**粗滤，真正的并发与终止守卫在 `loadMore` 内部（实时读 `loadingBefore` / `loadingAfter` / `hasMore*`）。
+引擎只用 `hasMore*` **快照**粗滤，真正的并发与终止守卫在 `loadMore` 内部（实时读 `loadingBefore` / `loadingAfter` / `hasMore*`）。live eviction 后失效端对外 `hasMore=false`，因此引擎不会自动携旧 cursor 续翻；宿主显式请求该方向时也会转入无游标 staged reconcile。
 
 「首屏不足一屏」由同一条循环覆盖：每次渲染后都触界检测，内容不满一屏就继续补页，直到填满视窗或某方向返回空页。**列表为空时同样做触界检测**——服务端可能返回「空页但还有更多」（`around` 锚点加载的乐观策略、全过滤命中为空等），不检测就会永久定格在空态。只有 `loaded === false`（首屏尚未落定）这一条 early return 不检测。
 
@@ -708,9 +717,9 @@ maxScrollTop - scrollTop ≤ reachPx 且 hasMoreAfter  → loadAfter()
 
 另外，某方向没有可用边界游标（空串）时 `loadMore` 直接返回不发请求：空串不是 reset 语义，发出去只会让服务端按未定义行为处理。窗口为空但服务端给过真实游标时，那个游标会作为 fallback 保留下来继续可用（§8）。
 
-### 13.4 请求并发与丢弃
+### 13.4 请求并发、容量追平与丢弃
 
-组件只有一个 `requestId` 计数器，**只有 `reset` 递增它**：
+窗口级权威世代使用 `requestId`；公开 `reset` 与 staged 容量 reconcile 都会递增它：
 
 ```mermaid
 sequenceDiagram
@@ -727,11 +736,22 @@ sequenceDiagram
     Note over L: 3 === 3 → 应用
 ```
 
-- `loadMore` **捕获**当前 `requestId` 但不递增：被后续 `reset` 取代后结果整体丢弃；两个方向可以同时在飞。
-- `reset` 一进来就把 `loadingBefore` / `loadingAfter` 归零，因此被丢弃的 `loadMore` 不会留下悬空的加载标志。
+- `loadMore` **捕获**当前 `requestId` 但不递增：被后续 `reset` / reconcile 取代后结果整体丢弃；两个可信方向可以同时在飞。请求期间发生的本地 mutation 会在返回页并入后按 identity 重放，返回页中的旧值不能覆盖本地最终态。
+- live eviction 会递增 `requestId` 并清除普通分页 loading，从而一次性作废所有基于旧窗口边界的在飞 `loadMore`；它们晚到的成功或失败结果都不能再修改当前窗口。
+- 公开 `reset` 与 reconcile 开始时都会把 `loadingBefore` / `loadingAfter` 归零，因此被丢弃的 `loadMore` 不会留下悬空加载标志。
 - 被丢弃的请求（无论成功还是失败）都**不触发任何回调**：不 `onError`、不 `onItemsChanged`、不重渲。
 - `dispose()` 之后同理：所有在飞请求的结果被丢弃。
-- **定向刷新（`fetchByIdentity`）用同一套守卫**：进入时捕获 `requestId`，`then` / `catch` 里比对，期间发生过 `reset` 就整体丢弃——否则陈旧结果会按身份 patch / remove 到已经重建过的新窗口上，最坏情况是误删新窗口里存在的条目。
+- **定向刷新使用窗口 + identity 双层守卫**：请求捕获 `requestId`，并只为实际命中且在飞的 identity 建立独立 token。窗口世代变化时整批作废；窗口不变时逐 identity 判断，因此同 identity 后发刷新 / 本地写入胜出，而不同 identity 的并发结果互不淘汰。接受结果时，若旧普通分页仍在飞，就把 found 记为 replace、absent 记为 remove overlay；否则删除同 identity 旧 overlay。token 在成功、同步/异步失败、本地写入或 `requestId` 作废后立即释放，不能随历史 identity 无界增长。
+- 任一 reset / loadMore / reconcile 数据请求在飞时到达的 `invalidate({ identities })` 都先保留为 pending，不在尚未落定的窗口上定向刷新；数据请求落定后重新调度整套决策，对最新窗口求交集并拉取。这样既不会先更新后被提交覆盖，也不会让旧 refresh 晚到污染新窗口。
+
+容量 eviction 之后的 reconcile 不是“先清空再等响应”的公开 `reset`：
+
+1. 同步裁剪后立即封锁被裁端旧游标，当前窗口继续以 `count ≤ pageSize×maxPages` 显示。
+2. 后台发 `cursor: undefined` 的权威首页请求；同一时刻通常只允许一个 reconcile 在飞，显式追平会复用健康的在途请求，并取消尚未执行的自动调度帧。唯一例外是该在途请求的 overlay 已溢出：显式追平立即递增 `requestId` 作废旧响应并新发无游标请求，不要求用户再点一次。
+3. 所有数据请求（普通 reset / loadMore / 容量 reconcile）期间的 `upsertLocal` / `patch` / `removeLocal` 都按 identity 记录最终态；首页响应在独立 `PageWindow` 中完成 normalize、单页校验和 mutation 重放后原子替换，分页响应在并入当前窗口后重放，均不得覆盖本地最终态。
+4. 请求失败、响应校验失败或被更新世代取代时，当前 capped rows 不被清空；有效失败进入 `failed + stale` 并保留 retry。
+5. mutation overlay 是按 identity 合并的有界 Map，不是会丢语义的操作 FIFO。唯一 identity 数超过硬预算时只标记 overflow，不套用无法完整重放的旧响应：reset / reconcile 保留当前有界窗口并进入 `failed + stale`；普通分页丢弃该页、封锁两端游标并进入 stale / 显式 staged reconcile，`state.failed` 保持普通分页口径。所有路径都**绝不在响应处理循环里自动重取**。用户或调用方一次显式 `loadMore` / 提示条重试会把点击时刻设为新的快照边界；若旧 reconcile 尚在飞，则先用新 `requestId` 作废它，再立即发新请求。
+6. 权威 reset / reconcile 已在飞时又发生 live eviction，只把这次 live 最终态加入当前 overlay，由当前请求统一重放；不再调度 reconcile，也不制造 deferred invalidate。否则首个请求成功后还会多发一次首页请求，并用稍晚的响应覆盖已经重放成功的 live。
 
 ### 13.5 点击与键盘的事件分发
 
@@ -757,15 +777,16 @@ flowchart TD
 1. pendingRender = false
 2. 先读：scrollOffset = scrollElement.scrollTop
         anchor = 视口顶部第一条可见条目 { key, delta }   // 拿不到布局信息时为 null
-        focusedIndex 越界则先钳制回 items.length - 1     // 必须早于下一行
-        focusedKey = 当前聚焦下标对应的 key              // 无焦点时为 null
+        focusedKey 若存在则在新 items 中按 identity 找回 focusedIndex
+        原身份消失时才把 focusedIndex 钳制到最近合法下标
 3. 后清：contentElement.innerHTML = ''
 4. loaded === false  → 只渲染 loadingText，直接返回（不恢复 scrollTop、不触界检测）
    items.length === 0 → 渲染 errorText ?? emptyText，focusedIndex 归 -1，
                         做一次触界检测后返回（不恢复 scrollTop）
 5. 头部：!hasMoreBefore && topBoundaryText → 边界提示
         否则 loadingBefore && loadingText  → 加载提示
-6. 逐条 renderItem(item, index)；首元素打 data-bsw-key；key === focusedKey 时加焦点 class
+6. 逐条 renderItem(item, index)；首元素打 data-bsw-key / 焦点 class，
+   每个平级根元素都打 data-bsw-interact-key
 7. 尾部：!hasMoreAfter && bottomBoundaryText → 边界提示
         否则 loadingAfter && loadingText    → 加载提示
 8. scrollTop 若被夹动则恢复；anchor 存在则按公式校正
@@ -786,13 +807,15 @@ flowchart TD
 
 组件保证的不变量（单测逐条覆盖，见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §3）：
 
-1. **窗口有界**：`state.count ≤ pageSize × maxPages`（`upsertLocal` 撑大单页的软上界除外，会在下一次真实翻页时被整页裁剪收敛）。
+1. **窗口硬有界**：source 每页经 normalize 后不得超过 `pageSize`；正常翻页与任意数量的 `upsertLocal` 都保证 `state.count ≤ pageSize × maxPages`，没有软上界例外。
 2. **DOM 有界**：条目节点数正比于 `state.count`，与数据总量无关。
 3. **身份唯一**：提供 `identityOf` 时，窗口内同一身份至多出现一次——续翻与 `upsertLocal` 都做跨页去重，只有「同一页内部自带重复」这一种情况留给 `normalize`。
-4. **游标只来自保留页**：续翻永远使用首页 `startCursor` / 尾页 `endCursor`（窗口为空时退回 `setInitial` 的 fallback），从不在客户端重建游标；没有可用游标时宁可不发请求。
+4. **游标只来自可信保留页**：正常续翻使用首页 `startCursor` / 尾页 `endCursor`（窗口为空时退回 fallback）；live eviction 后立即封锁被裁端旧游标，只允许无游标 staged reconcile，不在客户端猜测或重建游标。
 5. **不产生未处理的 Promise 拒绝**：`reset` / `loadMore` 返回的 Promise 永远 resolve；注册表广播里的异步拒绝也被兜住。
 6. **自动加载必然终止**：空页强制收敛 + 失败退避，任何服务端行为下触界补页都不会变成不让出主线程的死循环。
 7. **可完全释放**：`dispose()` 之后 `scrollElement`、`contentElement`、`window` 上由组件挂的监听数全部归 0，提示条 DOM 被摘除，a11y 属性还原，已排队的滚动定位帧不再触碰 DOM，注册表不再含该实例。
+8. **远端响应不覆盖本地最终态**：普通 reset / loadMore / 容量 reconcile 都重放请求期间按 identity 合并的本地 mutation；无法完整重放时保留当前有界窗口且不自动循环。reset / reconcile 进入 `failed + stale`；普通分页封锁两端游标并进入 stale / 显式 staged reconcile但不置 `failed`。用户一次显式追平即可建立新快照，必要时以 `requestId` 作废已溢出的在途 reconcile。
+9. **定向刷新按 identity 隔离**：同 identity 的后发刷新或本地写入胜出，不同 identity 的并发刷新各自可落地；token 只为实际命中的在飞 identity 存活并有完整释放路径。
 
 宿主必须保证的：
 
@@ -802,7 +825,7 @@ flowchart TD
 | 生命周期 | 弹窗 / 面板级实例在关闭路径 `dispose()`；页面级实例在宿主 disposer 里 `dispose()`；同 id 重建前先 `dispose()` 旧实例。 |
 | 事件路由 | 组件不订阅 SDK 事件。宿主把 SDK 事件翻译成 `invalidate()` / `render()` / `upsertLocal()` / `removeLocal()` / `reset()` 调用（路由表见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §4.7）。 |
 | 展示资料 | 昵称 / 头像走 SDK `DisplayInfoCache`；宿主在渲染前为窗口内条目批量预取，`display:updated` 到达后调 `render()`（不重拉、不动滚动位置）。 |
-| 键盘可达性 | 组件自己补 `tabindex="0"` / `role="listbox"`（多选再加 `aria-multiselectable`），并给每行首元素补 `role="option"` 与（开启 selection 时）`aria-selected`；`dispose()` 会把容器上这几个属性还回去。宿主如果对这些属性有自己的安排，需要在 `dispose()` 之后重设。 |
+| 键盘可达性 | 组件补 `tabindex="0"` / `role="listbox"`（多选再加 `aria-multiselectable`），并给每行首元素补 `role="option"` 与（开启 selection 时）`aria-selected`；构造时快照宿主原属性，`dispose()` 精确恢复原值或原缺省。 |
 | 多实例 | 同一页面并存多个 AppInstance 时，创建列表必须传 `register: (c) => app.registerBoundedList(c)`，否则重连广播会因为 id 相同而互相覆盖。 |
 
 ---
@@ -826,10 +849,12 @@ flowchart TD
 | `register` 构造参数 | 把实例登记到宿主注册表而不是进程级注册表，保证多 AppInstance 场景下重连广播不串台（§11）。 |
 | `text.error` / `text.retry` + `state.failed` | 首屏失败时显示错误态而不是「暂无数据」，提示条位置复用为重试入口（§3.3、§6）。 |
 | `onLoadProgress` + `FetchPageRequest.onProgress` | 把 `localPageSource` 的全量拉取进度透给宿主（「已加载 N 人」）（§4.8、§7.2）。 |
-| a11y 属性 | `tabindex` / `role=listbox` / `role=option` / `aria-selected` / `aria-multiselectable`，`dispose()` 时还原（§14）。 |
-| 构造期参数校验 | `pageSize` / `maxPages` 必须 ≥ 1 的整数，`selection.store` 与 `selection.max` 互斥，违者抛错（§5）。 |
+| a11y 属性 | `tabindex` / `role=listbox` / `role=option` / `aria-selected` / `aria-multiselectable`，`dispose()` 时精确还原宿主原值（§14）。 |
+| 构造期与 source 校验 | `pageSize` / `maxPages` 及乘积必须是安全正整数，`selection.store` 与 `selection.max` 互斥；source 页 normalize 后超 `pageSize` 拒绝整页并进入错误态。 |
+| live 硬预算与 staged 权威追平 | `upsertLocal` 先去重并同步裁到 `pageSize×maxPages`；eviction 后封锁失效游标并作废旧边界分页。后台 reconcile 保留 capped DOM、重放在飞本地变更并原子替换；overlay 溢出时保留窗口并等待一次显式 retry，撞上旧在途请求则以 `requestId` 作废后立即新发。 |
+| 按 identity 的刷新 token | `requestId` 隔离窗口世代；只为实际命中的在飞 identity 建 token，只淘汰同 identity 的旧刷新，并防止在飞刷新覆盖本地写入；落定后立即释放。 |
 | 自动加载终止性 | 空页强制收敛 + 失败退避 + 空游标短路，保证触界补页在任何服务端行为下都会停（§13.3）。 |
 
 ### 15.3 缺陷状态
 
-首轮评审列出的 25 条缺陷（BL-BUG-01 ~ BL-BUG-25）**已全部修复**，每条都有对应的回归用例守着。清单、成因与对应用例见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6。
+首轮单元评审列出的 25 条缺陷（BL-BUG-01 ~ BL-BUG-25）已全部修复，见 [`BoundedList测试方案.md`](BoundedList测试方案.md) §6。后续真实 Chromium 发现的 12 条三位编号缺陷（BL-BUG-001 ~ BL-BUG-012）也已全部 CLOSED；真实 Chromium 功能 51/51、独立性能 6/6，关闭证据见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。

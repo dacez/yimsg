@@ -70,8 +70,9 @@ describe('BoundedStreamWindow / A 全量渲染', () => {
     expect(scroller.children.map((c) => c.getAttribute('data-bsw-key'))).toEqual(['k-a', 'k-b', 'k-c']);
   });
 
-  it('A2 一行由多个平级元素组成时全部插入，只有首元素带锚点键', () => {
-    const { doc, scroller, view } = makeView<string>();
+  it('A2 一行由多个平级元素组成时全部插入，锚点唯一且每个根节点都带交互键', () => {
+    const onInteract = vi.fn();
+    const { doc, scroller, view } = makeView<string>({ onInteract });
     view.render({
       items: ['a'],
       keyOf: (item) => item,
@@ -80,6 +81,9 @@ describe('BoundedStreamWindow / A 全量渲染', () => {
     expect(renderedClassNames(scroller)).toEqual(['name-a', 'bubble-a']);
     expect(scroller.children[0].getAttribute('data-bsw-key')).toBe('a');
     expect(scroller.children[1].getAttribute('data-bsw-key')).toBeNull();
+    expect(scroller.children.map((child) => child.getAttribute('data-bsw-interact-key'))).toEqual(['a', 'a']);
+    scroller.dispatch('click', { target: scroller.children[1] });
+    expect(onInteract).toHaveBeenCalledWith('a', expect.anything(), false);
   });
 
   it('A3 renderItem 返回空数组时该条目不产生任何节点，也不打锚点', () => {
@@ -904,10 +908,11 @@ describe('BoundedStreamWindow / I 键盘导航', () => {
     view.render({ items: ['b', 'c'], keyOf: (s) => s, renderItem });
     scroller.dispatch('keydown', { key: 'ArrowDown' }); // 聚焦 b（index 0）
     expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);
-    // 头部插入 a 之后，index 0 变成 a，但焦点键仍来自当前 focusedIndex（0）→ 高亮跟随下标
+    // 头部插入 a 之后，原本聚焦的 b 移到 index 1；高亮必须跟随身份而不是旧下标。
     view.render({ items: ['a', 'b', 'c'], keyOf: (s) => s, renderItem });
-    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);
-    expect(scroller.children[0].className).toContain('row-a');
+    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(false);
+    expect(scroller.children[1].classList.contains('bsw-row-focused')).toBe(true);
+    expect(scroller.children[1].className).toContain('row-b');
   });
 
   it('I13 窗口变短到焦点越界时先钳制再取焦点键，本次渲染就保住高亮', () => {

@@ -391,7 +391,6 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
     };
     await attachRecord(testInfo, record);
 
-    test.fail(true, 'BL-BUG-010：mergeLive 扩大现有页，maxPages 无法约束连续 live 数据');
     expect(result.count).toBeLessThanOrEqual(200);
     expect(result.domRows).toBeLessThanOrEqual(200);
   });

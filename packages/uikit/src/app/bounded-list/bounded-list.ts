@@ -23,6 +23,7 @@ import type {
   ErrorPhase,
   FetchPageRequest,
   FreshEdge,
+  PageLoadResult,
   RenderItemContext,
 } from './types';
 
@@ -45,8 +46,38 @@ function queryEquals(a: unknown, b: unknown, depth = 0): boolean {
     && queryEquals((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], depth + 1));
 }
 
+function createDeferredFrameScheduler(callback: () => void): (() => void) & { cancel: () => void } {
+  let scheduled = false;
+  let token = 0;
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    const myToken = ++token;
+    const run = () => {
+      if (myToken !== token) return;
+      scheduled = false;
+      callback();
+    };
+    if (typeof globalThis.requestAnimationFrame === 'function') {
+      globalThis.requestAnimationFrame(() => run());
+    } else {
+      globalThis.queueMicrotask(run);
+    }
+  };
+  schedule.cancel = () => {
+    scheduled = false;
+    token += 1;
+  };
+  return schedule;
+}
+
+type LocalMutation<T> =
+  | { readonly kind: 'upsert'; readonly item: T }
+  | { readonly kind: 'replace'; readonly identity: string; readonly item: T }
+  | { readonly kind: 'remove'; readonly identity: string };
+
 export class BoundedList<T, Q = void> {
-  private readonly window: PageWindow<T>;
+  private window: PageWindow<T>;
   private readonly stream: BoundedStreamWindow<T>;
   private readonly pill: UpdatePillHandle;
   private readonly selection?: SelectionStore;
@@ -57,6 +88,17 @@ export class BoundedList<T, Q = void> {
   private readonly reachPx: number;
   private readonly settleFrames: number;
   private readonly scheduleInvalidateFlush: (() => void) & { cancel: () => void };
+  private readonly scheduleCapacityReconcile: (() => void) & { cancel: () => void };
+  private readonly originalA11yAttributes = new Map<(typeof A11Y_ATTRS)[number], string | null>();
+  /**
+   * 尚未被权威页确认的本地最终态。按 identity 合并，既不会因重复操作挤掉较早的 remove，
+   * 也不会把每次操作都永久留在内存里。
+   */
+  private readonly pendingMutations = new Map<string, LocalMutation<T>>();
+  private pendingMutationOverflow = false;
+  private resetInFlightRequestId: number | null = null;
+  private capacityReconciling = false;
+  private capacityReconcilePromise: Promise<void> | null = null;
 
   private query: Q;
   private firstLoadDone = false;
@@ -78,17 +120,25 @@ export class BoundedList<T, Q = void> {
    */
   private autoLoadBlockedBefore = false;
   private autoLoadBlockedAfter = false;
+  /** live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。 */
+  private cursorInvalidBefore = false;
+  private cursorInvalidAfter = false;
 
   private pendingInvalidate = false;
   private pendingIdentities = new Set<string>();
   private pendingInvalidateCount = 0;
+  /** 只保存当前实际在飞的定向刷新 token；成功、失败或本地更新后立即释放。 */
+  private readonly refreshTokenByIdentity = new Map<string, symbol>();
 
   constructor(private readonly opts: BoundedListOptions<T, Q>) {
-    if (!Number.isInteger(opts.pageSize) || opts.pageSize < 1) {
+    if (!Number.isSafeInteger(opts.pageSize) || opts.pageSize < 1) {
       throw new RangeError(`[BoundedList:${opts.id}] pageSize 必须是不小于 1 的整数，收到 ${String(opts.pageSize)}`);
     }
-    if (!Number.isInteger(opts.maxPages) || opts.maxPages < 1) {
+    if (!Number.isSafeInteger(opts.maxPages) || opts.maxPages < 1) {
       throw new RangeError(`[BoundedList:${opts.id}] maxPages 必须是不小于 1 的整数，收到 ${String(opts.maxPages)}`);
+    }
+    if (!Number.isSafeInteger(opts.pageSize * opts.maxPages)) {
+      throw new RangeError(`[BoundedList:${opts.id}] pageSize×maxPages 必须是安全整数`);
     }
     if (opts.selection?.store && opts.selection.max !== undefined) {
       throw new TypeError(`[BoundedList:${opts.id}] selection.store 与 selection.max 互斥：共享 store 的上限由该 store 自己决定`);
@@ -99,7 +149,7 @@ export class BoundedList<T, Q = void> {
     this.reachPx = opts.reachPx ?? DEFAULT_REACH_PX;
     this.settleFrames = opts.settleFrames ?? (this.freshEdgeValue === 'head' ? 1 : 4);
     this.query = (opts.initialQuery as Q) ?? (undefined as Q);
-    this.window = new PageWindow<T>(opts.maxPages, opts.normalize, opts.identityOf);
+    this.window = new PageWindow<T>(opts.maxPages, opts.normalize, opts.identityOf, opts.pageSize);
 
     if (opts.selection) {
       this.selection = opts.selection.store ?? new SelectionStore(opts.selection.max);
@@ -111,12 +161,15 @@ export class BoundedList<T, Q = void> {
     }
 
     const pillHost = opts.pillHost === undefined ? (opts.scrollElement.parentElement ?? false) : opts.pillHost;
-    this.pill = createUpdatePill(pillHost, () => void this.reset({ pinEdge: true }));
+    this.pill = createUpdatePill(pillHost, () => void this.catchUp());
 
     this.stream = new BoundedStreamWindow<T>({
       scrollElement: opts.scrollElement,
       contentElement: opts.contentElement,
       reachPx: opts.reachPx,
+      onScrollImmediate: () => {
+        this.stickToFreshEdge = this.atFreshEdge();
+      },
       onScroll: () => this.onScrollFrame(),
       onInteract: (identity, ev) => this.onInteract(identity, ev),
       onContentLoad: () => this.onContentLoad(),
@@ -124,6 +177,9 @@ export class BoundedList<T, Q = void> {
 
     this.applyA11yAttributes();
     this.scheduleInvalidateFlush = createFrameScheduler(() => this.flushInvalidate());
+    this.scheduleCapacityReconcile = createDeferredFrameScheduler(() => {
+      if (!this.disposed) void this.reconcileCapacity();
+    });
 
     // 多 AppInstance 共存时必须登记到宿主自己的注册表，否则同名列表会互相覆盖。
     if (opts.register) {
@@ -142,9 +198,20 @@ export class BoundedList<T, Q = void> {
 
   async reset(optsIn?: { query?: Q; pinEdge?: boolean }): Promise<void> {
     if (this.disposed) return;
+    this.scheduleCapacityReconcile.cancel();
+    this.scheduleInvalidateFlush.cancel();
+    this.capacityReconciling = false;
+    this.capacityReconcilePromise = null;
+    this.pendingMutations.clear();
+    this.pendingMutationOverflow = false;
+    this.pendingInvalidate = false;
+    this.pendingIdentities.clear();
+    this.pendingInvalidateCount = 0;
     if (optsIn && Object.prototype.hasOwnProperty.call(optsIn, 'query')) this.query = optsIn.query as Q;
     const pinEdge = optsIn?.pinEdge ?? true;
     const myRequestId = ++this.requestId;
+    this.resetInFlightRequestId = myRequestId;
+    this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
 
     this.window.reset();
     this.firstLoadDone = false;
@@ -153,6 +220,9 @@ export class BoundedList<T, Q = void> {
     this.loadingAfter = false;
     this.autoLoadBlockedBefore = false;
     this.autoLoadBlockedAfter = false;
+    this.cursorInvalidBefore = false;
+    this.cursorInvalidAfter = false;
+    this.refreshTokenByIdentity.clear();
     this.stale = false;
     this.pendingCount = 0;
     this.emitStaleChange();
@@ -165,26 +235,54 @@ export class BoundedList<T, Q = void> {
       limit: this.opts.pageSize,
       query: this.query,
       // 只有配置了进度回调才带上 onProgress，避免无谓地改变请求对象形状。
-      ...(this.opts.onLoadProgress ? { onProgress: (loaded: number) => this.opts.onLoadProgress?.(loaded) } : {}),
+      ...(this.opts.onLoadProgress
+        ? {
+          onProgress: (loaded: number) => {
+            if (!this.disposed && myRequestId === this.requestId) {
+              this.opts.onLoadProgress?.(loaded);
+            }
+          },
+        }
+        : {}),
     };
 
     try {
       const page = await this.opts.source.fetch(request);
       if (myRequestId !== this.requestId || this.disposed) return;
-      this.window.setInitial(page);
+      if (this.pendingMutationOverflow) throw this.createMutationOverflowError();
+      const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
+
+      this.window = nextWindow;
+      this.resetInFlightRequestId = null;
       this.firstLoadDone = true;
+      this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
+      if (overlayEvicted > 0) this.emitStaleChange();
       this.render();
-      if (pinEdge) this.pinToFreshEdge();
+      if (pinEdge) {
+        this.pinToFreshEdge();
+      } else {
+        this.stickToFreshEdge = this.atFreshEdge();
+      }
       this.emitLoadState();
+      this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
+      this.resetInFlightRequestId = null;
+      this.pendingMutations.clear();
+      this.pendingMutationOverflow = false;
       this.firstLoadDone = true;
       this.resetError = err;
       this.hasResetError = true;
+      if (this.window.count > 0) {
+        this.stale = true;
+        this.pendingCount = Math.max(1, this.pendingCount);
+        this.emitStaleChange();
+      }
       this.reportError(err, 'reset');
       this.render();
       this.emitLoadState();
+      this.flushDeferredInvalidate();
     }
   }
 
@@ -198,6 +296,10 @@ export class BoundedList<T, Q = void> {
   // 两个调用点都已经挡住了 disposed：公开的 loadMore 自带守卫，autoLoadMore 只在
   // render 里被渲染引擎回调，而 render 在 dispose 之后是空操作。
   private async loadMoreInternal(dir: Direction): Promise<void> {
+    if (dir === 'backward' ? this.cursorInvalidBefore : this.cursorInvalidAfter) {
+      await this.reconcileCapacity(true);
+      return;
+    }
     const hasMore = dir === 'backward' ? this.window.hasMoreBefore : this.window.hasMoreAfter;
     const alreadyLoading = dir === 'backward' ? this.loadingBefore : this.loadingAfter;
     if (!hasMore || alreadyLoading) return;
@@ -207,6 +309,10 @@ export class BoundedList<T, Q = void> {
     // 空串不是 reset 语义，发出去只会让服务端按未定义行为处理，这里直接放弃。
     if (cursor === '') return;
 
+    if (!this.loadingBefore && !this.loadingAfter && !this.isAuthoritativeRequestInFlight()) {
+      this.pendingMutations.clear();
+      this.pendingMutationOverflow = false;
+    }
     if (dir === 'backward') this.loadingBefore = true; else this.loadingAfter = true;
     this.emitLoadState();
     this.render();
@@ -220,20 +326,49 @@ export class BoundedList<T, Q = void> {
         query: this.query,
       });
       if (myRequestId !== this.requestId || this.disposed) return;
+      if (this.pendingMutationOverflow) {
+        // 本页请求期间的本地最终态已多到无法在硬预算内完整记录；当前有界窗口仍然
+        // 正确，丢弃这份可能覆盖本地状态的页，并把该方向转交 staged reconcile。
+        this.loadingBefore = false;
+        this.loadingAfter = false;
+        this.cursorInvalidBefore = true;
+        this.cursorInvalidAfter = true;
+        this.stale = true;
+        this.pendingCount = Math.max(1, this.pendingCount);
+        this.emitStaleChange();
+        this.emitLoadState();
+        this.render();
+        return;
+      }
+      let acceptedCount: number;
       if (dir === 'backward') {
-        this.window.prependBackward(page);
+        acceptedCount = this.window.prependBackward(page);
         this.loadingBefore = false;
         this.autoLoadBlockedBefore = false;
       } else {
-        this.window.appendForward(page);
+        acceptedCount = this.window.appendForward(page);
         this.loadingAfter = false;
         this.autoLoadBlockedAfter = false;
       }
+      const overlayEvicted = this.replayPendingMutations(this.window);
+      if (overlayEvicted > 0) {
+        if (this.freshEdgeValue === 'tail') this.cursorInvalidBefore = true;
+        else this.cursorInvalidAfter = true;
+        this.cancelOrdinaryPageLoads();
+        this.stale = true;
+        this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
+        this.emitStaleChange();
+        if (this.atFreshEdge()) this.scheduleCapacityReconcile();
+      } else if (!this.loadingBefore && !this.loadingAfter && !this.hasInvalidCapacityCursor()) {
+        this.pendingMutations.clear();
+        this.pendingMutationOverflow = false;
+      }
       this.emitItemsChanged();
-      if (page.items.length === 0) this.opts.onEmptyPage?.(dir);
+      if (acceptedCount === 0) this.opts.onEmptyPage?.(dir);
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
       this.render();
+      this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
       if (dir === 'backward') {
@@ -243,9 +378,14 @@ export class BoundedList<T, Q = void> {
         this.loadingAfter = false;
         this.autoLoadBlockedAfter = true;
       }
+      if (!this.loadingBefore && !this.loadingAfter && !this.hasInvalidCapacityCursor()) {
+        this.pendingMutations.clear();
+        this.pendingMutationOverflow = false;
+      }
       this.reportError(err, dir);
       this.emitLoadState();
       this.render();
+      this.flushDeferredInvalidate();
     }
   }
 
@@ -277,16 +417,50 @@ export class BoundedList<T, Q = void> {
 
   upsertLocal(item: T): void {
     if (this.disposed) return;
-    this.window.mergeLive(item, this.freshEdgeValue);
+    const wasAtFreshEdge = this.atFreshEdge();
+    this.stickToFreshEdge = wasAtFreshEdge;
+    const identity = this.opts.identityOf(item);
+    this.invalidateRefresh(identity);
+    const rememberBeforeMerge = this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor();
+    if (rememberBeforeMerge) {
+      this.rememberPendingMutation({ kind: 'upsert', item });
+    }
+    const evicted = this.window.mergeLive(item, this.freshEdgeValue);
+    if (evicted > 0) {
+      if (this.freshEdgeValue === 'tail') this.cursorInvalidBefore = true;
+      else this.cursorInvalidAfter = true;
+      this.cancelOrdinaryPageLoads();
+      if (!rememberBeforeMerge) {
+        this.rememberPendingMutation({ kind: 'upsert', item });
+      }
+    }
     this.emitItemsChanged();
     this.emitLoadState();
     this.render();
+    if (evicted > 0) {
+      // live 条目没有可重建的服务端游标：先同步裁剪保证硬有界，再按用户原贴边状态
+      // 选择权威 reset 或提示稍后追平，避免用失真的旧边界继续分页。
+      if (!this.isAuthoritativeRequestInFlight()) {
+        if (wasAtFreshEdge) {
+          this.scheduleCapacityReconcile();
+        } else {
+          this.invalidate({ count: evicted });
+        }
+      }
+    }
   }
 
   patch(id: string, update: (item: T) => T): boolean {
     if (this.disposed) return false;
     const changed = this.window.updateMatching((item) => this.opts.identityOf(item) === id, update);
     if (changed) {
+      this.invalidateRefresh(id);
+      if (this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor()) {
+        const current = this.window.items.find((item) => this.opts.identityOf(item) === id);
+        if (current) {
+          this.rememberPendingMutation({ kind: 'replace', identity: id, item: current });
+        }
+      }
       this.emitItemsChanged();
       this.render();
     }
@@ -297,6 +471,10 @@ export class BoundedList<T, Q = void> {
     if (this.disposed) return false;
     const changed = this.window.removeMatching((item) => this.opts.identityOf(item) === id);
     if (changed) {
+      this.invalidateRefresh(id);
+      if (this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor()) {
+        this.rememberPendingMutation({ kind: 'remove', identity: id });
+      }
       // 只精确摘掉被删的这一个身份：共享 store 时其它实例（以及 pinnedItems、
       // 已被裁剪出窗口）的选中项与本次删除无关，不能一并清掉。
       this.selection?.delete(id);
@@ -322,8 +500,8 @@ export class BoundedList<T, Q = void> {
     this.stream.render({
       items,
       loaded: this.firstLoadDone,
-      hasMoreBefore: this.window.hasMoreBefore,
-      hasMoreAfter: this.window.hasMoreAfter,
+      hasMoreBefore: this.window.hasMoreBefore && !this.cursorInvalidBefore,
+      hasMoreAfter: this.window.hasMoreAfter && !this.cursorInvalidAfter,
       loadingBefore: this.loadingBefore,
       loadingAfter: this.loadingAfter,
       emptyText,
@@ -351,11 +529,21 @@ export class BoundedList<T, Q = void> {
     if (this.disposed) return;
     this.disposed = true;
     this.scheduleInvalidateFlush.cancel();
+    this.scheduleCapacityReconcile.cancel();
+    this.resetInFlightRequestId = null;
+    this.capacityReconciling = false;
+    this.capacityReconcilePromise = null;
+    this.pendingMutations.clear();
+    this.pendingMutationOverflow = false;
+    this.refreshTokenByIdentity.clear();
+    this.pendingInvalidate = false;
+    this.pendingIdentities.clear();
+    this.pendingInvalidateCount = 0;
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
-    this.removeA11yAttributes();
+    this.restoreA11yAttributes();
     this.stream.dispose();
     this.pill.dispose();
     this.unsubscribeSelection?.();
@@ -367,11 +555,11 @@ export class BoundedList<T, Q = void> {
   getState(): BoundedListState {
     return {
       loaded: this.firstLoadDone,
-      loading: this.loadingBefore || this.loadingAfter,
+      loading: this.loadingBefore || this.loadingAfter || this.capacityReconciling,
       loadingBefore: this.loadingBefore,
       loadingAfter: this.loadingAfter,
-      hasMoreBefore: this.window.hasMoreBefore,
-      hasMoreAfter: this.window.hasMoreAfter,
+      hasMoreBefore: this.window.hasMoreBefore && !this.cursorInvalidBefore,
+      hasMoreAfter: this.window.hasMoreAfter && !this.cursorInvalidAfter,
       count: this.window.count,
       total: this.window.total,
       stale: this.stale,
@@ -385,14 +573,24 @@ export class BoundedList<T, Q = void> {
 
   private applyA11yAttributes(): void {
     const el = this.opts.scrollElement;
+    for (const name of A11Y_ATTRS) {
+      this.originalA11yAttributes.set(name, el.getAttribute?.(name) ?? null);
+    }
     el.setAttribute?.('tabindex', '0');
     el.setAttribute?.('role', 'listbox');
-    if (this.opts.selection?.mode === 'multi') el.setAttribute?.('aria-multiselectable', 'true');
+    if (this.opts.selection?.mode === 'multi') {
+      el.setAttribute?.('aria-multiselectable', 'true');
+    } else {
+      el.removeAttribute?.('aria-multiselectable');
+    }
   }
 
-  private removeA11yAttributes(): void {
+  private restoreA11yAttributes(): void {
     const el = this.opts.scrollElement as HTMLElement & { removeAttribute?: (name: string) => void };
-    for (const name of A11Y_ATTRS) el.removeAttribute?.(name);
+    for (const [name, value] of this.originalA11yAttributes) {
+      if (value === null) el.removeAttribute?.(name);
+      else el.setAttribute?.(name, value);
+    }
   }
 
   private freshDirection(): Direction {
@@ -438,6 +636,17 @@ export class BoundedList<T, Q = void> {
     void this.loadMoreInternal(dir);
   }
 
+  private catchUp(): Promise<void> {
+    if (this.hasInvalidCapacityCursor()) {
+      return this.reconcileCapacity(true);
+    }
+    return this.reset({ pinEdge: true });
+  }
+
+  private hasInvalidCapacityCursor(): boolean {
+    return this.cursorInvalidBefore || this.cursorInvalidAfter;
+  }
+
   private onScrollFrame(): void {
     const el = this.opts.scrollElement;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -451,7 +660,7 @@ export class BoundedList<T, Q = void> {
     catchUpAtEdge(
       () => this.stale && !this.loadingBefore && !this.loadingAfter,
       () => this.atFreshEdge(),
-      () => this.reset({ pinEdge: true }),
+      () => this.catchUp(),
     );
   }
 
@@ -476,8 +685,220 @@ export class BoundedList<T, Q = void> {
     this.emitStaleChange();
   }
 
+  private reconcileCapacity(forceNewSnapshot = false): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    // 显式 loadMore / 提示条追平可能先于已经排队的自动帧任务到达；一旦任何入口
+    // 开始接管本轮 reconcile，就取消旧帧，避免首个请求很快完成后旧帧再发一次 reset。
+    this.scheduleCapacityReconcile.cancel();
+    // 在途 reconcile 期间若 overlay 已经溢出，显式追平必须立即建立新的快照边界：
+    // 新请求会递增 requestId 并作废旧响应。若仍复用旧 Promise，用户就得在旧请求
+    // 因不完整 overlay 失败后再点第二次。
+    if (
+      this.capacityReconcilePromise
+      && !(forceNewSnapshot && this.pendingMutationOverflow)
+    ) {
+      return this.capacityReconcilePromise;
+    }
+    const running = this.runCapacityReconcile(forceNewSnapshot);
+    this.capacityReconcilePromise = running;
+    void running.then(
+      () => {
+        if (this.capacityReconcilePromise === running) this.capacityReconcilePromise = null;
+      },
+      () => {
+        if (this.capacityReconcilePromise === running) this.capacityReconcilePromise = null;
+      },
+    );
+    return running;
+  }
+
+  private async runCapacityReconcile(forceNewSnapshot: boolean): Promise<void> {
+    if (this.pendingMutationOverflow && !forceNewSnapshot) {
+      // 自动追平没有权限假设 source 已同步所有纯本地变化。保留当前窗口与有界 overlay，
+      // 等用户/调用方明确追平时再把那一刻作为新的权威快照边界。
+      this.stale = true;
+      this.pendingCount = Math.max(1, this.pendingCount);
+      this.emitStaleChange();
+      this.emitLoadState();
+      this.render();
+      return;
+    }
+    const myRequestId = ++this.requestId;
+    this.resetInFlightRequestId = null;
+    this.refreshTokenByIdentity.clear();
+    // overflow 若发生在请求开始前，下一份权威页天然晚于这些本地操作；从这个新快照点
+    // 重新记录请求期间的变化即可，不能拿已经被有界截断的旧日志重放。
+    if (this.pendingMutationOverflow) {
+      this.pendingMutations.clear();
+      this.pendingMutationOverflow = false;
+    }
+    this.capacityReconciling = true;
+    this.loadingBefore = false;
+    this.loadingAfter = false;
+    this.clearResetError();
+    this.emitLoadState();
+    // 保留当前有界窗口，只更新 loading / pill；权威请求成功前不清空 DOM。
+    this.render();
+
+    const request: FetchPageRequest<Q> = {
+      cursor: undefined,
+      backward: false,
+      limit: this.opts.pageSize,
+      query: this.query,
+      ...(this.opts.onLoadProgress
+        ? {
+          onProgress: (loaded: number) => {
+            if (!this.disposed && myRequestId === this.requestId) {
+              this.opts.onLoadProgress?.(loaded);
+            }
+          },
+        }
+        : {}),
+    };
+
+    try {
+      const page = await this.opts.source.fetch(request);
+      if (this.disposed || myRequestId !== this.requestId) return;
+      if (this.pendingMutationOverflow) throw this.createMutationOverflowError();
+      const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
+
+      this.window = nextWindow;
+      this.scheduleCapacityReconcile.cancel();
+      this.capacityReconciling = false;
+      this.firstLoadDone = true;
+      this.clearResetError();
+      this.applyAuthoritativeOverlayState(overlayEvicted);
+      this.emitItemsChanged();
+      this.emitStaleChange();
+      this.render();
+      if (this.stickToFreshEdge) this.pinToFreshEdge();
+      this.emitLoadState();
+      this.flushDeferredInvalidate();
+    } catch (err) {
+      if (this.disposed || myRequestId !== this.requestId) return;
+      this.scheduleCapacityReconcile.cancel();
+      this.capacityReconciling = false;
+      this.resetError = err;
+      this.hasResetError = true;
+      this.stale = true;
+      this.reportError(err, 'reset');
+      this.emitStaleChange();
+      this.render();
+      this.emitLoadState();
+      this.flushDeferredInvalidate();
+    }
+  }
+
+  private buildAuthoritativeWindow(page: PageLoadResult<T>): { window: PageWindow<T>; evicted: number } {
+    // normalize、超页校验和本地最终态重放全部在独立窗口完成，成功后才能替换可见窗口。
+    const nextWindow = new PageWindow<T>(
+      this.opts.maxPages,
+      this.opts.normalize,
+      this.opts.identityOf,
+      this.opts.pageSize,
+    );
+    nextWindow.setInitial(page);
+    return { window: nextWindow, evicted: this.replayPendingMutations(nextWindow) };
+  }
+
+  private replayPendingMutations(target: PageWindow<T>): number {
+    let evicted = 0;
+    for (const mutation of this.pendingMutations.values()) {
+      if (mutation.kind === 'upsert') {
+        evicted += target.mergeLive(mutation.item, this.freshEdgeValue);
+      } else if (mutation.kind === 'replace') {
+        target.updateMatching(
+          (item) => this.opts.identityOf(item) === mutation.identity,
+          () => mutation.item,
+        );
+      } else {
+        target.removeMatching(
+          (item) => this.opts.identityOf(item) === mutation.identity,
+        );
+      }
+    }
+    return evicted;
+  }
+
+  private applyAuthoritativeOverlayState(overlayEvicted: number): void {
+    const hasDeferredInvalidate = this.pendingInvalidate;
+    this.cursorInvalidBefore = overlayEvicted > 0 && this.freshEdgeValue === 'tail';
+    this.cursorInvalidAfter = overlayEvicted > 0 && this.freshEdgeValue === 'head';
+    this.stale = overlayEvicted > 0 || hasDeferredInvalidate;
+    if (overlayEvicted > 0) {
+      this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
+    } else if (!hasDeferredInvalidate) {
+      this.pendingCount = 0;
+    }
+    if (overlayEvicted === 0) {
+      this.pendingMutations.clear();
+      this.pendingMutationOverflow = false;
+    }
+  }
+
+  private isAuthoritativeRequestInFlight(): boolean {
+    return this.resetInFlightRequestId === this.requestId || this.capacityReconciling;
+  }
+
+  private hasDataRequestInFlight(): boolean {
+    return this.isAuthoritativeRequestInFlight() || this.loadingBefore || this.loadingAfter;
+  }
+
+  private cancelOrdinaryPageLoads(): void {
+    if (this.isAuthoritativeRequestInFlight() || (!this.loadingBefore && !this.loadingAfter)) return;
+    // live 裁剪后，所有基于旧窗口边界发出的普通分页响应都已失去上下文。
+    this.requestId += 1;
+    this.loadingBefore = false;
+    this.loadingAfter = false;
+    this.refreshTokenByIdentity.clear();
+  }
+
+  private flushDeferredInvalidate(): void {
+    if (!this.disposed && this.pendingInvalidate && !this.hasDataRequestInFlight()) {
+      this.scheduleInvalidateFlush();
+    }
+  }
+
+  private createMutationOverflowError(): RangeError {
+    return new RangeError(
+      `[BoundedList:${this.opts.id}] 权威请求期间的本地 identity 变化超过 pageSize×maxPages，已保留当前有界窗口并拒绝不完整响应`,
+    );
+  }
+
+  private rememberPendingMutation(mutation: LocalMutation<T>): void {
+    const identity = mutation.kind === 'upsert'
+      ? this.opts.identityOf(mutation.item)
+      : mutation.identity;
+    const previous = this.pendingMutations.get(identity);
+    // upsert 后的 patch 仍然是“若权威页没有该 identity 也要新增”，不能降级成 replace。
+    const finalMutation = mutation.kind === 'replace' && previous?.kind === 'upsert'
+      ? { kind: 'upsert' as const, item: mutation.item }
+      : mutation;
+    // patch 不改变真实窗口里的相对顺序；只有 upsert/remove 这类在时间线上重新发生的
+    // 操作才移动到 Map 尾部。否则 C→D→patch(C) 会被错误重放成 D→C。
+    if (mutation.kind !== 'replace') this.pendingMutations.delete(identity);
+    this.pendingMutations.set(identity, finalMutation);
+    const hardBudget = this.opts.pageSize * this.opts.maxPages;
+    if (this.pendingMutations.size > hardBudget) {
+      const oldest = this.pendingMutations.keys().next().value as string | undefined;
+      if (oldest !== undefined) this.pendingMutations.delete(oldest);
+      this.pendingMutationOverflow = true;
+    }
+  }
+
   private flushInvalidate(): void {
     if (this.disposed || !this.pendingInvalidate) return;
+    if (this.hasDataRequestInFlight()) {
+      // reset / staged reconcile 的响应会整体替换窗口。期间到达的 identity 通知不能在旧
+      // 窗口上执行后被覆盖，也不能拿旧结果修改新窗口；保留 identity，权威请求落定后重发。
+      const deferredCount = this.pendingInvalidateCount;
+      this.pendingInvalidateCount = 0;
+      this.stale = true;
+      this.pendingCount += deferredCount;
+      this.emitStaleChange();
+      this.render();
+      return;
+    }
     const identities = [...this.pendingIdentities];
     const count = this.pendingInvalidateCount;
     this.pendingInvalidate = false;
@@ -493,7 +914,7 @@ export class BoundedList<T, Q = void> {
       return;
     }
     if (this.atFreshEdge()) {
-      void this.reset({ pinEdge: true });
+      void this.catchUp();
       return;
     }
 
@@ -504,29 +925,89 @@ export class BoundedList<T, Q = void> {
     this.render();
 
     const hits = identities.filter((id) => this.window.hasIdentity(id));
-    if (hits.length === 0 || !this.opts.fetchByIdentity) return;
+    const fetchByIdentity = this.opts.fetchByIdentity;
+    if (hits.length === 0 || !fetchByIdentity) return;
 
+    const refreshTokens = new Map(hits.map((id) => [id, Symbol(id)] as const));
+    for (const [id, token] of refreshTokens) this.refreshTokenByIdentity.set(id, token);
     const myRequestId = this.requestId;
-    void this.opts.fetchByIdentity(hits)
+    const clearRefreshTokens = (): void => {
+      for (const [id, token] of refreshTokens) {
+        if (this.refreshTokenByIdentity.get(id) === token) {
+          this.refreshTokenByIdentity.delete(id);
+        }
+      }
+    };
+    let refreshRequest: Promise<readonly T[]>;
+    try {
+      // 保持调用时机同步：dispose/reset 必须能确认是否已经发出外部请求，同时仍兜住
+      // 违反返回类型约定的同步 throw，避免 token 永久残留。
+      refreshRequest = fetchByIdentity(hits);
+    } catch (err) {
+      const hasCurrentIdentity = hits.some(
+        (id) => this.refreshTokenByIdentity.get(id) === refreshTokens.get(id),
+      );
+      if (!this.disposed && myRequestId === this.requestId && hasCurrentIdentity) {
+        this.reportError(err, 'refresh');
+        this.render();
+      }
+      clearRefreshTokens();
+      return;
+    }
+    void Promise.resolve(refreshRequest)
       .then((fetched) => {
         // 与 reset / loadMore 同样的丢弃守卫：期间发生过 reset 的话，
         // 这份结果描述的是已经作废的窗口，套到新窗口上会误删条目。
         if (this.disposed || myRequestId !== this.requestId) return;
         const fetchedMap = new Map(fetched.map((item) => [this.opts.identityOf(item), item] as const));
+        // refresh 可能先于一个更早快照的普通分页返回。此时刚接受的远端最终态也要
+        // 暂存进 overlay，让晚到分页在并入后重放；否则新值会回退，删除项会复活。
+        const pageRequestInFlight = this.loadingBefore || this.loadingAfter;
+        let changed = false;
         for (const id of hits) {
+          if (this.refreshTokenByIdentity.get(id) !== refreshTokens.get(id)) continue;
           const found = fetchedMap.get(id);
-          if (found) this.window.updateMatching((item) => this.opts.identityOf(item) === id, () => found);
-          else this.window.removeMatching((item) => this.opts.identityOf(item) === id);
+          if (found) {
+            changed = this.window.updateMatching(
+              (item) => this.opts.identityOf(item) === id,
+              () => found,
+            ) || changed;
+          } else {
+            changed = this.window.removeMatching(
+              (item) => this.opts.identityOf(item) === id,
+            ) || changed;
+          }
+          if (pageRequestInFlight) {
+            if (found) {
+              this.rememberPendingMutation({ kind: 'replace', identity: id, item: found });
+            } else {
+              this.rememberPendingMutation({ kind: 'remove', identity: id });
+            }
+          } else {
+            // 这份 refresh 是在该 identity 最后一次本地 mutation 之后发出且 token
+            // 仍有效；没有更早分页在飞时可直接淘汰旧 overlay。
+            this.pendingMutations.delete(id);
+          }
         }
+        if (!changed) return;
         this.emitItemsChanged();
         this.emitLoadState();
         this.render();
       })
       .catch((err) => {
         if (this.disposed || myRequestId !== this.requestId) return;
+        const hasCurrentIdentity = hits.some(
+          (id) => this.refreshTokenByIdentity.get(id) === refreshTokens.get(id),
+        );
+        if (!hasCurrentIdentity) return;
         this.reportError(err, 'refresh');
         this.render();
-      });
+      })
+      .finally(clearRefreshTokens);
+  }
+
+  private invalidateRefresh(identity: string): void {
+    this.refreshTokenByIdentity.delete(identity);
   }
 
   private onInteract(identity: string, ev: Event): void {

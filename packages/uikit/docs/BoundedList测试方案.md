@@ -1,7 +1,7 @@
 # BoundedList 测试方案
 
 > 主要对照：`packages/uikit/tests/unit/bounded-list/`（`bounded-list.test.ts`、`stream-window.test.ts`、`page-window.test.ts`、`page-source.test.ts`、`selection.test.ts`、`registry.test.ts`、`update-pill.test.ts`、`stress.test.ts`、`fake-dom.ts`、`test-sources.ts`）与 `packages/uikit/src/app/bounded-list/`。
-> 最后复核：2026-07-28。
+> 最后复核：2026-07-29。
 > 触发更新：`bounded-list/` 源码行为变化、测试用例增删、覆盖率口径调整，或 §6 缺陷清单新增条目时同步更新。
 > 入口关系：上级索引见 [`../../../docs/architecture/前端文档索引.md`](../../../docs/architecture/前端文档索引.md)；接口口径见 [`BoundedList组件设计.md`](BoundedList组件设计.md)，仓库整体测试分层见 [`../../../docs/development/测试方案.md`](../../../docs/development/测试方案.md)。
 
@@ -39,7 +39,7 @@
 目标有三个，按优先级排列：
 
 1. **锁住不变量**（§3）。列表组件的价值就在这几条：窗口有界、DOM 有界、身份唯一、游标只来自保留页、可完全释放。任何改动破坏其中一条都必须让测试变红。
-2. **覆盖每一条分支**。行覆盖、分支覆盖、函数覆盖、语句覆盖**全部 100%**（§5）。边界组合（裁剪 + 去重 + 锚点 + 提示条 + 并发丢弃）是这个组件出错最多的地方，只有把分支走满才谈得上有回归保护。
+2. **用高覆盖率守住行为分支**。边界组合（裁剪 + 去重 + 锚点 + 提示条 + 并发丢弃）是这个组件出错最多的地方；当前准确覆盖率与未覆盖行见 §5，不用“100%”口号代替真实结果。
 3. **把缺陷变成可执行的事实**（§6）。首轮评审确认的 25 条缺陷已全部修复，每条都在对应的正式测试文件里留下了守着修复结果的回归用例——再犯必然变红。
 
 不在本方案范围内：
@@ -97,31 +97,32 @@
 
 | # | 不变量 | 主要守护用例 |
 |---|---|---|
-| I1 | 窗口条目数 ≤ `pageSize × maxPages` | `page-window` B5、`stress` A1–A5 |
+| I1 | 每个 source 页经 normalize 后不超过 `pageSize`，窗口与 DOM 始终 ≤ `pageSize × maxPages`；live 超预算同步裁剪 | `page-window` B5/E7/E8、`stress` A1/A2/A3/A5/C2 |
 | I2 | DOM 条目节点数 == `state.count`，与数据总量无关 | `stress` A1/A5/D3 |
 | I3 | 提供 `identityOf` 时，窗口内同一身份至多出现一次 | `page-window` C1–C5、`stress` A1/D2 |
-| I4 | 续翻游标永远取自保留页的边界，从不在客户端重建 | `page-window` B1/B2/C3/C5、`bounded-list` C6、`stress` B2 |
+| I4 | 正常续翻只使用可信保留页游标；live eviction 使被裁端游标失效后立即封锁该端，后续追平只能发 `cursor: undefined` 的权威请求 | `page-window` B1/B2/C3/C5、`bounded-list` C6/G3b、`stress` B2 |
 | I5 | `reset` / `loadMore` 返回的 Promise 永远 resolve，不产生未处理拒绝 | `bounded-list` K1/K6 |
 | I6 | `dispose()` 之后组件挂的监听数全部归 0，提示条 DOM 与 a11y 属性还原，已排队的定位帧不再触碰 DOM，注册表不含该实例 | `bounded-list` L1/L8/L11、`stream-window` K1–K10、`stress` E1/E2 |
-| I7 | 过期请求（被更新的 `reset` 取代）与已 `dispose` 实例上的结果整体丢弃，不触发任何回调 | `bounded-list` B9/B10/C10/K2/K5/L4–L7 |
+| I7 | 过期分页请求由 `requestId` 丢弃；live eviction 会作废基于旧边界的在飞普通分页并释放同世代 refresh token；定向刷新按 identity generation/token 隔离并及时释放，已接受 refresh 在旧分页（含 backward / forward 双向并发）在飞时把 found / absent 最终态写入 overlay，首个方向落定后继续保留、全部落定后再清理；无旧分页时淘汰同 identity 旧 overlay | `bounded-list` B9/B10/C10/E12b–E12j/K2/K5/L4–L7 及数据请求竞态回归 |
 | I8 | 同一帧内多次 `invalidate` 只跑一次决策，`count` 累加、`identities` 去重合并 | `bounded-list` E10/E11、`stress` C1 |
 | I9 | 多选上限没有绕过路径 | `bounded-list` I7 |
 | I10 | 自动加载在**任何**服务端行为下都必然终止（空页强制收敛 + 失败退避 + 空游标短路） | `bounded-list` C8/C13–C19、`page-window` A11、`stress` B1 |
 | I11 | 选中态只被自己那一条身份的删除影响，共享 store 的其它实例不受牵连 | `bounded-list` G8/G8b/G8c |
+| I12 | reset / loadMore / reconcile 都按 identity 重放在飞本地最终态：容量 reconcile 在飞 / 失败时保留当前有界 DOM；overlay 超预算时拒绝不完整响应且绝不自动循环——reset / reconcile 进入 `failed + stale`，普通 loadMore 封锁两端游标并进入 stale / 显式 staged reconcile | `bounded-list` B13/B14/C21/G3c/G3d/G3f/G3i–G3l |
 
 ## 4. 用例分类
 
-八个测试文件、共 **415 个用例**。每个文件内部按字母段分类，用例 id（`A1`、`C7`…）写在用例名开头，便于在文档与代码之间互相指认。
+八个测试文件、共 **441 个用例**。每个文件内部按字母段分类，用例 id（`A1`、`C7`…）写在用例名开头，便于在文档与代码之间互相指认。
 
 | 文件 | 用例数 | 覆盖对象 |
 |---|---|---|
-| `page-window.test.ts` | 51 | 数据窗口层 |
-| `page-source.test.ts` | 27 | 数据源层 |
+| `page-window.test.ts` | 53 | 数据窗口层 |
+| `page-source.test.ts` | 28 | 数据源层 |
 | `selection.test.ts` | 25 | 选中态 |
 | `registry.test.ts` | 15 | 实例注册表 |
 | `update-pill.test.ts` | 12 | 提示条 |
 | `stream-window.test.ts` | 100 | 渲染引擎 |
-| `bounded-list.test.ts` | 185 | 组件外壳 |
+| `bounded-list.test.ts` | 190 | 组件外壳 |
 | `stress.test.ts` | 18 | 大数据量与长序列 |
 
 ### 4.1 PageWindow 数据窗口
@@ -129,10 +130,10 @@
 | 段 | 主题 | 覆盖要点 |
 |---|---|---|
 | A | 基础记账（14 例） | `setInitial` 的空页 / 非空页、重复调用等价于重建、`total` 的透传与保留、空页续翻只收敛 `hasMore` 不动游标、`normalize` 作用于每一页、`hasMore*` 无 setter、`reset` 后可直接续翻式重建、**空页强制收敛该端 hasMore**、**空首页保留 fallback 游标**、`reset` 清 fallback、`maxPages < 1` 被夹到 1 |
-| B | 整页裁剪（6 例） | 双向裁剪与对端 `hasMore` 置真、`maxPages=1` 每次整页替换、连续超额逐次裁到位、条目数上界、**裁剪只按页数不按条数**（单页 500 条不裁） |
+| B | 整页裁剪（6 例） | 双向裁剪与对端 `hasMore` 置真、`maxPages=1` 每次整页替换、连续超额逐次裁到位、正常 source 页下的条目数上界 |
 | C | 跨页去重（10 例） | 双向去重、旧页被清空仍保留有效游标、§7.2 的「裁剪后回滚 + 并发重排」四步路径、空页占名额的已知取舍、未提供 `identityOf` 时不去重、页内重复不由去重负责、`hasIdentity` 跨页查找与删除后失效 |
 | D | 就地增删改（7 例） | `updateMatching` / `removeMatching` 的命中与未命中、跨页多命中、删空整页后游标仍有效、删光全部条目后 `loaded` 仍为 `true` |
-| E | 实时并入 `mergeLive`（10 例） | 双端并入与对应 `hasMore` 置 `false`、空窗口自建页（无游标时两端 hasMore 一并置假 / 有 fallback 时继承）、多页窗口下不增页、`normalize` 作用于整页、**跨页去重与幂等**、未提供 `identityOf` 时不去重、连续 500 次并入只撑大单页 |
+| E | 实时并入 `mergeLive`（12 例） | 双端并入与对应 `hasMore` 置 `false`、空窗口自建页、`normalize`、**跨页去重与幂等**、未提供 `identityOf` 时不去重、连续 500 次并入仍受 `pageSize×maxPages` 硬预算约束、超量 source / normalize 快速失败、非空 source 页被 normalize 为空后仍推进可信游标 |
 | F | 大数据量与长序列（4 例） | 1000 次 `appendForward`、400 步交替 append/prepend、每页与相邻页重叠一半的极端形态、1000 条窗口内的逐条精确增删改 |
 
 ### 4.2 PageSource 数据源
@@ -140,7 +141,7 @@
 | 段 | 主题 | 覆盖要点 |
 |---|---|---|
 | A | `serverPageSource`（6 例） | 请求原样透传、`cursor: undefined` 不被替换、不透明游标原样搬运、`fetch` 与 `map` 的错误都不吞、`map` 内做过滤 |
-| B | `localPageSource`（10 例） | reset 重新 `loadAll`、续翻只切片、`setQuery` 重新过滤排序、全过滤为空、`compare` 不污染原数组、缓存快照不受原数组后续修改影响、`loadAll` 抛错透传、**`onProgress` 透传与不重复上报** |
+| B | `localPageSource`（11 例） | reset 重新 `loadAll`、续翻只切片、`setQuery` 重新过滤排序、全过滤为空、`compare` 不污染原数组、缓存快照不受原数组后续修改影响、`loadAll` 抛错透传、**`onProgress` 透传与不重复上报**、并发 reset 只发布最新世代的缓存和进度 |
 | C | 边界与非法输入（8 例） | 两端越界夹紧、远超长度的游标、负游标、`limit=0`、空集合、backward 的 limit 超剩余量、reload 之后旧下标游标被夹紧、**非法游标按 0 处理（不产出 `"NaN"`）** |
 | D | 大数据量（3 例） | 1000 条配 `PageWindow` 的有界性、50000 条 + `compare` 翻遍全集只 `loadAll` 一次、50000 选 1 的极低命中率过滤 |
 
@@ -184,7 +185,7 @@
 | F | 贴边判定（5 例） | head / tail 的阈值边界、`stickyPx=0`、内容不足一屏时两端都贴边、`dispose` 后仍可查询 |
 | G | 指针期间推迟重建（8 例） | 推迟与抬起后下一帧应用、多次 render 只应用最后一次、window 级兜底、无积压时不安排冲刷、未按下就收到抬起、抬起后又正常渲染导致冲刷退化为空操作、一次按下多次抬起只冲刷一次、未按下时立即重建 |
 | H | 事件委托（8 例） | 嵌套元素上溯（含 5 层深）、`contentElement` 分离、无锚点祖先、点边界提示、`target` 为 `null`、路径中夹着没有 `getAttribute` 的节点、未提供 `onInteract` |
-| I | 键盘导航（15 例） | 方向键移动与高亮、首次上下的起点、`preventDefault`、`Enter`/`Space` 激活与 `viaKeyboard`、无焦点时不激活、两端越界触发翻页且不移焦点、回调缺失、无条目 / 从未 render、其它按键不消费、焦点跟随下标、**窗口变短时先钳制再取键、当次渲染即保住高亮**、清空后归位、首元素无 `classList` 的降级 |
+| I | 键盘导航（15 例） | 方向键移动与高亮、首次上下的起点、`preventDefault`、`Enter`/`Space` 激活与 `viaKeyboard`、无焦点时不激活、两端越界触发翻页且不移焦点、回调缺失、无条目 / 从未 render、其它按键不消费、焦点按 identity 保持、原身份消失时钳制、清空后归位、首元素无 `classList` 的降级 |
 | J | 内容 `load`（3 例） | 触发 `onContentLoad`、未提供时空操作、监听确实注册在捕获阶段 |
 | K | 释放（10 例） | `scrollElement` / `window` / `contentElement` 三处监听全清、无 `defaultView` 的宿主、`dispose` 后 render 空操作 / `scrollToKey` 仍可查询、幂等、已排队的下一帧不触碰 DOM、**注销后残留调度被触发**（白盒）、200 实例压力 |
 | L | 辅助导出（12 例） | `getOrCreateBoundedStreamWindow` 复用与区分、`catchUpAtEdge` 三态 + 短路 + fire-and-forget、`createFrameScheduler` 的合并 / 重排 / cancel / cancel 后重排 / 未调度时 cancel / 无 rAF 时同步执行 |
@@ -193,13 +194,13 @@
 
 | 段 | 主题 | 覆盖要点 |
 |---|---|---|
-| A | 构造与默认值（14 例） | 提示条默认挂父元素、无父元素时退化、`pillHost: false`、显式 `pillHost`、`freshEdge` 决定 `stickyPx`/`settleFrames` 默认值的**边界取值**、显式 `stickyPx`、构造即注册、`selection` 无 `store` 时自建、**参数校验抛错**（`pageSize`/`maxPages`/`store`+`max`）、**a11y 属性的设置与还原**、**`register` 走宿主注册表**、**目录入口不再被同名模块遮蔽** |
-| B | reset 首屏（12 例） | 首屏加载、空首页、加载中文案、`pinEdge` 双端行为、`pinEdge: false`、`settleFrames` 多帧与单帧、`reset({ query })` 四种传参组合（含显式 `undefined`）、并发丢弃、10 次乱序落地、切换后不残留旧数据、请求参数透传 |
-| C | 双向续翻（20 例） | forward / backward 的裁剪、backward 到头收敛、无更多时不发请求、同方向并发守卫与反方向并发、裁剪后游标正确、触界自动续翻、链式补页终止（4 次请求）、空页回调、`loadMore` 期间 reset、跨页去重、`normalize`、**失败后不自动重试**、**显式 loadMore 与滚离触界都能解除暂停**、**空页报还有更多也会收敛**、**空首页继续补页**、**无可用游标时不发空游标请求**、**空首页的真实游标仍可用** |
+| A | 构造与默认值（15 例） | 提示条宿主组合、`freshEdge` 默认值、显式 `stickyPx`、注册表、内部 selection、**参数校验抛错**（正安全整数、乘积安全、`store+max` 互斥）、**a11y 属性设置与精确还原宿主原值**、宿主 `register`、目录入口 |
+| B | reset 首屏（14 例） | 首屏加载、空首页、加载中文案、`pinEdge` 双端行为、`pinEdge: false`、`settleFrames` 多帧与单帧、`reset({ query })` 四种传参组合（含显式 `undefined`）、并发丢弃、10 次乱序落地、切换后不残留旧数据、请求参数透传、**普通 reset 在飞期间按 identity 重放 upsert / patch / remove 最终态**、**overlay 溢出时拒绝旧响应且不自动循环、不清空当前本地窗口** |
+| C | 双向续翻（22 例） | forward / backward 的裁剪、backward 到头收敛、无更多时不发请求、同方向并发守卫与反方向并发、裁剪后游标正确、触界自动续翻、链式补页终止（4 次请求）、按 normalize 后 accepted count 回调空页但继续使用已前进游标、`loadMore` 期间 reset、跨页去重、`normalize`、**在飞期间的本地最终态在返回页并入后重放**、**失败后不自动重试**、**显式 loadMore 与滚离触界都能解除暂停**、**空页报还有更多也会收敛**、**空首页继续补页**、**无可用游标时不发空游标请求**、**空首页的真实游标仍可用** |
 | D | setQuery 防抖与进度（9 例） | `debounceMs=0` 同步、默认 300ms 的**边界值**（299 不触发 / 300 触发）、自定义值、负数等价 0、`dispose` 取消计时器、`dispose` 后空操作、`setQuery` 触发的 reset 回到新鲜端（1000 条 `localPageSource`）、**`onLoadProgress` 透传**与未配置时请求形状不变 |
-| E | invalidate 决策树（21 例） | `isActive=false` 的两种情形（含贴边时也不追平）、贴边追平、不贴边点亮、`pendingCount` 累加与归零、命中 / 未命中 / 无 `fetchByIdentity` 三条分支、定向刷新不动游标、同帧合并、身份去重、定向刷新失败、定向刷新返回 / 失败时已 dispose、无参 invalidate、首屏未加载时 invalidate、`onStaleChange`、**不可见时仍重渲同步提示条**、**定向刷新期间提示条立即亮起**、**定向刷新的 requestId 丢弃守卫**（成功与失败两条） |
+| E | invalidate 决策树（28 例） | `isActive=false` 的两种情形（含贴边时也不追平）、贴边追平、不贴边点亮、`pendingCount` 累加与归零、命中 / 未命中 / 无 `fetchByIdentity` 三条分支、定向刷新不动游标、同帧合并、身份去重、定向刷新失败、定向刷新返回 / 失败时已 dispose、无参 invalidate、首屏未加载时 invalidate、`onStaleChange`、**不可见时仍重渲同步提示条**、**定向刷新期间提示条立即亮起**、requestId 与**按 identity generation/token** 丢弃守卫、不同 identity 并发互不淘汰、本地 patch / remove / upsert 使同 identity 在飞刷新失效、token 只为真实命中的在飞 identity 存活且落定后释放、同步抛错也释放 token、已接受 refresh 无旧分页时淘汰同 identity 旧 overlay、有 backward / forward 旧分页并发时把 found / absent 最终态写入 overlay并保留到两端都落定、防止晚到旧页回退或复活、live 裁剪作废请求世代时同步释放 refresh token |
 | F | 提示条三条路径（11 例） | 路径①及其 loading 守卫、路径②（tail）与只认新鲜端方向（head）、路径③、点击提示条、文案随计数变化、无待追平时贴边不发请求、**无 `updatePill` 文案时不显示提示条**、**非空末页也清提示条**、**非新鲜端方向到尽头不清** |
-| G | 本端增删改（14 例） | 双端 `upsertLocal`、不触发页数裁剪、`normalize` 去重、事件触发、`patch` 命中 / 未命中、`removeLocal` 与选中集修剪、`patch` 不触发 `onLoadStateChange`、空窗口 `upsertLocal`、**共享 store / pinnedItems 的选中项不被误删**、**`upsertLocal` 幂等与跨页去重** |
+| G | 本端增删改（25 例） | 双端 `upsertLocal`、达到硬预算后从非新鲜端同步裁剪并保留新条目、失效游标立即封锁、无游标 staged reconcile、请求在飞保留有界 DOM、重放期间本地变更、失败保留数据并暴露 retry、显式追平取消已排队的自动帧、mutation 按 identity 合并而不以 FIFO 截断语义、**overlay overflow 保留窗口并失败，绝不自动循环；一次显式追平建立新快照**、**显式追平撞上已溢出的在途 reconcile 时立即以 requestId 作废旧请求并新发无游标请求**、**权威请求在飞时的 live eviction 只进入 overlay，不额外安排第二次追平**、patch 继承既有 upsert 的重放顺序、`pinEdge=false` 后按真实几何判断是否贴边、reconcile 在飞时延后定向刷新到新窗口提交之后、`normalize` 去重、事件触发、`patch` / `removeLocal`、共享 store / pinnedItems 不被误删、`upsertLocal` 幂等与跨页去重 |
 | H | 渲染与文案（17 例） | `pinnedItems` 参与渲染不计数、只有 pinned 时不显示空态、`RenderItemContext` 全字段、未开启 selection 的默认值、pinned 参与 `previous` 链、`emptyFiltered` 与回退、循环引用查询、**结构比较不看键顺序**、**查询比较的各类不等形态**、边界文案、`text` 全缺省、`render()` 反映外部状态且不发请求不动滚动、**首屏失败的错误态与重试入口**（含无 `error` 文案的向后兼容、有条目时不显示错误态） |
 | I | 交互与选中态（13 例） | 点击 / 键盘激活、点击 pinned（含遍历过不匹配的 pinned）、点到已不存在的身份、single 的双重语义、multi 的翻转、**上限无绕过**、共享 store 双实例、`onSelectionChange` 载荷、无回调时不崩、`selectable` 语义、外部改 store 触发重渲、**`onSelectionChange` 的 items 顺序与渲染一致** |
 | J | `scrollToIdentity`（4 例） | 命中 / 未命中、pinned 身份、center、身份在窗口但没有渲染节点 |
@@ -214,7 +215,7 @@
 
 | 段 | 主题 | 覆盖要点 |
 |---|---|---|
-| A | 有界性不变量（5 例） | 10000 条翻到尾、4000 条从中间双向翻 60 次、`maxPages=1` 翻 50 次、单页 2000 条不裁剪、`localPageSource` 50000 条翻遍全集只 `loadAll` 一次 |
+| A | 有界性不变量（5 例） | 10000 条翻到尾、4000 条从中间双向翻 60 次、`maxPages=1` 翻 50 次、`localPageSource` 50000 条翻遍全集只 `loadAll` 一次；`PageWindow` 直接构造的兼容路径与生产 `BoundedList` 强制传入 `pageSize` 的硬预算路径分开验证 |
 | B | 长序列滚动（2 例） | 触界驱动的 200 次来回滚动（每轮必然拉到该端尽头且必然终止）、长序列翻页后仍能正确翻回起点 |
 | C | 高频事件（5 例） | 同帧 1000 次 `invalidate`、2000 次 `upsertLocal`、1000 次 `patch` + 1000 次 `removeLocal`、500 个共享选中项、1000 次 `render()` 不发请求 |
 | D | 极端形态数据（4 例） | 10KB 身份键、全部条目身份相同、每行 5 个节点、`normalize` 把整页压成 1 条 |
@@ -235,16 +236,16 @@ npx vitest run --config vitest.config.ts \
   tests/unit/bounded-list
 ```
 
-2026-07-28 的结果：
+2026-07-29 使用本文命令实测结果：
 
 | 指标 | 结果 |
 |---|---|
-| Statements | **100%**（796 / 796） |
-| Branches | **100%**（489 / 489） |
-| Functions | **100%**（148 / 148） |
-| Lines | **100%**（662 / 662） |
+| Statements | **96.45%**（1116 / 1157） |
+| Branches | **94.83%**（680 / 717） |
+| Functions | **98.91%**（183 / 185） |
+| Lines | **96.8%**（969 / 1001） |
 
-逐文件都是 100%。`index.ts` 与 `types.ts` 没有可执行语句（纯再导出 / 纯类型），计为 0/0。
+同轮结果为 8 个文件、441 项全部通过。未覆盖行集中在 staged reconcile / overlay 的少量防御分支、极端裁剪分支和运行时降级路径；不能沿用“逐文件 100%”的旧结论。`index.ts` 与 `types.ts` 没有可执行语句（纯再导出 / 纯类型）。
 
 两处「公开 API 走不到」的分支是靠白盒手段覆盖的，代码与用例里都写明了理由：
 
@@ -254,7 +255,7 @@ npx vitest run --config vitest.config.ts \
 | `bounded-list.ts` `flushInvalidate` 的 `disposed` / `!pendingInvalidate` 守卫 | dispose 后 / 无待处理时的帧回调 | 直接调用私有方法（`bounded-list` N2/N3） |
 | `stream-window.ts` 滚动帧回调的 `disposed` 守卫 | 注销后残留调度被触发 | `capturedListeners` 取出监听器本体，dispose 后手动调用（`stream-window` K9） |
 
-修复缺陷时顺手删掉了两处**证明不可达**的代码，而不是给它们造测试：`loadMoreInternal` 里重复的 `disposed` 守卫（两个调用点都已挡住），以及 `mergeLive` 里的整页裁剪循环（并入永远不增加页数，`maxPages ≥ 1` 之后该循环恒不执行）。**能证明走不到的分支应当删掉，不该用白盒测试硬凑覆盖率。**
+`mergeLive` 现在有真实可达的硬预算裁剪与容量追平路径：同步裁剪保证 DOM 绝不越界，并立即封锁被裁端的失效游标、作废基于旧窗口边界的在飞普通分页。后续由 BoundedList 发起无游标 staged 权威 reconcile；请求在飞或失败时保留当前 capped DOM，成功前在独立窗口按 identity 重放这段时间的 upsert / patch / remove，再原子替换。普通 reset 与 loadMore 也使用同一套最终态重放，避免远端响应覆盖在飞 live。唯一 identity 超过 overlay 预算时，reset / reconcile 拒绝无法完整重放的响应、保留当前有界窗口并进入 `failed + stale`；普通 loadMore 丢弃该页、封锁两端游标并进入 stale / 显式 staged reconcile，沿用普通分页错误模型而不把 `state.failed` 置真。三条路径都绝不自动循环拉取。用户或调用方一次显式 `loadMore` / 提示条重试即可建立新快照；若它撞上已溢出的在途 reconcile，组件立即递增 `requestId` 作废旧响应并新发无游标请求，无需第二次点击。该路径不能退化成拿旧游标续翻，也不能先清空当前 DOM。
 
 **维护要求**：新增分支必须同步新增用例。CI 的质量趋势任务（`YIMSG_QUALITY_GATES=1`）会记录覆盖率，出现回落要在合并前补齐。
 
@@ -270,7 +271,7 @@ npx vitest run --config vitest.config.ts \
 |---|---|---|---|
 | BL-BUG-01 | 翻页失败后立即重试：贴边且窗口不足一屏时，「失败 → 重渲 → 触界 → 立刻重试」全在微任务里跑，宏任务被饿死，**页面完全卡住**并对服务端形成风暴式重试 | 两道闸门：① 续翻拿到空页时窗口**强制**把该端 `hasMore` 收敛为 `false`（服务端违反契约也停得下来）；② 某方向失败后暂停该方向的**自动**续翻，滚离触界范围 / 显式 `loadMore` / `reset` 三者之一解除，显式调用不受暂停影响 | `bounded-list` C13/C14/C15/C16、`page-window` A11 |
 | BL-BUG-02 | `removeLocal` 用「本实例窗口内的身份」做 `retainOnly`，把共享 `SelectionStore` 里属于另一个 tab、`pinnedItems`、以及已被裁剪出窗口的选中项一并清掉——**用户选好的转发目标被静默清空** | 新增 `SelectionStore.delete(id)`，`removeLocal` 只精确摘掉被删的那一个身份 | `bounded-list` G8/G8b/G8c、`selection` A8/A9 |
-| BL-BUG-03 | 定向刷新回调只有 `disposed` 守卫、没有 requestId 守卫，`reset` 之后陈旧结果仍会按身份 patch / remove 到新窗口上，最坏情况误删新窗口里存在的条目 | `flushInvalidate` 进入时捕获 `requestId`，`then` / `catch` 里比对后整体丢弃 | `bounded-list` E12b/E12c |
+| BL-BUG-03 | 定向刷新回调只有 `disposed` 守卫，`reset` 后的旧结果会污染新窗口；若用全局刷新序号修正，又会误淘汰不同 identity 的并发结果 | `requestId` 隔离窗口世代；只为实际命中的在飞 identity 建独立 token，同 identity 后发刷新或本地写入胜出，不同 identity 响应可分别落地；接受结果时按旧分页是否在飞决定写入或淘汰 overlay，完成或世代作废时释放 token | `bounded-list` E12b–E12j |
 
 ### 6.2 P1
 
@@ -323,6 +324,8 @@ npm run test:uikit
 ./tools/run_all_tests.sh
 ```
 
-用例数与整体统计以 `tools/scripts/check_docs_consistency.sh` 的输出为准；本文 §4 的分项数量在用例增删时同步更新。
+仓库全量脚本的 UI 步骤显式选择 Playwright `chromium` 项目并传入 `--retries=0`，因此会以零重试运行 BoundedList 功能 spec，并通过该项目的 `testIgnore` 排除 `*.performance.spec.ts`；同一批功能用例不会重复执行。性能 spec 的独立命令、阈值与结果口径见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)。
+
+用例数与整体统计以 `tools/scripts/check_docs_consistency.sh` 的输出为准；本文 §4 的分项数量在用例增删时同步更新。当前通过 Vitest 列举与实际执行核对为 441 项，其中 `bounded-list.test.ts` 为 190 项、`page-window.test.ts` 为 53 项。
 
 修改 `bounded-list/` 源码后至少要跑前两条；改动涉及宿主接线（`app-instance.ts` / `main-app.ts`）时再补一次 `npm run test:uikit`。

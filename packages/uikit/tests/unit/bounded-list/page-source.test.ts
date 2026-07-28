@@ -196,6 +196,59 @@ describe('PageSource / B localPageSource', () => {
     await source.fetch({ cursor: '4', backward: false, limit: 4, query: undefined, onProgress: (n) => progressed.push(n) });
     expect(progressed).toEqual([10]);
   });
+
+  it('B11 并发 reset 乱序返回时旧结果不污染最新查询的续翻缓存与进度', async () => {
+    type Query = { keyword: 'old' | 'new' };
+    const resolvers = new Map<
+      Query['keyword'],
+      { resolve(items: Item[]): void; progress?: (loaded: number) => void }
+    >();
+    const source = localPageSource<Item, Query>({
+      loadAll: (query, progress) => new Promise<Item[]>((resolve) => {
+        resolvers.set(query.keyword, { resolve, progress });
+      }),
+    });
+    const progress: string[] = [];
+
+    const oldReset = source.fetch({
+      backward: false,
+      limit: 2,
+      query: { keyword: 'old' },
+      onProgress: (loaded) => progress.push(`old:${loaded}`),
+    });
+    resolvers.get('old')!.progress?.(1);
+    const newReset = source.fetch({
+      backward: false,
+      limit: 2,
+      query: { keyword: 'new' },
+      onProgress: (loaded) => progress.push(`new:${loaded}`),
+    });
+
+    resolvers.get('old')!.progress?.(2);
+    resolvers.get('new')!.progress?.(3);
+    resolvers.get('new')!.resolve([
+      { id: 20, name: 'new-20' },
+      { id: 21, name: 'new-21' },
+      { id: 22, name: 'new-22' },
+      { id: 23, name: 'new-23' },
+    ]);
+    const latest = await newReset;
+    resolvers.get('old')!.resolve([
+      { id: 10, name: 'old-10' },
+      { id: 11, name: 'old-11' },
+      { id: 12, name: 'old-12' },
+    ]);
+    await oldReset;
+
+    const continued = await source.fetch({
+      cursor: latest.endCursor,
+      backward: false,
+      limit: 2,
+      query: { keyword: 'new' },
+    });
+    expect(continued.items.map((item) => item.id)).toEqual([22, 23]);
+    expect(progress).toEqual(['old:1', 'new:3']);
+  });
 });
 
 // ───────────────────────── C 边界与非法输入 ─────────────────────────

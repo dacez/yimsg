@@ -17,6 +17,8 @@ export interface BoundedStreamWindowOptions {
   readonly scrollElement: HTMLElement;
   readonly contentElement?: HTMLElement;
   readonly reachPx?: number;
+  /** 原生 scroll 事件到达时同步执行，供上层在下一帧前缓存用户是否仍贴边。 */
+  readonly onScrollImmediate?: () => void;
   /** 每个滚动帧（触界检测之前）执行的回调。 */
   readonly onScroll?: () => void;
   /**
@@ -53,6 +55,7 @@ interface ScrollAnchor {
 }
 
 export const ANCHOR_KEY_ATTR = 'data-bsw-key';
+export const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
 const FOCUS_CLASS = 'bsw-row-focused';
 
 export function createFrameScheduler(callback: () => void): (() => void) & { cancel: () => void } {
@@ -106,7 +109,7 @@ function findKeyFromTarget(target: EventTarget | null, boundary: HTMLElement): s
   let node = target as (HTMLElement & { parentElement?: HTMLElement | null }) | null;
   while (node && node !== boundary) {
     const attr = (node as unknown as { getAttribute?: (name: string) => string | null }).getAttribute;
-    const key = attr ? attr.call(node, ANCHOR_KEY_ATTR) : null;
+    const key = attr ? attr.call(node, INTERACTION_KEY_ATTR) : null;
     if (key) return key;
     node = node.parentElement ?? null;
   }
@@ -119,9 +122,15 @@ export class BoundedStreamWindow<T> {
   private pendingRender = false;
   private disposed = false;
   private focusedIndex = -1;
+  private focusedKey: string | null = null;
 
   private readonly flushPending: (() => void) & { cancel: () => void };
   private readonly onScrollFrame: (() => void) & { cancel: () => void };
+  private readonly handleScroll = () => {
+    if (this.disposed) return;
+    this.options.onScrollImmediate?.();
+    this.onScrollFrame();
+  };
   private readonly handlePointerDown = () => { this.pointerActive = true; };
   private readonly handlePointerRelease = () => {
     if (!this.pointerActive) return;
@@ -144,7 +153,7 @@ export class BoundedStreamWindow<T> {
       this.options.onScroll?.();
       this.checkReach();
     });
-    options.scrollElement.addEventListener('scroll', this.onScrollFrame);
+    options.scrollElement.addEventListener('scroll', this.handleScroll);
 
     // 指针按下期间不重建 DOM：整列表 innerHTML 重建会销毁鼠标按下的那一行节点，
     // 使 mouseup 落到新节点上，浏览器因「按下与抬起不在同一节点」而不再派发 click，
@@ -185,12 +194,22 @@ export class BoundedStreamWindow<T> {
     const doc = content.ownerDocument;
     const scrollOffset = scroller.scrollTop;
     const anchor = this.captureAnchor(content);
-    // 焦点行可能因裁剪/翻页不再存在：先钳制回有效范围再取焦点键，
-    // 否则窗口变短的那一次渲染会整帧丢失高亮。
-    if (this.focusedIndex >= state.items.length) this.focusedIndex = state.items.length - 1;
-    const focusedKey = this.focusedIndex >= 0
-      ? state.keyOf(state.items[this.focusedIndex], this.focusedIndex)
-      : null;
+    if (this.focusedKey !== null) {
+      const identityIndex = state.items.findIndex(
+        (item, index) => state.keyOf(item, index) === this.focusedKey,
+      );
+      if (identityIndex >= 0) {
+        this.focusedIndex = identityIndex;
+      } else {
+        // 原身份已被裁掉时才退化为最近的合法下标，避免整帧丢失键盘高亮。
+        this.focusedIndex = Math.min(this.focusedIndex, state.items.length - 1);
+        this.focusedKey = this.focusedIndex >= 0
+          ? state.keyOf(state.items[this.focusedIndex], this.focusedIndex)
+          : null;
+      }
+    } else if (this.focusedIndex >= state.items.length) {
+      this.focusedIndex = state.items.length - 1;
+    }
     content.innerHTML = '';
 
     if (!(state.loaded ?? true)) {
@@ -206,6 +225,7 @@ export class BoundedStreamWindow<T> {
         content.appendChild(placeholder);
       }
       this.focusedIndex = -1;
+      this.focusedKey = null;
       // 空列表同样要做触界检测：服务端可能返回「空页但还有更多」（around 锚点加载
       // 的乐观策略、全过滤命中为空等），不检测就会永久定格在空态。
       this.checkReach();
@@ -223,9 +243,12 @@ export class BoundedStreamWindow<T> {
       const key = state.keyOf(state.items[index], index);
       if (elements.length > 0) {
         elements[0].setAttribute(ANCHOR_KEY_ATTR, key);
-        if (key === focusedKey) elements[0].classList?.add(FOCUS_CLASS);
+        if (key === this.focusedKey) elements[0].classList?.add(FOCUS_CLASS);
       }
-      for (const element of elements) content.appendChild(element);
+      for (const element of elements) {
+        element.setAttribute(INTERACTION_KEY_ATTR, key);
+        content.appendChild(element);
+      }
     }
 
     if (!state.hasMoreAfter && state.bottomBoundaryText) {
@@ -315,6 +338,7 @@ export class BoundedStreamWindow<T> {
         return;
       }
       this.focusedIndex = next;
+      this.focusedKey = state.keyOf(state.items[next], next);
       ev.preventDefault?.();
       this.applyRender(state);
       return;
@@ -322,7 +346,8 @@ export class BoundedStreamWindow<T> {
     if (ev.key === 'Enter' || ev.key === ' ') {
       if (this.focusedIndex < 0 || this.focusedIndex >= state.items.length) return;
       ev.preventDefault?.();
-      const key = state.keyOf(state.items[this.focusedIndex], this.focusedIndex);
+      const key = this.focusedKey
+        ?? state.keyOf(state.items[this.focusedIndex], this.focusedIndex);
       this.options.onInteract?.(key, ev, true);
     }
   }
@@ -334,7 +359,7 @@ export class BoundedStreamWindow<T> {
     this.onScrollFrame.cancel();
     this.flushPending.cancel();
     const scroller = this.options.scrollElement;
-    scroller.removeEventListener('scroll', this.onScrollFrame);
+    scroller.removeEventListener('scroll', this.handleScroll);
     scroller.removeEventListener('pointerdown', this.handlePointerDown);
     scroller.removeEventListener('pointerup', this.handlePointerRelease);
     scroller.removeEventListener('pointercancel', this.handlePointerRelease);
@@ -345,6 +370,9 @@ export class BoundedStreamWindow<T> {
     content.removeEventListener('click', this.handleClick);
     content.removeEventListener('load', this.handleContentLoad, true);
     this.lastState = null;
+    this.pendingRender = false;
+    this.focusedIndex = -1;
+    this.focusedKey = null;
   }
 }
 

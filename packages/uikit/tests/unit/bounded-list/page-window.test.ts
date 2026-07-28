@@ -515,13 +515,47 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.items).toEqual([1, 2, 9, 9]);
   });
 
-  it('E7 连续 mergeLive 大量条目不会突破页数上限（只撑大单页）', () => {
-    const window = new PageWindow<number>(2);
+  it('E7 连续 mergeLive 大量条目不突破 pageSize×maxPages 硬预算', () => {
+    const window = new PageWindow<number>(2, undefined, undefined, 10);
     window.setInitial(page([0], 's1', 'e1', false, false));
-    for (let i = 1; i <= 500; i++) window.mergeLive(i, 'tail');
-    expect(window.count).toBe(501);
-    expect(window.backwardCursor).toBe('s1'); // 仍是同一页，游标不变
+    let evicted = 0;
+    for (let i = 1; i <= 500; i++) evicted += window.mergeLive(i, 'tail');
+    expect(window.count).toBe(20);
+    expect(window.items).toEqual(Array.from({ length: 20 }, (_, index) => 481 + index));
+    expect(evicted).toBe(481);
+    expect(window.hasMoreBefore).toBe(true);
+    expect(window.backwardCursor).toBe('s1'); // 上层看到 eviction 后会安排权威 reset 修复边界
     expect(window.forwardCursor).toBe('e1');
+  });
+
+  it('E8 source 或 normalize 产出超过 pageSize 时三条入窗路径都快速失败', () => {
+    const oversized = page([1, 2, 3, 4], 's', 'e', false, true);
+    const initial = new PageWindow<number>(2, undefined, undefined, 3);
+    expect(() => initial.setInitial(oversized)).toThrow(RangeError);
+
+    const forward = new PageWindow<number>(2, undefined, undefined, 3);
+    forward.setInitial(page([1], 's0', 'e0', false, true));
+    expect(() => forward.appendForward(oversized)).toThrow(RangeError);
+    expect(forward.items).toEqual([1]);
+
+    const backward = new PageWindow<number>(2, (items) => [...items, 99], undefined, 3);
+    backward.setInitial(page([1], 's0', 'e0', true, false));
+    expect(() => backward.prependBackward(page([2, 3, 4], 's', 'e', false, true))).toThrow(RangeError);
+    expect(backward.items).toEqual([1, 99]);
+  });
+
+  it('E9 非空 source 页被 normalize 为空时仍保留新游标，避免触界重复请求旧页', () => {
+    const window = new PageWindow<number>(3, () => [], undefined, 2);
+    window.setInitial(page([1], 's0', 'e0', false, true));
+    expect(window.forwardCursor).toBe('e0');
+
+    expect(window.appendForward(page([2], 's1', 'e1', true, true))).toBe(0);
+    expect(window.forwardCursor).toBe('e1');
+    expect(window.hasMoreAfter).toBe(true);
+
+    expect(window.appendForward(page([], 's2', 'e2', true, true))).toBe(0);
+    expect(window.forwardCursor).toBe('e1'); // 真空页不覆盖最后一个有效边界
+    expect(window.hasMoreAfter).toBe(false);
   });
 });
 
