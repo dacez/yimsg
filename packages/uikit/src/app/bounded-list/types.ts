@@ -1,5 +1,5 @@
 // BoundedList 组件的公共类型定义。
-// 单一事实源：packages/uikit/docs/有界消息流窗口设计方案.md §4「组件契约 BoundedList」。
+// 接口口径单一事实源：packages/uikit/docs/BoundedList组件设计.md。
 
 /** 续翻方向：forward = 更靠后/更新，backward = 更靠前/更旧。 */
 export type Direction = 'forward' | 'backward';
@@ -13,6 +13,11 @@ export interface FetchPageRequest<Q> {
   readonly backward: boolean;
   readonly limit: number;
   readonly query: Q;
+  /**
+   * 全量拉取进度回调，只在 reset（cursor 未提供）且调用方配置了 onLoadProgress 时出现。
+   * 目前只有 localPageSource 会用它把 loadAll 的进度透出去（「已加载 N 人」）。
+   */
+  readonly onProgress?: (loaded: number) => void;
 }
 
 /** 一页分页结果，与 SDK PageInfo 同构；total 未提供时视为未知（组件对外呈现为 -1）。 */
@@ -45,6 +50,10 @@ export interface BoundedListText {
   readonly headBoundary?: () => string;
   readonly tailBoundary?: () => string;
   readonly updatePill?: (count: number) => string;
+  /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
+  readonly error?: (error: unknown) => string;
+  /** 首屏加载失败时提示条上的重试文案；不提供则失败后不显示重试入口。 */
+  readonly retry?: () => string;
 }
 
 export interface BoundedListState {
@@ -59,6 +68,8 @@ export interface BoundedListState {
   readonly stale: boolean;
   readonly pendingCount: number;
   readonly atFreshEdge: boolean;
+  /** 首屏是否加载失败（成功一次即回到 false）。 */
+  readonly failed: boolean;
 }
 
 export interface SelectionSnapshot<T> {
@@ -71,10 +82,14 @@ export type ErrorPhase = 'reset' | 'forward' | 'backward' | 'refresh';
 
 export interface SelectionConfig<T> {
   readonly mode: 'single' | 'multi';
+  /** 多选上限；与 store 互斥（同时给出会在构造时抛错）。 */
   readonly max?: number;
   readonly store?: import('./selection').SelectionStore;
   readonly onExceed?: () => void;
 }
+
+/** 宿主注册表契约：注册一个实例并返回注销函数。 */
+export type RegisterBoundedList = (instance: { readonly id: string; invalidate(): void | Promise<void> }) => () => void;
 
 export interface BoundedListOptions<T, Q = void> {
   readonly id: string;
@@ -82,6 +97,11 @@ export interface BoundedListOptions<T, Q = void> {
   readonly contentElement?: HTMLElement;
   readonly pillHost?: HTMLElement | false;
   readonly isActive?: () => boolean;
+  /**
+   * 把自己登记到宿主的注册表（多 AppInstance 共存时必须传，否则不同实例的同名列表会互相干扰）。
+   * 不提供时退化为登记到 bounded-list/registry.ts 的模块级注册表。
+   */
+  readonly register?: RegisterBoundedList;
 
   readonly pageSize: number;
   readonly maxPages: number;
@@ -111,4 +131,6 @@ export interface BoundedListOptions<T, Q = void> {
   readonly onItemsChanged?: (items: readonly T[]) => void;
   readonly onError?: (error: unknown, phase: ErrorPhase) => void;
   readonly onEmptyPage?: (dir: Direction) => void;
+  /** reset 阶段全量拉取的进度（仅 localPageSource 这类需要 loadAll 的数据源会上报）。 */
+  readonly onLoadProgress?: (loaded: number) => void;
 }
