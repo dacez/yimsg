@@ -195,6 +195,13 @@ export const APP_SHELL_HTML = `
       </section>
 
       <section id="view-settings" class="view hidden">
+        <div id="settings-topbar" class="mobile-topbar">
+          <div class="topbar-slot topbar-lead"></div>
+          <div class="topbar-slot topbar-mid">
+            <h1 class="topbar-title" id="settings-topbar-title"></h1>
+          </div>
+          <div class="topbar-slot topbar-trail"></div>
+        </div>
         <div class="settings-page">
           <div class="settings-header">
             <div class="avatar avatar-lg avatar-clickable" id="settings-avatar" title="点击更换头像"></div>
