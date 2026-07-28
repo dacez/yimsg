@@ -1061,7 +1061,7 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 建群候选 / 转发候选 / 群成员 | **有界窗口全量渲染** | 选中状态独立于 DOM 保存，双向翻页，群成员标题用 `page.total` 显示成员总数 |
 | 设置页 | **局部更新** | 更新特定元素的 `textContent` / `src` |
 
-**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 全量渲染 + 双向翻页」，UIKit 用 `BoundedStreamWindow` 作为唯一渲染引擎（单一模式，无 `itemSize` / spacer / 切片）。搜索结果、我发出的请求、提及群成员选择器、组织架构浏览这几处目前仍是「一次性拉取 + 手写全量渲染」，尚未接入（差距与落地顺序见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §3.3、§8）。滚动条不要求精确反映完整数据集，滚动空间只代表“已加载窗口”；服务端尚未加载的数据只由 `hasMoreBefore` / `hasMoreAfter` 和“已到顶 / 已到底 / 没有更多”边界提示表达。背景数据变化不打断浏览：消息列表用户不贴底时只点亮新消息提示条，贴底才重拉最新一页；会话列表用户不贴顶时只点亮“列表有更新”提示条，贴顶才重拉首页。
+**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 全量渲染 + 双向翻页」，UIKit 用 `BoundedStreamWindow` 作为唯一渲染引擎（单一模式，无 `itemSize` / spacer / 切片）。搜索结果、我发出的请求、组织架构浏览目前仍是「一次性拉取 + 手写全量渲染」，尚未接入；群成员选择器与添加成员候选的**一次性全量拉取是刻意取舍**（§7.6，为不在 `group_member` 冗余昵称），只有渲染侧待接入。差距与落地顺序见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §3.3、§6.4、§8。滚动条不要求精确反映完整数据集，滚动空间只代表“已加载窗口”；服务端尚未加载的数据只由 `hasMoreBefore` / `hasMoreAfter` 和“已到顶 / 已到底 / 没有更多”边界提示表达。背景数据变化不打断浏览：消息列表用户不贴底时只点亮新消息提示条，贴底才重拉最新一页；会话列表用户不贴顶时只点亮“列表有更新”提示条，贴顶才重拉首页。
 
 ### 8.2 有界列表窗口与分页口径
 
@@ -1080,7 +1080,8 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 | 转发候选（通讯录 tab） | `views/chat/forward.ts` | 有界滑动窗口，双向翻页，切到该 tab 才首次拉取 | `client.getContacts({status: CONTACT_FRIEND})` / `client.searchContacts()`（关键字非空时） |
 | 建群候选 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
 | 请求列表（我发出的） | `views/contacts.ts` | 一次性列表，不分页（上限 `list.pageSize × 4`） | `client.getContacts({status: CONTACT_PENDING_OUTGOING})` |
-| 提及群成员（@ 选择器） | `views/group-member-picker.ts` | 一次性全量拉取 + 本地拼音排序 / 子串过滤，全量渲染 | `client.getGroupMembers()` |
+| 提及群成员（@ 选择器） | `views/group-member-picker.ts` | 一次性全量拉取（刻意取舍，§7.6）+ 本地拼音排序 / 子串过滤；渲染侧仍是全量渲染 | `client.getGroupMembers()` |
+| 添加群成员候选 | `views/chat/detail-panel.ts` | 同上取舍：全量拉好友并排除已在群成员，本地子串过滤，全量渲染 | `client.getGroupMembers()` + `client.getContacts()` |
 | 组织架构浏览 | `views/contacts.ts` | 一次性列表，不分页（上限 200） | `client.getTags()` |
 
 数据层 `bounded-page-window.ts` 与渲染层 `bounded-stream-window.ts`：
