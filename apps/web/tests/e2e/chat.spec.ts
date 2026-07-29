@@ -187,14 +187,19 @@ test.describe('Chat', () => {
     await sendMessage(page1, 'msg-3');
     await expectMessage(page1, 'msg-3');
 
-    // Verify order: msg-1 before msg-2 before msg-3
-    const texts = await getMessageTexts(page1);
-    const idx1 = texts.findIndex(t => t.includes('msg-1'));
-    const idx2 = texts.findIndex(t => t.includes('msg-2'));
-    const idx3 = texts.findIndex(t => t.includes('msg-3'));
-    expect(idx1).toBeGreaterThanOrEqual(0);
-    expect(idx1).toBeLessThan(idx2);
-    expect(idx2).toBeLessThan(idx3);
+    // Verify order: msg-1 before msg-2 before msg-3。
+    // msg-3 的乐观占位消息落地为真实消息时先 removeLocal 占位、再 upsertLocal 真实消息，
+    // 两次组件内 render() 之间有极短暂的过渡帧；单次快照读取偶尔会撞上这个过渡帧，
+    // 因此改成轮询到最终稳定态，而不是断言某一次快照。
+    await expect(async () => {
+      const texts = await getMessageTexts(page1);
+      const idx1 = texts.findIndex(t => t.includes('msg-1'));
+      const idx2 = texts.findIndex(t => t.includes('msg-2'));
+      const idx3 = texts.findIndex(t => t.includes('msg-3'));
+      expect(idx1).toBeGreaterThanOrEqual(0);
+      expect(idx1).toBeLessThan(idx2);
+      expect(idx2).toBeLessThan(idx3);
+    }).toPass({ timeout: 5_000 });
   });
 
   test('app ignores any pre-existing URL hash and always lands on empty chat view', async ({ page }) => {
