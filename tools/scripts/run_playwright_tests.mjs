@@ -41,9 +41,19 @@ if (!fs.existsSync(playwrightCLI)) {
   process.exit(1);
 }
 
+const managedOutputDir = !process.env.PLAYWRIGHT_OUTPUT_DIR;
+const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR
+  || path.join(
+    ROOT_DIR,
+    'apps',
+    'web',
+    'test-results',
+    `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
+  );
 const env = {
   ...process.env,
   BOUNDED_LIST_STANDALONE: mode.standalone ? '1' : '0',
+  PLAYWRIGHT_OUTPUT_DIR: outputDir,
 };
 if (mode.workers) {
   env.PLAYWRIGHT_WORKERS = String(mode.workers);
@@ -68,5 +78,8 @@ const result = spawnSync(process.execPath, args, {
 if (result.error) {
   console.error(result.error);
   process.exit(1);
+}
+if (result.status === 0 && managedOutputDir) {
+  fs.rmSync(outputDir, { recursive: true, force: true });
 }
 process.exit(result.status ?? 1);

@@ -459,13 +459,14 @@ test.describe('Message Pagination', () => {
     await expect(page.locator('#center-panel .new-message-pill')).toBeHidden({ timeout: 1_000 });
 
     const beforeMax = Math.max(...extractSeqNums(await getMessageTexts(page)));
-    await page.evaluate(() => {
-      const list = document.getElementById('message-list');
-      if (!list) return;
-      list.scrollTop = list.scrollHeight;
-      list.dispatchEvent(new Event('scroll'));
-    });
     await expect(async () => {
+      // 上一轮加载的 loading 守卫可能尚未释放；每轮重试都重新触发底部翻页。
+      await page.evaluate(() => {
+        const list = document.getElementById('message-list');
+        if (!list) return;
+        list.scrollTop = list.scrollHeight;
+        list.dispatchEvent(new Event('scroll'));
+      });
       const afterNums = extractSeqNums(await getMessageTexts(page));
       expect(Math.max(...afterNums)).toBeGreaterThan(beforeMax);
       const atBottom = await page.evaluate(() => {

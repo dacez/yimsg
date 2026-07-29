@@ -10,6 +10,7 @@ function configuredWorkers(): number | string {
 
 export default defineConfig({
   testDir: './tests',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR || './test-results',
   // 总预算覆盖 beforeEach、测试体和清理；具体业务等待仍使用各自的短超时。
   timeout: 120_000,
   // 正确性与性能门禁都禁用 retry，确保并发失败和性能退化不会被重跑掩盖。

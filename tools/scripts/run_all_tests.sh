@@ -25,10 +25,9 @@ test_run_step "单元测试分类" bash "${ROOT_DIR}/tools/run_unit_tests.sh"
 
 test_run_step "前端构建" npm run build
 export YIMSG_SKIP_FRONTEND_BUILD=1
-export YIMSG_TEST_SERVER_HOST="127.0.0.1"
-export YIMSG_TEST_SERVER_PORT="38081"
-test_kill_port_users "${YIMSG_TEST_SERVER_PORT}"
+export YIMSG_TEST_SERVER_HOST="${YIMSG_TEST_SERVER_HOST:-127.0.0.1}"
 test_ensure_server
+export SERVER_WS_URL="ws://${YIMSG_TEST_SERVER_HOST}:${YIMSG_TEST_SERVER_PORT}/ws"
 
 test_run_step "集成测试分类" bash "${ROOT_DIR}/tools/run_integration_tests.sh"
 test_run_step "端到端测试分类" bash "${ROOT_DIR}/tools/run_e2e_tests.sh"

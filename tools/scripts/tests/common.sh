@@ -8,7 +8,6 @@ TEST_PROTOC_GEN_GO_VERSION="v1.36.11"
 TEST_PLAYWRIGHT_MIRROR_HOST="https://npmmirror.com/mirrors/playwright"
 TEST_SERVER_OWNED=false
 TEST_SERVER_PID=""
-TEST_SERVER_PORT_OWNED=""
 TEST_SERVER_TMP_DIR=""
 TEST_SERVER_LOG=""
 
@@ -158,26 +157,28 @@ test_wait_http_ready() {
   return 1
 }
 
-test_kill_port_users() {
-  local port="$1"
-  if $TEST_IS_WINDOWS; then
-    local pids
-    pids="$(powershell -NoProfile -Command \
-      "Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique" \
-      2>/dev/null | tr -d '\r' || true)"
-    if [[ -n "${pids}" ]]; then
-      echo "清理占用测试端口 ${port} 的进程: $(echo "${pids}" | tr '\n' ' ')"
-      echo "${pids}" | xargs -I{} taskkill /PID {} /F 2>/dev/null || true
-    fi
-    return 0
-  fi
-
-  local pids
-  pids="$(lsof -tiTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
-  if [[ -n "${pids}" ]]; then
-    echo "清理占用测试端口 ${port} 的进程: $(echo "${pids}" | tr '\n' ' ')"
-    echo "${pids}" | xargs kill 2>/dev/null || true
-  fi
+test_find_free_port() {
+  local host="${1:-127.0.0.1}"
+  node -e '
+const net = require("node:net");
+const host = process.argv[1];
+const server = net.createServer();
+server.on("error", (error) => {
+  console.error(`无法分配测试端口: ${error.message}`);
+  process.exitCode = 1;
+});
+server.listen({ host, port: 0, exclusive: true }, () => {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    console.error("无法读取测试端口");
+    process.exitCode = 1;
+    server.close();
+    return;
+  }
+  console.log(address.port);
+  server.close();
+});
+' "${host}"
 }
 
 test_write_server_config() {
@@ -253,7 +254,10 @@ test_ensure_server() {
   test_ensure_go_modules
   TEST_SERVER_TMP_DIR="$(mktemp -d)"
   local host="${configured_host:-127.0.0.1}"
-  local port="${configured_port:-$((39000 + RANDOM % 1000))}"
+  local port="${configured_port:-}"
+  if [[ -z "${port}" ]]; then
+    port="$(test_find_free_port "${host}")"
+  fi
   local config_file="${TEST_SERVER_TMP_DIR}/config.toml"
   local data_dir="${TEST_SERVER_TMP_DIR}/data"
   local server_bin="${YIMSG_PREBUILT_SERVER:-${TEST_SERVER_TMP_DIR}/server${TEST_EXE_EXT}}"
@@ -266,10 +270,10 @@ test_ensure_server() {
   fi
   "${server_bin}" "${config_file}" >"${TEST_SERVER_LOG}" 2>&1 &
   TEST_SERVER_PID=$!
-  TEST_SERVER_PORT_OWNED="${port}"
   TEST_SERVER_OWNED=true
 
-  if ! test_wait_http_ready "http://${host}:${port}/" 30; then
+  if ! test_wait_http_ready "http://${host}:${port}/" 30 \
+      || ! kill -0 "${TEST_SERVER_PID}" 2>/dev/null; then
     echo "测试服务端未就绪，日志如下:" >&2
     cat "${TEST_SERVER_LOG}" >&2 || true
     return 1
@@ -287,14 +291,23 @@ test_cleanup_owned_server() {
         && "${TEST_SERVER_PID}" =~ ^[0-9]+$ ]]; then
     if kill -0 "${TEST_SERVER_PID}" 2>/dev/null; then
       kill "${TEST_SERVER_PID}" 2>/dev/null || true
-      wait "${TEST_SERVER_PID}" 2>/dev/null || true
+      for _ in {1..20}; do
+        if ! kill -0 "${TEST_SERVER_PID}" 2>/dev/null; then
+          break
+        fi
+        sleep 0.1
+      done
+      if kill -0 "${TEST_SERVER_PID}" 2>/dev/null; then
+        if $TEST_IS_WINDOWS; then
+          taskkill /PID "${TEST_SERVER_PID}" /T /F 2>/dev/null || true
+        else
+          kill -KILL "${TEST_SERVER_PID}" 2>/dev/null || true
+        fi
+      fi
     fi
+    wait "${TEST_SERVER_PID}" 2>/dev/null || true
   fi
   TEST_SERVER_PID=""
-  if [[ -n "${TEST_SERVER_PORT_OWNED}" ]]; then
-    test_kill_port_users "${TEST_SERVER_PORT_OWNED}"
-  fi
-  TEST_SERVER_PORT_OWNED=""
   TEST_SERVER_OWNED=false
 
   if [[ -n "${TEST_SERVER_TMP_DIR}" && -d "${TEST_SERVER_TMP_DIR}" ]]; then
