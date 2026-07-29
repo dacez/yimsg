@@ -26,8 +26,8 @@ type TextKey =
   | 'loading'
   | 'empty'
   | 'emptyFiltered'
-  | 'headBoundary'
-  | 'tailBoundary'
+  | 'backwardBoundary'
+  | 'forwardBoundary'
   | 'updatePill'
   | 'error'
   | 'retry';
@@ -283,8 +283,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     loading: '正在加载',
     empty: '列表为空',
     emptyFiltered: '没有匹配项',
-    headBoundary: '已到开头',
-    tailBoundary: '已到结尾',
+    backwardBoundary: '已到开头',
+    forwardBoundary: '已到结尾',
     updatePill: '有 {count} 条更新',
     error: '加载失败：{message}',
     retry: '重新加载',
@@ -296,8 +296,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
   const loading = value('loading');
   const empty = value('empty');
   const emptyFiltered = value('emptyFiltered');
-  const headBoundary = value('headBoundary');
-  const tailBoundary = value('tailBoundary');
+  const backwardBoundary = value('backwardBoundary');
+  const forwardBoundary = value('forwardBoundary');
   const updatePill = value('updatePill');
   const error = value('error');
   const retry = value('retry');
@@ -305,8 +305,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     ...(loading === false ? {} : { loading: () => loading }),
     ...(empty === false ? {} : { empty: () => empty }),
     ...(emptyFiltered === false ? {} : { emptyFiltered: () => emptyFiltered }),
-    ...(headBoundary === false ? {} : { headBoundary: () => headBoundary }),
-    ...(tailBoundary === false ? {} : { tailBoundary: () => tailBoundary }),
+    ...(backwardBoundary === false ? {} : { backwardBoundary: () => backwardBoundary }),
+    ...(forwardBoundary === false ? {} : { forwardBoundary: () => forwardBoundary }),
     ...(updatePill === false
       ? {}
       : { updatePill: (count: number) => updatePill.replace('{count}', String(count)) }),

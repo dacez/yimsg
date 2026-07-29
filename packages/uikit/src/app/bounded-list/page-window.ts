@@ -20,8 +20,8 @@ interface WindowPage<T> {
 
 export class PageWindow<T> {
   private pages: WindowPage<T>[] = [];
-  private before = false;
-  private after = false;
+  private moreBackward = false;
+  private moreForward = false;
   private totalCount = -1;
   /**
    * 窗口两端的续翻锚点，显式维护而不是从 `pages[0]` / `pages[last]` 现算。
@@ -51,12 +51,12 @@ export class PageWindow<T> {
     this.hardBudget = pageSize * this.maxPages;
   }
 
-  get hasMoreBefore(): boolean {
-    return this.before;
+  get hasMoreBackward(): boolean {
+    return this.moreBackward;
   }
 
-  get hasMoreAfter(): boolean {
-    return this.after;
+  get hasMoreForward(): boolean {
+    return this.moreForward;
   }
 
   /** 窗口里还有没有页。空页会被立即回收，所以它等价于 `count > 0`。 */
@@ -148,16 +148,16 @@ export class PageWindow<T> {
       if (page.items.length === 0) this.pages.splice(pageIndex, 1);
     }
     if (evicted > 0) {
-      if (edge === 'tail') this.before = true;
-      else this.after = true;
+      if (edge === 'tail') this.moreBackward = true;
+      else this.moreForward = true;
     }
     return evicted;
   }
 
   reset(): void {
     this.pages = [];
-    this.before = false;
-    this.after = false;
+    this.moreBackward = false;
+    this.moreForward = false;
     this.totalCount = -1;
     this.headCursor = '';
     this.tailCursor = '';
@@ -170,8 +170,8 @@ export class PageWindow<T> {
     // 窗口暂时没有条目但边界是确定的。
     this.headCursor = page.startCursor;
     this.tailCursor = page.endCursor;
-    this.before = page.hasMoreBackward;
-    this.after = page.hasMoreForward;
+    this.moreBackward = page.hasMoreBackward;
+    this.moreForward = page.hasMoreForward;
     this.totalCount = page.total ?? -1;
   }
 
@@ -192,11 +192,11 @@ export class PageWindow<T> {
     }
     if (page.items.length > 0) this.tailCursor = page.endCursor;
     // 空页 = 该方向已经没有数据，无论服务端怎么说都收敛为 false。
-    this.after = page.items.length === 0 ? false : page.hasMoreForward;
+    this.moreForward = page.items.length === 0 ? false : page.hasMoreForward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.shift();
-      this.before = true;
+      this.moreBackward = true;
       this.headCursor = this.pages[0].startCursor;
     }
     return items.length;
@@ -214,11 +214,11 @@ export class PageWindow<T> {
       this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
     }
     if (page.items.length > 0) this.headCursor = page.startCursor;
-    this.before = page.items.length === 0 ? false : page.hasMoreBackward;
+    this.moreBackward = page.items.length === 0 ? false : page.hasMoreBackward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.pop();
-      this.after = true;
+      this.moreForward = true;
       this.tailCursor = this.pages[this.pages.length - 1].endCursor;
     }
     return items.length;
@@ -268,8 +268,8 @@ export class PageWindow<T> {
         startCursor: this.headCursor,
         endCursor: this.tailCursor,
       });
-      if (!this.headCursor) this.before = false;
-      if (!this.tailCursor) this.after = false;
+      if (!this.headCursor) this.moreBackward = false;
+      if (!this.tailCursor) this.moreForward = false;
     } else if (edge === 'tail') {
       const tail = this.pages[this.pages.length - 1];
       tail.items = this.normalize([...tail.items, item]);

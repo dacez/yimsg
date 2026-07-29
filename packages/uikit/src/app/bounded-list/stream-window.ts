@@ -33,18 +33,18 @@ export interface BoundedStreamWindowOptions {
 export interface BoundedStreamWindowRenderState<T> {
   readonly items: ReadonlyArray<T>;
   readonly loaded?: boolean;
-  readonly hasMoreBefore?: boolean;
-  readonly hasMoreAfter?: boolean;
-  readonly loadingBefore?: boolean;
-  readonly loadingAfter?: boolean;
+  readonly hasMoreBackward?: boolean;
+  readonly hasMoreForward?: boolean;
+  readonly loadingBackward?: boolean;
+  readonly loadingForward?: boolean;
   readonly emptyText?: string;
   /** 首屏加载失败时代替空态显示；提供时优先于 emptyText。 */
   readonly errorText?: string;
   readonly loadingText?: string;
-  readonly topBoundaryText?: string;
-  readonly bottomBoundaryText?: string;
-  readonly loadBefore?: () => void;
-  readonly loadAfter?: () => void;
+  readonly backwardBoundaryText?: string;
+  readonly forwardBoundaryText?: string;
+  readonly loadBackward?: () => void;
+  readonly loadForward?: () => void;
   readonly renderItem: (item: T, index: number) => ReadonlyArray<HTMLElement>;
   readonly keyOf: (item: T, index: number) => string;
   /** 内部数据更新可跳过未变化行的 renderItem；显式重绘时保持 false。 */
@@ -289,9 +289,9 @@ export class BoundedStreamWindow<T> {
 
     const desiredElements: HTMLElement[] = [];
     const nextRenderedRows = new Map<string, RenderedRow<T>>();
-    if (!state.hasMoreBefore && state.topBoundaryText) {
-      desiredElements.push(createBoundaryHint(doc, state.topBoundaryText, 'top'));
-    } else if (state.loadingBefore && state.loadingText) {
+    if (!state.hasMoreBackward && state.backwardBoundaryText) {
+      desiredElements.push(createBoundaryHint(doc, state.backwardBoundaryText, 'top'));
+    } else if (state.loadingBackward && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'top'));
     }
 
@@ -332,9 +332,9 @@ export class BoundedStreamWindow<T> {
       nextRenderedRows.set(key, { item, elements, revision });
     }
 
-    if (!state.hasMoreAfter && state.bottomBoundaryText) {
-      desiredElements.push(createBoundaryHint(doc, state.bottomBoundaryText, 'bottom'));
-    } else if (state.loadingAfter && state.loadingText) {
+    if (!state.hasMoreForward && state.forwardBoundaryText) {
+      desiredElements.push(createBoundaryHint(doc, state.forwardBoundaryText, 'bottom'));
+    } else if (state.loadingForward && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
     }
 
@@ -392,8 +392,8 @@ export class BoundedStreamWindow<T> {
     const el = this.options.scrollElement;
     const reachPx = this.options.reachPx ?? DEFAULT_REACH_PX;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (el.scrollTop <= reachPx && state.hasMoreBefore) state.loadBefore?.();
-    if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreAfter) state.loadAfter?.();
+    if (el.scrollTop <= reachPx && state.hasMoreBackward) state.loadBackward?.();
+    if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreForward) state.loadForward?.();
   }
 
   private onKeydown(ev: KeyboardEvent): void {
@@ -403,11 +403,11 @@ export class BoundedStreamWindow<T> {
       const dir = ev.key === 'ArrowDown' ? 1 : -1;
       const next = this.focusedIndex < 0 ? (dir > 0 ? 0 : state.items.length - 1) : this.focusedIndex + dir;
       if (next < 0) {
-        state.loadBefore?.();
+        state.loadBackward?.();
         return;
       }
       if (next >= state.items.length) {
-        state.loadAfter?.();
+        state.loadForward?.();
         return;
       }
       this.focusedIndex = next;

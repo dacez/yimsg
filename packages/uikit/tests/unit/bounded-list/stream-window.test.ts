@@ -241,17 +241,17 @@ describe('BoundedStreamWindow / B 状态与边界提示', () => {
   it('B5 没有更多时渲染顶部/底部边界提示，加载中渲染 loading 提示', () => {
     const { scroller, view, doc } = makeView<number>();
     view.render({
-      items: [1], hasMoreBefore: false, hasMoreAfter: false,
-      topBoundaryText: '已到最早', bottomBoundaryText: '已到最新',
+      items: [1], hasMoreBackward: false, hasMoreForward: false,
+      backwardBoundaryText: '已到最早', forwardBoundaryText: '已到最新',
       keyOf: String, renderItem: () => [asElement(row(doc))],
     });
     expect(renderedClassNames(scroller)[0]).toBe('list-boundary-hint list-boundary-hint-top');
     expect(renderedClassNames(scroller)[2]).toBe('list-boundary-hint list-boundary-hint-bottom');
 
     view.render({
-      items: [1], hasMoreBefore: true, hasMoreAfter: true,
-      loadingBefore: true, loadingAfter: true, loadingText: '加载中',
-      topBoundaryText: '已到最早', bottomBoundaryText: '已到最新',
+      items: [1], hasMoreBackward: true, hasMoreForward: true,
+      loadingBackward: true, loadingForward: true, loadingText: '加载中',
+      backwardBoundaryText: '已到最早', forwardBoundaryText: '已到最新',
       keyOf: String, renderItem: () => [asElement(row(doc))],
     });
     expect(scroller.children[0].textContent).toBe('加载中');
@@ -262,16 +262,16 @@ describe('BoundedStreamWindow / B 状态与边界提示', () => {
     const { scroller, view, doc } = makeView<number>();
     const item = () => [asElement(row(doc, 'row'))];
     // 没有更多 + 没有边界文案 → 不渲染提示
-    view.render({ items: [1], hasMoreBefore: false, hasMoreAfter: false, keyOf: String, renderItem: item });
+    view.render({ items: [1], hasMoreBackward: false, hasMoreForward: false, keyOf: String, renderItem: item });
     expect(renderedClassNames(scroller)).toEqual(['row']);
     // 有更多 + loading 但没有 loadingText → 不渲染提示
-    view.render({ items: [1], hasMoreBefore: true, hasMoreAfter: true, loadingBefore: true, loadingAfter: true, keyOf: String, renderItem: item });
+    view.render({ items: [1], hasMoreBackward: true, hasMoreForward: true, loadingBackward: true, loadingForward: true, keyOf: String, renderItem: item });
     expect(renderedClassNames(scroller)).toEqual(['row']);
     // 有更多 + 不在 loading → 不渲染提示
-    view.render({ items: [1], hasMoreBefore: true, hasMoreAfter: true, loadingText: '加载中', keyOf: String, renderItem: item });
+    view.render({ items: [1], hasMoreBackward: true, hasMoreForward: true, loadingText: '加载中', keyOf: String, renderItem: item });
     expect(renderedClassNames(scroller)).toEqual(['row']);
     // 没有更多 + 同时 loading：边界提示优先
-    view.render({ items: [1], hasMoreBefore: false, hasMoreAfter: false, loadingBefore: true, loadingAfter: true, loadingText: '加载中', topBoundaryText: '最早', bottomBoundaryText: '最新', keyOf: String, renderItem: item });
+    view.render({ items: [1], hasMoreBackward: false, hasMoreForward: false, loadingBackward: true, loadingForward: true, loadingText: '加载中', backwardBoundaryText: '最早', forwardBoundaryText: '最新', keyOf: String, renderItem: item });
     expect(scroller.children[0].textContent).toBe('最早');
     expect(scroller.children[2].textContent).toBe('最新');
   });
@@ -301,8 +301,8 @@ describe('BoundedStreamWindow / B 状态与边界提示', () => {
   it('B7 两端提示与条目的相对顺序固定为 [头部提示, ...条目, 尾部提示]', () => {
     const { scroller, view, doc } = makeView<number>();
     view.render({
-      items: [1, 2], hasMoreBefore: false, hasMoreAfter: false,
-      topBoundaryText: '最早', bottomBoundaryText: '最新',
+      items: [1, 2], hasMoreBackward: false, hasMoreForward: false,
+      backwardBoundaryText: '最早', forwardBoundaryText: '最新',
       keyOf: String, renderItem: (n) => [asElement(row(doc, `row-${n}`))],
     });
     expect(renderedClassNames(scroller)).toEqual([
@@ -322,81 +322,81 @@ describe('BoundedStreamWindow / C 触界检测', () => {
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
     scroller.scrollTop = 500;
-    const loadBefore = vi.fn();
-    const loadAfter = vi.fn();
-    const state = { items: [1], hasMoreBefore: true, hasMoreAfter: true, loadBefore, loadAfter, keyOf: String, renderItem: () => [asElement(row(doc))] };
+    const loadBackward = vi.fn();
+    const loadForward = vi.fn();
+    const state = { items: [1], hasMoreBackward: true, hasMoreForward: true, loadBackward, loadForward, keyOf: String, renderItem: () => [asElement(row(doc))] };
     view.render(state);
-    expect(loadBefore).not.toHaveBeenCalled();
-    expect(loadAfter).not.toHaveBeenCalled();
+    expect(loadBackward).not.toHaveBeenCalled();
+    expect(loadForward).not.toHaveBeenCalled();
 
     scroller.scrollTop = 5; // 距顶 5px <= reachPx=10
     view.render(state);
-    expect(loadBefore).toHaveBeenCalledTimes(1);
-    expect(loadAfter).not.toHaveBeenCalled();
+    expect(loadBackward).toHaveBeenCalledTimes(1);
+    expect(loadForward).not.toHaveBeenCalled();
 
     scroller.scrollTop = 895; // 距底 5px <= reachPx=10
     view.render(state);
-    expect(loadAfter).toHaveBeenCalledTimes(1);
+    expect(loadForward).toHaveBeenCalledTimes(1);
 
-    view.render({ ...state, hasMoreBefore: false, hasMoreAfter: false });
-    expect(loadBefore).toHaveBeenCalledTimes(1);
-    expect(loadAfter).toHaveBeenCalledTimes(1);
+    view.render({ ...state, hasMoreBackward: false, hasMoreForward: false });
+    expect(loadBackward).toHaveBeenCalledTimes(1);
+    expect(loadForward).toHaveBeenCalledTimes(1);
   });
 
   it('C2 默认 reachPx=160：距边界 160px 触发、161px 不触发', () => {
     const { scroller, view, doc } = makeView<number>();
     scroller.clientHeight = 100;
     scroller.scrollHeight = 2000;
-    const loadBefore = vi.fn();
-    const state = { items: [1], hasMoreBefore: true, loadBefore, keyOf: String, renderItem: () => [asElement(row(doc))] };
+    const loadBackward = vi.fn();
+    const state = { items: [1], hasMoreBackward: true, loadBackward, keyOf: String, renderItem: () => [asElement(row(doc))] };
     scroller.scrollTop = 161;
     view.render(state);
-    expect(loadBefore).not.toHaveBeenCalled();
+    expect(loadBackward).not.toHaveBeenCalled();
     scroller.scrollTop = 160;
     view.render(state);
-    expect(loadBefore).toHaveBeenCalledTimes(1);
+    expect(loadBackward).toHaveBeenCalledTimes(1);
   });
 
   it('C3 内容不足一屏时（clientHeight >= scrollHeight）视为双端都已触界', () => {
     const { scroller, view, doc } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
-    const loadBefore = vi.fn();
-    const loadAfter = vi.fn();
-    view.render({ items: [1], hasMoreBefore: true, hasMoreAfter: true, loadBefore, loadAfter, keyOf: String, renderItem: () => [asElement(row(doc))] });
-    expect(loadBefore).toHaveBeenCalledTimes(1);
-    expect(loadAfter).toHaveBeenCalledTimes(1);
+    const loadBackward = vi.fn();
+    const loadForward = vi.fn();
+    view.render({ items: [1], hasMoreBackward: true, hasMoreForward: true, loadBackward, loadForward, keyOf: String, renderItem: () => [asElement(row(doc))] });
+    expect(loadBackward).toHaveBeenCalledTimes(1);
+    expect(loadForward).toHaveBeenCalledTimes(1);
   });
 
   it('C4 未加载（loaded=false）时不做触界检测', () => {
     const { scroller, view } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
-    const loadBefore = vi.fn();
-    const loadAfter = vi.fn();
-    view.render({ items: [], loaded: false, hasMoreBefore: true, hasMoreAfter: true, loadBefore, loadAfter, keyOf: String, renderItem: () => [] });
-    expect(loadBefore).not.toHaveBeenCalled();
-    expect(loadAfter).not.toHaveBeenCalled();
+    const loadBackward = vi.fn();
+    const loadForward = vi.fn();
+    view.render({ items: [], loaded: false, hasMoreBackward: true, hasMoreForward: true, loadBackward, loadForward, keyOf: String, renderItem: () => [] });
+    expect(loadBackward).not.toHaveBeenCalled();
+    expect(loadForward).not.toHaveBeenCalled();
   });
 
   it('C5 空列表（items 为空）但该端仍有更多时照样触界补页，不会定格在空态', () => {
     const { scroller, view } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
-    const loadBefore = vi.fn();
-    const loadAfter = vi.fn();
-    view.render({ items: [], emptyText: '空', hasMoreBefore: true, hasMoreAfter: true, loadBefore, loadAfter, keyOf: String, renderItem: () => [] });
-    expect(loadBefore).toHaveBeenCalledTimes(1);
-    expect(loadAfter).toHaveBeenCalledTimes(1);
+    const loadBackward = vi.fn();
+    const loadForward = vi.fn();
+    view.render({ items: [], emptyText: '空', hasMoreBackward: true, hasMoreForward: true, loadBackward, loadForward, keyOf: String, renderItem: () => [] });
+    expect(loadBackward).toHaveBeenCalledTimes(1);
+    expect(loadForward).toHaveBeenCalledTimes(1);
   });
 
   it('C5b 空列表且两端都没有更多时不触发任何加载', () => {
     const { scroller, view } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
-    const loadAfter = vi.fn();
-    view.render({ items: [], emptyText: '空', hasMoreAfter: false, loadAfter, keyOf: String, renderItem: () => [] });
-    expect(loadAfter).not.toHaveBeenCalled();
+    const loadForward = vi.fn();
+    view.render({ items: [], emptyText: '空', hasMoreForward: false, loadForward, keyOf: String, renderItem: () => [] });
+    expect(loadForward).not.toHaveBeenCalled();
   });
 
   it('C6 滚动经帧合并后调用 onScroll 与触界检测', () => {
@@ -405,16 +405,16 @@ describe('BoundedStreamWindow / C 触界检测', () => {
       const { scroller, view, doc } = makeView<number>({ onScroll });
       scroller.clientHeight = 120;
       scroller.scrollHeight = 120;
-      const loadBefore = vi.fn();
-      view.render({ items: [1, 2, 3], hasMoreBefore: true, loadBefore, keyOf: String, renderItem: () => [asElement(row(doc))] });
-      loadBefore.mockClear();
+      const loadBackward = vi.fn();
+      view.render({ items: [1, 2, 3], hasMoreBackward: true, loadBackward, keyOf: String, renderItem: () => [asElement(row(doc))] });
+      loadBackward.mockClear();
 
       scroller.dispatch('scroll');
       scroller.dispatch('scroll');
       expect(onScroll).not.toHaveBeenCalled();
       frames.run();
       expect(onScroll).toHaveBeenCalledTimes(1);
-      expect(loadBefore).toHaveBeenCalledTimes(1);
+      expect(loadBackward).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -428,11 +428,11 @@ describe('BoundedStreamWindow / C 触界检测', () => {
     });
   });
 
-  it('C8 没有提供 loadBefore/loadAfter 时触界是空操作，不抛错', () => {
+  it('C8 没有提供 loadBackward/loadForward 时触界是空操作，不抛错', () => {
     const { scroller, view, doc } = makeView<number>();
     scroller.clientHeight = 120;
     scroller.scrollHeight = 120;
-    expect(() => view.render({ items: [1], hasMoreBefore: true, hasMoreAfter: true, keyOf: String, renderItem: () => [asElement(row(doc))] })).not.toThrow();
+    expect(() => view.render({ items: [1], hasMoreBackward: true, hasMoreForward: true, keyOf: String, renderItem: () => [asElement(row(doc))] })).not.toThrow();
   });
 });
 
@@ -762,7 +762,7 @@ describe('BoundedStreamWindow / H 点击事件委托', () => {
     const onInteract = vi.fn();
     const { scroller, view, doc } = makeView<string>({ onInteract });
     view.render({
-      items: ['a'], hasMoreBefore: false, topBoundaryText: '最早',
+      items: ['a'], hasMoreBackward: false, backwardBoundaryText: '最早',
       keyOf: (s) => s, renderItem: () => [asElement(row(doc, 'row-a'))],
     });
     scroller.dispatch('click', { target: scroller.children[0] }); // 边界提示
@@ -850,33 +850,33 @@ describe('BoundedStreamWindow / I 键盘导航', () => {
     expect(onInteract).not.toHaveBeenCalled();
   });
 
-  it('I6 到达窗口顶部再次 ArrowUp 触发 loadBefore，且不移动焦点', () => {
-    const loadBefore = vi.fn();
+  it('I6 到达窗口顶部再次 ArrowUp 触发 loadBackward，且不移动焦点', () => {
+    const loadBackward = vi.fn();
     const { doc, scroller, view } = makeView<string>();
     const renderItem = (item: string) => [asElement(row(doc, `row-${item}`))];
-    view.render({ items: ['a', 'b'], hasMoreBefore: true, loadBefore, keyOf: (s) => s, renderItem });
+    view.render({ items: ['a', 'b'], hasMoreBackward: true, loadBackward, keyOf: (s) => s, renderItem });
     scroller.dispatch('keydown', { key: 'ArrowUp' }); // -1 → 末尾(1)
     scroller.dispatch('keydown', { key: 'ArrowUp' }); // 1 → 0
-    loadBefore.mockClear();
+    loadBackward.mockClear();
     scroller.dispatch('keydown', { key: 'ArrowUp' }); // 0 → -1 越界
-    expect(loadBefore).toHaveBeenCalledTimes(1);
+    expect(loadBackward).toHaveBeenCalledTimes(1);
     expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true); // 焦点仍在第一行
   });
 
-  it('I7 到达窗口底部再次 ArrowDown 触发 loadAfter，且不移动焦点', () => {
-    const loadAfter = vi.fn();
+  it('I7 到达窗口底部再次 ArrowDown 触发 loadForward，且不移动焦点', () => {
+    const loadForward = vi.fn();
     const { doc, scroller, view } = makeView<string>();
     const renderItem = (item: string) => [asElement(row(doc, `row-${item}`))];
-    view.render({ items: ['a', 'b'], hasMoreAfter: true, loadAfter, keyOf: (s) => s, renderItem });
+    view.render({ items: ['a', 'b'], hasMoreForward: true, loadForward, keyOf: (s) => s, renderItem });
     scroller.dispatch('keydown', { key: 'ArrowDown' }); // -1 → 0
     scroller.dispatch('keydown', { key: 'ArrowDown' }); // 0 → 1
-    loadAfter.mockClear();
+    loadForward.mockClear();
     scroller.dispatch('keydown', { key: 'ArrowDown' }); // 1 → 2 越界
-    expect(loadAfter).toHaveBeenCalledTimes(1);
+    expect(loadForward).toHaveBeenCalledTimes(1);
     expect(scroller.children[1].classList.contains('bsw-row-focused')).toBe(true);
   });
 
-  it('I8 越界方向没有 loadBefore/loadAfter 时是空操作', () => {
+  it('I8 越界方向没有 loadBackward/loadForward 时是空操作', () => {
     const { doc, scroller, view } = makeView<string>();
     view.render({ items: ['a'], keyOf: (s) => s, renderItem: () => [asElement(row(doc))] });
     expect(() => {

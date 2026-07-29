@@ -152,7 +152,7 @@ export function createContactsView(app: AppInstance) {
         empty: () => app.t('contacts.noFriends'),
         emptyFiltered: () => app.t('contacts.noSearchResults'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreContacts'),
+        forwardBoundary: () => app.t('contacts.noMoreContacts'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -209,7 +209,7 @@ export function createContactsView(app: AppInstance) {
       text: {
         empty: () => app.t('contacts.noPendingRequests'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreRequests'),
+        forwardBoundary: () => app.t('contacts.noMoreRequests'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -802,7 +802,7 @@ export function createContactsView(app: AppInstance) {
       text: {
         empty: () => app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreContacts'),
+        forwardBoundary: () => app.t('contacts.noMoreContacts'),
         retry: () => app.t('common.retry'),
       },
       onSelectionChange: (snapshot) => {

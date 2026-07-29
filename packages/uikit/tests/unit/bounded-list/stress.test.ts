@@ -79,14 +79,14 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 0)));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreAfter) {
+    while (list.getState().hasMoreForward) {
       await list.loadMore('forward');
       assertBounded(host, list, 200);
       steps++;
       expect(steps).toBeLessThan(500); // 防跑飞
     }
     expect(steps).toBe(Math.ceil(10000 / 40) - 1);
-    expect(list.getState().hasMoreBefore).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
     list.dispose();
   });
 
@@ -132,12 +132,12 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, source, { pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreAfter && steps < 2000) {
+    while (list.getState().hasMoreForward && steps < 2000) {
       await list.loadMore('forward');
       steps++;
       if (steps % 200 === 0) assertBounded(host, list, 200);
     }
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(loadAll).toHaveBeenCalledTimes(1);
     assertBounded(host, list, 200);
     list.dispose();
@@ -166,7 +166,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
       host.scroller.dispatch('scroll');
       await new Promise((resolve) => setTimeout(resolve, 0));
       // 贴顶那一轮必然一路拉到最前，贴底那一轮必然一路拉到最后。
-      expect(i % 2 === 0 ? list.getState().hasMoreBefore : list.getState().hasMoreAfter).toBe(false);
+      expect(i % 2 === 0 ? list.getState().hasMoreBackward : list.getState().hasMoreForward).toBe(false);
       if (i % 20 === 0) assertBounded(host, list, pageSize * 4);
     }
     assertBounded(host, list, pageSize * 4);
@@ -187,7 +187,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
 
     for (let i = 0; i < 40; i++) await list.loadMore('backward');
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe('0');
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
     expect(Number(topAfterForward)).toBeGreaterThan(0);
     list.dispose();
   });
@@ -224,7 +224,7 @@ describe('BoundedList 压力 / C 高频事件', () => {
     const state = list.getState();
     expect(state.count).toBe(40 * 5);
     expect(rowNodes(host)).toHaveLength(state.count);
-    expect(state.hasMoreAfter).toBe(false);
+    expect(state.hasMoreForward).toBe(false);
     expect(rowNodes(host).at(-1)?.className).toContain('row-11999');
     list.dispose();
   });

@@ -14,10 +14,10 @@ interface HarnessEvent {
 interface ListState {
   readonly loaded: boolean;
   readonly loading: boolean;
-  readonly loadingBefore: boolean;
-  readonly loadingAfter: boolean;
-  readonly hasMoreBefore: boolean;
-  readonly hasMoreAfter: boolean;
+  readonly loadingBackward: boolean;
+  readonly loadingForward: boolean;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
   readonly count: number;
   readonly total: number;
   readonly stale: boolean;
@@ -61,7 +61,7 @@ async function mountFullTailWindow(
   // 拿到最新一页，upsertLocal 才满足 mergeLive 的前置契约（该端 hasMore 已为
   // false，见 bounded-list.ts 的 reachesFreshEdge 守卫）。随后一次 backward
   // loadMore 补一页较旧历史，凑满 maxPages 触发头部整页裁剪，同时保持已在真正
-  // 新鲜端尽头（hasMoreAfter=false）。
+  // 新鲜端尽头（hasMoreForward=false）。
   const key = await mount(page, {
     itemCount: 100,
     pageSize: 10,
@@ -74,8 +74,8 @@ async function mountFullTailWindow(
   await call(page, 'loadMore', key, 'backward');
   expect(await call<ListState>(page, 'state', key)).toMatchObject({
     count: 20,
-    hasMoreBefore: true,
-    hasMoreAfter: false,
+    hasMoreBackward: true,
+    hasMoreForward: false,
   });
   await call(page, 'setScrollTop', key, position === 'fresh-edge' ? 1_000_000 : 0);
   await dispatchScroll(page, key);
@@ -104,10 +104,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toEqual({
       loaded: false,
       loading: false,
-      loadingBefore: false,
-      loadingAfter: false,
-      hasMoreBefore: false,
-      hasMoreAfter: false,
+      loadingBackward: false,
+      loadingForward: false,
+      hasMoreBackward: false,
+      hasMoreForward: false,
       count: 0,
       total: -1,
       stale: false,
@@ -245,8 +245,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       loaded: true,
       count: 2,
       total: 3,
-      hasMoreBefore: false,
-      hasMoreAfter: true,
+      hasMoreBackward: false,
+      hasMoreForward: true,
     });
 
     const eventTypes = await call<string[]>(page, 'eventTypes', key);
@@ -281,8 +281,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         loading: false,
         count: 2,
         total: 3,
-        hasMoreBefore: false,
-        hasMoreAfter: true,
+        hasMoreBackward: false,
+        hasMoreForward: true,
       },
     });
   });
@@ -298,8 +298,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         loading: 'L',
         empty: 'E',
         emptyFiltered: 'F',
-        headBoundary: 'H',
-        tailBoundary: 'T',
+        backwardBoundary: 'H',
+        forwardBoundary: 'T',
       },
     });
 
@@ -329,20 +329,20 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const pagePlusOne = await mount(page, { itemCount: 6, pageSize: 5, reachPx: -1 });
     expect(await call<ListState>(page, 'state', single)).toMatchObject({
       count: 1,
-      hasMoreAfter: false,
+      hasMoreForward: false,
     });
     expect(await events(page, single)).toEqual([]);
     expect(await call<ListState>(page, 'state', pageMinusOne)).toMatchObject({
       count: 4,
-      hasMoreAfter: false,
+      hasMoreForward: false,
     });
     expect(await call<ListState>(page, 'state', exactPage)).toMatchObject({
       count: 5,
-      hasMoreAfter: false,
+      hasMoreForward: false,
     });
     expect(await call<ListState>(page, 'state', pagePlusOne)).toMatchObject({
       count: 5,
-      hasMoreAfter: true,
+      hasMoreForward: true,
     });
   });
 
@@ -394,8 +394,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'loadMore', key, 'forward');
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       count: 10,
-      hasMoreBefore: true,
-      hasMoreAfter: true,
+      hasMoreBackward: true,
+      hasMoreForward: true,
     });
     expect(await call<string[]>(page, 'rowIds', key)).toEqual([
       '9', '8', '7', '6', '5',
@@ -444,8 +444,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
-      loadingAfter: true,
-      loadingBefore: false,
+      loadingForward: true,
+      loadingBackward: false,
     });
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     await call(page, 'resolvePage', key);
@@ -459,8 +459,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect.poll(() => call<number>(page, 'pageGateCount', key)).toBe(2);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
-      loadingBefore: true,
-      loadingAfter: true,
+      loadingBackward: true,
+      loadingForward: true,
     });
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(2);
     await call(page, 'resolvePage', key);
@@ -468,8 +468,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'waitForIdle', key);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: false,
-      loadingBefore: false,
-      loadingAfter: false,
+      loadingBackward: false,
+      loadingForward: false,
     });
   });
 
@@ -828,7 +828,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
       pendingCount: 7,
-      hasMoreAfter: true,
+      hasMoreForward: true,
     });
 
     await call(page, 'setItems', key, Array.from({ length: 10 }, (_, order) => ({
@@ -840,7 +840,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
       pendingCount: 0,
-      hasMoreAfter: false,
+      hasMoreForward: false,
     });
   });
 
@@ -1037,8 +1037,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     ).toEqual(['forward', 'backward', 'refresh']);
     expect(await call<ListState>(page, 'state', pageKey)).toMatchObject({
       loading: false,
-      loadingBefore: false,
-      loadingAfter: false,
+      loadingBackward: false,
+      loadingForward: false,
     });
     expect(pageErrors).toEqual([]);
   });
@@ -1142,7 +1142,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect(rows(page, key).first()).toHaveAttribute('data-id', '2');
   });
 
-  test('普通 reset 在飞期间的 upsert/patch/remove 在权威响应后仍保留最终本地语义', async ({ page }) => {
+  test('普通 reset 在飞期间的 removeLocal 最终语义在权威响应后仍然生效', async ({ page }) => {
     const key = await mount(page, {
       itemCount: 10,
       pageSize: 10,
@@ -1153,30 +1153,17 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'startReset', key, { pinEdge: false });
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
 
-    await call(page, 'upsertLocal', key, {
-      id: 'local-draft',
-      label: 'local-draft-v1',
-      order: 100,
-    });
-    expect(await call(page, 'patchLabel', key, 'local-draft', 'local-draft-v2')).toBe(true);
-    await call(page, 'upsertLocal', key, {
-      id: '1',
-      label: 'optimistic-one',
-      order: 1,
-    });
-    expect(await call(page, 'removeLocal', key, '1')).toBe(true);
-    expect(await call<ListState>(page, 'state', key)).toMatchObject({
-      loaded: false,
-      count: 1,
-    });
+    // 窗口已被 reset 清空，这条 remove 命中不到任何条目因而返回 false，但仍然记入
+    // overlay：在飞的权威页会带回 id=1 的旧记录，只有留下 remove 才能把它挡住。
+    expect(await call(page, 'removeLocal', key, '1')).toBe(false);
+    expect(await call<ListState>(page, 'state', key)).toMatchObject({ loaded: false, count: 0 });
 
     await call(page, 'resolvePage', key);
     await call(page, 'waitForIdle', key);
-    await expect(root(page, key).locator('[data-id="local-draft"] .bl-row-label'))
-      .toContainText('local-draft-v2');
     await expect(root(page, key).locator('[data-id="1"]')).toHaveCount(0);
-    const finalIds = await call<string[]>(page, 'rowIds', key);
-    expect(finalIds.filter((id) => id === 'local-draft')).toEqual(['local-draft']);
+    await expect(root(page, key).locator('[data-id="0"]')).toHaveCount(1);
+    // 没有本端 upsert 参与，因此权威响应落地后不留提示条，也不会再发第二次请求。
+    expect(await call<ListState>(page, 'state', key)).toMatchObject({ count: 9, stale: false });
   });
 
   test('upsertLocal、patch、removeLocal、render 与 pinnedItems 命令式接口', async ({ page }) => {
@@ -1623,7 +1610,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     ).toContain('refresh-during-reconcile');
   });
 
-  test('pageSize=2/maxPages=1 裁剪后的 remove B 与重复 upsert C 在权威响应后保持最终语义', async ({ page }) => {
+  test('pageSize=2/maxPages=1 裁剪后：remove B 的最终语义保留，重复 upsert C 只留最后一次值', async ({ page }) => {
     const key = await mount(page, {
       items: [
         { id: 'A', label: 'A', order: 0 },
@@ -1645,16 +1632,24 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call(page, 'removeLocal', key, 'B')).toBe(true);
     await call(page, 'upsertLocal', key, { id: 'C', label: 'C-v2', order: 3 });
     await call(page, 'upsertLocal', key, { id: 'C', label: 'C-v3', order: 4 });
+    // 重复并入同一身份只保留最后一次的值，任何时刻都不产生重复 DOM 行。
+    await expect(root(page, key).locator('[data-id="C"]')).toHaveCount(1);
+    await expect(root(page, key).locator('[data-id="C"] .bl-row-label')).toContainText('C-v3');
+
+    // 先滚离新鲜端：本端 upsert 在权威请求在飞时会点亮提示条，贴边时提示条会自动
+    // 追平并再发一次请求。这里只验证权威响应本身的落地结果，所以让提示条停在
+    // 「等待用户点击」状态，避免断言撞上第二次请求。
+    await call(page, 'setScrollTop', key, 0);
+    await dispatchScroll(page, key);
     await call(page, 'resolvePage', key);
     await expect.poll(() => call<ListState>(page, 'state', key)).toMatchObject({
       loading: false,
       failed: false,
     });
 
+    // remove 重放到权威窗口：B 不得复活。C 以服务端为准。
     await expect(root(page, key).locator('[data-id="B"]')).toHaveCount(0);
-    await expect(root(page, key).locator('[data-id="C"]')).toHaveCount(1);
-    await expect(root(page, key).locator('[data-id="C"] .bl-row-label')).toContainText('C-v3');
-    expect((await call<string[]>(page, 'rowIds', key)).filter((id) => id === 'C')).toEqual(['C']);
+    expect((await call<string[]>(page, 'rowIds', key)).filter((id) => id === 'C')).toHaveLength(0);
     expect((await call<ListState>(page, 'state', key)).count).toBeLessThanOrEqual(2);
   });
 
@@ -1709,7 +1704,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       count: 20,
-      hasMoreBefore: false,
+      hasMoreBackward: false,
     });
     expect(await call<string[]>(page, 'rowIds', key)).toContain('live-old-edge');
 
@@ -1737,7 +1732,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
       count: 20,
-      hasMoreBefore: false,
+      hasMoreBackward: false,
     });
 
     await call(page, 'resolvePage', key);
@@ -1748,7 +1743,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
   });
 
-  test('staged reconcile 在飞时保留 capped DOM，并在响应后重放期间新增的 live 条目', async ({ page }) => {
+  test('staged reconcile 在飞时保留 capped DOM，期间 live 条目乐观可见，响应后以服务端为准', async ({ page }) => {
     const key = await mountFullTailWindow(page, 'fresh-edge');
     await call(page, 'pauseNextPage', key);
     await call(page, 'upsertLocal', key, {
@@ -1781,8 +1776,9 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       loading: false,
       failed: false,
     });
+    // 权威响应整体替换窗口：本端条目以服务端为准，硬上限仍然成立。
     const reconciledIds = await call<string[]>(page, 'rowIds', key);
-    expect(reconciledIds).toContain('live-during-reconcile');
+    expect(reconciledIds).not.toContain('live-during-reconcile');
     expect(reconciledIds.length).toBeLessThanOrEqual(20);
   });
 

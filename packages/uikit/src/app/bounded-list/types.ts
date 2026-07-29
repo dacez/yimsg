@@ -42,8 +42,8 @@ export interface BoundedListText {
   readonly loading?: () => string;
   readonly empty?: () => string;
   readonly emptyFiltered?: () => string;
-  readonly headBoundary?: () => string;
-  readonly tailBoundary?: () => string;
+  readonly backwardBoundary?: () => string;
+  readonly forwardBoundary?: () => string;
   readonly updatePill?: (count: number) => string;
   /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
   readonly error?: (error: unknown) => string;
@@ -54,10 +54,10 @@ export interface BoundedListText {
 export interface BoundedListState {
   readonly loaded: boolean;
   readonly loading: boolean;
-  readonly loadingBefore: boolean;
-  readonly loadingAfter: boolean;
-  readonly hasMoreBefore: boolean;
-  readonly hasMoreAfter: boolean;
+  readonly loadingBackward: boolean;
+  readonly loadingForward: boolean;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
   readonly count: number;
   readonly total: number;
   readonly stale: boolean;

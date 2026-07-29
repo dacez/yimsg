@@ -355,7 +355,7 @@ describe('PageSource / D 大数据量', () => {
     }
     expect(pages).toBe(Math.ceil(size / pageSize));
     expect(loadAll).toHaveBeenCalledTimes(1);
-    expect(window.hasMoreAfter).toBe(false);
+    expect(window.hasMoreForward).toBe(false);
     // 排序按 name 倒序号，因此最后一页的最后一条应该是 id=0（name 最大）。
     expect(window.items[window.count - 1].id).toBe(0);
   });

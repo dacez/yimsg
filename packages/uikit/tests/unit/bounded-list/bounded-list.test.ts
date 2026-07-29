@@ -76,8 +76,8 @@ function baseOptions(
     source,
     identityOf: idOf,
     renderItem: (item: TestItem) => [asElement(row(host.doc, `row-${item.id}`))],
-    // 默认不提供 headBoundary/tailBoundary：大多数用例只关心「行」本身，提供边界文案会
-    // 在 !hasMoreBefore（reset 后头部天然如此）时插入一个提示条节点，让「children 数组
+    // 默认不提供 backwardBoundary/forwardBoundary：大多数用例只关心「行」本身，提供边界文案会
+    // 在 !hasMoreBackward（reset 后头部天然如此）时插入一个提示条节点，让「children 数组
     // 与条目一一对应」的假设失效。需要专门验证边界提示的用例自行在 overrides 里传入。
     text: {
       loading: () => '加载中',
@@ -351,8 +351,8 @@ describe('BoundedList / B reset 首屏', () => {
     await list.reset();
     expect(list.getState().loaded).toBe(true);
     expect(list.getState().count).toBe(3);
-    expect(list.getState().hasMoreBefore).toBe(false);
-    expect(list.getState().hasMoreAfter).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(true);
     expect(rendered(host)).toEqual(['row-0', 'row-1', 'row-2']);
     list.dispose();
   });
@@ -489,7 +489,7 @@ describe('BoundedList / B reset 首屏', () => {
     for (let i = 0; i < 9; i++) pending[i].resolve(pageOf(makeTestItems(1, i), '0', '1', false, true));
     await Promise.all(promises);
     expect(rendered(host)).toEqual(['row-900']);
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     list.dispose();
   });
 
@@ -514,7 +514,7 @@ describe('BoundedList / B reset 首屏', () => {
     list.dispose();
   });
 
-  it('B13 普通 reset 在飞期间的 upsert/patch/remove 按 identity 最终态重放', async () => {
+  it('B13 reset 在飞期间：remove 仍挡住权威页里的同一身份，upsert 只做乐观显示不跨窗口重放', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     let latest: readonly TestItem[] = [];
@@ -533,13 +533,15 @@ describe('BoundedList / B reset 首屏', () => {
 
     pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
     await resetting;
-    expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
-    expect(latest.find((item) => item.id === 2)?.label).toBe('local-draft-v2');
-    expect(list.getState().count).toBe(2);
+    // remove 是与位置无关的最终态，重放到权威窗口上，把 id=1 挡掉。
+    expect(renderedRows(host)).toEqual(['row-0']);
+    // upsert 不跨窗口重放：权威页没有 id=2，它就以服务端为准消失，并留下提示条让用户追平。
+    expect(latest.map((item) => item.id)).toEqual([0]);
+    expect(list.getState()).toMatchObject({ count: 1, stale: true });
     list.dispose();
   });
 
-  it('B14 reset 在飞时超过硬预算的本地 mutation 静默丢最旧的一条，权威响应仍正常落地', async () => {
+  it('B14 reset 在飞时超过硬预算的 overlay 静默丢最旧的一条，权威响应仍正常落地', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     const onError = vi.fn();
@@ -549,18 +551,23 @@ describe('BoundedList / B reset 首屏', () => {
       maxPages: 1,
       onError,
     }));
+    const initial = list.reset({ pinEdge: false });
+    pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+    await initial;
 
     const resetting = list.reset({ pinEdge: false });
-    list.upsertLocal({ id: 10, label: 'local-10' });
-    list.upsertLocal({ id: 11, label: 'local-11' });
-    list.upsertLocal({ id: 12, label: 'local-12' }); // overlay 硬预算=2，最旧的 10 被静默丢弃
-    pending[0].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
+    // reset 会清空 overlay，这三条 remove 都发生在新一轮请求在飞期间。
+    // overlay 硬预算 = pageSize×maxPages = 2，写第三条时最旧的 remove(0) 被静默丢弃。
+    expect(list.removeLocal('0')).toBe(false);
+    expect(list.removeLocal('1')).toBe(false);
+    expect(list.removeLocal('9')).toBe(false);
+    pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
     await resetting;
 
-    expect(pending).toHaveLength(1);
-    expect(renderedRows(host)).toEqual(['row-11', 'row-12']);
-    // 权威页正常接纳、重放 overlay 里剩下的 11/12；这不是失败，只是有 eviction 的 stale 状态。
-    expect(list.getState()).toMatchObject({ loaded: true, failed: false, stale: true, count: 2 });
+    expect(pending).toHaveLength(2);
+    // 只有仍在 overlay 里的 1/9 被挡住；被挤掉的 0 照常出现在权威页里。
+    expect(renderedRows(host)).toEqual(['row-0']);
+    expect(list.getState()).toMatchObject({ loaded: true, failed: false, count: 1 });
     expect(onError).not.toHaveBeenCalled();
     list.dispose();
   });
@@ -577,7 +584,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     host.scroller.scrollTop = 500; // 挪开滚动位置，避免 checkReach 干扰手动翻页
     for (let i = 0; i < 5; i++) await list.loadMore('forward');
     expect(list.getState().count).toBeLessThanOrEqual(3 * 2);
-    expect(list.getState().hasMoreBefore).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
     list.dispose();
   });
 
@@ -587,24 +594,24 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 15)));
     await list.reset({ pinEdge: false });
     expect(rendered(host)).toEqual(['row-15', 'row-16', 'row-17']);
-    expect(list.getState().hasMoreBefore).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
 
     await list.loadMore('backward');
     expect(rendered(host)).toEqual(['row-12', 'row-13', 'row-14', 'row-15', 'row-16', 'row-17']);
     await list.loadMore('backward'); // 超过 maxPages=2 → 裁掉尾页
     expect(rendered(host)).toEqual(['row-9', 'row-10', 'row-11', 'row-12', 'row-13', 'row-14']);
-    expect(list.getState().hasMoreAfter).toBe(true);
+    expect(list.getState().hasMoreForward).toBe(true);
     expect(list.getState().count).toBe(6);
     list.dispose();
   });
 
-  it('C3 backward 续翻到头时 hasMoreBefore 收敛为 false', async () => {
+  it('C3 backward 续翻到头时 hasMoreBackward 收敛为 false', async () => {
     const all = makeTestItems(6);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 3)));
     await list.reset({ pinEdge: false });
     await list.loadMore('backward');
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
     expect(rendered(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-3', 'row-4', 'row-5']);
     list.dispose();
   });
@@ -616,8 +623,8 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }));
     await list.reset();
     fetchSpy.mockClear();
-    expect(list.getState().hasMoreAfter).toBe(false);
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
     await list.loadMore('forward');
     await list.loadMore('backward');
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -637,8 +644,8 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const f2 = list.loadMore('forward'); // 同方向已在加载 → 直接返回
     const b1 = list.loadMore('backward'); // 反方向 → 真的发请求
     expect(pending).toHaveLength(3);
-    expect(list.getState().loadingBefore).toBe(true);
-    expect(list.getState().loadingAfter).toBe(true);
+    expect(list.getState().loadingBackward).toBe(true);
+    expect(list.getState().loadingForward).toBe(true);
     expect(list.getState().loading).toBe(true);
 
     pending[1].resolve(pageOf(makeTestItems(3, 13), '13', '16', true, false));
@@ -706,7 +713,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }, { maxPages: 10 }));
     await list.reset({ pinEdge: false });
     await flushAsync();
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().count).toBe(9);
     // 3 页数据 + 1 页空结果 = 4 次请求，链条必然终止。
     expect(fetchSpy).toHaveBeenCalledTimes(4);
@@ -731,7 +738,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await flushAsync();
     expect(calls).toBe(2); // 首页 + 一次失败的自动续翻，然后停下
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(list.getState().loadingAfter).toBe(false);
+    expect(list.getState().loadingForward).toBe(false);
     list.dispose();
   });
 
@@ -820,7 +827,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await list.reset({ pinEdge: false });
     await flushAsync();
     expect(calls).toBe(2);
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     list.dispose();
   });
 
@@ -852,7 +859,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     // 首页为空且边界游标也是空串：服务端说前面还有，但客户端没有任何锚点可用。
     pending[0].resolve(pageOf([], '', '', true, false));
     await p;
-    expect(list.getState().hasMoreBefore).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
     await list.loadMore('backward');
     expect(pending).toHaveLength(1); // 没有发出第二个请求
     list.dispose();
@@ -866,8 +873,8 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     pending[0].resolve(pageOf([], '', '', true, false));
     await p;
     list.upsertLocal({ id: 1, label: 'local' });
-    expect(list.getState().hasMoreBefore).toBe(false);
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     await list.loadMore('backward');
     await list.loadMore('forward');
     expect(pending).toHaveLength(1);
@@ -895,9 +902,9 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createOptimisticSource(() => all)));
     await list.reset({ pinEdge: false });
-    expect(list.getState().hasMoreAfter).toBe(true); // 满页 → 乐观认为还有
+    expect(list.getState().hasMoreForward).toBe(true); // 满页 → 乐观认为还有
     await list.loadMore('forward');
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     list.dispose();
   });
 
@@ -916,7 +923,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const filtered = list.loadMore('forward');
     pending[1].resolve(pageOf([{ id: 1, label: 'filtered' }], 's1', 'e1', true, true));
     await filtered;
-    expect(list.getState().hasMoreAfter).toBe(true);
+    expect(list.getState().hasMoreForward).toBe(true);
 
     const next = list.loadMore('forward');
     expect(pending[2].req.cursor).toBe('e1');
@@ -937,9 +944,9 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     host.scroller.scrollTop = 500;
 
     const loadP = list.loadMore('forward');
-    expect(list.getState().loadingAfter).toBe(true);
+    expect(list.getState().loadingForward).toBe(true);
     const resetP = list.reset({ pinEdge: false });
-    expect(list.getState().loadingAfter).toBe(false); // reset 立刻归零两端 loading
+    expect(list.getState().loadingForward).toBe(false); // reset 立刻归零两端 loading
     expect(pending).toHaveLength(3);
 
     pending[1].resolve(pageOf(makeTestItems(3, 3), 's1', 'e1', true, true)); // 陈旧的 loadMore 结果
@@ -977,7 +984,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     list.dispose();
   });
 
-  it('C21 loadMore 在飞期间的本地更新不会被返回页中的同 identity 旧值覆盖', async () => {
+  it('C21 loadMore 在飞期间的 patch/remove 最终态不会被返回页中的同 identity 旧值覆盖', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     let latest: readonly TestItem[] = [];
@@ -992,15 +999,18 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await initial;
 
     const loading = list.loadMore('forward');
-    list.upsertLocal({ id: 2, label: 'local-2' });
-    expect(list.patch('2', (item) => ({ ...item, label: 'local-2-v2' }))).toBe(true);
-    list.upsertLocal({ id: 3, label: 'local-remove' });
-    expect(list.removeLocal('3')).toBe(true);
-    pending[1].resolve(pageOf(makeTestItems(2, 2), 's1', 'e1', true, false));
+    // 分页在飞期间对「该页将带回来的身份」做本地最终态：patch 改值、remove 删除。
+    // 两者都与位置无关，会在页并入后重放；旧值不得回退，删除项不得复活。
+    expect(list.patch('1', (item) => ({ ...item, label: 'local-1-v2' }))).toBe(true);
+    expect(list.removeLocal('3')).toBe(false); // 还不在窗口里，但仍记入 overlay
+    pending[1].resolve(pageOf(
+      [{ id: 1, label: 'server-1-old' }, { id: 3, label: 'server-3' }],
+      's1', 'e1', true, false,
+    ));
     await loading;
 
-    expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-v2');
-    expect(latest.map((item) => item.id).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(latest.find((item) => item.id === 1)?.label).toBe('local-1-v2');
+    expect(latest.map((item) => item.id).sort((a, b) => a - b)).toEqual([0, 1]);
     list.dispose();
   });
 });
@@ -1506,7 +1516,10 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     }));
     const mutations = (list as unknown as { pendingMutations: Map<string, unknown> }).pendingMutations;
     await list.reset({ pinEdge: false });
-    list.upsertLocal({ id: 2, label: 'local-v1' });
+    // 这次 upsert 会撑破硬预算并裁剪，使非新鲜端游标失效；随后的 patch 因此进入
+    // overlay，制造出「定向刷新落地时该身份已有旧 overlay」的前置条件。
+    list.upsertLocal({ id: 2, label: 'local-v0' });
+    expect(list.patch('2', (item) => ({ ...item, label: 'local-v1' }))).toBe(true);
     list.invalidate({ identities: ['2'] });
     await flushAsync();
     expect(fetcher.calls).toEqual([['2']]);
@@ -1515,6 +1528,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     fetcher.settle(0, [{ id: 2, label: 'authority-v2' }]);
     await flushAsync();
     expect(latest.find((item) => item.id === 2)?.label).toBe('authority-v2');
+    // 没有普通分页在飞：接受 refresh 后直接淘汰同身份的旧 overlay。
     expect(mutations.has('2')).toBe(false);
 
     sourceItems = [{ id: 1, label: 'row-1' }, { id: 2, label: 'authority-v2' }];
@@ -1548,7 +1562,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await flushAsync();
     expect(tokens.size).toBe(1);
 
-    // 窗口的 hasMoreAfter 仍是 true（还没追平新鲜端），upsertLocal 走 overlay 记录分支，
+    // 窗口的 hasMoreForward 仍是 true（还没追平新鲜端），upsertLocal 走 overlay 记录分支，
     // 不直接改动窗口，因此不触发 cancelOrdinaryPageLoads，并发 refresh token 原样保留。
     const stalePage = list.loadMore('forward');
     list.upsertLocal({ id: 4, label: 'local-4' });
@@ -1703,7 +1717,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     list.invalidate({ count: 1 });
     expect(list.getState().stale).toBe(true);
 
-    void list.loadMore('backward'); // 制造 loadingBefore=true
+    void list.loadMore('backward'); // 制造 loadingBackward=true
     const requestsBefore = pending.length;
     host.scroller.scrollTop = 0;
     host.scroller.dispatch('scroll');
@@ -1724,10 +1738,10 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     expect(list.getState().stale).toBe(true);
 
     await list.loadMore('forward'); // [3,4,5]，满页仍乐观报告 hasMoreForward=true
-    expect(list.getState().hasMoreAfter).toBe(true);
+    expect(list.getState().hasMoreForward).toBe(true);
     expect(list.getState().stale).toBe(true);
     await list.loadMore('forward'); // 真正拿到空页 → 命中新鲜端方向
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(false);
     expect(list.getState().pendingCount).toBe(0);
     list.dispose();
@@ -1859,7 +1873,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     expect(list.getState().stale).toBe(true);
 
     await list.loadMore('forward');
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(false);
     expect(list.getState().pendingCount).toBe(0);
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
@@ -1874,7 +1888,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     host.scroller.scrollTop = 500;
     list.invalidate({ count: 4 });
     await list.loadMore('forward'); // forward 不是 head 的新鲜方向
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(true);
     expect(list.getState().pendingCount).toBe(4);
     list.dispose();
@@ -1897,7 +1911,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
 // ───────────────────────── G 本端增删改 ─────────────────────────
 
 describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLocal）', () => {
-  it('G1 freshEdge=tail 时并入尾页；新鲜端方向的 hasMoreAfter 置 false', async () => {
+  it('G1 freshEdge=tail 时并入尾页；新鲜端方向的 hasMoreForward 置 false', async () => {
     // pageSize 覆盖全部条目，reset 后 hasMoreForward 天然为 false（真正追平新鲜端），
     // upsertLocal 才会走立即并入分支。
     const items = makeTestItems(3);
@@ -1906,18 +1920,18 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     await list.reset();
     list.upsertLocal({ id: 100, label: 'local' });
     expect(rendered(host)[rendered(host).length - 1]).toBe('row-100');
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     list.dispose();
   });
 
-  it('G2 freshEdge=head 时并入首页；hasMoreBefore 置 false', async () => {
+  it('G2 freshEdge=head 时并入首页；hasMoreBackward 置 false', async () => {
     const items = makeTestItems(4);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'head' }));
     await list.reset();
     list.upsertLocal({ id: -1, label: 'local' });
     expect(rendered(host)[0]).toBe('row--1');
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
     list.dispose();
   });
 
@@ -1932,7 +1946,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     expect(list.getState().count).toBe(6);
     list.upsertLocal({ id: 100, label: 'local' });
     expect(list.getState().count).toBe(6);
-    expect(list.getState().hasMoreBefore).toBe(false); // 旧游标失效，权威追平前禁止继续分页
+    expect(list.getState().hasMoreBackward).toBe(false); // 旧游标失效，权威追平前禁止继续分页
     expect(rendered(host)).toContain('row-100');
     list.dispose();
   });
@@ -1955,7 +1969,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       host.scroller.dispatch('scroll');
       frames.run();
       list.upsertLocal({ id: 2, label: 'local-2' });
-      expect(list.getState().hasMoreBefore).toBe(false);
+      expect(list.getState().hasMoreBackward).toBe(false);
       expect(pending).toHaveLength(1); // render 不得用 old-start 自动翻页
       frames.run(); // away-edge invalidate 只置 stale
       expect(pending).toHaveLength(1);
@@ -1966,12 +1980,13 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       expect(renderedRows(host)).toEqual(['row-1', 'row-2']);
       pending[1].resolve(pageOf(makeTestItems(2, 10), 'fresh-start', 'fresh-end', false, false));
       await reconcile;
-      expect(renderedRows(host)).toEqual(['row-11', 'row-2']);
+      // 权威追平以服务端内容为准；本端并入的 row-2 不跨窗口重放。
+      expect(renderedRows(host)).toEqual(['row-10', 'row-11']);
       list.dispose();
     });
   });
 
-  it('G3c staged reconcile 请求在飞时不清空 DOM，期间 upsert 在响应后仍保留', async () => {
+  it('G3c staged reconcile 请求在飞时不清空 DOM；期间 upsert 乐观可见，响应后以服务端为准并点亮提示条', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -1993,9 +2008,13 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       expect(renderedRows(host)).toEqual(capped);
 
       list.upsertLocal({ id: 3, label: 'local-3' });
+      expect(renderedRows(host)).toContain('row-3'); // 请求在飞时先乐观显示
+
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
-      expect(renderedRows(host)).toContain('row-3');
+      // 权威响应整体替换窗口：本端条目以服务端为准消失，同时留下提示条让用户追平。
+      expect(renderedRows(host)).not.toContain('row-3');
+      expect(list.getState()).toMatchObject({ stale: true });
       expect(list.getState().count).toBeLessThanOrEqual(2);
       list.dispose();
     });
@@ -2065,7 +2084,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
-  it('G3f 容量 mutation 按 identity 合并，重复 upsert 不会挤掉较早的 remove', async () => {
+  it('G3f remove overlay 在权威追平后仍然生效，重复 upsert 只保留最后一次的值', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2082,17 +2101,20 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       await initial;
 
       list.upsertLocal({ id: 2, label: 'local-2-a' });
-      expect(list.removeLocal('1')).toBe(true);
       list.upsertLocal({ id: 2, label: 'local-2-b' });
       list.upsertLocal({ id: 2, label: 'local-2-final' });
+      // 同一身份重复并入只保留最后一次的值，不产生重复行。
+      expect(latest.filter((item) => item.id === 2)).toHaveLength(1);
+      expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-final');
+
+      expect(list.removeLocal('1')).toBe(true);
       frames.run();
       expect(pending).toHaveLength(2);
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
 
-      expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
-      expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-final');
-      expect(renderedRows(host)).not.toContain('row-1');
+      // remove 是与位置无关的最终态，重放到权威窗口上，row-1 不得复活。
+      expect(renderedRows(host)).toEqual(['row-0']);
       list.dispose();
     });
   });
@@ -2166,7 +2188,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
-  it('G3i overlay 超过硬预算时静默丢最旧一条，reconcile 仍正常落地并保持 stale', async () => {
+  it('G3i overlay 超过硬预算时静默丢最旧一条，reconcile 仍正常落地', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2182,27 +2204,25 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
 
       list.upsertLocal({ id: 2, label: 'local-2' });
       frames.run();
-      expect(pending).toHaveLength(2);
-      list.upsertLocal({ id: 3, label: 'local-3' });
-      list.upsertLocal({ id: 4, label: 'local-4' }); // overlay 硬预算=2，最旧的 2 被静默丢弃
-      const capped = renderedRows(host);
+      expect(pending).toHaveLength(2); // 裁剪触发了 staged reconcile
 
-      pending[1].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
+      // reconcile 在飞期间的三条 remove：overlay 硬预算 = pageSize×maxPages = 2，
+      // 写第三条时最旧的 remove(0) 被静默丢弃。
+      list.removeLocal('0');
+      list.removeLocal('1');
+      list.removeLocal('9');
+
+      pending[1].resolve(pageOf(makeTestItems(2), 'fresh-s', 'fresh-e', false, false));
       await flushAsync();
       expect(pending).toHaveLength(2);
-      expect(renderedRows(host)).toEqual(capped);
-      expect(list.getState()).toMatchObject({ failed: false, stale: true, loading: false });
-
-      const retry = list.loadMore('backward');
-      expect(pending).toHaveLength(3);
-      pending[2].resolve(pageOf(makeTestItems(2, 3), 'fresh-s', 'fresh-e', false, false));
-      await retry;
-      expect(renderedRows(host)).toEqual(['row-3', 'row-4']);
+      // 仍在 overlay 里的 1/9 被挡住；被挤掉的 0 照常出现在权威页里。
+      expect(renderedRows(host)).toEqual(['row-0']);
+      expect(list.getState()).toMatchObject({ failed: false, loading: false });
       list.dispose();
     });
   });
 
-  it('G3k reconcile 在飞时的 live 裁剪由当前请求重放，不再排第二次追平', async () => {
+  it('G3k reconcile 在飞时的 upsert 乐观可见；权威响应落地后贴边自动追平一次即收敛', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2226,40 +2246,22 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
 
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
-      host.scroller.scrollHeight = 0; // 若残留 deferred invalidate，此时会误判贴边并再发 reset
+      host.scroller.scrollHeight = 0; // 贴边：积压的 invalidate 会触发一次自动追平
       frames.run();
       await flushAsync();
-      expect(pending).toHaveLength(2);
+      expect(pending).toHaveLength(3);
+
+      // 这一次追平即收敛：服务端此时已经有本端那两条，追平后不再有积压，也不再发请求。
+      pending[2].resolve(pageOf(
+        [{ id: 2, label: 'local-2' }, { id: 3, label: 'local-3' }],
+        's2', 'e2', false, false,
+      ));
+      await flushAsync();
+      frames.run();
+      await flushAsync();
+      expect(pending).toHaveLength(3);
       expect(renderedRows(host)).toEqual(['row-2', 'row-3']);
-      list.dispose();
-    });
-  });
-
-  it('G3l patch 继承既有 upsert 的重放顺序，不把身份移动到新鲜端', async () => {
-    await withFramesAsync(async (frames) => {
-      const { source, pending } = createControllableSource<TestItem, void>();
-      const host = createHost();
-      let latest: readonly TestItem[] = [];
-      const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
-        pageSize: 3,
-        maxPages: 1,
-        settleFrames: 1,
-        onItemsChanged: (items) => { latest = items; },
-      }));
-      const initial = list.reset();
-      pending[0].resolve(pageOf(makeTestItems(3), 's0', 'e0', false, false));
-      await initial;
-
-      list.upsertLocal({ id: 3, label: 'local-3' });
-      list.upsertLocal({ id: 4, label: 'local-4' });
-      expect(list.patch('3', (item) => ({ ...item, label: 'local-3-patched' }))).toBe(true);
-      frames.run();
-      pending[1].resolve(pageOf(makeTestItems(3), 's1', 'e1', false, false));
-      await flushAsync();
-
-      expect(latest.map((item) => item.id)).toEqual([2, 3, 4]);
-      expect(latest.find((item) => item.id === 3)?.label).toBe('local-3-patched');
+      expect(list.getState()).toMatchObject({ stale: false });
       list.dispose();
     });
   });
@@ -2645,8 +2647,8 @@ describe('BoundedList / H 渲染与文案', () => {
       text: {
         loading: () => '加载中',
         empty: () => '暂无数据',
-        headBoundary: () => '已到最早',
-        tailBoundary: () => '已到最新',
+        backwardBoundary: () => '已到最早',
+        forwardBoundary: () => '已到最新',
       },
     }));
     await list.reset();
@@ -2971,16 +2973,16 @@ describe('BoundedList / K 错误处理', () => {
     host.scroller.scrollTop = 500;
 
     const loadP = list.loadMore('forward');
-    expect(list.getState().loadingAfter).toBe(true);
+    expect(list.getState().loadingForward).toBe(true);
     pending[1].reject(new Error('network'));
     await loadP;
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'forward');
-    expect(list.getState().loadingAfter).toBe(false);
-    expect(list.getState().hasMoreAfter).toBe(true); // 失败不改变边界状态
+    expect(list.getState().loadingForward).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(true); // 失败不改变边界状态
     list.dispose();
   });
 
-  it('K4 loadMore(backward) 失败：onError 带 backward 阶段，loadingBefore 恢复', async () => {
+  it('K4 loadMore(backward) 失败：onError 带 backward 阶段，loadingBackward 恢复', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     const onError = vi.fn();
@@ -2991,11 +2993,11 @@ describe('BoundedList / K 错误处理', () => {
     host.scroller.scrollTop = 500;
 
     const loadP = list.loadMore('backward');
-    expect(list.getState().loadingBefore).toBe(true);
+    expect(list.getState().loadingBackward).toBe(true);
     pending[1].reject(new Error('network'));
     await loadP;
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'backward');
-    expect(list.getState().loadingBefore).toBe(false);
+    expect(list.getState().loadingBackward).toBe(false);
     list.dispose();
   });
 
@@ -3241,8 +3243,8 @@ describe('BoundedList / M 只读状态 getState', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => [])));
     expect(list.getState()).toEqual({
-      loaded: false, loading: false, loadingBefore: false, loadingAfter: false,
-      hasMoreBefore: false, hasMoreAfter: false, count: 0, total: -1,
+      loaded: false, loading: false, loadingBackward: false, loadingForward: false,
+      hasMoreBackward: false, hasMoreForward: false, count: 0, total: -1,
       stale: false, pendingCount: 0, atFreshEdge: false, failed: false,
     });
     list.dispose();
@@ -3277,13 +3279,13 @@ describe('BoundedList / M 只读状态 getState', () => {
     host.scroller.scrollTop = 500;
 
     void list.loadMore('backward');
-    expect(list.getState()).toMatchObject({ loading: true, loadingBefore: true, loadingAfter: false });
+    expect(list.getState()).toMatchObject({ loading: true, loadingBackward: true, loadingForward: false });
     void list.loadMore('forward');
-    expect(list.getState()).toMatchObject({ loading: true, loadingBefore: true, loadingAfter: true });
+    expect(list.getState()).toMatchObject({ loading: true, loadingBackward: true, loadingForward: true });
     pending[1].resolve(pageOf(makeTestItems(3, 7), '7', '10', true, true));
     pending[2].resolve(pageOf(makeTestItems(3, 13), '13', '16', true, true));
     await flushAsync();
-    expect(list.getState()).toMatchObject({ loading: false, loadingBefore: false, loadingAfter: false });
+    expect(list.getState()).toMatchObject({ loading: false, loadingBackward: false, loadingForward: false });
     list.dispose();
   });
 

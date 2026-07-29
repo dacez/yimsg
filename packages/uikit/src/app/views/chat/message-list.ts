@@ -105,8 +105,8 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     },
     text: {
       loading: () => app.t('common.loading'),
-      headBoundary: () => app.t('chat.reachedEarliest'),
-      tailBoundary: () => app.t('chat.reachedLatest'),
+      backwardBoundary: () => app.t('chat.reachedEarliest'),
+      forwardBoundary: () => app.t('chat.reachedLatest'),
       updatePill: (count) => count > 0 ? app.t('chat.newMessagesCount', { n: count }) : app.t('chat.jumpToLatest'),
       retry: () => app.t('common.retry'),
     },

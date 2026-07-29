@@ -80,7 +80,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
       text: {
         empty: () => app.t('detail.noMembers'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('detail.noMoreMembers'),
+        forwardBoundary: () => app.t('detail.noMoreMembers'),
         retry: () => app.t('common.retry'),
       },
       onItemsChanged: (items) => {
