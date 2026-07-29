@@ -26,11 +26,11 @@
 |---|---|---|
 | `./tools/run_unit_tests.sh` | Go 非 E2E、SDK 单元、UIKit 单元、Web 单元 | 不启动服务端 |
 | `./tools/run_integration_tests.sh` | SDK 与真实服务端集成 | 独立运行时自行启动临时服务 |
-| `./tools/run_e2e_tests.sh` | Server、CLI、Agent E2E 与 Web Chromium E2E | 三组 Go E2E 共用临时服务；Web E2E 另用独立 seed、数据目录和随机端口 |
+| `./tools/run_e2e_tests.sh` | Server、CLI、Agent E2E 与 Web Chromium E2E | 三组 Go E2E 共用临时服务；Web E2E 另用独立 seed、数据目录和操作系统空闲端口 |
 | `./tools/run_component_tests.sh` | BoundedList Chromium 组件功能测试 | 使用独立 browser harness，不启动服务端 |
 | `./tools/run_performance_tests.sh` | BoundedList Chromium 大数据容量与性能门禁 | 使用独立 browser harness，固定单 worker，不启动服务端 |
-| `./tools/run_all_tests.sh` | 协议生成、文档一致性及 unit → integration → E2E → component | 依赖和构建只准备一次，集成与 Go E2E 复用一个服务；不包含性能分类 |
+| `./tools/run_all_tests.sh` | 协议生成、文档一致性及 unit → integration → E2E → component | 依赖和构建只准备一次，集成与 Go E2E 复用一个操作系统空闲端口的隔离服务；不包含性能分类 |
 
-每个分类入口都可以独立执行。`run_all_tests.sh` 通过显式环境上下文复用已准备的依赖、前端产物、服务端二进制和集成 / Go E2E 服务；Web E2E 仍由 `apps/web/tests/support/global-setup.ts` 创建隔离数据和服务进程，只复用二进制与前端构建。性能门禁按设计保持独立，涉及 BoundedList 性能路径时需在全量正确性测试之外另行执行。
+每个分类入口都可以独立执行。`run_all_tests.sh` 通过显式环境上下文复用已准备的依赖、前端产物、服务端二进制和集成 / Go E2E 服务；共享服务默认使用操作系统分配的空闲端口及独立临时数据目录，集成测试会固定连接本轮服务，结束时只清理本轮 PID。Web E2E 仍由 `apps/web/tests/support/global-setup.ts` 创建隔离数据和服务进程，只复用二进制与前端构建；各次 Playwright 入口的结果目录也彼此隔离。性能门禁按设计保持独立，涉及 BoundedList 性能路径时需在全量正确性测试之外另行执行。
 
 全量测试会准备前端依赖、安装 Playwright Chromium 依赖，并把固定版本的 `protoc-gen-go` 安装到 `$(go env GOPATH)/bin` 后再运行协议生成。公开发行包由 `bash tools/scripts/build_release.sh <version>` 构建，输出 Windows x86-64、Linux x86-64 / ARM64、macOS ARM64 四个平台压缩包及 `SHA256SUMS.txt`。服务器环境初始化入口是 `tools/init_server_env.sh <ssh-alias>`，用于按 `docs/deployment/部署方案.md` 标准化各台独立服务器（当前实际是 `yimsg-se`）的账号、目录、配置、systemd unit 和证书权限。Windows 本机部署（研发/演示用，见 `docs/deployment/部署方案.md` 第 11 节）由 `tools/scripts/install-windows-autostart.ps1`（首次注册开机自启计划任务）和 `tools/scripts/deploy-windows-local.ps1`（后续更新：编译、替换产物、跑 `seed-demo`、重启计划任务）两个脚本负责，均需在管理员 PowerShell 中运行。

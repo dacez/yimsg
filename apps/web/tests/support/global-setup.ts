@@ -1,6 +1,7 @@
 import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import http from 'http';
+import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { FullConfig } from '@playwright/test';
@@ -14,8 +15,27 @@ const MEDIA_DIR = path.join(DATA_DIR, 'media');
 const CONFIG = path.join(TEST_ENV_DIR, 'config.toml');
 const SERVER_EXE = path.join(TEST_ENV_DIR, process.platform === 'win32' ? 'server.exe' : 'server');
 const PREFIX_FILE = path.join(DATA_DIR, 'test-seed-prefix.txt');
-const PORT = 18080 + Math.floor(Math.random() * 1000);
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+let PORT = 0;
+let BASE_URL = '';
+
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once('error', reject);
+    probe.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
+      const address = probe.address();
+      if (!address || typeof address === 'string') {
+        probe.close();
+        reject(new Error('无法读取 Playwright 测试端口'));
+        return;
+      }
+      probe.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
+}
 
 function isServerRunning(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -81,6 +101,8 @@ recall_window_seconds = 3
 }
 
 export default async function globalSetup(_config: FullConfig) {
+  PORT = await findFreePort();
+  BASE_URL = `http://127.0.0.1:${PORT}`;
   process.env.PLAYWRIGHT_BASE_URL = BASE_URL;
   process.env.TEST_ENV_DIR = TEST_ENV_DIR;
   process.env.TEST_SERVER_PORT = String(PORT);
@@ -142,6 +164,9 @@ export default async function globalSetup(_config: FullConfig) {
   console.log('[globalSetup] Waiting for server...');
   for (let i = 0; i < 40; i++) {
     if (await isServerRunning()) {
+      if (server.exitCode !== null || server.signalCode !== null) {
+        throw new Error(`Server exited before readiness (code=${server.exitCode}, signal=${server.signalCode})`);
+      }
       console.log('[globalSetup] Server ready.');
       break;
     }
