@@ -1142,7 +1142,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect(rows(page, key).first()).toHaveAttribute('data-id', '2');
   });
 
-  test('普通 reset 在飞期间的 removeLocal 最终语义在权威响应后仍然生效', async ({ page }) => {
+  test('普通 reset 在飞期间的 upsert/patch/remove 在权威响应后仍保留最终本地语义', async ({ page }) => {
     const key = await mount(page, {
       itemCount: 10,
       pageSize: 10,
@@ -1153,17 +1153,32 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'startReset', key, { pinEdge: false });
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
 
-    // 窗口已被 reset 清空，这条 remove 命中不到任何条目因而返回 false，但仍然记入
-    // overlay：在飞的权威页会带回 id=1 的旧记录，只有留下 remove 才能把它挡住。
-    expect(await call(page, 'removeLocal', key, '1')).toBe(false);
-    expect(await call<ListState>(page, 'state', key)).toMatchObject({ loaded: false, count: 0 });
+    await call(page, 'upsertLocal', key, {
+      id: 'local-draft',
+      label: 'local-draft-v1',
+      order: 100,
+    });
+    expect(await call(page, 'patchLabel', key, 'local-draft', 'local-draft-v2')).toBe(true);
+    await call(page, 'upsertLocal', key, {
+      id: '1',
+      label: 'optimistic-one',
+      order: 1,
+    });
+    expect(await call(page, 'removeLocal', key, '1')).toBe(true);
+    expect(await call<ListState>(page, 'state', key)).toMatchObject({
+      loaded: false,
+      count: 1,
+    });
 
     await call(page, 'resolvePage', key);
     await call(page, 'waitForIdle', key);
+    // 本端新增连同其上的 patch 一起重放进权威窗口：全程可见，没有先消失再出现的闪动。
+    await expect(root(page, key).locator('[data-id="local-draft"] .bl-row-label'))
+      .toContainText('local-draft-v2');
+    // remove 挡住权威页带回的 id=1。
     await expect(root(page, key).locator('[data-id="1"]')).toHaveCount(0);
-    await expect(root(page, key).locator('[data-id="0"]')).toHaveCount(1);
-    // 没有本端 upsert 参与，因此权威响应落地后不留提示条，也不会再发第二次请求。
-    expect(await call<ListState>(page, 'state', key)).toMatchObject({ count: 9, stale: false });
+    const finalIds = await call<string[]>(page, 'rowIds', key);
+    expect(finalIds.filter((id) => id === 'local-draft')).toEqual(['local-draft']);
   });
 
   test('upsertLocal、patch、removeLocal、render 与 pinnedItems 命令式接口', async ({ page }) => {
@@ -1610,7 +1625,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     ).toContain('refresh-during-reconcile');
   });
 
-  test('pageSize=2/maxPages=1 裁剪后重复 upsert C 只留最后一次值，且始终不突破硬上限', async ({ page }) => {
+  test('pageSize=2/maxPages=1 裁剪后的 remove B 与重复 upsert C 在权威响应后保持最终语义', async ({ page }) => {
     const key = await mount(page, {
       items: [
         { id: 'A', label: 'A', order: 0 },
@@ -1642,14 +1657,12 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       failed: false,
     });
 
-    // 权威响应以服务端内容为准，硬上限在整个过程中始终成立。
-    // 「overlay 里的 remove 必须挡住权威页带回的同一身份」是确定性契约，由单元用例
-    // G3m 覆盖：本用例窗口只有 2 条、内容比视口短，因而恒判定为贴在新鲜端，提示条
-    // 会自动再追平一次，服务端仍持有的条目本就应当合法回来，不适合在这里断言。
+    // remove 挡住 B；C 由 overlay 重放回新鲜端并保留最后一次的值，硬上限始终成立。
+    await expect(root(page, key).locator('[data-id="B"]')).toHaveCount(0);
+    await expect(root(page, key).locator('[data-id="C"]')).toHaveCount(1);
+    await expect(root(page, key).locator('[data-id="C"] .bl-row-label')).toContainText('C-v3');
+    expect((await call<string[]>(page, 'rowIds', key)).filter((id) => id === 'C')).toEqual(['C']);
     expect((await call<ListState>(page, 'state', key)).count).toBeLessThanOrEqual(2);
-    expect(await call<string[]>(page, 'rowIds', key)).toHaveLength(
-      (await call<ListState>(page, 'state', key)).count,
-    );
   });
 
   test('tail reset(pinEdge=false) 形成远离尾部的真实几何后，无 scroll 事件的 upsert 不自动追平或贴底', async ({ page }) => {
@@ -1742,7 +1755,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
   });
 
-  test('staged reconcile 在飞时保留 capped DOM，期间 live 条目乐观可见，响应后以服务端为准', async ({ page }) => {
+  test('staged reconcile 在飞时保留 capped DOM，并在响应后重放期间新增的 live 条目', async ({ page }) => {
     const key = await mountFullTailWindow(page, 'fresh-edge');
     await call(page, 'pauseNextPage', key);
     await call(page, 'upsertLocal', key, {
@@ -1775,9 +1788,9 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       loading: false,
       failed: false,
     });
-    // 权威响应整体替换窗口：本端条目以服务端为准，硬上限仍然成立。
+    // 权威响应整体替换窗口，但期间新增的 live 条目由 overlay 重放回来，硬上限仍然成立。
     const reconciledIds = await call<string[]>(page, 'rowIds', key);
-    expect(reconciledIds).not.toContain('live-during-reconcile');
+    expect(reconciledIds).toContain('live-during-reconcile');
     expect(reconciledIds.length).toBeLessThanOrEqual(20);
   });
 

@@ -514,7 +514,7 @@ describe('BoundedList / B reset 首屏', () => {
     list.dispose();
   });
 
-  it('B13 reset 在飞期间：remove 仍挡住权威页里的同一身份，upsert 只做乐观显示不跨窗口重放', async () => {
+  it('B13 reset 在飞期间的 upsert/patch/remove 最终态，在权威响应落地后完整保留', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     let latest: readonly TestItem[] = [];
@@ -533,11 +533,11 @@ describe('BoundedList / B reset 首屏', () => {
 
     pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
     await resetting;
-    // remove 是与位置无关的最终态，重放到权威窗口上，把 id=1 挡掉。
-    expect(renderedRows(host)).toEqual(['row-0']);
-    // upsert 不跨窗口重放：权威页没有 id=2，它就以服务端为准消失，并留下提示条让用户追平。
-    expect(latest.map((item) => item.id)).toEqual([0]);
-    expect(list.getState()).toMatchObject({ count: 1, stale: true });
+    // remove 把权威页带回的 id=1 挡掉；upsert 连同其上的 patch 一起重放进新窗口，
+    // 用户不会看到本端条目先消失再出现的闪动。
+    expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+    expect(latest.find((item) => item.id === 2)?.label).toBe('local-draft-v2');
+    expect(list.getState().count).toBe(2);
     list.dispose();
   });
 
@@ -1980,13 +1980,13 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       expect(renderedRows(host)).toEqual(['row-1', 'row-2']);
       pending[1].resolve(pageOf(makeTestItems(2, 10), 'fresh-start', 'fresh-end', false, false));
       await reconcile;
-      // 权威追平以服务端内容为准；本端并入的 row-2 不跨窗口重放。
-      expect(renderedRows(host)).toEqual(['row-10', 'row-11']);
+      // 权威追平换上服务端新内容，本端并入的 row-2 由 overlay 重放回新鲜端。
+      expect(renderedRows(host)).toEqual(['row-11', 'row-2']);
       list.dispose();
     });
   });
 
-  it('G3c staged reconcile 请求在飞时不清空 DOM；期间 upsert 乐观可见，响应后以服务端为准并点亮提示条', async () => {
+  it('G3c staged reconcile 请求在飞时不清空 DOM，期间 upsert 在响应后仍然保留', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2012,9 +2012,8 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
 
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
-      // 权威响应整体替换窗口：本端条目以服务端为准消失，同时留下提示条让用户追平。
-      expect(renderedRows(host)).not.toContain('row-3');
-      expect(list.getState()).toMatchObject({ stale: true });
+      // 权威响应整体替换窗口，但本端条目由 overlay 重放回来：全程可见，无闪动。
+      expect(renderedRows(host)).toContain('row-3');
       expect(list.getState().count).toBeLessThanOrEqual(2);
       list.dispose();
     });
@@ -2084,7 +2083,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
-  it('G3f remove overlay 在权威追平后仍然生效，重复 upsert 只保留最后一次的值', async () => {
+  it('G3f overlay 按 identity 合并，重复 upsert 不会挤掉较早的 remove', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2100,21 +2099,24 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
       await initial;
 
+      // 操作顺序即重放顺序：remove('1') 发生在第一次 upsert 之后、后两次之前。
+      // 重复 upsert 同一身份只能合并成一条，不能把较早的 remove 从 overlay 里挤掉，
+      // 也不能把重放顺序搅乱到「先并入再删除」而白白撑破硬预算。
       list.upsertLocal({ id: 2, label: 'local-2-a' });
+      expect(list.removeLocal('1')).toBe(true);
       list.upsertLocal({ id: 2, label: 'local-2-b' });
       list.upsertLocal({ id: 2, label: 'local-2-final' });
       // 同一身份重复并入只保留最后一次的值，不产生重复行。
       expect(latest.filter((item) => item.id === 2)).toHaveLength(1);
-      expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-final');
-
-      expect(list.removeLocal('1')).toBe(true);
       frames.run();
       expect(pending).toHaveLength(2);
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
 
-      // remove 是与位置无关的最终态，重放到权威窗口上，row-1 不得复活。
-      expect(renderedRows(host)).toEqual(['row-0']);
+      // remove 重放到权威窗口上，row-1 不得复活；重复 upsert 的最后一次值保留。
+      expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+      expect(latest.find((item) => item.id === 2)?.label).toBe('local-2-final');
+      expect(renderedRows(host)).not.toContain('row-1');
       list.dispose();
     });
   });
@@ -2266,7 +2268,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
-  it('G3m reconcile 在飞时的 removeLocal 在权威响应后仍然生效，被删身份不复活', async () => {
+  it('G3m reconcile 在飞时的 removeLocal 与 upsert 最终态在权威响应后同时成立', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2291,10 +2293,50 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       list.upsertLocal({ id: 2, label: 'C-v2' });
       list.upsertLocal({ id: 2, label: 'C-v3' });
 
-      // 权威页会重新带回 id=1；overlay 里的 remove 必须把它挡住。
+      // 权威页会重新带回 id=1；overlay 里的 remove 必须把它挡住，
+      // 同时本端并入的 id=2 由 overlay 重放回新鲜端，不出现闪动。
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
-      expect(renderedRows(host)).toEqual(['row-0']);
+      expect(renderedRows(host)).toEqual(['row-0', 'row-2']);
+      list.dispose();
+    });
+  });
+
+  it('G3n 权威请求在飞期间并入的本端条目全程可见，不出现「消失又出现」的闪动', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const seen: boolean[] = [];
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        // 每次窗口内容变化都记一次「本端条目在不在」，用来证明它从未中断过。
+        onItemsChanged: (items) => { seen.push(items.some((item) => item.id === 99)); },
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+
+      // 制造一次在飞的权威 reconcile：窗口已满，这次并入撑破硬预算触发裁剪。
+      list.upsertLocal({ id: 2, label: 'fill' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+
+      // 权威请求在飞期间本端发送。
+      seen.length = 0;
+      list.upsertLocal({ id: 99, label: 'local-send' });
+      expect(renderedRows(host)).toContain('row-99'); // 立即可见
+
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+      frames.run();
+      await flushAsync();
+
+      // 关键断言：权威响应整体替换窗口之后它仍在，且中间没有任何一帧把它丢掉。
+      expect(renderedRows(host)).toContain('row-99');
+      expect(seen).not.toContain(false);
       list.dispose();
     });
   });

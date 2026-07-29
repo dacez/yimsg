@@ -31,17 +31,18 @@ const A11Y_ATTRS = ['tabindex', 'role', 'aria-multiselectable'] as const;
 /**
  * 尚未被权威页确认的本地最终态，按 identity 索引。
  *
- * 只保留与位置无关的两种：'replace'（该身份若在窗口里就改成这个值）和 'remove'
- * （该身份从窗口里去掉）。两者都幂等、与重放顺序无关、命中不到就是空操作，
- * 因此可以无条件重放到任何窗口上。
+ * - 'replace' / 'remove' 与位置无关：幂等、与重放顺序无关、命中不到就是空操作，
+ *   可以重放到任何窗口上（分页并入后也重放）。
+ * - 'upsert' 是本端新增，依赖「自己和已加载内容的相邻关系」，**只重放进权威窗口**。
+ *   权威首页按构造就是新鲜端那一页（该端 `hasMore` 必为 `false`），相邻关系在那里
+ *   天然确定，因此不需要逐条判定目标窗口有没有追平新鲜端——早前那条判定连同
+ *   「不满足就留在 overlay 里等下一次」的重试机制一起删除了。
  *
- * 曾经还有第三种 'upsert'（本端新增的条目要在权威响应后重新并入）。它和另外两种
- * 根本不同：新增必须知道自己和已加载内容的相邻关系，于是牵出「目标窗口是否已追平
- * 新鲜端」的逐条判定、Map 顺序即重放顺序的隐式契约、以及 replace 撞上 upsert 要
- * 降级回 upsert 的合并规则——占了整个 overlay 的绝大部分复杂度。现在不再猜位置：
- * 无法确定相邻关系时直接点亮提示条，由下一次追平从服务端拿回真实顺序。
+ * 记 'upsert' 的唯一目的，是让本端并入活过一次**权威窗口替换**：并入本身在
+ * `upsertLocal` 里已经同步做完、立刻可见，overlay 只负责它不要在权威响应落地时消失。
  */
 type LocalMutation<T> =
+  | { readonly kind: 'upsert'; readonly item: T }
   | { readonly kind: 'replace'; readonly item: T }
   | { readonly kind: 'remove' };
 
@@ -115,6 +116,14 @@ export class BoundedList<T, Q = void> {
     markFailure(): void {
       this.stale = true;
       this.count = Math.max(1, this.count);
+    },
+    /**
+     * 本端条目被硬预算裁掉 n 条：点亮提示条。用 max 而不是累加——「被裁掉几条看不见」
+     * 和「收到几条待处理更新」是同一块窗口的两种说法，叠加会把计数报大。
+     */
+    markEvicted(n: number): void {
+      this.stale = true;
+      this.count = Math.max(this.count, n);
     },
   };
   private requestId = 0;
@@ -267,9 +276,9 @@ export class BoundedList<T, Q = void> {
       else this.window.appendForward(page);
       this.dir[dir].loading = false;
       this.dir[dir].autoBlocked = false;
-      // replace / remove 只会改写或删除已有身份，不会让窗口变大，因此不需要在这里
-      // 处理硬预算裁剪、游标失效或额外追平。
-      this.replayPendingMutations(this.window);
+      // 只重放与位置无关的最终态：它们不会让窗口变大，因此不需要在这里处理硬预算
+      // 裁剪、游标失效或额外追平。
+      this.replayFinalStates(this.window);
       this.emitItemsChanged();
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
@@ -314,7 +323,8 @@ export class BoundedList<T, Q = void> {
 
   upsertLocal(item: T): void {
     if (this.disposed) return;
-    this.invalidateRefresh(this.opts.identityOf(item));
+    const identity = this.opts.identityOf(item);
+    this.invalidateRefresh(identity);
     if (!this.reachesFreshEdge()) {
       // 窗口内容还没追平新鲜端：这条本端新增和已加载内容之间的真实相邻关系无法确定，
       // 硬并入只会把它错误地拼在一段旧历史后面，还会顺带关掉真正的续翻。不猜位置，
@@ -326,14 +336,15 @@ export class BoundedList<T, Q = void> {
     this.stickToFreshEdge = wasAtFreshEdge;
     // 追平了新鲜端就无条件并入：本端发送要立即可见，这是乐观显示的全部意义。
     const evicted = this.window.mergeLive(item, this.edge.at);
-    // 权威请求在飞时，它的响应会整体替换窗口，这条并入会被一起替换掉。不再用 overlay
-    // 把它搬进新窗口——那需要逐条判定「目标窗口是否已追平新鲜端」并维护重放顺序，
-    // 是整个 overlay 复杂度的来源。改为点亮提示条：先乐观显示，权威响应落地后以
-    // 服务端顺序为准，用户一次追平即可对齐。
-    if (this.isAuthoritativeRequestInFlight()) this.invalidate({ count: 1 });
     if (evicted > 0) {
       this.dir[this.edge.away].cursorInvalid = true;
       this.cancelOrdinaryPageLoads();
+    }
+    // 这一刻起会有一次权威请求整体替换窗口（已经在飞，或者下面因 eviction 排一次），
+    // 这条并入会被一起替换掉。记入 overlay，由那次响应在新窗口上重放，用户看不到闪动。
+    // 判定放在 mergeLive 之后：eviction 刚把被裁端游标置为失效，也要算进来。
+    if (this.shouldDeferToOverlay()) {
+      this.rememberPendingMutation(identity, { kind: 'upsert', item }, true);
     }
     this.emitItemsChanged();
     this.emitLoadState();
@@ -353,7 +364,12 @@ export class BoundedList<T, Q = void> {
     this.invalidateRefresh(id);
     if (this.shouldDeferToOverlay()) {
       const current = this.window.items.find((item) => this.opts.identityOf(item) === id);
-      if (current) this.rememberPendingMutation(id, { kind: 'replace', item: current });
+      if (current) {
+        // overlay 里已有这条身份的 upsert 时保持 upsert：它的语义是「权威页没有也要新增」，
+        // 降级成 replace 会让这条本端新增在重放时找不到目标而丢失。位置不变。
+        const pendingKind = this.pendingMutations.get(id)?.kind === 'upsert' ? 'upsert' : 'replace';
+        this.rememberPendingMutation(id, { kind: pendingKind, item: current });
+      }
     }
     this.emitItemsChanged();
     this.repaint();
@@ -633,13 +649,13 @@ export class BoundedList<T, Q = void> {
     try {
       const page = await this.opts.source.fetch(request);
       if (myRequestId !== this.requestId || this.disposed) return;
-      const nextWindow = this.buildAuthoritativeWindow(page);
+      const { window: nextWindow, evicted: replayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
       this.authoritative = null;
       this.scheduleCapacityReconcile.cancel();
       this.firstLoadDone = true;
-      this.applyAuthoritativeState();
+      this.applyAuthoritativeState(replayEvicted);
       this.emitItemsChanged();
       this.repaint();
       if (pinEdge) {
@@ -670,7 +686,7 @@ export class BoundedList<T, Q = void> {
     }
   }
 
-  private buildAuthoritativeWindow(page: PageLoadResult<T>): PageWindow<T> {
+  private buildAuthoritativeWindow(page: PageLoadResult<T>): { window: PageWindow<T>; evicted: number } {
     // normalize、超页校验和本地最终态重放全部在独立窗口完成，成功后才能替换可见窗口。
     const nextWindow = new PageWindow<T>(
       this.opts.maxPages,
@@ -679,30 +695,63 @@ export class BoundedList<T, Q = void> {
       this.opts.pageSize,
     );
     nextWindow.setInitial(page);
-    this.replayPendingMutations(nextWindow);
-    return nextWindow;
+    return { window: nextWindow, evicted: this.replayIntoAuthoritativeWindow(nextWindow) };
+  }
+
+  private applyMutation(target: PageWindow<T>, identity: string, mutation: LocalMutation<T>): number {
+    const matches = (item: T): boolean => this.opts.identityOf(item) === identity;
+    if (mutation.kind === 'upsert') return target.mergeLive(mutation.item, this.edge.at);
+    if (mutation.kind === 'replace') target.updateMatching(matches, () => mutation.item);
+    else target.removeMatching(matches);
+    return 0;
   }
 
   /**
-   * 把 overlay 里的本地最终态重放到 target 上，然后整体清空。
+   * 权威窗口重放：三类最终态全部应用，然后整体清空 overlay。
    *
-   * 两种 mutation 都与位置无关：'replace' 改写命中的身份，'remove' 摘掉命中的身份，
-   * 没命中就是空操作。所以重放无条件、与顺序无关，也不会让窗口变大——调用方不需要
-   * 处理裁剪、游标失效或二次追平。
+   * `upsert` 的相邻关系在这里是确定的——权威首页按构造就是新鲜端那一页（该端
+   * `hasMore` 必为 `false`），所以不需要逐条判定目标窗口有没有追平新鲜端。
+   * 返回重放本身撑破硬预算而裁掉的条目数（`upsert` 才可能触发）。
    */
-  private replayPendingMutations(target: PageWindow<T>): void {
+  private replayIntoAuthoritativeWindow(target: PageWindow<T>): number {
+    let evicted = 0;
     for (const [identity, mutation] of this.pendingMutations) {
-      const matches = (item: T): boolean => this.opts.identityOf(item) === identity;
-      if (mutation.kind === 'replace') target.updateMatching(matches, () => mutation.item);
-      else target.removeMatching(matches);
+      evicted += this.applyMutation(target, identity, mutation);
     }
     this.pendingMutations.clear();
+    return evicted;
   }
 
-  /** 权威页落地后的提示条状态：只剩「期间是否积压了未处理的 invalidate」一个来源。 */
-  private applyAuthoritativeState(): void {
+  /**
+   * 分页并入后重放，应用完就地摘除。
+   *
+   * `replace` / `remove` 与位置无关，直接应用。`upsert` 只在目标窗口里**已经有这个
+   * 身份**时才应用——那等价于一次 replace，位置由窗口自己决定，不存在相邻关系问题；
+   * 典型场景是返回页带回同一身份的旧值，必须被本地最终态盖住（BL-BUG-012）。
+   * 窗口里没有这个身份时留在 overlay 里，等权威响应——只有那里才有确定的新鲜端可以并入。
+   */
+  private replayFinalStates(target: PageWindow<T>): void {
+    for (const [identity, mutation] of [...this.pendingMutations]) {
+      if (mutation.kind === 'upsert') {
+        if (!target.hasIdentity(identity)) continue;
+        target.updateMatching((item) => this.opts.identityOf(item) === identity, () => mutation.item);
+      } else {
+        this.applyMutation(target, identity, mutation);
+      }
+      this.pendingMutations.delete(identity);
+    }
+  }
+
+  /** 权威页落地后的提示条与游标状态。 */
+  private applyAuthoritativeState(replayEvicted: number): void {
     this.dir.backward.cursorInvalid = false;
     this.dir.forward.cursorInvalid = false;
+    if (replayEvicted > 0) {
+      // 重放本端条目又撑破了硬预算：被裁那一端的服务端边界不再可信，等下一次追平。
+      this.dir[this.edge.away].cursorInvalid = true;
+      this.pending.markEvicted(replayEvicted);
+      return;
+    }
     if (this.pendingInvalidate) this.pending.stale = true;
     else this.pending.clear();
   }
@@ -740,10 +789,15 @@ export class BoundedList<T, Q = void> {
   }
 
   /**
-   * 记一条待重放的本地最终态。同一身份后写覆盖先写即可：两种 mutation 都与位置和
-   * 顺序无关，不需要「保持 Map 顺序 = 保持重放顺序」这类隐式契约。
+   * 记一条待重放的本地最终态。同一身份后写覆盖先写。
+   *
+   * @param reorder 这次写入是否在时间线上「重新发生」了，需要把重放顺序一起移到最后。
+   *   只有 `upsertLocal` 传 `true`：`mergeLive` 会把该身份移动到新鲜端，重放必须跟着走，
+   *   否则 C→D→再 upsert C 会被重放成 C→D。`patch` 改的是值不是位置，传 `false`
+   *   （`Map.set` 对已存在的键保持原插入位置），`remove` 与位置无关，传什么都一样。
    */
-  private rememberPendingMutation(identity: string, mutation: LocalMutation<T>): void {
+  private rememberPendingMutation(identity: string, mutation: LocalMutation<T>, reorder = false): void {
+    if (reorder) this.pendingMutations.delete(identity);
     this.pendingMutations.set(identity, mutation);
     // 硬预算兜底：这个数量级需要在一次请求的在飞窗口内发生 pageSize×maxPages 个不同
     // identity 的本地写入，现实中不会发生。到这里就静默丢最旧的一条，用一次可忽略的
