@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
+import { appendLiveMessageToPage } from '../../src/app/views/chat/message-page';
 import { sendMessage, uploadAndSend } from '../../src/app/views/chat/composer';
 
 /** 手动可控的 Promise：测试用它精确摆放"网络往返尚未完成"这一时刻。 */
@@ -129,18 +130,60 @@ describe('composer 乐观发送', () => {
     expect(app.chatState.pendingMessageIds.size).toBe(0);
   });
 
+  it('多选中的占位消息落地后把选中状态迁移到真实消息 id', async () => {
+    const { promise, resolve } = deferred<{ message: unknown; messageId: string; seq: number }>();
+    const { app } = createApp(() => promise);
+    const existingMessage = {
+      seq: 1,
+      messageId: 'existing-selected-msg-id',
+      senderId: '2',
+      recipientId: '1',
+      groupId: '0',
+      messageType: MSG_TYPE_TEXT,
+      body: { text: { text: '先前消息' } },
+      sentAt: 1,
+    };
+    appendLiveMessageToPage(app, existingMessage);
+    app.chatState.selectedMessageIds.add(existingMessage.messageId);
+
+    const sendCall = sendMessage(app);
+    const placeholder = app.chatState.currentMessages.find(
+      (message) => (message as { messageId: string }).messageId.startsWith('~pending-'),
+    ) as { messageId: string };
+    app.chatState.selectedMessageIds.add(placeholder.messageId);
+
+    const realMessage = {
+      seq: 43,
+      messageId: 'real-selected-msg-id',
+      senderId: '1',
+      recipientId: '2',
+      groupId: '0',
+      messageType: MSG_TYPE_TEXT,
+      body: { text: { text: '好积极了' } },
+      sentAt: Date.now(),
+    };
+    resolve({ seq: 43, messageId: realMessage.messageId, message: realMessage });
+    await sendCall;
+
+    expect(app.chatState.selectedMessageIds.has(placeholder.messageId)).toBe(false);
+    expect(app.chatState.selectedMessageIds).toEqual(new Set([existingMessage.messageId, realMessage.messageId]));
+  });
+
   it('发送失败时把占位消息撤回并提示报错', async () => {
     const { promise, reject } = deferred<{ message: unknown }>();
     const { app, showToast } = createApp(() => promise);
 
     const sendCall = sendMessage(app);
     expect(app.chatState.currentMessages).toHaveLength(1);
+    const placeholder = app.chatState.currentMessages[0] as { messageId: string };
+    app.chatState.selectedMessageIds.add(placeholder.messageId);
 
     reject(new Error('网络异常'));
     await sendCall;
 
     expect(app.chatState.currentMessages).toHaveLength(0);
     expect(app.chatState.pendingMessageIds.size).toBe(0);
+    expect(app.chatState.selectedMessageIds.size).toBe(0);
     expect(showToast).toHaveBeenCalledOnce();
   });
 

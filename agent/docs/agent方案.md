@@ -1,7 +1,7 @@
 # yimsg-agent 方案
 
 > 主要对照：`agent/` 目录下的 Go 实现与 `agent/cmd/yimsg-agent/main.go` 的启动流程。
-> 最后复核：2026-07-23。
+> 最后复核：2026-07-29。
 > 触发更新：新增/修改配置字段、计划执行引擎、记忆结构或工具沙箱边界时同步更新。
 > 入口关系：本文件是 `agent/` 的组件专属方案文档；跨组件文档导航见 [`../../docs/README.md`](../../docs/README.md)。
 
@@ -375,7 +375,7 @@ stateDiagram-v2
 - `agent/state`:游标推进、记忆按 peer 分桶读写、超过 `memory_max_peers` 的 LRU 淘汰、超过 `memory_max_chars_per_peer` 的硬截断、原子写入(模拟中途失败不损坏已有文件),纯 Go 单测。
 - `agent/deepseek`:用 `httptest.Server` 模拟 DeepSeek 接口,校验请求体格式、鉴权头、重试退避策略、超时,纯 Go 单测。
 - `agent/engine`:注入实现同一接口的 fake `ChatCompleter`(不经 HTTP),按脚本化的多轮响应验证:直接回答分支、计划分支的步骤顺序与进度通知时机、工具调用次数上限、超过 `max_plan_steps` 时的截断行为、`search_md_files` 的调用参数透传与 `context_chars` 默认值,纯 Go 单测。
-- `agent/tests/e2e`:对已启动的真实 `yimsg-server` + 一个模拟 DeepSeek 接口的 `httptest.Server`,编译并驱动 `yimsg-agent` 二进制,验证完整链路:两个真实账号互为好友、一个账号给 agent 账号发消息、agent 轮询拉到消息、调用(模拟)DeepSeek、通过真实 WebSocket 把回复发回去、`agent_state.json` 的游标与记忆按预期落盘、共享 `resources/` 与账号私有 `<username>/resources/` 都自动创建。运行方式与 `cli/tests/e2e`/`server/tests/e2e` 一致,由 `tools/scripts/run_all_tests.sh` 统一启动服务端后执行。
+- `agent/tests/e2e`:对已启动的真实 `yimsg-server` + 一个模拟 DeepSeek 接口的 `httptest.Server`,编译并驱动 `yimsg-agent` 二进制,验证完整链路:两个真实账号互为好友、一个账号给 agent 账号发消息、agent 轮询拉到消息、调用(模拟)DeepSeek、通过真实 WebSocket 把回复发回去、`agent_state.json` 的游标与记忆按预期落盘、共享 `resources/` 与账号私有 `<username>/resources/` 都自动创建。运行方式与 `cli/tests/e2e`/`server/tests/e2e` 一致；`./tools/run_e2e_tests.sh` 独立运行时自行启动临时服务，由 `./tools/run_all_tests.sh` 调用时复用集成与 Go E2E 共用的服务。
 
 ## 11. 与业内通用执行引擎的差距,以及后续要如何完善
 

@@ -7,8 +7,11 @@
     "build": "npm run check:guards && tsc --noEmit -p tsconfig.json && vite build --config vite.config.ts",
     "check:guards": "node ../../tools/scripts/check-frontend-guards.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "test:ui": "playwright test --config playwright.config.ts",
-    "test:ui:headed": "playwright test --config playwright.config.ts --headed"
+    "test:e2e": "node ../../tools/scripts/run_playwright_tests.mjs e2e",
+    "test:component": "node ../../tools/scripts/run_playwright_tests.mjs component",
+    "test:performance": "node ../../tools/scripts/run_playwright_tests.mjs performance",
+    "test:ui": "node ../../tools/scripts/run_playwright_tests.mjs ui",
+    "test:ui:headed": "node ../../tools/scripts/run_playwright_tests.mjs ui --headed"
   },
   "dependencies": {
     "@yimsg/uikit": "*"

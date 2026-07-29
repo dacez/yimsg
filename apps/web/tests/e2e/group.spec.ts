@@ -1,0 +1,584 @@
+import { test, expect } from '../support/test-fixtures';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openConversation, loginSeedUser, seedPrefix } from './helpers';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+test.describe('Group Chat', () => {
+  const password = '123456';
+
+  test('create group with one friend', async ({ browser }) => {
+    const owner = uniqueUser('go');
+    const member = uniqueUser('gm');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'GroupOwner');
+    await register(page2, member, password, 'GroupMember');
+    await addFriend(page1, page2, member);
+
+    // Create a group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Fill group name
+    await page1.fill('#group-name-input', 'TestGroup1');
+
+    // Select GroupMember
+    const memberCheckbox = page1.locator('.member-select-item', { hasText: 'GroupMember' }).locator('input[type="checkbox"]');
+    await expect(memberCheckbox).toBeVisible({ timeout: 5000 });
+    await memberCheckbox.check();
+
+    await page1.click('#modal-create');
+
+    // Navigate to chat view then check group appears in conversation list
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'TestGroup1' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('create group requires at least one member', async ({ browser }) => {
+    const owner = uniqueUser('gnm');
+    const friend = uniqueUser('gnmf');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'NoMemberOwner');
+    await register(page2, friend, password, 'Friend');
+    await addFriend(page1, page2, friend);
+
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    await page1.fill('#group-name-input', 'EmptyGroup');
+    // Don't select any member
+    await page1.click('#modal-create');
+
+    // Should show error toast (no member selected)
+    await expect(page1.locator('.toast-error')).toBeVisible({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('create group without a name defaults to member nicknames, truncated to 8 chars', async ({ browser }) => {
+    const owner = uniqueUser('gnn');
+    const friend = uniqueUser('gnnf');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'NoNameOwner');
+    await register(page2, friend, password, 'FriendForGroup');
+    await addFriend(page1, page2, friend);
+
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Don't fill group name
+    const memberCheckbox = page1.locator('.member-select-item', { hasText: 'FriendForGroup' }).locator('input[type="checkbox"]');
+    await expect(memberCheckbox).toBeVisible({ timeout: 5000 });
+    await memberCheckbox.check();
+    await page1.click('#modal-create');
+
+    // 未填群名时默认取成员昵称拼接，并截取前 8 个字符（"FriendForGroup" -> "FriendFo"）。
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'FriendFo' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('group message received by all members', async ({ browser }) => {
+    const owner = uniqueUser('gmo');
+    const member = uniqueUser('gmm');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'GOwner');
+    await register(page2, member, password, 'GMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'GroupChat1');
+    const memberCb = page1.locator('.member-select-item', { hasText: 'GMember' }).locator('input[type="checkbox"]');
+    await expect(memberCb).toBeVisible({ timeout: 5000 });
+    await memberCb.check();
+    await page1.click('#modal-create');
+
+    // Owner sends a message in the group
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'GroupChat1' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
+    await groupConv.click();
+    await sendMessage(page1, 'hello group!');
+    await expectMessage(page1, 'hello group!');
+
+    // Member should receive the message
+    await page2.click('[data-view="chat"]');
+    const memberGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'GroupChat1' });
+    await expect(memberGroupConv).toBeVisible({ timeout: 15_000 });
+    await memberGroupConv.click();
+    await expectMessage(page2, 'hello group!', 10_000);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('group members shown in detail panel', async ({ browser }) => {
+    const owner = uniqueUser('gd1');
+    const friend = uniqueUser('gd2');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'DetailOwner');
+    await register(page2, friend, password, 'DetailMember');
+    await addFriend(page1, page2, friend);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'DetailGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'DetailMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    // Open group and toggle detail panel
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'DetailGroup' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
+    await groupConv.click();
+    await page1.click('#toggle-detail');
+
+    // Detail panel should show group info and members
+    const rightPanel = page1.locator('#right-panel');
+    await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
+    await expect(rightPanel.locator('#members-list')).toBeVisible({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('member can also send group messages', async ({ browser }) => {
+    const owner = uniqueUser('msg_o');
+    const mem = uniqueUser('msg_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'MsgOwner');
+    await register(page2, mem, password, 'MsgMem');
+    await addFriend(page1, page2, mem);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'BothSendGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'MsgMem' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    // Owner sends message
+    await page1.click('[data-view="chat"]');
+    const ownerGroupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'BothSendGroup' });
+    await expect(ownerGroupConv).toBeVisible({ timeout: 5000 });
+    await ownerGroupConv.click();
+    await sendMessage(page1, 'owner says hi');
+    await expectMessage(page1, 'owner says hi');
+
+    // Member opens and replies
+    await page2.click('[data-view="chat"]');
+    const memGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'BothSendGroup' });
+    await expect(memGroupConv).toBeVisible({ timeout: 15_000 });
+    await memGroupConv.click();
+    await expectMessage(page2, 'owner says hi', 10_000);
+    await sendMessage(page2, 'member replies');
+    await expectMessage(page2, 'member replies');
+
+    // Owner should receive the reply
+    await expectMessage(page1, 'member replies', 10_000);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('mention a group member via the @ picker', async ({ browser }) => {
+    const owner = uniqueUser('at_o');
+    const member = uniqueUser('at_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'AtOwner');
+    await register(page2, member, password, 'AtMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'MentionGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'AtMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page1, 'MentionGroup');
+
+    // Typing "@" pulls up the group member picker (full member list + search box).
+    await page1.fill('#msg-input', '@');
+    const pickerModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(pickerModal).toBeVisible({ timeout: 5000 });
+    const searchInput = page1.locator('#group-member-picker-search');
+    await expect(searchInput).toBeEnabled({ timeout: 10_000 });
+
+    // Search narrows the (already fully loaded) member list down locally.
+    await searchInput.fill('AtMember');
+    const item = page1.locator('.group-member-picker-item', { hasText: 'AtMember' });
+    await expect(item).toBeVisible({ timeout: 5000 });
+    await item.click();
+
+    // Picking a member closes the modal and replaces the typed "@" with "@nickname ".
+    await expect(pickerModal).toBeHidden({ timeout: 5000 });
+    await expect(page1.locator('#msg-input')).toHaveValue('@AtMember ');
+
+    await page1.click('#msg-send');
+    await expectMessage(page1, '@AtMember');
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('mention everyone via the @ picker', async ({ browser }) => {
+    const owner = uniqueUser('atall_o');
+    const member = uniqueUser('atall_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'AtAllOwner');
+    await register(page2, member, password, 'AtAllMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'MentionAllGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'AtAllMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page1, 'MentionAllGroup');
+
+    // Typing "@" pulls up the picker; the "everyone" row is pinned at the top regardless
+    // of the member list load state or search query, and its label is locale-dependent
+    // (zh: 所有人 / en: Everyone), so read it back instead of hardcoding it.
+    await page1.fill('#msg-input', '@');
+    const pickerModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(pickerModal).toBeVisible({ timeout: 5000 });
+    const allRow = page1.locator('.group-member-picker-all');
+    await expect(allRow).toBeVisible({ timeout: 5000 });
+    // Read the label from the name span only — the row's own textContent also includes
+    // the avatar fallback's single leading character (no real avatar image for "everyone").
+    const allLabel = ((await allRow.locator('span').textContent()) || '').trim();
+    expect(allLabel.length).toBeGreaterThan(0);
+    await allRow.click();
+
+    await expect(pickerModal).toBeHidden({ timeout: 5000 });
+    await expect(page1.locator('#msg-input')).toHaveValue(`@${allLabel} `);
+
+    await page1.click('#msg-send');
+    await expectMessage(page1, `@${allLabel}`);
+
+    // Member should receive the mention-all message too.
+    await page2.click('[data-view="chat"]');
+    const memberGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'MentionAllGroup' });
+    await expect(memberGroupConv).toBeVisible({ timeout: 15_000 });
+    await memberGroupConv.click();
+    await expectMessage(page2, `@${allLabel}`, 10_000);
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  test('group avatar refreshes when a member re-enters the chat or opens group detail', async ({ browser }) => {
+    const owner = uniqueUser('ga_o');
+    const member = uniqueUser('ga_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, owner, password, 'AvatarOwner');
+    await register(page2, member, password, 'AvatarMember');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const modal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'AvatarGroup');
+    const cb = page1.locator('.member-select-item', { hasText: 'AvatarMember' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    // 两个成员页面都先进入群聊，缓存群头像的旧字母占位。
+    await page2.click('[data-view="chat"]');
+    const reenterGroupConv = page2.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
+    await expect(reenterGroupConv).toBeVisible({ timeout: 15_000 });
+    await reenterGroupConv.click();
+    await expect(reenterGroupConv.locator('.avatar img')).toHaveCount(0);
+
+    await login(page3, member, password);
+    await page3.click('[data-view="chat"]');
+    const detailGroupConv = page3.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
+    await expect(detailGroupConv).toBeVisible({ timeout: 15_000 });
+    await detailGroupConv.click();
+    await expect(detailGroupConv.locator('.avatar img')).toHaveCount(0);
+
+    // 群主打开群详情并上传新头像。
+    await page1.click('[data-view="chat"]');
+    const groupConv = page1.locator('#conversation-list .conversation-item', { hasText: 'AvatarGroup' });
+    await expect(groupConv).toBeVisible({ timeout: 5000 });
+    await groupConv.click();
+    await page1.click('#toggle-detail');
+
+    const rightPanel = page1.locator('#right-panel');
+    await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
+
+    // Owner should see clickable avatar with file picker
+    await expect(page1.locator('#group-avatar-display')).toBeVisible({ timeout: 5000 });
+    await expect(page1.locator('#group-avatar-picker')).toBeAttached({ timeout: 5000 });
+
+    // Upload group avatar
+    const imgPath = path.resolve(__dirname, 'fixtures', 'test-image.png');
+    await page1.locator('#group-avatar-picker').setInputFiles(imgPath);
+
+    // Should show success toast
+    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 10_000 });
+
+    // Avatar should now show an img tag (uploaded image)
+    const avatarImg = page1.locator('#group-avatar-display img');
+    await expect(avatarImg).toBeVisible({ timeout: 5000 });
+    const src = await avatarImg.getAttribute('src');
+    expect(src).toContain('/media/');
+
+    // 不主动广播到所有群成员；成员重新进入群聊时必须 force refresh 并回写会话列表。
+    await page2.click('[data-view="settings"]');
+    await openConversation(page2, 'AvatarGroup');
+    const reenteredAvatar = reenterGroupConv.locator('.avatar img');
+    await expect(reenteredAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(reenteredAvatar).toHaveAttribute('src', /\/media\//);
+
+    // 另一个成员保持旧会话不重进，主动打开群详情也必须 force refresh，
+    // 随后通过 display:updated 同时刷新详情与会话列表。
+    await page3.click('#toggle-detail');
+    const memberDetailAvatar = page3.locator('#group-avatar-display img');
+    await expect(memberDetailAvatar).toBeVisible({ timeout: 10_000 });
+    await expect(memberDetailAvatar).toHaveAttribute('src', /\/media\//);
+    await expect(detailGroupConv.locator('.avatar img')).toBeVisible({ timeout: 10_000 });
+    await expect(detailGroupConv.locator('.avatar img')).toHaveAttribute('src', /\/media\//);
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+
+  test('ordinary member adds own friend but cannot remove group members', async ({ browser }) => {
+    const owner = uniqueUser('am_o');
+    const member = uniqueUser('am_m');
+    const newcomer = uniqueUser('am_n');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx3 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+    const page3 = await ctx3.newPage();
+
+    await register(page1, owner, password, 'AddMemberOwner');
+    await register(page2, member, password, 'AddMemberInitial');
+    await register(page3, newcomer, password, 'AddMemberNewcomer');
+    await addFriend(page1, page2, member);
+    await addFriend(page2, page3, newcomer);
+
+    // Create group with just the initial member
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'AddMemberGroupUI');
+    const cb = page1.locator('.member-select-item', { hasText: 'AddMemberInitial' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page2, 'AddMemberGroupUI');
+    await page2.click('#toggle-detail');
+    const rightPanel = page2.locator('#right-panel');
+    await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
+
+    // 普通成员可以从自己的好友列表邀请新人，但不能移出任何群成员。
+    await expect(rightPanel.locator('.detail-section h4')).toContainText(/2/);
+    await expect(rightPanel.locator('.member-remove-btn')).toHaveCount(0);
+    await page2.click('#detail-group-addmember-btn');
+
+    const addModal = page2.locator('#modal-overlay:not(.hidden)');
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+    const candidate = page2.locator('.group-member-picker-item', { hasText: 'AddMemberNewcomer' });
+    await expect(candidate).toBeVisible({ timeout: 10_000 });
+    await candidate.click();
+    await expect(page2.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+
+    // 新成员加入后从候选中消失，关闭选择器并核对成员列表。
+    await expect(candidate).toHaveCount(0, { timeout: 5000 });
+    await page2.click('#add-member-done');
+    await expect(addModal).toBeHidden({ timeout: 5000 });
+
+    await expect(rightPanel.locator('.detail-section h4')).toContainText(/3/, { timeout: 5000 });
+    await expect(rightPanel.locator('.member-item', { hasText: 'AddMemberNewcomer' })).toBeVisible({ timeout: 5000 });
+    await expect(rightPanel.locator('.member-remove-btn')).toHaveCount(0);
+
+    // 新成员获得群会话，证明普通成员邀请已真正落到服务端。
+    await page3.click('[data-view="chat"]');
+    await expect(page3.locator('#conversation-list .conversation-item', { hasText: 'AddMemberGroupUI' })).toBeVisible({ timeout: 10_000 });
+
+    await ctx1.close();
+    await ctx2.close();
+    await ctx3.close();
+  });
+
+  test('owner removes a member from the group via the detail panel', async ({ browser }) => {
+    const owner = uniqueUser('rm_o');
+    const member = uniqueUser('rm_m');
+    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page1 = await ctx1.newPage();
+    const page2 = await ctx2.newPage();
+
+    await register(page1, owner, password, 'RemoveMemberOwner');
+    await register(page2, member, password, 'RemoveMemberTarget');
+    await addFriend(page1, page2, member);
+
+    // Create group
+    await page1.click('[data-view="contacts"]');
+    await page1.click('#create-group-btn');
+    const createModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(createModal).toBeVisible({ timeout: 5000 });
+    await page1.fill('#group-name-input', 'RemoveMemberGroupUI');
+    const cb = page1.locator('.member-select-item', { hasText: 'RemoveMemberTarget' }).locator('input[type="checkbox"]');
+    await expect(cb).toBeVisible({ timeout: 5000 });
+    await cb.check();
+    await page1.click('#modal-create');
+
+    await openConversation(page1, 'RemoveMemberGroupUI');
+    await page1.click('#toggle-detail');
+    const rightPanel = page1.locator('#right-panel');
+    await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
+    await expect(rightPanel.locator('.detail-section h4')).toContainText(/2/);
+
+    // Owner sees a remove button next to the non-owner member row; owner's own row has none
+    const memberRow = rightPanel.locator('.member-item', { hasText: 'RemoveMemberTarget' });
+    await expect(memberRow).toBeVisible({ timeout: 5000 });
+    const ownerRow = rightPanel.locator('.member-item', { hasText: 'RemoveMemberOwner' });
+    await expect(ownerRow.locator('.member-remove-btn')).toHaveCount(0);
+
+    await memberRow.locator('.member-remove-btn').click();
+    const confirmModal = page1.locator('#modal-overlay:not(.hidden)');
+    await expect(confirmModal).toBeVisible({ timeout: 5000 });
+    await page1.click('#modal-confirm-btn');
+
+    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 5000 });
+    await expect(rightPanel.locator('.detail-section h4')).toContainText(/1/, { timeout: 5000 });
+    await expect(memberRow).toHaveCount(0, { timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+});
+
+test.describe('Group Member Pagination (seed data)', () => {
+  test('大测试群 members pagination via scroll', async ({ page }) => {
+    await loginSeedUser(page);
+
+    // Open 大测试群 conversation
+    await page.click('[data-view="chat"]');
+    const bigGroupName = `${seedPrefix()}_大测试群`;
+    const conv = page.locator('#conversation-list .conversation-item', { hasText: bigGroupName });
+    await expect(conv).toBeVisible({ timeout: 10_000 });
+    await conv.click();
+    await expect(page.locator('#message-input-area')).toBeVisible({ timeout: 5000 });
+
+    // Open detail panel
+    await page.click('#toggle-detail');
+    const rightPanel = page.locator('#right-panel');
+    await expect(rightPanel).not.toHaveClass(/collapsed/, { timeout: 5000 });
+    await expect(page.locator('#members-list .member-item').first()).toBeVisible({ timeout: 10_000 });
+
+    // 有界消息流窗口只渲染当前成员范围，不再 append 全量 DOM。
+    await expect(async () => {
+      const count = await page.locator('#members-list .member-item').count();
+      expect(count).toBeGreaterThan(0);
+      expect(count).toBeLessThanOrEqual(200);
+    }).toPass({ timeout: 10_000 });
+
+    // Scroll the member bounded stream window to the bottom to trigger page pagination
+    await page.evaluate(() => {
+      const el = document.getElementById('members-list');
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+
+    // After pagination, DOM stays bounded rather than accumulating all 250 members
+    await expect(async () => {
+      const count = await page.locator('#members-list .member-item').count();
+      expect(count).toBeGreaterThan(0);
+      expect(count).toBeLessThanOrEqual(200);
+    }).toPass({ timeout: 10_000 });
+
+    // Members count in header should update
+    await expect(page.locator('.detail-section h4')).toContainText(/250/);
+  });
+});

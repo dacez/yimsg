@@ -60,7 +60,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 - **Storage model**: SQLite shards, accessed via four routing keys — `uid` / `username` / `group_id` / `token`
 - **Frontend form**: a single SDK + UIKit that supports a Lite mode (`mode: 'instant'` in the UIKit API, pure in-memory) and a persistent-storage mode (`mode: 'persistent'`, backed by a persistent storage layer + SQLite; the settings page lets you "Clear Data" and resync from scratch at any time)
 - **Optional capabilities**: message recall, message extensions (quote / forward / Markdown / @mentions), conversation mute, block list, media upload, a pluggable extension mechanism
-- **Test suite**: backend unit tests, backend E2E tests, frontend unit tests, SDK integration tests, and Playwright UI tests — the full entry point is `./tools/run_all_tests.sh`
+- **Test suite**: unit, integration, E2E, browser-component, and independent performance categories — the full correctness entry point is `./tools/run_all_tests.sh`
 
 ## Core Directory Layout
 
@@ -184,12 +184,17 @@ cd /home/runner/work/yimsg/yimsg
 This script automatically:
 - Installs frontend dependencies and the Playwright browser
 - Builds the frontend and the UIKit
-- Starts the server
-- Runs Go unit tests, Go E2E tests, and frontend unit / SDK / UI tests
+- Starts one reusable integration / Go E2E server; Web E2E uses its own isolated seed, data, and port
+- Runs unit → integration → E2E → browser-component tests; performance remains an independent gate
 
 ## Common Commands
 
 - Full verification: `./tools/run_all_tests.sh`
+- Unit tests: `./tools/run_unit_tests.sh`
+- Integration tests: `./tools/run_integration_tests.sh`
+- E2E tests: `./tools/run_e2e_tests.sh`
+- Browser-component tests: `./tools/run_component_tests.sh`
+- Performance tests: `./tools/run_performance_tests.sh`
 - Doc consistency check: `./tools/check_docs_consistency.sh`
 - Refresh protocol-generated artifacts: `go run ./tools/cmd/protocolgen` (refreshes `yimsg.pb.go`, `protocol/generated/typescript/yimsg.ts`, and the Go/TS protocol mechanical mappings `server/internal/ws/*_gen.go`, `packages/sdk/src/generated/{actions,notifications}.gen.ts`, and `protocol/generated/`)
 - Verify protocol-generated artifacts: `go run ./tools/cmd/protocolgen --check` (regenerates everything and compares byte-for-byte)

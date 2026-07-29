@@ -1,7 +1,7 @@
 # yimsg-cli 方案
 
 > 主要对照：`cli/` 目录下的 Go 实现与 `cli/cmd/yimsg-cli/main.go` 的子命令列表。
-> 最后复核：2026-07-23。
+> 最后复核：2026-07-29。
 > 触发更新：新增/修改子命令、本地存储 schema 或账号目录布局时同步更新。
 > 入口关系：本文件是 `cli/` 的组件专属方案文档；跨组件文档导航见 [`../../docs/README.md`](../../docs/README.md)。
 
@@ -87,4 +87,4 @@
 ## 6. 测试
 
 - `cli/wire`、`cli/store`、`cli/account`：纯 Go 单元测试，不依赖网络。`cli/wire` 额外用与 `server/internal/ws`、TypeScript SDK 相同的 golden vector 验证帧字节完全一致。
-- `cli/tests/e2e`：对已启动的真实服务端，编译并以子进程方式驱动 `yimsg-cli` 二进制本身（而非直接调用内部包），覆盖 login 落盘 token 复用与自动置为当前账号、switch-user/current 切换、按用户名 send/history（含本地缓存未命中时的一次性回源解析）、sync/pending（含缺失 `--after-seq` 时的本地拒绝）全链路、user-info/group-info/contacts、非法参数与未登录场景本地拒绝。运行方式与 `server/tests/e2e` 一致，由 `tools/run_all_tests.sh` 统一启动服务端后执行。
+- `cli/tests/e2e`：对已启动的真实服务端，编译并以子进程方式驱动 `yimsg-cli` 二进制本身（而非直接调用内部包），覆盖 login 落盘 token 复用与自动置为当前账号、switch-user/current 切换、按用户名 send/history（含本地缓存未命中时的一次性回源解析）、sync/pending（含缺失 `--after-seq` 时的本地拒绝）全链路、user-info/group-info/contacts、非法参数与未登录场景本地拒绝。运行方式与 `server/tests/e2e` 一致；`./tools/run_e2e_tests.sh` 独立运行时自行启动临时服务，由 `./tools/run_all_tests.sh` 调用时复用集成与 Go E2E 共用的服务。

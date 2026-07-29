@@ -16,9 +16,11 @@
     "test:sdk": "npm run test:integration -w @yimsg/sdk",
     "test:uikit": "npm run test -w @yimsg/uikit",
     "test:web": "npm run test -w @yimsg/web",
-    "test:e2e": "npm run test:ui -w @yimsg/web",
-    "test:ui": "npm run test:e2e",
-    "test:ui:headed": "npm run test:ui:headed -w @yimsg/web"
+    "test:e2e": "node tools/scripts/run_playwright_tests.mjs e2e",
+    "test:component": "node tools/scripts/run_playwright_tests.mjs component",
+    "test:performance": "node tools/scripts/run_playwright_tests.mjs performance",
+    "test:ui": "node tools/scripts/run_playwright_tests.mjs ui",
+    "test:ui:headed": "node tools/scripts/run_playwright_tests.mjs ui --headed"
   },
   "overrides": {
     "picomatch": "^4.0.4"

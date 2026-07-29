@@ -60,7 +60,7 @@ Yimsg 是一套**极简单机部署、数据完全自主**的私有化即时通�
 - **存储模型**：SQLite 分片，按 `uid` / `username` / `group_id` / `token` 四类路由键访问
 - **前端形态**：同一套 SDK + UIKit，支持 Lite 模式（UIKit API 中对应 `mode: 'instant'`，纯内存）与持久存储模式（`mode: 'persistent'`，持久存储后端 + SQLite；设置页可随时「清除数据」重新全量追平）
 - **可选能力**：消息撤回、消息扩展（引用 / 转发 / Markdown / @）、会话免打扰、屏蔽列表、媒体上传、插件化扩展机制
-- **测试体系**：后端单测、后端 E2E、前端 unit、SDK integration、Playwright UI，全量入口为 `./tools/run_all_tests.sh`
+- **测试体系**：unit、integration、E2E、浏览器组件与独立性能分类，正确性全量入口为 `./tools/run_all_tests.sh`
 
 ## 核心目录
 
@@ -184,12 +184,17 @@ cd /home/runner/work/yimsg/yimsg
 该脚本会自动：
 - 安装前端依赖与 Playwright 浏览器
 - 构建前端与 UIKit
-- 启动服务端
-- 运行 Go 单测、Go E2E、前端 unit / sdk / ui 测试
+- 启动供集成与 Go E2E 复用的服务端；Web E2E 使用独立 seed、数据和端口
+- 按 unit → integration → E2E → 浏览器组件执行；性能门禁保持独立
 
 ## 常用命令
 
 - 全量验证：`./tools/run_all_tests.sh`
+- 单元测试：`./tools/run_unit_tests.sh`
+- 集成测试：`./tools/run_integration_tests.sh`
+- E2E 测试：`./tools/run_e2e_tests.sh`
+- 浏览器组件测试：`./tools/run_component_tests.sh`
+- 性能测试：`./tools/run_performance_tests.sh`
 - 文档一致性校验：`./tools/check_docs_consistency.sh`
 - 协议生成物刷新：`go run ./tools/cmd/protocolgen`（刷新 `yimsg.pb.go`、`protocol/generated/typescript/yimsg.ts`，以及 Go/TS 协议机械映射 `server/internal/ws/*_gen.go`、`packages/sdk/src/generated/{actions,notifications}.gen.ts` 与 `protocol/generated/`）
 - 协议生成物校验：`go run ./tools/cmd/protocolgen --check`（重新生成并逐字节比对全部生成物）
