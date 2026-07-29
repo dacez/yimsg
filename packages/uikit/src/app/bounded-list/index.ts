@@ -3,12 +3,7 @@
 export { createBoundedList, BoundedList } from './bounded-list';
 export { serverPageSource, localPageSource } from './page-source';
 export { SelectionStore } from './selection';
-export {
-  invalidateAllBoundedLists,
-  registerBoundedList,
-  unregisterBoundedList,
-  registeredBoundedListIds,
-} from './registry';
+export { standaloneList } from './registry';
 
 export type {
   BoundedListOptions,

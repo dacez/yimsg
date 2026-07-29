@@ -20,6 +20,13 @@ export interface LocalPageSourceOptions<T, Q> {
   readonly loadAll: (query: Q) => Promise<T[]>;
   readonly filter?: (item: T, query: Q) => boolean;
   readonly compare?: (a: T, b: T) => number;
+  /**
+   * 列表的新鲜端，必须与 BoundedList 的 `freshEdge` 一致。
+   * reset（cursor 未提供）要取的是新鲜端那一页：'head' 取 entries 最前面一页，
+   * 'tail' 取最后一页。早前这里写死取最前面一页，与 `freshEdge: 'tail'` 搭配会
+   * 静默取错端，而且只在注释里声明约束——现在由参数显式表达。
+   */
+  readonly freshEdge?: 'head' | 'tail';
 }
 
 /**
@@ -32,10 +39,10 @@ export interface LocalPageSourceOptions<T, Q> {
  * 与服务端不透明游标不共享、不混用。非法游标（无法解析成有限数）按 0 处理，
  * 绝不产出 "NaN" 这种此后永远翻不动的游标。
  *
- * 仅适配 `freshEdge: 'head'`：reset（cursor 未提供）固定返回 entries 最前面一页。
- * 配 `freshEdge: 'tail'` 使用会在 reset 时取错端，现有调用方都是默认的 'head'。
+ * `freshEdge` 必须与所属 BoundedList 的 `freshEdge` 一致，默认 'head'。
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
+  const freshEdge = options.freshEdge ?? 'head';
   let entries: T[] = [];
   let reloadGeneration = 0;
 
@@ -72,7 +79,10 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
     async fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>> {
       if (req.cursor === undefined) {
         const snapshot = await reload(req.query);
-        return slice(snapshot, 0, req.limit);
+        // reset 取新鲜端那一页：head 取最前面一页，tail 取最后一页。
+        return freshEdge === 'tail'
+          ? slice(snapshot, snapshot.length - req.limit, snapshot.length)
+          : slice(snapshot, 0, req.limit);
       }
       const cursor = parseCursor(req.cursor);
       if (req.backward) {

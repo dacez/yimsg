@@ -12,7 +12,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBoundedList } from '../../../src/app/bounded-list/bounded-list';
 import { localPageSource } from '../../../src/app/bounded-list/page-source';
 import { SelectionStore } from '../../../src/app/bounded-list/selection';
-import { registeredBoundedListIds } from '../../../src/app/bounded-list/registry';
 import type { BoundedListOptions } from '../../../src/app/bounded-list/types';
 import { FakeDocument, asElement, row, viewOf } from './fake-dom';
 import { createAnchoredSource, idOf, makeTestItems, type TestItem } from './test-sources';
@@ -29,6 +28,16 @@ function createHost() {
 }
 type Host = ReturnType<typeof createHost>;
 
+/** 压力用例自持的注册表：register 必填，注册表实体属于宿主，泄漏断言对这一份做。 */
+const testRegistry = new Map<string, { readonly id: string }>();
+
+function testRegister(instance: { readonly id: string; invalidate(): void | Promise<void> }): () => void {
+  testRegistry.set(instance.id, instance);
+  return () => {
+    if (testRegistry.get(instance.id) === instance) testRegistry.delete(instance.id);
+  };
+}
+
 function baseOptions(
   host: Host,
   source: BoundedListOptions<TestItem, void>['source'],
@@ -37,6 +46,7 @@ function baseOptions(
   return {
     id: 'stress',
     scrollElement: asElement(host.scroller),
+    register: testRegister,
     pageSize: 40,
     maxPages: 5,
     source,
@@ -69,14 +79,14 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 0)));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreAfter) {
+    while (list.getState().hasMoreForward) {
       await list.loadMore('forward');
       assertBounded(host, list, 200);
       steps++;
       expect(steps).toBeLessThan(500); // 防跑飞
     }
     expect(steps).toBe(Math.ceil(10000 / 40) - 1);
-    expect(list.getState().hasMoreBefore).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
     list.dispose();
   });
 
@@ -122,12 +132,12 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, source, { pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreAfter && steps < 2000) {
+    while (list.getState().hasMoreForward && steps < 2000) {
       await list.loadMore('forward');
       steps++;
       if (steps % 200 === 0) assertBounded(host, list, 200);
     }
-    expect(list.getState().hasMoreAfter).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(loadAll).toHaveBeenCalledTimes(1);
     assertBounded(host, list, 200);
     list.dispose();
@@ -156,7 +166,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
       host.scroller.dispatch('scroll');
       await new Promise((resolve) => setTimeout(resolve, 0));
       // 贴顶那一轮必然一路拉到最前，贴底那一轮必然一路拉到最后。
-      expect(i % 2 === 0 ? list.getState().hasMoreBefore : list.getState().hasMoreAfter).toBe(false);
+      expect(i % 2 === 0 ? list.getState().hasMoreBackward : list.getState().hasMoreForward).toBe(false);
       if (i % 20 === 0) assertBounded(host, list, pageSize * 4);
     }
     assertBounded(host, list, pageSize * 4);
@@ -177,7 +187,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
 
     for (let i = 0; i < 40; i++) await list.loadMore('backward');
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe('0');
-    expect(list.getState().hasMoreBefore).toBe(false);
+    expect(list.getState().hasMoreBackward).toBe(false);
     expect(Number(topAfterForward)).toBeGreaterThan(0);
     list.dispose();
   });
@@ -214,7 +224,7 @@ describe('BoundedList 压力 / C 高频事件', () => {
     const state = list.getState();
     expect(state.count).toBe(40 * 5);
     expect(rowNodes(host)).toHaveLength(state.count);
-    expect(state.hasMoreAfter).toBe(false);
+    expect(state.hasMoreForward).toBe(false);
     expect(rowNodes(host).at(-1)?.className).toContain('row-11999');
     list.dispose();
   });
@@ -281,7 +291,6 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
     }));
     await list.reset({ pinEdge: false });
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe(`${long}-0`);
-    expect(list.scrollToIdentity(`${long}-3`)).toBe(true);
     expect(list.patch(`${long}-3`, (item) => item)).toBe(true);
     list.dispose();
   });
@@ -338,7 +347,7 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
 
 describe('BoundedList 压力 / E 生命周期', () => {
   it('E1 200 次「打开面板 → 翻页 → 关闭面板」循环后不残留监听、DOM 与注册项', async () => {
-    const before = registeredBoundedListIds().length;
+    const before = testRegistry.size;
     const items = makeTestItems(500);
     for (let i = 0; i < 200; i++) {
       const host = createHost();
@@ -351,7 +360,7 @@ describe('BoundedList 压力 / E 生命周期', () => {
       expect(viewOf(host.doc).listenerCount('pointerup')).toBe(0);
       expect(host.parent.children).toHaveLength(1); // 提示条被摘除
     }
-    expect(registeredBoundedListIds().length).toBe(before);
+    expect(testRegistry.size).toBe(before);
   });
 
   it('E2 100 个实例同时存活并共享一个 SelectionStore：全部 dispose 后 store 不再有订阅者', async () => {

@@ -108,7 +108,7 @@ async function showForwardModal(
       text: {
         empty: () => app.t("chat.forwardNoConversation"),
         loading: () => app.t("common.loading"),
-        tailBoundary: () => app.t("chat.noMoreConversations"),
+        forwardBoundary: () => app.t("chat.noMoreConversations"),
         retry: () => app.t("common.retry"),
       },
       onItemsChanged: (items) => {
@@ -152,7 +152,7 @@ async function showForwardModal(
       text: {
         empty: () => app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
         loading: () => app.t("common.loading"),
-        tailBoundary: () => app.t("contacts.noMoreContacts"),
+        forwardBoundary: () => app.t("contacts.noMoreContacts"),
         retry: () => app.t("common.retry"),
       },
       onError: (error) => console.warn("[yimsg/uikit] forward contact list failed:", error),

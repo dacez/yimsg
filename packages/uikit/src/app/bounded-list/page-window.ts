@@ -6,7 +6,7 @@
 //
 // 三条防御性约束（对应已修复缺陷，改动前请先看它们的成因）：
 // - maxPages 至少为 1：否则 setInitial 放进来的页会被随后任意一次 mergeLive 整页裁光（BL-BUG-17）；
-// - 空首页仍保留边界游标（fallback）：否则窗口为空时没有任何续翻锚点，只能发空游标（BL-BUG-10）；
+// - 续翻锚点（headCursor / tailCursor）与 pages 解耦维护，见下方字段注释（BL-BUG-13/14）；
 // - 续翻拿到空页时强制把该端 hasMore 收敛为 false：服务端违反契约（空页却报还有更多）时
 //   不会让触界检测无限补页（BL-BUG-01）。
 
@@ -20,12 +20,22 @@ interface WindowPage<T> {
 
 export class PageWindow<T> {
   private pages: WindowPage<T>[] = [];
-  private before = false;
-  private after = false;
+  private moreBackward = false;
+  private moreForward = false;
   private totalCount = -1;
-  /** 首页返回空结果时保留下来的边界游标，供「窗口暂时为空」时继续翻页。 */
-  private fallbackStartCursor = '';
-  private fallbackEndCursor = '';
+  /**
+   * 窗口两端的续翻锚点，显式维护而不是从 `pages[0]` / `pages[last]` 现算。
+   *
+   * 「窗口边界在哪里」和「还剩哪些页」是两件事，早前把它们绑在一起产生了两个缺陷：
+   * - 页因跨页去重 / removeLocal 被删空后不能移除，否则边界游标就丢了；空页却仍占
+   *   maxPages 名额，下一次续翻按 maxPages 淘汰时淘汰的是另一端的真实数据页——
+   *   用户翻一页反而净损失一页内容。
+   * - normalize 把整页过滤空时，为了让游标前进必须塞一个空页进来占位，否则下一次
+   *   续翻会拿着旧游标原地打转；同样会挤占名额。
+   * 锚点独立维护之后，空页可以随时丢弃，两个特例一起消失。
+   */
+  private headCursor = '';
+  private tailCursor = '';
   private readonly maxPages: number;
   private readonly pageSize: number;
   private readonly hardBudget: number;
@@ -41,14 +51,15 @@ export class PageWindow<T> {
     this.hardBudget = pageSize * this.maxPages;
   }
 
-  get hasMoreBefore(): boolean {
-    return this.before;
+  get hasMoreBackward(): boolean {
+    return this.moreBackward;
   }
 
-  get hasMoreAfter(): boolean {
-    return this.after;
+  get hasMoreForward(): boolean {
+    return this.moreForward;
   }
 
+  /** 窗口里还有没有页。空页会被立即回收，所以它等价于 `count > 0`。 */
   get loaded(): boolean {
     return this.pages.length > 0;
   }
@@ -70,11 +81,11 @@ export class PageWindow<T> {
   }
 
   get backwardCursor(): string {
-    return this.pages[0]?.startCursor ?? this.fallbackStartCursor;
+    return this.headCursor;
   }
 
   get forwardCursor(): string {
-    return this.pages.length ? this.pages[this.pages.length - 1].endCursor : this.fallbackEndCursor;
+    return this.tailCursor;
   }
 
   /** 给定身份键是否命中窗口内某条目（invalidate 的交集判定用）。 */
@@ -95,6 +106,17 @@ export class PageWindow<T> {
     for (const page of this.pages) {
       page.items = page.items.filter((item) => !ids.has(this.identityOf!(item)));
     }
+    this.dropEmptyPages();
+  }
+
+  /**
+   * 丢弃被删空的页。空页不贡献任何可见条目，却会挤占 maxPages 名额：留着它，
+   * 下一次续翻按 maxPages 淘汰时淘汰的就是另一端的真实数据页。
+   * 续翻锚点由 headCursor / tailCursor 独立维护，这里不需要为了保住游标而留空页。
+   */
+  private dropEmptyPages(): void {
+    if (this.pages.every((page) => page.items.length > 0)) return;
+    this.pages = this.pages.filter((page) => page.items.length > 0);
   }
 
   private normalizeSourcePage(items: readonly T[]): T[] {
@@ -126,45 +148,56 @@ export class PageWindow<T> {
       if (page.items.length === 0) this.pages.splice(pageIndex, 1);
     }
     if (evicted > 0) {
-      if (edge === 'tail') this.before = true;
-      else this.after = true;
+      if (edge === 'tail') this.moreBackward = true;
+      else this.moreForward = true;
     }
     return evicted;
   }
 
   reset(): void {
     this.pages = [];
-    this.before = false;
-    this.after = false;
+    this.moreBackward = false;
+    this.moreForward = false;
     this.totalCount = -1;
-    this.fallbackStartCursor = '';
-    this.fallbackEndCursor = '';
+    this.headCursor = '';
+    this.tailCursor = '';
   }
 
   setInitial(page: PageLoadResult<T>): void {
     const items = this.normalizeSourcePage(page.items);
     this.pages = items.length ? [{ items, startCursor: page.startCursor, endCursor: page.endCursor }] : [];
-    // 空首页不占页位，但它的边界游标必须留下来：否则窗口为空时两端都没有续翻锚点。
-    this.fallbackStartCursor = page.startCursor;
-    this.fallbackEndCursor = page.endCursor;
-    this.before = page.hasMoreBackward;
-    this.after = page.hasMoreForward;
+    // 首页的两个边界即窗口两端的锚点；首页为空（或被 normalize 滤空）时同样成立，
+    // 窗口暂时没有条目但边界是确定的。
+    this.headCursor = page.startCursor;
+    this.tailCursor = page.endCursor;
+    this.moreBackward = page.hasMoreBackward;
+    this.moreForward = page.hasMoreForward;
     this.totalCount = page.total ?? -1;
   }
 
   appendForward(page: PageLoadResult<T>): number {
     const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
-    // 原始页非空但 normalize 后为空时仍保留该页游标，保证下一次续翻会前进而不是重复旧 cursor。
-    if (page.items.length > 0) {
+    // 窗口一个锚点都没有（reset 之后直接续翻式重建）：这一页同时确立两端边界。
+    if (!this.headCursor && !this.tailCursor) {
+      this.headCursor = page.startCursor;
+      this.tailCursor = page.endCursor;
+    }
+    // 锚点与页位分开判断，两个条件不同：
+    // - 源页非空 → 锚点必须前进（哪怕 normalize 把它滤空了），否则下一次续翻拿旧游标原地打转；
+    //   源页真为空 → 锚点保持不动，前进会跳过尚未加载的数据。
+    // - normalize 后有条目 → 才占一个 maxPages 页位；滤空的页不入窗。
+    if (items.length > 0) {
       this.pages.push({ items, startCursor: page.startCursor, endCursor: page.endCursor });
     }
+    if (page.items.length > 0) this.tailCursor = page.endCursor;
     // 空页 = 该方向已经没有数据，无论服务端怎么说都收敛为 false。
-    this.after = page.items.length === 0 ? false : page.hasMoreForward;
+    this.moreForward = page.items.length === 0 ? false : page.hasMoreForward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.shift();
-      this.before = true;
+      this.moreBackward = true;
+      this.headCursor = this.pages[0].startCursor;
     }
     return items.length;
   }
@@ -172,14 +205,21 @@ export class PageWindow<T> {
   prependBackward(page: PageLoadResult<T>): number {
     const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
-    if (page.items.length > 0) {
+    // 窗口一个锚点都没有（reset 之后直接续翻式重建）：这一页同时确立两端边界。
+    if (!this.headCursor && !this.tailCursor) {
+      this.headCursor = page.startCursor;
+      this.tailCursor = page.endCursor;
+    }
+    if (items.length > 0) {
       this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
     }
-    this.before = page.items.length === 0 ? false : page.hasMoreBackward;
+    if (page.items.length > 0) this.headCursor = page.startCursor;
+    this.moreBackward = page.items.length === 0 ? false : page.hasMoreBackward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.pop();
-      this.after = true;
+      this.moreForward = true;
+      this.tailCursor = this.pages[this.pages.length - 1].endCursor;
     }
     return items.length;
   }
@@ -204,6 +244,7 @@ export class PageWindow<T> {
       page.items = page.items.filter((item) => !match(item));
       if (page.items.length !== before) changed = true;
     }
+    if (changed) this.dropEmptyPages();
     return changed;
   }
 
@@ -220,15 +261,15 @@ export class PageWindow<T> {
   mergeLive(item: T, edge: 'head' | 'tail'): number {
     this.dropIdsFromExistingPages([item]);
     if (this.pages.length === 0) {
-      // 窗口里一页都没有：自建页只能用 fallback 游标；连 fallback 都没有（从未加载过）
-      // 时两端都没有可用的续翻锚点，如实把 hasMore 置 false，避免带着空游标去请求。
+      // 窗口里一页都没有：自建页沿用当前窗口边界；连边界都没有（从未加载过）时
+      // 两端都没有可用的续翻锚点，如实把 hasMore 置 false，避免带着空游标去请求。
       this.pages.push({
         items: this.normalize([item]),
-        startCursor: this.fallbackStartCursor,
-        endCursor: this.fallbackEndCursor,
+        startCursor: this.headCursor,
+        endCursor: this.tailCursor,
       });
-      if (!this.fallbackStartCursor) this.before = false;
-      if (!this.fallbackEndCursor) this.after = false;
+      if (!this.headCursor) this.moreBackward = false;
+      if (!this.tailCursor) this.moreForward = false;
     } else if (edge === 'tail') {
       const tail = this.pages[this.pages.length - 1];
       tail.items = this.normalize([...tail.items, item]);

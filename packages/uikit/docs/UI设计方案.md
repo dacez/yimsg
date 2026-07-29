@@ -1090,7 +1090,7 @@ container.appendChild(div);
 ```
 checkReach():
   触底: maxScrollTop - scrollTop <= 160 且 hasMoreAfter → loadAfter()
-  触顶: scrollTop <= 160 且 hasMoreBefore → loadBefore()
+  触顶: scrollTop <= 160 且 hasMoreBackward → loadBackward()
   （并发守卫在加载回调内部：if (loading || !hasMore) return）
 
   加载完成 → loading = false → 重渲（视窗未填满时链式补页）
