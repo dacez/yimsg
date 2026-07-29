@@ -197,6 +197,7 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
       loading: () => app.t("common.loading"),
       tailBoundary: () => app.t("chat.noMoreConversations"),
       updatePill: () => app.t("chat.listUpdated"),
+      retry: () => app.t("common.retry"),
     },
     onActivate: (conv) => { void openConversation(app, conv); },
     onItemsChanged: (items) => { windowItems = items; },

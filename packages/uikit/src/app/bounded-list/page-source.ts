@@ -17,7 +17,7 @@ export function serverPageSource<R, T, Q>(
 }
 
 export interface LocalPageSourceOptions<T, Q> {
-  readonly loadAll: (query: Q, onProgress?: (loaded: number) => void) => Promise<T[]>;
+  readonly loadAll: (query: Q) => Promise<T[]>;
   readonly filter?: (item: T, query: Q) => boolean;
   readonly compare?: (a: T, b: T) => number;
 }
@@ -36,16 +36,9 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
   let entries: T[] = [];
   let reloadGeneration = 0;
 
-  async function reload(query: Q, onProgress?: (loaded: number) => void): Promise<T[]> {
+  async function reload(query: Q): Promise<T[]> {
     const generation = ++reloadGeneration;
-    const all = await options.loadAll(
-      query,
-      onProgress
-        ? (loaded) => {
-          if (generation === reloadGeneration) onProgress(loaded);
-        }
-        : undefined,
-    );
+    const all = await options.loadAll(query);
     const filtered = options.filter ? all.filter((item) => options.filter!(item, query)) : all.slice();
     const prepared = options.compare ? filtered.sort(options.compare) : filtered;
     // 两个 reset 可能并发：旧查询晚返回时，它自己的首页结果仍可交给上层世代守卫丢弃，
@@ -75,7 +68,7 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
   return {
     async fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>> {
       if (req.cursor === undefined) {
-        const snapshot = await reload(req.query, req.onProgress);
+        const snapshot = await reload(req.query);
         return slice(snapshot, 0, req.limit);
       }
       const cursor = parseCursor(req.cursor);

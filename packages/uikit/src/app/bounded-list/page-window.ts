@@ -210,8 +210,12 @@ export class PageWindow<T> {
   /**
    * 把一条实时条目并入新鲜端所在的页（本地发送 / 转发成功回包）。
    * edge='tail' 并入尾页、超限裁首；edge='head' 并入首页、超限裁尾。
-   * 并入前先做跨页去重，保证同一身份在窗口里至多出现一次；
-   * 并入后新鲜端方向视为已追平最新，对应 hasMore 置为 false。
+   * 并入前先做跨页去重，保证同一身份在窗口里至多出现一次。
+   *
+   * 调用方必须先确认该端 `hasMore` 已经是 `false`（窗口已经追平新鲜端）才能调用：
+   * 这里不会替调用方把 `hasMore` 强行改成 `false`。窗口还没追平时贸然并入会把这条
+   * 新条目错误地拼接在一段旧历史后面，还会顺带关掉真正的续翻——那才是数据丢失
+   * 的成因，早前版本在这里无条件置 `false` 正是触发点。
    */
   mergeLive(item: T, edge: 'head' | 'tail'): number {
     this.dropIdsFromExistingPages([item]);
@@ -232,7 +236,6 @@ export class PageWindow<T> {
       const head = this.pages[0];
       head.items = this.normalize([item, ...head.items]);
     }
-    if (edge === 'tail') this.after = false; else this.before = false;
     return this.trimToHardBudget(edge);
   }
 }

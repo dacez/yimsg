@@ -165,67 +165,26 @@ describe('PageSource / B localPageSource', () => {
     await expect(source.fetch({ backward: false, limit: 10, query: undefined })).rejects.toThrow('全量拉取失败');
   });
 
-  it('B8 reset 请求携带的 onProgress 会透传给 loadAll，进度如实回流给调用方', async () => {
-    const progressed: number[] = [];
-    const source = localPageSource<Item, void>({
-      loadAll: async (_q, onProgress) => {
-        onProgress?.(100);
-        onProgress?.(200);
-        return makeItems(3);
-      },
-    });
-    await source.fetch({ backward: false, limit: 3, query: undefined, onProgress: (n) => progressed.push(n) });
-    expect(progressed).toEqual([100, 200]);
+  it('B10 续翻（走缓存切片）不重新 loadAll', async () => {
+    const loadAll = vi.fn(async () => makeItems(10));
+    const source = localPageSource<Item, void>({ loadAll });
+    await source.fetch({ backward: false, limit: 4, query: undefined });
+    await source.fetch({ cursor: '4', backward: false, limit: 4, query: undefined });
+    expect(loadAll).toHaveBeenCalledTimes(1);
   });
 
-  it('B9 请求里没有 onProgress 时 loadAll 拿到的就是 undefined（不硬造一个空回调）', async () => {
-    const seen: Array<unknown> = [];
-    const source = localPageSource<Item, void>({
-      loadAll: async (_q, onProgress) => { seen.push(onProgress); return makeItems(3); },
-    });
-    await source.fetch({ backward: false, limit: 3, query: undefined });
-    expect(seen).toEqual([undefined]);
-  });
-
-  it('B10 续翻（走缓存切片）不重新 loadAll，因此也不会重复上报进度', async () => {
-    const progressed: number[] = [];
-    const source = localPageSource<Item, void>({
-      loadAll: async (_q, onProgress) => { onProgress?.(10); return makeItems(10); },
-    });
-    await source.fetch({ backward: false, limit: 4, query: undefined, onProgress: (n) => progressed.push(n) });
-    await source.fetch({ cursor: '4', backward: false, limit: 4, query: undefined, onProgress: (n) => progressed.push(n) });
-    expect(progressed).toEqual([10]);
-  });
-
-  it('B11 并发 reset 乱序返回时旧结果不污染最新查询的续翻缓存与进度', async () => {
+  it('B11 并发 reset 乱序返回时旧结果不污染最新查询的续翻缓存', async () => {
     type Query = { keyword: 'old' | 'new' };
-    const resolvers = new Map<
-      Query['keyword'],
-      { resolve(items: Item[]): void; progress?: (loaded: number) => void }
-    >();
+    const resolvers = new Map<Query['keyword'], { resolve(items: Item[]): void }>();
     const source = localPageSource<Item, Query>({
-      loadAll: (query, progress) => new Promise<Item[]>((resolve) => {
-        resolvers.set(query.keyword, { resolve, progress });
+      loadAll: (query) => new Promise<Item[]>((resolve) => {
+        resolvers.set(query.keyword, { resolve });
       }),
     });
-    const progress: string[] = [];
 
-    const oldReset = source.fetch({
-      backward: false,
-      limit: 2,
-      query: { keyword: 'old' },
-      onProgress: (loaded) => progress.push(`old:${loaded}`),
-    });
-    resolvers.get('old')!.progress?.(1);
-    const newReset = source.fetch({
-      backward: false,
-      limit: 2,
-      query: { keyword: 'new' },
-      onProgress: (loaded) => progress.push(`new:${loaded}`),
-    });
+    const oldReset = source.fetch({ backward: false, limit: 2, query: { keyword: 'old' } });
+    const newReset = source.fetch({ backward: false, limit: 2, query: { keyword: 'new' } });
 
-    resolvers.get('old')!.progress?.(2);
-    resolvers.get('new')!.progress?.(3);
     resolvers.get('new')!.resolve([
       { id: 20, name: 'new-20' },
       { id: 21, name: 'new-21' },
@@ -247,7 +206,6 @@ describe('PageSource / B localPageSource', () => {
       query: { keyword: 'new' },
     });
     expect(continued.items.map((item) => item.id)).toEqual([22, 23]);
-    expect(progress).toEqual(['old:1', 'new:3']);
   });
 });
 

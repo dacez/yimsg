@@ -428,9 +428,12 @@ describe('PageWindow / D 就地增删改', () => {
 // ───────────────────────── E 实时并入 mergeLive ─────────────────────────
 
 describe('PageWindow / E 实时并入 mergeLive', () => {
-  it('E1 edge=tail 并入尾页，新鲜端 hasMoreAfter 置 false', () => {
+  it('E1 edge=tail 并入尾页；调用前新鲜端 hasMoreAfter 已是 false，并入后保持不变', () => {
+    // mergeLive 的前置契约：只有窗口已经追平新鲜端（该端 hasMore 已为 false）才能调用，
+    // 它自己不会替调用方把 hasMore 改成 false（BL-BUG：曾经无条件置 false，导致窗口
+    // 未追平时误关真正的续翻，见 bounded-list.ts upsertLocal 的 reachesFreshEdge 守卫）。
     const window = new PageWindow<number>(2, (items) => [...new Set(items)].sort((a, b) => a - b));
-    window.setInitial(page([1, 3], 's1', 'e1', false, true));
+    window.setInitial(page([1, 3], 's1', 'e1', false, false));
     window.mergeLive(2, 'tail');
     expect(window.items).toEqual([1, 2, 3]);
     expect(window.hasMoreAfter).toBe(false);
@@ -438,9 +441,17 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.items).toEqual([1, 2, 3]);
   });
 
-  it('E2 edge=head 并入首页，新鲜端 hasMoreBefore 置 false', () => {
+  it('E1b mergeLive 不会替调用方把仍为 true 的新鲜端 hasMore 改成 false', () => {
+    const window = new PageWindow<number>(2, (items) => [...new Set(items)].sort((a, b) => a - b));
+    window.setInitial(page([1, 3], 's1', 'e1', false, true));
+    window.mergeLive(2, 'tail');
+    expect(window.items).toEqual([1, 2, 3]);
+    expect(window.hasMoreAfter).toBe(true); // 窗口本就没追平，mergeLive 如实保留
+  });
+
+  it('E2 edge=head 并入首页；调用前新鲜端 hasMoreBefore 已是 false，并入后保持不变', () => {
     const window = new PageWindow<number>(1);
-    window.setInitial(page([2, 3], 's1', 'e1', true, false));
+    window.setInitial(page([2, 3], 's1', 'e1', false, false));
     window.mergeLive(1, 'head');
     expect(window.items).toEqual([1, 2, 3]);
     expect(window.hasMoreBefore).toBe(false);
@@ -471,7 +482,8 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
   it('E4 多页窗口下 mergeLive 只并入新鲜端那一页，页数不变、不触发裁剪', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', true, true));
+    // hasMoreForward=false：窗口已经追到尾部真实新鲜端，满足 mergeLive('tail') 的前置契约。
+    window.appendForward(page([3, 4], 's2', 'e2', true, false));
     window.mergeLive(5, 'tail');
     expect(window.items).toEqual([1, 2, 3, 4, 5]);
     expect(window.hasMoreBefore).toBe(false); // 没有新增页，无需裁剪

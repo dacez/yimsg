@@ -518,7 +518,7 @@ describe('BoundedList / B reset 首屏', () => {
     list.dispose();
   });
 
-  it('B14 reset 在飞 mutation 超过硬预算时拒绝旧响应，不自动循环请求也不清空本地窗口', async () => {
+  it('B14 reset 在飞时超过硬预算的本地 mutation 静默丢最旧的一条，权威响应仍正常落地', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     const onError = vi.fn();
@@ -532,14 +532,15 @@ describe('BoundedList / B reset 首屏', () => {
     const resetting = list.reset({ pinEdge: false });
     list.upsertLocal({ id: 10, label: 'local-10' });
     list.upsertLocal({ id: 11, label: 'local-11' });
-    list.upsertLocal({ id: 12, label: 'local-12' });
+    list.upsertLocal({ id: 12, label: 'local-12' }); // overlay 硬预算=2，最旧的 10 被静默丢弃
     pending[0].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
     await resetting;
 
     expect(pending).toHaveLength(1);
     expect(renderedRows(host)).toEqual(['row-11', 'row-12']);
-    expect(list.getState()).toMatchObject({ loaded: true, failed: true, stale: true, count: 2 });
-    expect(onError).toHaveBeenCalledWith(expect.any(RangeError), 'reset');
+    // 权威页正常接纳、重放 overlay 里剩下的 11/12；这不是失败，只是有 eviction 的 stale 状态。
+    expect(list.getState()).toMatchObject({ loaded: true, failed: false, stale: true, count: 2 });
+    expect(onError).not.toHaveBeenCalled();
     list.dispose();
   });
 });
@@ -1093,28 +1094,7 @@ describe('BoundedList / D setQuery 与防抖', () => {
     }
   });
 
-  it('D8 配置 onLoadProgress 时 reset 请求带上 onProgress，全量拉取进度如实回流', async () => {
-    const host = createHost();
-    const progressed: number[] = [];
-    const source = localPageSource<TestItem, void>({
-      loadAll: async (_q, onProgress) => {
-        onProgress?.(40);
-        onProgress?.(80);
-        return makeTestItems(80);
-      },
-    });
-    const list = createBoundedList(baseOptions(host, source, {
-      pageSize: 40,
-      maxPages: 2,
-      onLoadProgress: (n) => progressed.push(n),
-    }));
-    await list.reset({ pinEdge: false });
-    expect(progressed).toEqual([40, 80]);
-    expect(list.getState().count).toBe(40);
-    list.dispose();
-  });
-
-  it('D9 未配置 onLoadProgress 时请求里不带 onProgress 字段（请求形状保持最小）', async () => {
+  it('D9 reset 请求形状保持最小', async () => {
     const host = createHost();
     const fetchSpy = vi.fn(async () => pageOf([], '0', '0', false, false));
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }, { pageSize: 40 }));
@@ -1420,6 +1400,9 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
       fetchByIdentity: fetcher.fetchByIdentity,
       onItemsChanged: (changed) => latest.push([...changed]),
       freshEdge: 'tail',
+      // pageSize 覆盖全部条目：createInstantSource 的 reset 恒从头切片，只有一次
+      // 拿全才能让 hasMoreForward 归零，满足 upsertLocal 对「已追平新鲜端」的前置要求。
+      pageSize: items.length,
     });
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 100;
@@ -1523,7 +1506,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     list.dispose();
   });
 
-  it('E12i live 裁剪作废普通分页时同步释放被 requestId 作废的 refresh token', async () => {
+  it('E12i 窗口还没追平新鲜端时 upsertLocal 只记入 overlay，不影响并发 refresh token', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const fetcher = createControllableFetcher<TestItem>();
     const host = createHost();
@@ -1548,11 +1531,14 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await flushAsync();
     expect(tokens.size).toBe(1);
 
+    // 窗口的 hasMoreAfter 仍是 true（还没追平新鲜端），upsertLocal 走 overlay 记录分支，
+    // 不直接改动窗口，因此不触发 cancelOrdinaryPageLoads，并发 refresh token 原样保留。
     const stalePage = list.loadMore('forward');
-    list.upsertLocal({ id: 4, label: 'local-4' }); // 满预算 eviction → 作废旧分页与并发 refresh
-    expect(tokens.size).toBe(0);
+    list.upsertLocal({ id: 4, label: 'local-4' });
+    expect(tokens.size).toBe(1);
     pending[2].resolve(pageOf(makeTestItems(2, 4), 's2', 'e2', true, false));
     await stalePage;
+    expect(tokens.size).toBe(1);
     fetcher.settle(0, [{ id: 0, label: 'stale-refresh' }]);
     await flushAsync();
     expect(tokens.size).toBe(0);
@@ -1908,7 +1894,9 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
 
 describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLocal）', () => {
   it('G1 freshEdge=tail 时并入尾页；新鲜端方向的 hasMoreAfter 置 false', async () => {
-    const items = makeTestItems(4);
+    // pageSize 覆盖全部条目，reset 后 hasMoreForward 天然为 false（真正追平新鲜端），
+    // upsertLocal 才会走立即并入分支。
+    const items = makeTestItems(3);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', maxPages: 1, pageSize: 3 }));
     await list.reset();
@@ -1930,7 +1918,9 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
   });
 
   it('G3 mergeLive 到达硬预算后从非新鲜端裁剪，并保留新条目', async () => {
-    const items = makeTestItems(9);
+    // 总量正好等于 hardBudget（3×2=6）：reset + 一次 forward 续翻后 hasMoreForward 归零，
+    // 窗口真正追平新鲜端，upsertLocal 才会走立即并入分支（而不是记入 overlay 待重放）。
+    const items = makeTestItems(6);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', maxPages: 2, pageSize: 3 }));
     await list.reset({ pinEdge: false });
@@ -2172,7 +2162,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
-  it('G3i mutation identity 超过硬预算时保留窗口并失败，显式重试再建立新快照', async () => {
+  it('G3i overlay 超过硬预算时静默丢最旧一条，reconcile 仍正常落地并保持 stale', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
@@ -2190,56 +2180,20 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       frames.run();
       expect(pending).toHaveLength(2);
       list.upsertLocal({ id: 3, label: 'local-3' });
-      list.upsertLocal({ id: 4, label: 'local-4' }); // 第三个 identity 令 H=2 的 overlay overflow
+      list.upsertLocal({ id: 4, label: 'local-4' }); // overlay 硬预算=2，最旧的 2 被静默丢弃
       const capped = renderedRows(host);
 
       pending[1].resolve(pageOf(makeTestItems(2), 'stale-s', 'stale-e', false, false));
       await flushAsync();
       expect(pending).toHaveLength(2);
       expect(renderedRows(host)).toEqual(capped);
-      expect(list.getState()).toMatchObject({ failed: true, stale: true, loading: false });
+      expect(list.getState()).toMatchObject({ failed: false, stale: true, loading: false });
 
       const retry = list.loadMore('backward');
       expect(pending).toHaveLength(3);
       pending[2].resolve(pageOf(makeTestItems(2, 3), 'fresh-s', 'fresh-e', false, false));
       await retry;
       expect(renderedRows(host)).toEqual(['row-3', 'row-4']);
-      list.dispose();
-    });
-  });
-
-  it('G3j 显式追平撞上已溢出的在途 reconcile 时立即用新快照作废旧请求', async () => {
-    await withFramesAsync(async (frames) => {
-      const { source, pending } = createControllableSource<TestItem, void>();
-      const host = createHost();
-      const onError = vi.fn();
-      const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
-        pageSize: 2,
-        maxPages: 1,
-        settleFrames: 1,
-        onError,
-      }));
-      const initial = list.reset();
-      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
-      await initial;
-
-      list.upsertLocal({ id: 2, label: 'local-2' });
-      frames.run();
-      expect(pending).toHaveLength(2);
-      list.upsertLocal({ id: 3, label: 'local-3' });
-      list.upsertLocal({ id: 4, label: 'local-4' });
-
-      const retry = list.loadMore('backward');
-      expect(pending).toHaveLength(3);
-      pending[1].resolve(pageOf(makeTestItems(2, 10), 'old-s', 'old-e', false, false));
-      await flushAsync();
-      expect(renderedRows(host)).not.toEqual(['row-10', 'row-11']);
-
-      pending[2].resolve(pageOf(makeTestItems(2, 3), 'fresh-s', 'fresh-e', false, false));
-      await retry;
-      expect(renderedRows(host)).toEqual(['row-3', 'row-4']);
-      expect(onError).not.toHaveBeenCalled();
       list.dispose();
     });
   });

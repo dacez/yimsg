@@ -12,6 +12,7 @@ export const translations = {
     // Common
     'common.close': 'Close',
     'common.loading': 'Loading...',
+    'common.retry': 'Retry',
 
     // Auth
     'auth.login': 'Login',
@@ -412,6 +413,7 @@ export const translations = {
     // Common
     'common.close': '关闭',
     'common.loading': '加载中',
+    'common.retry': '重试',
 
     // Auth
     'auth.login': '登录',

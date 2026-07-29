@@ -57,20 +57,25 @@ async function mountFullTailWindow(
   page: Page,
   position: 'old-edge' | 'fresh-edge',
 ): Promise<string> {
+  // initialStart 指向真正的尾页（100-10）：reset 像真实 tail 新鲜端后端一样直接
+  // 拿到最新一页，upsertLocal 才满足 mergeLive 的前置契约（该端 hasMore 已为
+  // false，见 bounded-list.ts 的 reachesFreshEdge 守卫）。随后一次 backward
+  // loadMore 补一页较旧历史，凑满 maxPages 触发头部整页裁剪，同时保持已在真正
+  // 新鲜端尽头（hasMoreAfter=false）。
   const key = await mount(page, {
     itemCount: 100,
     pageSize: 10,
     maxPages: 2,
     freshEdge: 'tail',
+    initialStart: 90,
     settleFrames: 1,
     reachPx: -1,
   });
-  await call(page, 'loadMore', key, 'forward');
-  await call(page, 'loadMore', key, 'forward');
+  await call(page, 'loadMore', key, 'backward');
   expect(await call<ListState>(page, 'state', key)).toMatchObject({
     count: 20,
     hasMoreBefore: true,
-    hasMoreAfter: true,
+    hasMoreAfter: false,
   });
   await call(page, 'setScrollTop', key, position === 'fresh-edge' ? 1_000_000 : 0);
   await dispatchScroll(page, key);
@@ -285,69 +290,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         hasMoreAfter: true,
       },
     });
-  });
-
-  test('localPageSource reset 透传 onProgress，续翻不重复上报进度', async ({ page }) => {
-    const key = await mount(page, {
-      sourceKind: 'local',
-      itemCount: 50,
-      pageSize: 10,
-      onLoadProgress: true,
-      progressValues: [0, 20, 50],
-      autoReset: false,
-      reachPx: -1,
-    });
-    await call(page, 'reset', key);
-
-    expect((await events(page, key)).filter((event) => event.type === 'onLoadProgress')).toEqual([
-      { type: 'onLoadProgress', payload: 0 },
-      { type: 'onLoadProgress', payload: 20 },
-      { type: 'onLoadProgress', payload: 50 },
-    ]);
-    expect(await call(page, 'fetchCalls', key)).toEqual([
-      {
-        backward: false,
-        limit: 10,
-        query: { keyword: '' },
-        phase: 'reset',
-        hasOnProgress: true,
-      },
-    ]);
-
-    await call(page, 'clearEvents', key);
-    await call(page, 'loadMore', key, 'forward');
-    expect((await events(page, key)).filter((event) => event.type === 'onLoadProgress')).toEqual([]);
-  });
-
-  test('localPageSource 并发 reset 只上报最新查询的进度，旧进度晚到也被丢弃', async ({ page }) => {
-    const key = await mount(page, {
-      sourceKind: 'local',
-      itemCount: 50,
-      pageSize: 10,
-      onLoadProgress: true,
-      progressByKeyword: {
-        old: [10, 50],
-        new: [20, 50],
-      },
-      autoReset: false,
-      reachPx: -1,
-    });
-    await call(page, 'pauseNextPage', key);
-    await call(page, 'startReset', key, { query: { keyword: 'old' } });
-    await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
-
-    await call(page, 'reset', key, { query: { keyword: 'new' } });
-    expect((await events(page, key)).filter((event) => event.type === 'onLoadProgress')).toEqual([
-      { type: 'onLoadProgress', payload: 20 },
-      { type: 'onLoadProgress', payload: 50 },
-    ]);
-
-    await call(page, 'resolvePage', key);
-    await call(page, 'waitForIdle', key);
-    expect((await events(page, key)).filter((event) => event.type === 'onLoadProgress')).toEqual([
-      { type: 'onLoadProgress', payload: 20 },
-      { type: 'onLoadProgress', payload: 50 },
-    ]);
   });
 
   test('空态、过滤空态、加载、双端文案与最小容量边界均正确', async ({ page }) => {
@@ -1765,6 +1707,9 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pageSize: 20,
       maxPages: 1,
       freshEdge: 'tail',
+      // initialStart 指向真正的尾页（100-20）：reset 直接追平新鲜端，upsertLocal
+      // 才会走立即并入分支（否则只记入 overlay，行不会出现在 DOM 里）。
+      initialStart: 80,
       settleFrames: 1,
       autoReset: false,
       reachPx: -1,

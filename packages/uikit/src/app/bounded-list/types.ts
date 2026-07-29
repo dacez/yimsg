@@ -13,11 +13,6 @@ export interface FetchPageRequest<Q> {
   readonly backward: boolean;
   readonly limit: number;
   readonly query: Q;
-  /**
-   * 全量拉取进度回调，只在 reset（cursor 未提供）且调用方配置了 onLoadProgress 时出现。
-   * 目前只有 localPageSource 会用它把 loadAll 的进度透出去（「已加载 N 人」）。
-   */
-  readonly onProgress?: (loaded: number) => void;
 }
 
 /** 一页分页结果，与 SDK PageInfo 同构；total 未提供时视为未知（组件对外呈现为 -1）。 */
@@ -131,6 +126,4 @@ export interface BoundedListOptions<T, Q = void> {
   readonly onItemsChanged?: (items: readonly T[]) => void;
   readonly onError?: (error: unknown, phase: ErrorPhase) => void;
   readonly onEmptyPage?: (dir: Direction) => void;
-  /** reset 阶段全量拉取的进度（仅 localPageSource 这类需要 loadAll 的数据源会上报）。 */
-  readonly onLoadProgress?: (loaded: number) => void;
 }

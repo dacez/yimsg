@@ -81,6 +81,7 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         empty: () => app.t('detail.noMembers'),
         loading: () => app.t('common.loading'),
         tailBoundary: () => app.t('detail.noMoreMembers'),
+        retry: () => app.t('common.retry'),
       },
       onItemsChanged: (items) => {
         memberItems = items;
@@ -327,10 +328,7 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        loadAll: (_query, onProgress) => loadAddMemberCandidates(app, groupId, controller.signal).then((entries) => {
-          onProgress?.(entries.length);
-          return entries;
-        }),
+        loadAll: () => loadAddMemberCandidates(app, groupId, controller.signal),
         filter: (entry, query) => !query.keyword || entry.name.toLowerCase().includes(query.keyword.toLowerCase()),
         compare: (a, b) => collator.compare(a.name, b.name),
       }),
@@ -354,6 +352,7 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
         emptyFiltered: () => app.t('detail.addMemberNoResults'),
         loading: () => app.t('common.loading'),
         error: () => app.t('detail.addMemberLoadFailed'),
+        retry: () => app.t('common.retry'),
       },
       onLoadStateChange: (s) => { searchInput.disabled = !s.loaded; },
       onError: (error) => console.warn('[yimsg/uikit] add-member candidates failed:', error),

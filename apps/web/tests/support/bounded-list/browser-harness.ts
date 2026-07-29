@@ -68,9 +68,6 @@ interface MountConfig {
   readonly fetchDelayMs?: number;
   readonly overflowPageBy?: number;
   readonly register?: 'global' | 'custom';
-  readonly onLoadProgress?: boolean;
-  readonly progressValues?: readonly number[];
-  readonly progressByKeyword?: Readonly<Record<string, readonly number[]>>;
   readonly initialA11y?: {
     readonly tabindex?: string;
     readonly role?: string;
@@ -86,7 +83,6 @@ interface FetchCall {
   readonly limit: number;
   readonly query: TestQuery;
   readonly phase: ErrorPhase;
-  readonly hasOnProgress?: boolean;
 }
 
 interface HarnessEvent {
@@ -122,7 +118,6 @@ interface HarnessEntry {
       | 'fetchDelayMs'
       | 'overflowPageBy'
       | 'register'
-      | 'onLoadProgress'
       | 'callbacks'
     >
   > &
@@ -331,7 +326,6 @@ function recordFetchCall(
     limit: req.limit,
     query: cloneQuery(req.query),
     phase,
-    ...(req.onProgress ? { hasOnProgress: true } : {}),
   });
 }
 
@@ -410,7 +404,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     fetchDelayMs: configInput.fetchDelayMs ?? 0,
     overflowPageBy: configInput.overflowPageBy ?? 0,
     register: configInput.register ?? 'global',
-    onLoadProgress: configInput.onLoadProgress ?? false,
     callbacks: configInput.callbacks ?? true,
     ...configInput,
   };
@@ -454,16 +447,12 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
 
   const source = config.sourceKind === 'local'
     ? localPageSource<TestItem, TestQuery>({
-      loadAll: async (query, onProgress) => {
-        const progressValues = [
-          ...(config.progressByKeyword?.[query?.keyword ?? ''] ?? config.progressValues ?? []),
-        ];
+      loadAll: async (query) => {
         const syntheticReq: FetchPageRequest<TestQuery> = {
           cursor: undefined,
           backward: false,
           limit: config.pageSize,
           query,
-          ...(onProgress ? { onProgress } : {}),
         };
         const phase = phaseOf(syntheticReq);
         recordFetchCall(fetchCalls, syntheticReq, phase);
@@ -472,7 +461,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           await new Promise((resolve) => setTimeout(resolve, config.fetchDelayMs));
         }
         if (failNext.delete('reset')) throw new Error('reset-failure');
-        for (const loaded of progressValues) onProgress?.(loaded);
         if (entryShell.logicalCount > 0) {
           return createItems(entryShell.logicalCount);
         }
@@ -598,12 +586,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           pushEvent(entryShell, 'onError', { error, phase }),
         onEmptyPage: (direction: Direction) =>
           pushEvent(entryShell, 'onEmptyPage', direction),
-        ...(config.onLoadProgress
-          ? {
-            onLoadProgress: (loaded: number) =>
-              pushEvent(entryShell, 'onLoadProgress', loaded),
-          }
-          : {}),
       }
       : {}),
   };

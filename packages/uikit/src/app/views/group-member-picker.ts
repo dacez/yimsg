@@ -109,9 +109,8 @@ export async function showGroupMemberPicker(
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        loadAll: (_query, onProgress) => loadAllMemberEntries(app, groupId, excluded, (n) => {
+        loadAll: () => loadAllMemberEntries(app, groupId, excluded, (n) => {
           loadingCount = n;
-          onProgress?.(n);
         }),
         // "所有人"是静态选项，不依赖群成员拉取结果，钉在头部，不参与过滤与分页；
         // 这里的 filter/compare 只处理真实成员条目。
@@ -134,6 +133,7 @@ export async function showGroupMemberPicker(
         emptyFiltered: () => app.t('groupMemberPicker.noResults'),
         loading: () => app.t('groupMemberPicker.loadingCount', { n: loadingCount }),
         error: () => app.t('groupMemberPicker.loadFailed'),
+        retry: () => app.t('common.retry'),
       },
       onActivate: (entry) => finish(entry.kind === 'all' ? { kind: 'all' } : { kind: 'member', uid: entry.uid }),
       onLoadStateChange: (s) => { searchInput.disabled = !s.loaded; if (s.loaded) searchInput.focus(); },

@@ -154,6 +154,7 @@ export function createContactsView(app: AppInstance) {
         loading: () => app.t('common.loading'),
         tailBoundary: () => app.t('contacts.noMoreContacts'),
         updatePill: () => app.t('contacts.listUpdated'),
+        retry: () => app.t('common.retry'),
       },
       onError: (error) => console.warn('[yimsg/uikit] friends list failed:', error),
     });
@@ -210,6 +211,7 @@ export function createContactsView(app: AppInstance) {
         loading: () => app.t('common.loading'),
         tailBoundary: () => app.t('contacts.noMoreRequests'),
         updatePill: () => app.t('contacts.listUpdated'),
+        retry: () => app.t('common.retry'),
       },
       onLoadStateChange: (s) => updateContactBadges(s.total >= 0 ? s.total : s.count),
       onError: (error) => console.warn('[yimsg/uikit] request list failed:', error),
@@ -255,6 +257,7 @@ export function createContactsView(app: AppInstance) {
       renderItem: (contact) => renderOutgoingRow(contact),
       text: {
         loading: () => app.t('common.loading'),
+        retry: () => app.t('common.retry'),
       },
       onLoadStateChange: (s) => {
         const title = app.dom.getElementById('requests-outgoing-title');
@@ -798,6 +801,7 @@ export function createContactsView(app: AppInstance) {
         empty: () => app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
         tailBoundary: () => app.t('contacts.noMoreContacts'),
+        retry: () => app.t('common.retry'),
       },
       onSelectionChange: (snapshot) => {
         selectedUids = [...snapshot.ids];

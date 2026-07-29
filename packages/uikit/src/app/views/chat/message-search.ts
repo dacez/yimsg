@@ -139,6 +139,7 @@ export function setupMessageSearch(app: AppInstance): void {
       emptyFiltered: () => app.t('chat.searchNoResults'),
       loading: () => app.t('common.loading'),
       error: () => app.t('chat.searchFailed'),
+      retry: () => app.t('common.retry'),
     },
     onActivate: (msg) => void jumpToResult(msg.messageId),
     onError: (error) => console.warn('[yimsg/uikit] message search failed:', error),

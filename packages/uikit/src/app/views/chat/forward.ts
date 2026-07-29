@@ -109,6 +109,7 @@ async function showForwardModal(
         empty: () => app.t("chat.forwardNoConversation"),
         loading: () => app.t("common.loading"),
         tailBoundary: () => app.t("chat.noMoreConversations"),
+        retry: () => app.t("common.retry"),
       },
       onItemsChanged: (items) => {
         // 未指定默认目标（无正在打开的会话）时，首页到达后自动预选第一个候选。
@@ -152,6 +153,7 @@ async function showForwardModal(
         empty: () => app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
         loading: () => app.t("common.loading"),
         tailBoundary: () => app.t("contacts.noMoreContacts"),
+        retry: () => app.t("common.retry"),
       },
       onError: (error) => console.warn("[yimsg/uikit] forward contact list failed:", error),
     });

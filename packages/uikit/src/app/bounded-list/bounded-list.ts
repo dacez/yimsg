@@ -93,7 +93,6 @@ export class BoundedList<T, Q = void> {
    * 也不会把每次操作都永久留在内存里。
    */
   private readonly pendingMutations = new Map<string, LocalMutation<T>>();
-  private pendingMutationOverflow = false;
   private resetInFlightRequestId: number | null = null;
   private capacityReconciling = false;
   private capacityReconcilePromise: Promise<void> | null = null;
@@ -200,8 +199,10 @@ export class BoundedList<T, Q = void> {
     this.scheduleInvalidateFlush.cancel();
     this.capacityReconciling = false;
     this.capacityReconcilePromise = null;
+    // reset 代表全新的查询世代（首次加载 / setQuery）：上一世代未追平的本地写入
+    // 不再适用于新世代的窗口，在这里整体丢弃；同一世代内失败重试见 catch 分支，
+    // 那里刻意不清空，好让失败期间的本地写入等到下次成功时被重放。
     this.pendingMutations.clear();
-    this.pendingMutationOverflow = false;
     this.pendingInvalidate = false;
     this.pendingIdentities.clear();
     this.pendingInvalidateCount = 0;
@@ -232,22 +233,11 @@ export class BoundedList<T, Q = void> {
       backward: false,
       limit: this.opts.pageSize,
       query: this.query,
-      // 只有配置了进度回调才带上 onProgress，避免无谓地改变请求对象形状。
-      ...(this.opts.onLoadProgress
-        ? {
-          onProgress: (loaded: number) => {
-            if (!this.disposed && myRequestId === this.requestId) {
-              this.opts.onLoadProgress?.(loaded);
-            }
-          },
-        }
-        : {}),
     };
 
     try {
       const page = await this.opts.source.fetch(request);
       if (myRequestId !== this.requestId || this.disposed) return;
-      if (this.pendingMutationOverflow) throw this.createMutationOverflowError();
       const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
@@ -267,8 +257,8 @@ export class BoundedList<T, Q = void> {
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
       this.resetInFlightRequestId = null;
-      this.pendingMutations.clear();
-      this.pendingMutationOverflow = false;
+      // 不清空 pendingMutations：本次失败期间发生的本地写入仍要等下一次成功的
+      // reset/reconcile 把窗口带到新鲜端时被重放，不能因为这次失败就丢掉。
       this.firstLoadDone = true;
       this.resetError = err;
       this.hasResetError = true;
@@ -295,7 +285,7 @@ export class BoundedList<T, Q = void> {
   // render 里被渲染引擎回调，而 render 在 dispose 之后是空操作。
   private async loadMoreInternal(dir: Direction): Promise<void> {
     if (dir === 'backward' ? this.cursorInvalidBefore : this.cursorInvalidAfter) {
-      await this.reconcileCapacity(true);
+      await this.reconcileCapacity();
       return;
     }
     const hasMore = dir === 'backward' ? this.window.hasMoreBefore : this.window.hasMoreAfter;
@@ -307,10 +297,6 @@ export class BoundedList<T, Q = void> {
     // 空串不是 reset 语义，发出去只会让服务端按未定义行为处理，这里直接放弃。
     if (cursor === '') return;
 
-    if (!this.loadingBefore && !this.loadingAfter && !this.isAuthoritativeRequestInFlight()) {
-      this.pendingMutations.clear();
-      this.pendingMutationOverflow = false;
-    }
     if (dir === 'backward') this.loadingBefore = true; else this.loadingAfter = true;
     this.emitLoadState();
     this.render(false);
@@ -324,20 +310,6 @@ export class BoundedList<T, Q = void> {
         query: this.query,
       });
       if (myRequestId !== this.requestId || this.disposed) return;
-      if (this.pendingMutationOverflow) {
-        // 本页请求期间的本地最终态已多到无法在硬预算内完整记录；当前有界窗口仍然
-        // 正确，丢弃这份可能覆盖本地状态的页，并把该方向转交 staged reconcile。
-        this.loadingBefore = false;
-        this.loadingAfter = false;
-        this.cursorInvalidBefore = true;
-        this.cursorInvalidAfter = true;
-        this.stale = true;
-        this.pendingCount = Math.max(1, this.pendingCount);
-        this.emitStaleChange();
-        this.emitLoadState();
-        this.render(false);
-        return;
-      }
       let acceptedCount: number;
       if (dir === 'backward') {
         acceptedCount = this.window.prependBackward(page);
@@ -357,9 +329,6 @@ export class BoundedList<T, Q = void> {
         this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
         this.emitStaleChange();
         if (this.atFreshEdge()) this.scheduleCapacityReconcile();
-      } else if (!this.loadingBefore && !this.loadingAfter && !this.hasInvalidCapacityCursor()) {
-        this.pendingMutations.clear();
-        this.pendingMutationOverflow = false;
       }
       this.emitItemsChanged();
       if (acceptedCount === 0) this.opts.onEmptyPage?.(dir);
@@ -375,10 +344,6 @@ export class BoundedList<T, Q = void> {
       } else {
         this.loadingAfter = false;
         this.autoLoadBlockedAfter = true;
-      }
-      if (!this.loadingBefore && !this.loadingAfter && !this.hasInvalidCapacityCursor()) {
-        this.pendingMutations.clear();
-        this.pendingMutationOverflow = false;
       }
       this.reportError(err, dir);
       this.emitLoadState();
@@ -415,10 +380,19 @@ export class BoundedList<T, Q = void> {
 
   upsertLocal(item: T): void {
     if (this.disposed) return;
-    const wasAtFreshEdge = this.atFreshEdge();
-    this.stickToFreshEdge = wasAtFreshEdge;
     const identity = this.opts.identityOf(item);
     this.invalidateRefresh(identity);
+    if (!this.reachesFreshEdge()) {
+      // 窗口还没追平新鲜端：这条本端新增和已加载内容之间的真实相邻关系无法确定，
+      // 硬并入只会把它错误地拼在一段旧历史后面，还会顺带关掉真正的续翻。
+      // 不猜顺序：记入 overlay，等真正追平新鲜端的下一次 reset / reconcile / 续翻
+      // 由 replayPendingMutations 带回真实位置，同时点亮一次待处理提示。
+      this.rememberPendingMutation({ kind: 'upsert', item });
+      this.invalidate({ count: 1 });
+      return;
+    }
+    const wasAtFreshEdge = this.atFreshEdge();
+    this.stickToFreshEdge = wasAtFreshEdge;
     const rememberBeforeMerge = this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor();
     if (rememberBeforeMerge) {
       this.rememberPendingMutation({ kind: 'upsert', item });
@@ -461,8 +435,16 @@ export class BoundedList<T, Q = void> {
       }
       this.emitItemsChanged();
       this.render(false);
+      return true;
     }
-    return changed;
+    // 窗口里没有，但可能是一条还没追平新鲜端、只存在于 overlay 里的本端 upsert
+    // （见 upsertLocal 的 reachesFreshEdge 守卫）：直接改写这条待重放的最终态。
+    const pending = this.pendingMutations.get(id);
+    if (pending?.kind === 'upsert') {
+      this.rememberPendingMutation({ kind: 'upsert', item: update(pending.item) });
+      return true;
+    }
+    return false;
   }
 
   removeLocal(id: string): boolean {
@@ -479,8 +461,17 @@ export class BoundedList<T, Q = void> {
       this.emitItemsChanged();
       this.emitLoadState();
       this.render(false);
+      return true;
     }
-    return changed;
+    // 窗口里没有，但可能是一条还没追平新鲜端的 pending upsert：仍然要记一条
+    // 'remove'，而不是直接撤销待办——权威页在途时可能碰巧携带同一身份的旧记录，
+    // 只有留下 remove 才能在重放时把它一并挡住。
+    if (this.pendingMutations.get(id)?.kind === 'upsert') {
+      this.rememberPendingMutation({ kind: 'remove', identity: id });
+      this.selection?.delete(id);
+      return true;
+    }
+    return false;
   }
 
   render(forceRows = true): void {
@@ -534,7 +525,6 @@ export class BoundedList<T, Q = void> {
     this.capacityReconciling = false;
     this.capacityReconcilePromise = null;
     this.pendingMutations.clear();
-    this.pendingMutationOverflow = false;
     this.refreshTokenByIdentity.clear();
     this.pendingInvalidate = false;
     this.pendingIdentities.clear();
@@ -601,6 +591,11 @@ export class BoundedList<T, Q = void> {
     return this.stream.isAtEdge(this.freshEdgeValue, this.stickyPx);
   }
 
+  /** 窗口内容（而非滚动位置）是否已经追到新鲜端尽头：该端 hasMore 已收敛为 false。 */
+  private reachesFreshEdge(): boolean {
+    return this.freshEdgeValue === 'tail' ? !this.window.hasMoreAfter : !this.window.hasMoreBefore;
+  }
+
   private isQueryActive(): boolean {
     return !queryEquals(this.query, this.opts.initialQuery);
   }
@@ -639,7 +634,7 @@ export class BoundedList<T, Q = void> {
   private catchUp(): Promise<void> {
     this.stickToFreshEdge = true;
     if (!this.firstLoadDone) return this.reset({ pinEdge: true });
-    return this.reconcileCapacity(true);
+    return this.reconcileCapacity();
   }
 
   private hasInvalidCapacityCursor(): boolean {
@@ -684,21 +679,13 @@ export class BoundedList<T, Q = void> {
     this.emitStaleChange();
   }
 
-  private reconcileCapacity(forceNewSnapshot = false): Promise<void> {
+  private reconcileCapacity(): Promise<void> {
     if (this.disposed) return Promise.resolve();
     // 显式 loadMore / 提示条追平可能先于已经排队的自动帧任务到达；一旦任何入口
     // 开始接管本轮 reconcile，就取消旧帧，避免首个请求很快完成后旧帧再发一次 reset。
     this.scheduleCapacityReconcile.cancel();
-    // 在途 reconcile 期间若 overlay 已经溢出，显式追平必须立即建立新的快照边界：
-    // 新请求会递增 requestId 并作废旧响应。若仍复用旧 Promise，用户就得在旧请求
-    // 因不完整 overlay 失败后再点第二次。
-    if (
-      this.capacityReconcilePromise
-      && !(forceNewSnapshot && this.pendingMutationOverflow)
-    ) {
-      return this.capacityReconcilePromise;
-    }
-    const running = this.runCapacityReconcile(forceNewSnapshot);
+    if (this.capacityReconcilePromise) return this.capacityReconcilePromise;
+    const running = this.runCapacityReconcile();
     this.capacityReconcilePromise = running;
     void running.then(
       () => {
@@ -711,26 +698,10 @@ export class BoundedList<T, Q = void> {
     return running;
   }
 
-  private async runCapacityReconcile(forceNewSnapshot: boolean): Promise<void> {
-    if (this.pendingMutationOverflow && !forceNewSnapshot) {
-      // 自动追平没有权限假设 source 已同步所有纯本地变化。保留当前窗口与有界 overlay，
-      // 等用户/调用方明确追平时再把那一刻作为新的权威快照边界。
-      this.stale = true;
-      this.pendingCount = Math.max(1, this.pendingCount);
-      this.emitStaleChange();
-      this.emitLoadState();
-      this.render(false);
-      return;
-    }
+  private async runCapacityReconcile(): Promise<void> {
     const myRequestId = ++this.requestId;
     this.resetInFlightRequestId = null;
     this.refreshTokenByIdentity.clear();
-    // overflow 若发生在请求开始前，下一份权威页天然晚于这些本地操作；从这个新快照点
-    // 重新记录请求期间的变化即可，不能拿已经被有界截断的旧日志重放。
-    if (this.pendingMutationOverflow) {
-      this.pendingMutations.clear();
-      this.pendingMutationOverflow = false;
-    }
     this.capacityReconciling = true;
     this.loadingBefore = false;
     this.loadingAfter = false;
@@ -744,21 +715,11 @@ export class BoundedList<T, Q = void> {
       backward: false,
       limit: this.opts.pageSize,
       query: this.query,
-      ...(this.opts.onLoadProgress
-        ? {
-          onProgress: (loaded: number) => {
-            if (!this.disposed && myRequestId === this.requestId) {
-              this.opts.onLoadProgress?.(loaded);
-            }
-          },
-        }
-        : {}),
     };
 
     try {
       const page = await this.opts.source.fetch(request);
       if (this.disposed || myRequestId !== this.requestId) return;
-      if (this.pendingMutationOverflow) throw this.createMutationOverflowError();
       const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
@@ -800,10 +761,22 @@ export class BoundedList<T, Q = void> {
     return { window: nextWindow, evicted: this.replayPendingMutations(nextWindow) };
   }
 
+  /**
+   * 把有界 overlay 里已经能确定归宿的最终态重放到 target 上，并就地摘掉已重放的条目。
+   *
+   * 'upsert' 只有在 target 已经追平新鲜端（该端 hasMore 已为 false）时才重放：
+   * 否则这条本端新增和 target 已有内容之间的真实相邻关系仍然不确定，重放只会把
+   * 它错误地拼接在半程历史后面。不满足条件的 'upsert' 原样留在 overlay 里，
+   * 等下一次真正追平新鲜端的请求（reset / reconcile，或续翻终于翻到底）时再重放，
+   * 不会被这次调用悄悄丢弃。'replace' / 'remove' 不涉及相邻关系，随时可以重放，
+   * target 里没有命中的身份时就是无操作。
+   */
   private replayPendingMutations(target: PageWindow<T>): number {
+    const targetReachesFreshEdge = this.freshEdgeValue === 'tail' ? !target.hasMoreAfter : !target.hasMoreBefore;
     let evicted = 0;
-    for (const mutation of this.pendingMutations.values()) {
+    for (const [identity, mutation] of [...this.pendingMutations]) {
       if (mutation.kind === 'upsert') {
+        if (!targetReachesFreshEdge) continue;
         evicted += target.mergeLive(mutation.item, this.freshEdgeValue);
       } else if (mutation.kind === 'replace') {
         target.updateMatching(
@@ -815,6 +788,7 @@ export class BoundedList<T, Q = void> {
           (item) => this.opts.identityOf(item) === mutation.identity,
         );
       }
+      this.pendingMutations.delete(identity);
     }
     return evicted;
   }
@@ -828,10 +802,6 @@ export class BoundedList<T, Q = void> {
       this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
     } else if (!hasDeferredInvalidate) {
       this.pendingCount = 0;
-    }
-    if (overlayEvicted === 0) {
-      this.pendingMutations.clear();
-      this.pendingMutationOverflow = false;
     }
   }
 
@@ -858,12 +828,6 @@ export class BoundedList<T, Q = void> {
     }
   }
 
-  private createMutationOverflowError(): RangeError {
-    return new RangeError(
-      `[BoundedList:${this.opts.id}] 权威请求期间的本地 identity 变化超过 pageSize×maxPages，已保留当前有界窗口并拒绝不完整响应`,
-    );
-  }
-
   private rememberPendingMutation(mutation: LocalMutation<T>): void {
     const identity = mutation.kind === 'upsert'
       ? this.opts.identityOf(mutation.item)
@@ -877,11 +841,13 @@ export class BoundedList<T, Q = void> {
     // 操作才移动到 Map 尾部。否则 C→D→patch(C) 会被错误重放成 D→C。
     if (mutation.kind !== 'replace') this.pendingMutations.delete(identity);
     this.pendingMutations.set(identity, finalMutation);
+    // 硬预算兜底：这个数量级需要在一次权威请求的在飞窗口内发生 pageSize×maxPages
+    // 个不同 identity 的本地写入，现实中不会发生。到这里就静默丢最旧的一条，
+    // 用一次可忽略的极端退化换掉一整套「显式失败 + 强制新快照」的复杂度。
     const hardBudget = this.opts.pageSize * this.opts.maxPages;
     if (this.pendingMutations.size > hardBudget) {
       const oldest = this.pendingMutations.keys().next().value as string | undefined;
       if (oldest !== undefined) this.pendingMutations.delete(oldest);
-      this.pendingMutationOverflow = true;
     }
   }
 
@@ -1051,7 +1017,10 @@ export class BoundedList<T, Q = void> {
     const previousIdentity = index > 0 ? this.opts.identityOf(items[index - 1]) : '';
     const selected = this.selection?.has(identity) ?? false;
     const selectable = this.selection ? !this.selection.isExceeded(identity) : true;
-    return `${index}\u0000${previousIdentity}\u0000${selected ? 1 : 0}\u0000${selectable ? 1 : 0}`;
+    // 只记「是否首行」而非精确 index：renderItem 唯一依赖 index 的地方是 index===0
+    // 的判定（首行批量预取），精确下标一旦入 revision，任何头部插入都会让每一行的
+    // revision 一起变化，导致整窗口跳过复用、重跑 renderItem。
+    return `${index === 0 ? 1 : 0}\u0000${previousIdentity}\u0000${selected ? 1 : 0}\u0000${selectable ? 1 : 0}`;
   }
 
   private syncPill(): void {

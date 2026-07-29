@@ -108,6 +108,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       headBoundary: () => app.t('chat.reachedEarliest'),
       tailBoundary: () => app.t('chat.reachedLatest'),
       updatePill: (count) => count > 0 ? app.t('chat.newMessagesCount', { n: count }) : app.t('chat.jumpToLatest'),
+      retry: () => app.t('common.retry'),
     },
     onItemsChanged: (items) => {
       windowItems = items;
