@@ -1,5 +1,5 @@
 // BoundedList 大数据量与长序列压力测试。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.8：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.8：
 //   A 有界性不变量 / B 长序列滚动 / C 高频事件 / D 极端形态数据 / E 生命周期压力。
 //
 // 这些用例的共同断言是「不变量」而不是具体数值：

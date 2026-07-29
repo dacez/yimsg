@@ -78,7 +78,7 @@ packages/uikit/src/
 | 事件语义 | 桥接 `authenticated` / `logout` / `messages` / `conversation:open` / `error` | SDK 事件 + 页面级事件 |
 | 模式支持 | `instant` / `persistent` 由挂载参数指定，持久存储可在设置页随时「清除数据」 | 登录前模式选择 + localStorage 记忆 |
 | 存储 | 默认隔离存储适配器，可按 `instanceId` 隔离 | 浏览器 `localStorage` |
-| 打包配置 | `vite.uikit.config.ts` | `vite.config.ts` |
+| 打包配置 | `packages/uikit/vite.config.ts` | `apps/web/vite.config.ts` |
 
 ## 4. 嵌入能力矩阵
 
@@ -256,9 +256,9 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 - **事件桥接**：嵌入态通过 `AppRuntimeContext` 暴露稳定 widget 回调，不要求宿主理解 SDK 内部事件流。
 - **主题隔离**：`theme.ts` 输出 `--mc-*` 变量并映射到应用 CSS 变量；`unmount()` 只清理 UIKit 自己注入的变量。
 - **安全渲染**：外部 URL 必须经过 `safe-dom.ts` allowlist；普通文本默认走 `textContent` 或统一转义；HTML 只能通过显式 `SafeHtml`。
-- **大列表**：生产视图中已接入的会话、消息、好友、好友请求、群成员、转发候选和建群候选使用分页读取或旧有界窗口渲染；统一 BoundedList 核心已独立实现但生产调用方尚未迁移，未接入场景与状态见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)。
+- **大列表**：已接入的生产列表统一使用 `BoundedList` 管理分页、窗口裁剪、选择和新鲜端追平；全局搜索与组织架构浏览仍保留一次性读取。完整接入矩阵见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。
 - **不使用 URL 路由**：当前视图和打开中的会话只存于内存，不读写 `location`/`history`，不支持深链；应用内任何操作都不写浏览器历史，保证浏览器"后退"始终直接离开应用。宿主页面需要程序化打开指定会话时用 `handle.openConversation(target)`。
-- **弹层不挣脱宿主容器**：`.modal-overlay`/`.toast-container`/`.msg-viewer-overlay` 等用 `position:fixed` 铺满可视区域；Shadow DOM 边界本身不会限制 `fixed` 定位的包含块（依然相对浏览器视口），嵌入态宿主容器通常远小于视口。`style.css` 用 `.mc-app-shell[data-embedded]{position:relative;contain:layout}` 给 shell 根节点建立新的包含块（CSS Containment），使这些 `fixed` 元素被约束在宿主容器范围内；独立部署（非嵌入）时 `.mc-app-shell` 本就铺满视口，不加这条规则也一样。
+- **弹层不挣脱宿主容器**：`.modal-overlay` / `.toast-container` 等用 `position: fixed` 铺满可视区域；Shadow DOM 边界本身不会限制 `fixed` 定位的包含块。`style.css` 用 `.mc-app-shell[data-embedded]{position:relative;contain:layout}` 给 shell 根节点建立新的包含块，使这些元素被约束在宿主容器范围内；独立部署时 shell 本就铺满视口。
 
 ## 10. 测试覆盖
 
@@ -279,7 +279,7 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | 浏览器性能测试 | `apps/web/tests/performance/bounded-list.performance.spec.ts` | 100,000 条本地数据、逻辑 1,000,000 条、长程分页、事件风暴、创建 / 销毁与实时插入的容量和性能门禁 |
 | E2E 测试 | `apps/web/tests/e2e/*.spec.ts` | 主应用持久存储全量能力 |
 
-BoundedList 专项截至 2026-07-29 共 57 个 Playwright 用例（51 个功能用例、6 个性能用例），全部通过；此前登记的 12 个唯一缺陷均已关闭。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)，关闭证据见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。
+BoundedList 专项截至 2026-07-29 共 59 个 Playwright 用例（53 个功能用例、6 个性能用例）；此前登记的 12 个浏览器缺陷均有固定回归。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §6](../../../docs/development/测试方案.md#6-boundedlist-playwright-与性能专项)，历史证据见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。当次是否通过以实际测试输出为准，不在设计文档中长期固化。
 
 ## 11. 已知边界
 
@@ -290,9 +290,8 @@ BoundedList 专项截至 2026-07-29 共 57 个 Playwright 用例（51 个功能�
 ## 12. 相关文档
 
 - 前端总览：[`前端设计方案.md`](../../../docs/architecture/前端设计方案.md)
-- UI 视图与有界消息流窗口：[`UI设计方案.md`](UI设计方案.md)
-- BoundedList 完整设计：[`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)
-- BoundedList 缺陷：[`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)
+- UI 视图与交互：[`UI设计方案.md`](UI设计方案.md)
+- BoundedList 专题入口：[`boundedlist/README.md`](boundedlist/README.md)
 - SDK 内核：[`sdk设计方案.md`](../../sdk/docs/sdk设计方案.md)
 - SDK 对外接口：[`sdk接口说明.md`](../../sdk/docs/sdk接口说明.md)
 - 测试口径：[`../../测试方案.md`](../../../docs/development/测试方案.md)

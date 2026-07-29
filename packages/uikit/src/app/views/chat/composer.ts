@@ -39,9 +39,9 @@ function clearComposerInput(input: HTMLTextAreaElement): void {
   resizeComposerInput(input);
 }
 
-/** 提前把图片解码进浏览器缓存：占位消息换成真实消息时会整段重建 DOM（BoundedList
- * 全量渲染），新 <img> 若还没被浏览器缓存过就要重新拉取，视觉上会闪一下；预加载后再替换，
- * 新节点直接命中缓存，不闪。加载失败（或非浏览器环境，如单测）也放行，不能因为预热失败卡住发送流程。 */
+/** 提前把图片解码进浏览器缓存：占位消息换成真实消息时该行必须更换 identity 与 <img>，
+ * 新节点若还没被浏览器缓存过就要重新拉取，视觉上仍可能闪一下；预加载后再替换，
+ * 新节点直接命中缓存。加载失败（或非浏览器环境，如单测）也放行，不能因为预热失败卡住发送流程。 */
 function preloadImage(url: string): Promise<void> {
   if (typeof Image === 'undefined') return Promise.resolve();
   return new Promise((resolve) => {

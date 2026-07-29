@@ -1,18 +1,16 @@
-import type { Page, TestInfo } from '@playwright/test';
+import type { TestInfo } from '@playwright/test';
 import { expect, test } from '../support/test-fixtures';
-import { openBoundedListHarness } from '../support/bounded-list/fixture';
+import {
+  callBoundedListHarness as call,
+  openBoundedListHarness,
+  type BoundedListTestItem as TestItem,
+} from '../support/bounded-list/fixture';
 
 interface TimingSummary {
   readonly samples: number[];
   readonly median: number;
   readonly p95: number;
   readonly max: number;
-}
-
-interface TestItem {
-  readonly id: string;
-  readonly label: string;
-  readonly order: number;
 }
 
 interface PerformanceRecord {
@@ -27,22 +25,6 @@ interface PerformanceRecord {
   readonly heapDeltaBytes?: number;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
-}
-
-async function call<T>(
-  page: Page,
-  method: string,
-  ...args: unknown[]
-): Promise<T> {
-  return page.evaluate(
-    ({ methodName, methodArgs }) => {
-      const harness = (window as unknown as {
-        boundedListTestHarness: Record<string, (...values: unknown[]) => unknown>;
-      }).boundedListTestHarness;
-      return harness[methodName](...methodArgs);
-    },
-    { methodName: method, methodArgs: args },
-  ) as Promise<T>;
 }
 
 function summarize(samples: number[]): TimingSummary {

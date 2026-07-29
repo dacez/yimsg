@@ -87,9 +87,6 @@ func New(cfg *config.Config, acc config.Account, ai *deepseek.Client, fs engine.
 	}, nil
 }
 
-// Username 返回该 Runner 对应的账号用户名，供 runtime 记录日志。
-func (r *AccountRunner) Username() string { return r.username }
-
 // Close 释放本账号持有的连接与本地库句柄。
 func (r *AccountRunner) Close() {
 	r.disconnect()

@@ -1,4 +1,4 @@
-// BoundedList 的渲染引擎：有界窗口全量渲染（设计方案 §2.4、§7.3）。
+// BoundedList 的渲染引擎：有界窗口内真实 DOM + 有键协调（设计方案 §2.4、§7.3）。
 //
 // 相比旧版 packages/uikit/src/app/bounded-stream-window.ts，本版补齐了设计方案 §4.6 / §4.3
 // 要求、但旧版完全缺失的能力：
@@ -8,8 +8,8 @@
 //   统一走 onInteract 回调，业务语义（onActivate / onSelectionChange 的判定）由上层 BoundedList 决定；
 // - contentElement 上的 load 捕获监听（图片等异步增高内容加载完成的回调），由上层决定要不要贴底。
 //
-// 其余渲染语义（先读后清、锚点保持、边界提示、指针按下期间推迟重建）与旧版一致，
-// 原理见 packages/uikit/docs/有界消息流窗口设计方案.md §2.5、§2.6、§7.3。
+// 其余渲染语义（先读后改、锚点保持、边界提示、指针按下期间推迟协调）与旧版一致，
+// 原理与宿主约束见 packages/uikit/docs/boundedlist/生产集成.md。
 
 export const DEFAULT_REACH_PX = 160;
 
@@ -47,6 +47,10 @@ export interface BoundedStreamWindowRenderState<T> {
   readonly loadAfter?: () => void;
   readonly renderItem: (item: T, index: number) => ReadonlyArray<HTMLElement>;
   readonly keyOf: (item: T, index: number) => string;
+  /** 内部数据更新可跳过未变化行的 renderItem；显式重绘时保持 false。 */
+  readonly reuseUnchangedRows?: boolean;
+  /** 会影响 renderItem 输出、但不在 item 本身里的上下文签名。 */
+  readonly revisionOf?: (item: T, index: number) => unknown;
 }
 
 interface ScrollAnchor {
@@ -54,9 +58,54 @@ interface ScrollAnchor {
   readonly delta: number;
 }
 
+interface RenderedRow<T> {
+  readonly item: T;
+  readonly elements: readonly HTMLElement[];
+  readonly revision: unknown;
+}
+
 export const ANCHOR_KEY_ATTR = 'data-bsw-key';
 export const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
 const FOCUS_CLASS = 'bsw-row-focused';
+
+function valuesEquivalent(left: unknown, right: unknown, seen = new WeakMap<object, object>()): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false;
+  if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right)) return false;
+  const remembered = seen.get(left);
+  if (remembered) return remembered === right;
+  seen.set(left, right);
+
+  if (left instanceof Date && right instanceof Date) return left.getTime() === right.getTime();
+  if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
+    if (left.byteLength !== right.byteLength) return false;
+    const leftBytes = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
+    const rightBytes = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
+    return leftBytes.every((value, index) => value === rightBytes[index]);
+  }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length
+      && left.every((value, index) => valuesEquivalent(value, right[index], seen));
+  }
+  const prototype = Object.getPrototypeOf(left);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) =>
+      Object.prototype.hasOwnProperty.call(right, key)
+      && valuesEquivalent(
+        (left as Record<string, unknown>)[key],
+        (right as Record<string, unknown>)[key],
+        seen,
+      ));
+}
+
+function nodesEquivalent(left: readonly HTMLElement[], right: readonly HTMLElement[]): boolean {
+  return left.length === right.length
+    && left.every((node, index) => node.isEqualNode?.(right[index]) ?? false);
+}
 
 export function createFrameScheduler(callback: () => void): (() => void) & { cancel: () => void } {
   let scheduled = false;
@@ -118,6 +167,7 @@ function findKeyFromTarget(target: EventTarget | null, boundary: HTMLElement): s
 
 export class BoundedStreamWindow<T> {
   private lastState: BoundedStreamWindowRenderState<T> | null = null;
+  private renderedRows = new Map<string, RenderedRow<T>>();
   private pointerActive = false;
   private pendingRender = false;
   private disposed = false;
@@ -210,20 +260,25 @@ export class BoundedStreamWindow<T> {
     } else if (this.focusedIndex >= state.items.length) {
       this.focusedIndex = state.items.length - 1;
     }
-    content.innerHTML = '';
-
     if (!(state.loaded ?? true)) {
-      if (state.loadingText) content.appendChild(createBoundaryHint(doc, state.loadingText, 'bottom'));
+      this.renderedRows.clear();
+      this.reconcileNodes(
+        content,
+        state.loadingText ? [createBoundaryHint(doc, state.loadingText, 'bottom')] : [],
+      );
       return;
     }
     if (state.items.length === 0) {
       const placeholderText = state.errorText ?? state.emptyText;
+      const nextElements: HTMLElement[] = [];
       if (placeholderText) {
         const placeholder = doc.createElement('div');
         placeholder.className = state.errorText !== undefined ? 'list-error-state' : 'empty-state';
         placeholder.textContent = placeholderText;
-        content.appendChild(placeholder);
+        nextElements.push(placeholder);
       }
+      this.renderedRows.clear();
+      this.reconcileNodes(content, nextElements);
       this.focusedIndex = -1;
       this.focusedKey = null;
       // 空列表同样要做触界检测：服务端可能返回「空页但还有更多」（around 锚点加载
@@ -232,34 +287,73 @@ export class BoundedStreamWindow<T> {
       return;
     }
 
+    const desiredElements: HTMLElement[] = [];
+    const nextRenderedRows = new Map<string, RenderedRow<T>>();
     if (!state.hasMoreBefore && state.topBoundaryText) {
-      content.appendChild(createBoundaryHint(doc, state.topBoundaryText, 'top'));
+      desiredElements.push(createBoundaryHint(doc, state.topBoundaryText, 'top'));
     } else if (state.loadingBefore && state.loadingText) {
-      content.appendChild(createBoundaryHint(doc, state.loadingText, 'top'));
+      desiredElements.push(createBoundaryHint(doc, state.loadingText, 'top'));
     }
 
     for (let index = 0; index < state.items.length; index++) {
-      const elements = state.renderItem(state.items[index], index);
-      const key = state.keyOf(state.items[index], index);
-      if (elements.length > 0) {
-        elements[0].setAttribute(ANCHOR_KEY_ATTR, key);
-        if (key === this.focusedKey) elements[0].classList?.add(FOCUS_CLASS);
+      const item = state.items[index];
+      const key = state.keyOf(item, index);
+      const revision = state.revisionOf?.(item, index);
+      const previous = this.renderedRows.get(key);
+      const previousAttached = previous
+        && previous.elements.every((element) => element.parentElement === content);
+      if (
+        state.reuseUnchangedRows
+        && previousAttached
+        && valuesEquivalent(previous.item, item)
+        && valuesEquivalent(previous.revision, revision)
+      ) {
+        desiredElements.push(...previous.elements);
+        nextRenderedRows.set(key, { item, elements: previous.elements, revision });
+        continue;
       }
-      for (const element of elements) {
+      const candidateElements = [...state.renderItem(item, index)];
+      if (candidateElements.length > 0) {
+        candidateElements[0].setAttribute(ANCHOR_KEY_ATTR, key);
+        if (key === this.focusedKey) candidateElements[0].classList?.add(FOCUS_CLASS);
+      }
+      for (const element of candidateElements) {
         element.setAttribute(INTERACTION_KEY_ATTR, key);
-        content.appendChild(element);
       }
+      const canReuse = previous
+        && previousAttached
+        // BoundedList 的内部数据更新统一通过身份键委托交互；即使服务端快照含有
+        // UI 不使用的字段差异，只要候选 DOM 完全一致，就不能把整行换掉。
+        // 显式 render() 仍保留更保守的条目等价检查，供宿主刷新行内自有监听。
+        && (state.reuseUnchangedRows || valuesEquivalent(previous.item, item))
+        && nodesEquivalent(previous.elements, candidateElements);
+      const elements = canReuse ? previous.elements : candidateElements;
+      desiredElements.push(...elements);
+      nextRenderedRows.set(key, { item, elements, revision });
     }
 
     if (!state.hasMoreAfter && state.bottomBoundaryText) {
-      content.appendChild(createBoundaryHint(doc, state.bottomBoundaryText, 'bottom'));
+      desiredElements.push(createBoundaryHint(doc, state.bottomBoundaryText, 'bottom'));
     } else if (state.loadingAfter && state.loadingText) {
-      content.appendChild(createBoundaryHint(doc, state.loadingText, 'bottom'));
+      desiredElements.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
     }
 
+    this.reconcileNodes(content, desiredElements);
+    this.renderedRows = nextRenderedRows;
     if (scroller.scrollTop !== scrollOffset) scroller.scrollTop = scrollOffset;
     if (anchor) this.restoreAnchor(content, anchor);
     this.checkReach();
+  }
+
+  private reconcileNodes(content: HTMLElement, desired: readonly HTMLElement[]): void {
+    for (let index = 0; index < desired.length; index++) {
+      const current = content.children[index] as HTMLElement | undefined;
+      if (current === desired[index]) continue;
+      content.insertBefore(desired[index], current ?? null);
+    }
+    while (content.children.length > desired.length) {
+      content.removeChild(content.children[content.children.length - 1]);
+    }
   }
 
   private captureAnchor(content: HTMLElement): ScrollAnchor | null {
@@ -340,7 +434,7 @@ export class BoundedStreamWindow<T> {
       this.focusedIndex = next;
       this.focusedKey = state.keyOf(state.items[next], next);
       ev.preventDefault?.();
-      this.applyRender(state);
+      this.updateFocusClass();
       return;
     }
     if (ev.key === 'Enter' || ev.key === ' ') {
@@ -349,6 +443,15 @@ export class BoundedStreamWindow<T> {
       const key = this.focusedKey
         ?? state.keyOf(state.items[this.focusedIndex], this.focusedIndex);
       this.options.onInteract?.(key, ev, true);
+    }
+  }
+
+  private updateFocusClass(): void {
+    for (const [key, row] of this.renderedRows) {
+      const first = row.elements[0];
+      if (!first?.classList) continue;
+      if (key === this.focusedKey) first.classList.add(FOCUS_CLASS);
+      else first.classList.remove(FOCUS_CLASS);
     }
   }
 
@@ -370,21 +473,9 @@ export class BoundedStreamWindow<T> {
     content.removeEventListener('click', this.handleClick);
     content.removeEventListener('load', this.handleContentLoad, true);
     this.lastState = null;
+    this.renderedRows.clear();
     this.pendingRender = false;
     this.focusedIndex = -1;
     this.focusedKey = null;
   }
-}
-
-export function getOrCreateBoundedStreamWindow<TOwner extends object, T>(
-  cache: WeakMap<TOwner, BoundedStreamWindow<T>>,
-  owner: TOwner,
-  factory: () => BoundedStreamWindow<T>,
-): BoundedStreamWindow<T> {
-  let view = cache.get(owner);
-  if (!view) {
-    view = factory();
-    cache.set(owner, view);
-  }
-  return view;
 }

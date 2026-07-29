@@ -1,5 +1,5 @@
 // PageSource（数据源层）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.2：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.2：
 //   A serverPageSource 透传 / B localPageSource 切片 / C 边界与非法输入 / D 大数据量。
 
 import { describe, expect, it, vi } from 'vitest';

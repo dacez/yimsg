@@ -5,13 +5,11 @@
  *   - 固定长度 22 字符、base64url 字母表；
  *   - 使用安全随机源 crypto.getRandomValues，绝不使用 Math.random；
  *   - 可无损解码回 16 字节，version/variant 位正确；
- *   - 前 48 位毫秒时间戳随时间递增；
- *   - isValidMsgId 正确接受合法值、拒绝各类非法值。
+ *   - 前 48 位毫秒时间戳随时间递增。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   generateMsgId,
-  isValidMsgId,
   MSG_ID_LENGTH,
 } from "../../../src/internal/msgid";
 
@@ -70,11 +68,13 @@ describe("generateMsgId", () => {
     vi.useRealTimers();
   });
 
-  it("返回长度固定 22 且 isValidMsgId 通过", () => {
+  it("返回长度固定 22 且解码后是 UUIDv7", () => {
     const id = generateMsgId();
+    const raw = decodeBase64Url(id);
     expect(MSG_ID_LENGTH).toBe(22);
     expect(id).toHaveLength(22);
-    expect(isValidMsgId(id)).toBe(true);
+    expect(raw[6] & 0xf0).toBe(0x70);
+    expect(raw[8] & 0xc0).toBe(0x80);
   });
 
   it("只使用 base64url 字母表字符", () => {
@@ -119,35 +119,5 @@ describe("generateMsgId", () => {
 
     expect(timestampMs(second)).toBeGreaterThan(timestampMs(first));
     expect(timestampMs(first)).toBe(Date.parse("2026-05-31T00:00:00.000Z"));
-  });
-});
-
-describe("isValidMsgId", () => {
-  it("接受真实生成的 msg_id", () => {
-    expect(isValidMsgId(generateMsgId())).toBe(true);
-  });
-
-  it("拒绝长度不对的字符串", () => {
-    expect(isValidMsgId("")).toBe(false);
-    expect(isValidMsgId("AAAA")).toBe(false);
-    expect(isValidMsgId(generateMsgId() + "A")).toBe(false);
-  });
-
-  it("拒绝含非法字符的字符串", () => {
-    const id = generateMsgId();
-    // 把首字符替换成 base64url 字母表外的 '*'，长度仍为 22。
-    expect(isValidMsgId("*" + id.slice(1))).toBe(false);
-  });
-
-  it("拒绝 version / variant 位不正确的值", () => {
-    const raw = decodeBase64Url(generateMsgId());
-
-    const badVersion = raw.slice();
-    badVersion[6] = (badVersion[6] & 0x0f) | 0x40; // version 4，非 7
-    expect(isValidMsgId(encodeBase64Url(badVersion))).toBe(false);
-
-    const badVariant = raw.slice();
-    badVariant[8] = badVariant[8] & 0x3f; // variant 0b00，非 0b10
-    expect(isValidMsgId(encodeBase64Url(badVariant))).toBe(false);
   });
 });

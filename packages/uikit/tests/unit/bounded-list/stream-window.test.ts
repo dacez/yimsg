@@ -1,5 +1,5 @@
 // BoundedStreamWindow（渲染引擎）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.6：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.6：
 //   A 全量渲染 / B 状态与边界提示 / C 触界检测 / D 锚点 / E scrollToKey / F 贴边判定
 //   G 指针期间推迟重建 / H 事件委托 / I 键盘导航 / J 内容 load / K 释放 / L 辅助导出。
 
@@ -8,7 +8,6 @@ import {
   BoundedStreamWindow,
   catchUpAtEdge,
   createFrameScheduler,
-  getOrCreateBoundedStreamWindow,
 } from '../../../src/app/bounded-list/stream-window';
 import {
   FakeDocument,
@@ -56,9 +55,9 @@ function withFrames(fn: (frames: { run: () => void; size: () => number }) => voi
   }
 }
 
-// ───────────────────────── A 全量渲染 ─────────────────────────
+// ───────────────────────── A 有键 DOM 协调 ─────────────────────────
 
-describe('BoundedStreamWindow / A 全量渲染', () => {
+describe('BoundedStreamWindow / A 有键 DOM 协调', () => {
   it('A1 渲染全部条目，不插入 spacer；keyOf 打锚点标识', () => {
     const { doc, scroller, view } = makeView<string>();
     view.render({
@@ -96,36 +95,109 @@ describe('BoundedStreamWindow / A 全量渲染', () => {
     expect(renderedClassNames(scroller)).toEqual(['row-b']);
   });
 
-  it('A4 每次 render 都是清空重建（先读后清），不做增量 diff', () => {
+  it('A4 相同条目再次 render 时保留原 DOM 节点', () => {
     const { doc, scroller, view } = makeView<string>();
     const renderItem = vi.fn((item: string) => [asElement(row(doc, `row-${item}`))]);
     view.render({ items: ['a', 'b'], keyOf: (s) => s, renderItem });
+    const originalNodes = [...scroller.children];
     renderItem.mockClear();
     view.render({ items: ['a', 'b'], keyOf: (s) => s, renderItem });
-    expect(renderItem).toHaveBeenCalledTimes(2); // 完全一样的状态也重建
+    expect(renderItem).toHaveBeenCalledTimes(2); // 仍生成候选 DOM，以反映语言等外部状态
+    expect(scroller.children[0]).toBe(originalNodes[0]);
+    expect(scroller.children[1]).toBe(originalNodes[1]);
     expect(renderedClassNames(scroller)).toEqual(['row-a', 'row-b']);
   });
 
-  it('A5 渲染时保持 scrollTop 先读后清恢复', () => {
+  it('A5 尾部追加只插入新行，不触碰既有行', () => {
+    const { doc, scroller, view } = makeView<string>();
+    const renderItem = (item: string) => [asElement(row(doc, `row-${item}`))];
+    view.render({ items: ['a', 'b'], keyOf: (s) => s, renderItem });
+    const originalNodes = [...scroller.children];
+
+    view.render({ items: ['a', 'b', 'c'], keyOf: (s) => s, renderItem });
+
+    expect(scroller.children[0]).toBe(originalNodes[0]);
+    expect(scroller.children[1]).toBe(originalNodes[1]);
+    expect(renderedClassNames(scroller)).toEqual(['row-a', 'row-b', 'row-c']);
+  });
+
+  it('A6 只替换真实变化的条目，未变化兄弟保持节点身份', () => {
+    type Item = { id: string; label: string };
+    const { doc, scroller, view } = makeView<Item>();
+    const renderItem = (item: Item) => [asElement(row(doc, `row-${item.id}-${item.label}`))];
+    const keyOf = (item: Item) => item.id;
+    view.render({ items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], keyOf, renderItem });
+    const originalNodes = [...scroller.children];
+
+    view.render({ items: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B2' }], keyOf, renderItem });
+
+    expect(scroller.children[0]).toBe(originalNodes[0]);
+    expect(scroller.children[1]).not.toBe(originalNodes[1]);
+    expect(renderedClassNames(scroller)).toEqual(['row-a-A', 'row-b-B2']);
+  });
+
+  it('A7 同 identity 的业务数据变化即使 DOM 相同也替换节点，避免保留旧条目监听', () => {
+    type Item = { id: string; action: string };
+    const { doc, scroller, view } = makeView<Item>();
+    const seen: string[] = [];
+    const renderItem = (item: Item) => {
+      const element = row(doc, `row-${item.id}`);
+      element.addEventListener('click', () => seen.push(item.action));
+      return [asElement(element)];
+    };
+    const keyOf = (item: Item) => item.id;
+    view.render({ items: [{ id: 'a', action: 'old' }], keyOf, renderItem });
+    const original = scroller.children[0];
+
+    view.render({ items: [{ id: 'a', action: 'new' }], keyOf, renderItem });
+    scroller.children[0].dispatch('click');
+
+    expect(scroller.children[0]).not.toBe(original);
+    expect(seen).toEqual(['new']);
+  });
+
+  it('A7b 内部数据更新可按身份复用 DOM 相同的行，忽略 UI 未使用的快照字段差异', () => {
+    type Item = { id: string; hiddenRevision: number };
+    const { doc, scroller, view } = makeView<Item>();
+    const renderItem = (item: Item) => [asElement(row(doc, `row-${item.id}`))];
+    view.render({
+      items: [{ id: 'a', hiddenRevision: 1 }],
+      keyOf: (item) => item.id,
+      renderItem,
+      reuseUnchangedRows: true,
+    });
+    const original = scroller.children[0];
+
+    view.render({
+      items: [{ id: 'a', hiddenRevision: 2 }],
+      keyOf: (item) => item.id,
+      renderItem,
+      reuseUnchangedRows: true,
+    });
+
+    expect(scroller.children[0]).toBe(original);
+  });
+
+  it('A8 渲染时保持 scrollTop 先读后改恢复', () => {
     const { scroller, view, doc } = makeView<number>();
     scroller.scrollTop = 200;
     view.render({ items: [1, 2, 3], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
     expect(scroller.scrollTop).toBe(200);
   });
 
-  it('A6 渲染过程中 scrollTop 被浏览器夹回 0 时会被显式恢复', () => {
+  it('A9 渲染过程中 scrollTop 被浏览器夹回 0 时会被显式恢复', () => {
     const { scroller, view, doc } = makeView<number>();
     scroller.scrollTop = 320;
     view.render({
       items: [1],
       keyOf: String,
-      // 模拟真实浏览器：清空内容导致 scrollTop 被夹回 0。
+      // 模拟真实浏览器：DOM 协调导致 scrollTop 被夹回 0。
       renderItem: () => { scroller.scrollTop = 0; return [asElement(row(doc))]; },
     });
     expect(scroller.scrollTop).toBe(320);
   });
 
-  it('A7 大窗口（1000 行）一次性渲染，节点数与条目数严格一致', () => {
+  it('A10 大窗口（1000 行）一次性渲染，节点数与条目数严格一致', () => {
     const { doc, scroller, view } = makeView<number>();
     const items = Array.from({ length: 1000 }, (_, i) => i);
     view.render({ items, keyOf: String, renderItem: (n) => [asElement(row(doc, `row-${n}`))] });
@@ -372,6 +444,7 @@ describe('BoundedStreamWindow / D 锚点（内容双端变化画面不动）', (
     return (item: number, index: number) => {
       const el = row(doc, `row-${item}`);
       el.rect = { top: index * 50, bottom: index * 50 + 50 };
+      el.setAttribute('data-test-layout-index', String(index));
       return [asElement(el)];
     };
   }
@@ -407,6 +480,7 @@ describe('BoundedStreamWindow / D 锚点（内容双端变化画面不动）', (
       const el = row(doc, `row-${item}`);
       // 条目 1 完全在视口顶之上（bottom=50 < top=100），锚点应落在条目 2。
       el.rect = { top: index * 50, bottom: index * 50 + 50 };
+      el.setAttribute('data-test-layout-index', String(index));
       return [asElement(el)];
     };
     view.render({ items: [1, 2, 3], keyOf: (n) => String(n), renderItem });
@@ -1034,7 +1108,7 @@ describe('BoundedStreamWindow / K dispose：内存泄漏回归', () => {
   });
 
   it('K6 dispose 后 scrollToKey 仍能查询当前 DOM（纯查询，不依赖 lastState）', () => {
-    const { scroller, view, doc } = makeView<string>();
+    const { view, doc } = makeView<string>();
     view.render({ items: ['a'], keyOf: (s) => s, renderItem: () => [asElement(row(doc))] });
     view.dispose();
     expect(view.scrollToKey('a')).toBe(true);
@@ -1086,37 +1160,31 @@ describe('BoundedStreamWindow / K dispose：内存泄漏回归', () => {
     expect(viewOf(doc).listenerCount('pointerup')).toBe(0);
     expect(viewOf(doc).listenerCount('pointercancel')).toBe(0);
   });
+
+  it('K11 dispose 清空有键协调缓存，不继续持有条目与 DOM 引用', () => {
+    const { view, doc } = makeView<{ id: string }>();
+    view.render({
+      items: [{ id: 'a' }],
+      keyOf: (item) => item.id,
+      renderItem: () => [asElement(row(doc, 'row-a'))],
+    });
+    const cache = (view as unknown as { renderedRows: Map<string, unknown> }).renderedRows;
+    expect(cache.size).toBe(1);
+    view.dispose();
+    expect(cache.size).toBe(0);
+  });
 });
 
 // ───────────────────────── L 辅助导出 ─────────────────────────
 
-describe('getOrCreateBoundedStreamWindow', () => {
-  it('L1 对同一 owner 复用同一实例', () => {
-    const cache = new WeakMap<object, BoundedStreamWindow<string>>();
-    const owner = {};
-    const factory = vi.fn(() => new BoundedStreamWindow<string>({ scrollElement: asElement(new FakeDocument().createElement()) }));
-    expect(getOrCreateBoundedStreamWindow(cache, owner, factory)).toBe(getOrCreateBoundedStreamWindow(cache, owner, factory));
-    expect(factory).toHaveBeenCalledTimes(1);
-  });
-
-  it('L2 不同 owner 各自创建一个实例', () => {
-    const cache = new WeakMap<object, BoundedStreamWindow<string>>();
-    const factory = vi.fn(() => new BoundedStreamWindow<string>({ scrollElement: asElement(new FakeDocument().createElement()) }));
-    const a = getOrCreateBoundedStreamWindow(cache, {}, factory);
-    const b = getOrCreateBoundedStreamWindow(cache, {}, factory);
-    expect(a).not.toBe(b);
-    expect(factory).toHaveBeenCalledTimes(2);
-  });
-});
-
 describe('catchUpAtEdge（列表贴顶/贴底追平的统一契约）', () => {
-  it('L3 有待追平的更新且已贴边缘时才追平', () => {
+  it('L1 有待追平的更新且已贴边缘时才追平', () => {
     const catchUp = vi.fn();
     catchUpAtEdge(() => true, () => true, catchUp);
     expect(catchUp).toHaveBeenCalledTimes(1);
   });
 
-  it('L4 没有待追平的更新时短路，连贴边判定都不执行', () => {
+  it('L2 没有待追平的更新时短路，连贴边判定都不执行', () => {
     const catchUp = vi.fn();
     const isAtEdge = vi.fn(() => true);
     catchUpAtEdge(() => false, isAtEdge, catchUp);
@@ -1124,13 +1192,13 @@ describe('catchUpAtEdge（列表贴顶/贴底追平的统一契约）', () => {
     expect(isAtEdge).not.toHaveBeenCalled();
   });
 
-  it('L5 有待追平的更新但不在边缘时不追平', () => {
+  it('L3 有待追平的更新但不在边缘时不追平', () => {
     const catchUp = vi.fn();
     catchUpAtEdge(() => true, () => false, catchUp);
     expect(catchUp).not.toHaveBeenCalled();
   });
 
-  it('L6 catchUp 返回 Promise 时按 fire-and-forget 处理', async () => {
+  it('L4 catchUp 返回 Promise 时按 fire-and-forget 处理', async () => {
     let settled = false;
     catchUpAtEdge(() => true, () => true, () => new Promise<void>((resolve) => setTimeout(() => { settled = true; resolve(); }, 0)));
     expect(settled).toBe(false);
@@ -1140,7 +1208,7 @@ describe('catchUpAtEdge（列表贴顶/贴底追平的统一契约）', () => {
 });
 
 describe('createFrameScheduler', () => {
-  it('L7 同一帧内合并多次调用', () => {
+  it('L5 同一帧内合并多次调用', () => {
     withFrames((frames) => {
       const fn = vi.fn();
       const schedule = createFrameScheduler(fn);
@@ -1153,7 +1221,7 @@ describe('createFrameScheduler', () => {
     });
   });
 
-  it('L8 上一帧执行完之后再次调用会重新排队', () => {
+  it('L6 上一帧执行完之后再次调用会重新排队', () => {
     withFrames((frames) => {
       const fn = vi.fn();
       const schedule = createFrameScheduler(fn);
@@ -1165,7 +1233,7 @@ describe('createFrameScheduler', () => {
     });
   });
 
-  it('L9 cancel 后已排队的调用不再执行', () => {
+  it('L7 cancel 后已排队的调用不再执行', () => {
     withFrames((frames) => {
       const fn = vi.fn();
       const schedule = createFrameScheduler(fn);
@@ -1176,7 +1244,7 @@ describe('createFrameScheduler', () => {
     });
   });
 
-  it('L10 cancel 之后仍可以重新调度（token 递增而非永久失效）', () => {
+  it('L8 cancel 之后仍可以重新调度（token 递增而非永久失效）', () => {
     withFrames((frames) => {
       const fn = vi.fn();
       const schedule = createFrameScheduler(fn);
@@ -1188,7 +1256,7 @@ describe('createFrameScheduler', () => {
     });
   });
 
-  it('L11 未调度时 cancel 是空操作', () => {
+  it('L9 未调度时 cancel 是空操作', () => {
     withFrames((frames) => {
       const fn = vi.fn();
       const schedule = createFrameScheduler(fn);
@@ -1198,7 +1266,7 @@ describe('createFrameScheduler', () => {
     });
   });
 
-  it('L12 环境没有 requestAnimationFrame 时同步执行（node 单测环境的默认路径）', () => {
+  it('L10 环境没有 requestAnimationFrame 时同步执行（node 单测环境的默认路径）', () => {
     const fn = vi.fn();
     const schedule = createFrameScheduler(fn);
     schedule();

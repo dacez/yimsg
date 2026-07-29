@@ -130,6 +130,8 @@ test.describe('Conversation list bounded stream window', () => {
       .locator('#conversation-list .conversation-item.active')
       .getAttribute('data-key');
     expect(activeKey).toBeTruthy();
+    const conversationRows = page.locator('#conversation-list .conversation-item');
+    expect(await conversationRows.count()).toBeGreaterThan(1);
 
     // 把会话列表滚到底部（远离顶部），制造“发送后需要置顶”的前置条件。
     await expect(async () => {

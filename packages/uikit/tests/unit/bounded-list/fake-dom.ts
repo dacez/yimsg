@@ -77,8 +77,18 @@ export class FakeElement {
   }
 
   appendChild(child: FakeElement): FakeElement {
+    child.parentElement?.removeChild(child);
     child.parentElement = this;
     this.children.push(child);
+    return child;
+  }
+
+  insertBefore(child: FakeElement, reference: FakeElement | null): FakeElement {
+    if (child === reference) return child;
+    child.parentElement?.removeChild(child);
+    const index = reference === null ? this.children.length : this.children.indexOf(reference);
+    child.parentElement = this;
+    this.children.splice(index < 0 ? this.children.length : index, 0, child);
     return child;
   }
 
@@ -103,6 +113,15 @@ export class FakeElement {
 
   removeAttribute(name: string): void {
     this.attributes.delete(name);
+  }
+
+  isEqualNode(other: FakeElement | null): boolean {
+    if (!other || this.className !== other.className || this.text !== other.text) return false;
+    if (this.attributes.size !== other.attributes.size || this.children.length !== other.children.length) return false;
+    for (const [name, value] of this.attributes) {
+      if (other.attributes.get(name) !== value) return false;
+    }
+    return this.children.every((child, index) => child.isEqualNode(other.children[index]));
   }
 
   addEventListener(type: string, handler: (ev: any) => void, options?: boolean | { capture?: boolean }): void {
@@ -192,16 +211,8 @@ export function capturedListeners(el: FakeElement, type: string): Array<(ev: any
   return (el.listeners.get(type) ?? []).map((entry) => entry.handler);
 }
 
-export function createScroller(doc: FakeDocument = new FakeDocument()): FakeElement {
-  return doc.createElement();
-}
-
 export function asElement<T = HTMLElement>(fake: FakeElement): T {
   return fake as unknown as T;
-}
-
-export function asDoc(fake: FakeDocument): Document {
-  return fake as unknown as Document;
 }
 
 export function row(doc: FakeDocument, className = 'row'): FakeElement {

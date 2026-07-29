@@ -147,6 +147,7 @@ interface HarnessEntry {
 }
 
 const entries = new Map<string, HarnessEntry>();
+const rememberedRows = new Map<string, Map<string, HTMLElement>>();
 const sharedStores = new Map<string, SelectionStore>();
 const customRegistry = new Map<
   string,
@@ -649,6 +650,7 @@ const api = {
     entry.list.dispose();
     entry.root.remove();
     entries.delete(key);
+    rememberedRows.delete(key);
   },
   reset(key: string, options?: { query?: TestQuery; pinEdge?: boolean }): Promise<void> {
     return getEntry(key).list.reset(options);
@@ -846,6 +848,20 @@ const api = {
   rowIds(key: string): string[] {
     return Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('[data-bsw-key]'))
       .map((element) => element.dataset.id ?? '');
+  },
+  rememberRows(key: string): void {
+    const rows = Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('[data-bsw-key]'));
+    rememberedRows.set(key, new Map(rows.map((element) => [element.dataset.id ?? '', element])));
+  },
+  rememberedRowIdentity(key: string): Record<string, boolean> {
+    const remembered = rememberedRows.get(key) ?? new Map<string, HTMLElement>();
+    const current = new Map(
+      Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('[data-bsw-key]'))
+        .map((element) => [element.dataset.id ?? '', element] as const),
+    );
+    return Object.fromEntries(
+      [...remembered].map(([id, element]) => [id, current.get(id) === element]),
+    );
   },
   allPartIds(key: string): string[] {
     return Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('.bl-row'))

@@ -17,7 +17,12 @@ type AuthSuccess = {
 };
 
 export function createAuthView(app: AppInstance) {
+  let sessionKickCleanup: Promise<void> | null = null;
+
   async function login(username: string, password: string) {
+    // session:kicked 会异步清理旧 transport。登录页已经显示时清理可能仍未结束；
+    // 若直接登录，旧 logout 会在新连接建立后把它断开，表现为偶发“连接失败”。
+    if (sessionKickCleanup) await sessionKickCleanup;
     const result = await app.client.login(username, password);
     await finalizeAuthSuccess(result);
   }
@@ -210,7 +215,12 @@ export function createAuthView(app: AppInstance) {
 
   function handleSessionKicked() {
     app.storage.clearStoredToken();
-    void app.client.logout();
+    if (!sessionKickCleanup) {
+      const cleanup = app.client.logout().finally(() => {
+        if (sessionKickCleanup === cleanup) sessionKickCleanup = null;
+      });
+      sessionKickCleanup = cleanup;
+    }
     showAuthView();
     app.emitLogout();
     app.showToast(app.t('auth.sessionExpired'), 'error');

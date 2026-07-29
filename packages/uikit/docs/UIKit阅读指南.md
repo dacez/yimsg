@@ -74,7 +74,7 @@ HTML 的基本单元是**元素（element）**，写法是一对尖括号标签�
 - `class="auth-card"` 是**属性（attribute）**，属性是 `名="值"` 的键值对。`class` 最特殊也最常用——它是给这个元素贴的「标签名集合」，CSS 和 JS 都靠它来定位元素。
 - `<div>...</div>` 之间是**内容**，可以是文字，也可以再嵌套别的元素。
 
-元素层层嵌套就形成一棵树。看 `shell.ts:11-31`（登录区）的真实结构，去掉细节后是这样：
+元素层层嵌套就形成一棵树。看 `shell.ts` 中登录区的真实结构，去掉细节后是这样：
 
 ```html
 <section id="view-auth" class="view">      <!-- 整个登录视图 -->
@@ -107,7 +107,7 @@ HTML 的基本单元是**元素（element）**，写法是一对尖括号标签�
 | `<textarea>` | 多行输入框 | — |
 | `<form>` | 表单容器，可整体提交（触发 `submit` 事件） | — |
 | `<img>` | 图片，`src` 指向地址 | — |
-| `<svg>` | 矢量图标，本项目导航栏图标都是内联 `<svg>`（见 `shell.ts:36-54`） | — |
+| `<svg>` | 矢量图标，本项目导航栏图标都是内联 `<svg>`（见 `shell.ts`） | — |
 | `<h1>`~`<h4>` | 标题，数字越小越大 | — |
 | `<p>` | 段落文字 | — |
 
@@ -115,7 +115,7 @@ HTML 的基本单元是**元素（element）**，写法是一对尖括号标签�
 
 - **`class`**：元素的「分类标签」，可以有多个，空格分隔。例如 `class="btn btn-primary btn-block"` 表示这个按钮同时属于 `btn`、`btn-primary`、`btn-block` 三类，CSS 会把三类的样式叠加上去。这是 CSS 复用的核心机制。
 - **`id`**：元素的**全局唯一标识**，整页只能出现一次。本项目用 `id` 给「需要 JS 精确抓取的关键节点」命名，例如 `id="msg-input"`（消息输入框）、`id="conversation-list"`（会话列表容器）。JS 侧用 `app.$('msg-input')` 就能拿到它（见 §6.2）。
-- **`data-*`**：自定义数据属性，名字以 `data-` 开头，专门用来在 HTML 元素上挂业务数据。例如 `data-view="chat"`、`data-key="..."`。JS 侧通过 `element.dataset.view` 读取（注意 `data-view` 在 JS 里变成 `dataset.view`，连字符转驼峰）。本项目用它把「这个 DOM 节点对应哪个业务对象」记在节点上，例如 `conversation-list.ts:224` 给每个会话项写 `div.dataset.key = key`，点击时就知道点的是哪个会话。
+- **`data-*`**：自定义数据属性，名字以 `data-` 开头，专门用来在 HTML 元素上挂业务数据。例如 `data-view="chat"`、`data-key="..."`。JS 侧通过 `element.dataset.view` 读取（注意 `data-view` 在 JS 里变成 `dataset.view`，连字符转驼峰）。本项目用它把「这个 DOM 节点对应哪个业务对象」记在节点上，例如 `conversation-list.ts` 的 `renderConversationRow` 会给会话项写 `dataset.key`，点击时就知道点的是哪个会话。
 
 ## 4. CSS 基础：渲染规则
 
@@ -150,9 +150,9 @@ CSS（层叠样式表）回答一个问题：**「长什么样的元素，应该
 | `A:hover` | **伪类**：鼠标悬停时的 A | `.btn-primary:hover` |
 | `A:not(x)` | 不满足 x 的 A | `.message-row:not(.self)` |
 | `A::placeholder` | **伪元素**：输入框的占位提示文字 | `.input::placeholder` |
-| `[attr=val]` | 按属性匹配 | `.nav-item[data-view="chat"]`（见 `conversation-list.ts:154`） |
+| `[attr=val]` | 按属性匹配 | `.nav-item[data-view="chat"]`（见 `conversation-list.ts`） |
 
-把这些组合起来读。例如 `style.css:109`：
+把这些组合起来读。例如 `style.css` 中的会话列表选择器：
 
 ```css
 .message-row:not(.self) .message-bubble { background: var(--bubble-other); ... }
@@ -164,15 +164,15 @@ CSS（层叠样式表）回答一个问题：**「长什么样的元素，应该
 
 CSS 名字里的「层叠（Cascading）」指：一个元素可能被多条规则命中，浏览器按**优先级**合并它们。规则简化版优先级从高到低：
 
-1. 带 `!important` 的声明（本项目在布局切换里用，例如 `style.css:266` 的手机布局强制覆盖）。
+1. 带 `!important` 的声明（本项目在 `style.css` 的手机布局规则里用于强制覆盖）。
 2. 选择器越「具体」越优先：`#id` > `.class` > `标签名`。
 3. 同等具体时，**后写的覆盖先写的**。
 
-这解释了本项目按钮为什么能层层叠加：`class="btn btn-primary btn-block"` 命中三条规则，`.btn` 给基础形状，`.btn-primary` 给主色，`.btn-block` 给 `width:100%`，互不冲突地合并成最终样式（见 `style.css:14-23`）。
+这解释了本项目按钮为什么能层层叠加：`class="btn btn-primary btn-block"` 命中三条规则，`.btn` 给基础形状，`.btn-primary` 给主色，`.btn-block` 给 `width:100%`，互不冲突地合并成最终样式（见 `style.css`）。
 
 ### 4.4 CSS 变量：设计 token
 
-`style.css:1` 第一行（`:root{--primary:#5b5bf0; ...}`）定义了一堆 `--xxx` 变量，这叫 **CSS 自定义属性**，是本项目的「设计 token」。
+`style.css` 的 `:root` 规则定义了一组 `--xxx` 变量，这叫 **CSS 自定义属性**，是本项目的「设计 token」。
 
 - 定义：`--primary: #5b5bf0;`（在 `:root` 里定义，`:root` 表示整篇文档的根，相当于全局作用域）。
 - 使用：`color: var(--primary);`，`var(...)` 就是取值。
@@ -204,7 +204,7 @@ CSS 名字里的「层叠（Cascading）」指：一个元素可能被多条规�
 
 对应属性：`margin`、`border`、`padding`、`width`/`height`。
 
-本项目在 `style.css:2` 设了一行非常重要的全局规则：
+本项目在 `style.css` 设了一条非常重要的全局规则：
 
 ```css
 *,*:before,*:after { box-sizing: border-box; margin:0; padding:0; }
@@ -237,7 +237,7 @@ CSS 名字里的「层叠（Cascading）」指：一个元素可能被多条规�
 | `flex:1` | 「占满剩余空间」，多个都写 `flex:1` 则平分 |
 | `flex-shrink:0` | 「我不许被压缩」，空间不够时保持原尺寸 |
 
-举本项目最典型的例子，会话列表项 `style.css:93`：
+举本项目最典型的例子，`style.css` 中的会话列表项：
 
 ```css
 .conversation-item{
@@ -248,9 +248,9 @@ CSS 名字里的「层叠（Cascading）」指：一个元素可能被多条规�
 }
 ```
 
-里面的 `.conversation-info`（`style.css:96`）写了 `flex:1`，意思是「头像和时间各占自己需要的宽度，中间的信息区占满剩下的所有横向空间」。这就是聊天列表「头像靠左、时间靠右、中间名字自适应」的实现。
+里面的 `.conversation-info` 写了 `flex:1`，意思是「头像和时间各占自己需要的宽度，中间的信息区占满剩下的所有横向空间」。这就是聊天列表「头像靠左、时间靠右、中间名字自适应」的实现。
 
-再看整个应用的主骨架是怎么用 flex 拼出来的（`style.css:58,63,71,72,75`）：
+再看整个应用的主骨架是怎么用 flex 拼出来的（见 `style.css` 中 `#app`、`#navbar`、`#left-panel` 与 `#center-panel` 的规则）：
 
 ```mermaid
 flowchart LR
@@ -266,7 +266,7 @@ flowchart LR
 
 最外层 `#app` 是纵向 flex 容器：顶部是跨聊天/通讯录/设置所有视图共享的全局提示条 `#status-bar`，下方 `#app-frame` 才是原来的横向三段：左侧导航栏固定 56px 不缩，主内容区 `flex:1` 吃掉剩余宽度；主内容区内部又是一层 flex，会话列表固定 280px、聊天区 `flex:1`、详情面板固定 300px。**整个布局是三层嵌套的 flex：纵向的 #app，横向的 #app-frame，纵向的 #center-panel。**
 
-而 `#center-panel`（`style.css:75`）自己是 `flex-direction:column`（纵向 flex），于是它内部「聊天头 / 消息列表 / 输入区」从上到下排列，其中 `#message-list`（`style.css:78`）写 `flex:1` 吃掉中间所有高度并 `overflow-y:auto`（内容超出就内部滚动）——这就是「头和输入框固定、中间消息区滚动」的实现。
+而 `#center-panel` 自己是 `flex-direction:column`（纵向 flex），于是它内部「聊天头 / 消息列表 / 输入区」从上到下排列，其中 `#message-list` 写 `flex:1` 吃掉中间所有高度并 `overflow-y:auto`（内容超出就内部滚动）——这就是「头和输入框固定、中间消息区滚动」的实现。
 
 ### 4.7 定位 position：脱离常规排版
 
@@ -275,17 +275,17 @@ flowchart LR
 | 值 | 含义 | 本项目用处 |
 |---|---|---|
 | `static` | 默认，按文档流 | — |
-| `relative` | 相对自己原位微调，且**成为子元素 `absolute` 的定位基准** | `.avatar-wrapper`（`style.css:100`）做未读红点的基准 |
-| `absolute` | 相对最近的 `relative` 祖先定位，脱离文档流 | `.unread-badge`（`style.css:102`）钉在头像左上角 |
-| `fixed` | 相对**屏幕**定位，滚动也不动 | `.modal-overlay`（`style.css:35`）全屏遮罩、`.toast-container`（`style.css:43`）右上角提示 |
+| `relative` | 相对自己原位微调，且**成为子元素 `absolute` 的定位基准** | `.avatar-wrapper` 做未读红点的基准 |
+| `absolute` | 相对最近的 `relative` 祖先定位，脱离文档流 | `.unread-badge` 钉在头像左上角 |
+| `fixed` | 相对**屏幕**定位，滚动也不动 | `.modal-overlay` 全屏遮罩、`.toast-container` 右上角提示 |
 
-配合 `top`/`right`/`bottom`/`left`/`z-index`（层叠高度，越大越靠上层）使用。例如未读红点 `style.css:102`：父元素 `.avatar-wrapper` 设 `position:relative`，红点设 `position:absolute; top:-4px; left:-4px`，就被钉在头像左上角外侧。
+配合 `top`/`right`/`bottom`/`left`/`z-index`（层叠高度，越大越靠上层）使用。例如 `style.css` 的未读红点规则：父元素 `.avatar-wrapper` 设 `position:relative`，红点设 `position:absolute; top:-4px; left:-4px`，就被钉在头像左上角外侧。
 
 ### 4.8 媒体查询与过渡动画（先认识即可）
 
-- **`@media`**：根据屏幕条件套用不同规则。例如 `style.css:60` 的 `@media(min-width:1280px)`：屏幕宽于 1280px 时给 `#app` 加圆角和外边距（大屏上居中成一个卡片）。本项目还用 `@media (hover:hover)`、`(pointer:coarse)` 判断是不是触屏设备（`style.css:204,254`）。
-- **`transition`**：属性变化时平滑过渡而非瞬变。例如 `.btn`（`style.css:14`）写 `transition:background-color .2s`，悬停变色时有 0.2 秒渐变。
-- **`@keyframes` + `animation`**：定义关键帧动画。例如 `modal-in`（`style.css:38`）让弹窗淡入并轻微上移。
+- **`@media`**：根据屏幕条件套用不同规则。例如 `style.css` 的 `@media(min-width:1280px)`：屏幕宽于 1280px 时给 `#app` 加圆角和外边距（大屏上居中成一个卡片）。本项目还用 `@media (hover:hover)`、`(pointer:coarse)` 判断是不是触屏设备。
+- **`transition`**：属性变化时平滑过渡而非瞬变。例如 `.btn` 写 `transition:background-color .2s`，悬停变色时有 0.2 秒渐变。
+- **`@keyframes` + `animation`**：定义关键帧动画。例如 `modal-in` 让弹窗淡入并轻微上移。
 
 这些读到时知道是「响应式」和「动效」即可，不影响理解主逻辑。
 
@@ -300,7 +300,7 @@ const el = document.getElementById('msg-input');     // 按 id 抓唯一节点
 const items = container.querySelectorAll('.tab');     // 按 CSS 选择器抓一组
 ```
 
-本项目把抓取封装成了 `app.$('msg-input')`（见 `app-instance.ts:253`），等价于 `getElementById`，找不到会抛错。
+本项目把抓取封装成了 `app.$('msg-input')`（见 `app-instance.ts`），等价于 `getElementById`，找不到会抛错。
 
 ### 5.2 建节点 / 删节点 / 挂节点
 
@@ -322,7 +322,7 @@ container.innerHTML = '';                     // 清空容器所有子节点
 | `el.textContent = name` | 把 name 当**纯文本**塞进去 | 安全。即使 name 含 `<script>` 也只会显示成文字 |
 | `el.innerHTML = html` | 把字符串当 **HTML 解析**并建树 | 危险。字符串里的标签会被当真，可能被注入攻击 |
 
-本项目的硬性规则：**凡是来自用户的内容（昵称、消息文本、备注…），只能走 `textContent`，或先用 `escapeHtml()` 转义再拼进 `innerHTML`。** 详见 §9。例如消息正文 `message-list.ts:95` 用 `div.textContent = ...`；而拼接结构时（如 `conversation-list.ts:239`）对名字调用了 `app.escapeHtml(name)`。
+本项目的硬性规则：**凡是来自用户的内容（昵称、消息文本、备注…），只能走 `textContent`，或先用 `escapeHtml()` 转义再拼进 `innerHTML`。** 详见 §9。例如消息正文在 `message-list.ts` 中用 `textContent` 写入；而 `conversation-list.ts` 拼接结构时会对名字调用 `app.escapeHtml(name)`。
 
 ### 5.4 改 class 与样式
 
@@ -333,7 +333,7 @@ el.classList.toggle('collapsed'); // 有则删、无则加
 el.style.height = '120px';        // 直接改某条内联样式
 ```
 
-本项目控制「显示/隐藏」几乎全靠一个工具 class：`.hidden{display:none!important}`（`style.css:13`）。要藏一个元素就 `el.classList.add('hidden')`，要显示就 `remove('hidden')`。视图切换（聊天/通讯录/设置）本质就是给当前视图去掉 `hidden`、给其它视图加上 `hidden`。
+本项目控制「显示/隐藏」几乎全靠 `style.css` 中的工具 class：`.hidden{display:none!important}`。要藏一个元素就 `el.classList.add('hidden')`，要显示就 `remove('hidden')`。视图切换（聊天/通讯录/设置）本质就是给当前视图去掉 `hidden`、给其它视图加上 `hidden`。
 
 ### 5.5 读写自定义数据
 
@@ -342,7 +342,7 @@ div.dataset.key = key;            // 写：对应 HTML 的 data-key 属性
 const k = div.dataset.key;        // 读
 ```
 
-见 `conversation-list.ts:224`，每个会话项把业务 key 记在 `dataset.key` 上。
+见 `conversation-list.ts` 的 `renderConversationRow`，每个会话项把业务 key 记在 `dataset.key` 上。
 
 ### 5.6 监听事件
 
@@ -360,12 +360,12 @@ form.addEventListener('submit', (e) => { e.preventDefault(); /* 拦截默认提�
 
 ### 6.1 一份静态骨架 + 运行时填充
 
-整个应用的初始 HTML 不是写在 `.html` 文件里，而是 `shell.ts` 里的一个**模板字符串** `APP_SHELL_HTML`（`shell.ts:1-161`）。它一次性声明了所有视图的**外壳**：登录区、三栏聊天区、通讯录区、设置区、弹窗层、toast 层。注意这里很多容器是**空的**，例如 `<div id="conversation-list"></div>`（`shell.ts:61`）——真正的会话项是运行时由 `conversation-list.ts` 填进去的。
+整个应用的初始 HTML 不是写在 `.html` 文件里，而是 `shell.ts` 里的一个**模板字符串** `APP_SHELL_HTML`。它一次性声明了所有视图的**外壳**：登录区、三栏聊天区、通讯录区、设置区、弹窗层、toast 层。注意这里很多容器是**空的**，例如 `<div id="conversation-list"></div>`——真正的会话项是运行时由 `conversation-list.ts` 填进去的。
 
 挂载这份骨架有两种方式（这也是「主应用」和「嵌入式 UIKit」的区别）：
 
-- 主应用：`app.ts:16` 直接 `document.body.innerHTML = APP_SHELL_HTML`，占满整个页面。
-- 嵌入式：`embed.ts:138-171` 用 **Shadow DOM**（影子 DOM）挂载，把整套 UI 关进一个隔离容器，避免和宿主页面的样式互相污染（详见 §9.3 与 `UIKit方案.md`）。
+- 主应用：`app.ts` 直接把 `APP_SHELL_HTML` 写入页面主体，占满整个页面。
+- 嵌入式：`embed.ts` 用 **Shadow DOM**（影子 DOM）挂载，把整套 UI 关进一个隔离容器，避免和宿主页面的样式互相污染（详见 §9.3 与 `UIKit方案.md`）。
 
 ### 6.2 `app` 这个「上帝对象」
 
@@ -373,60 +373,58 @@ form.addEventListener('submit', (e) => { e.preventDefault(); /* 拦截默认提�
 
 | 成员 | 作用 |
 |---|---|
-| `app.$('id')` | 按 id 抓 DOM 节点（`app-instance.ts:253`） |
+| `app.$('id')` | 按 id 抓 DOM 节点（`app-instance.ts`） |
 | `app.dom` | 一组 DOM 句柄与 `ownerDocument`（建节点用 `app.dom.ownerDocument.createElement`，保证多实例/Shadow DOM 下挂到正确的文档） |
 | `app.client` | SDK 客户端，所有数据/网络都走它（`app.client.getMessages(...)` 等） |
 | `app.chatState` | 聊天视图的运行时状态（当前会话、消息分页、选择态…） |
-| `app.t('key')` | 国际化取词（`app-instance.ts:365`），见 §6.5 |
-| `app.escapeHtml(s)` | HTML 转义（`app-instance.ts:259`），见 §9 |
+| `app.t('key')` | 国际化取词（`app-instance.ts`），见 §6.5 |
+| `app.escapeHtml(s)` | HTML 转义（`app-instance.ts`），见 §9 |
 | `app.showToast(text)` | 右上角弹一条提示 |
-| `app.avatarInnerHtml(...)` | 生成头像内部 HTML（有图用图，没图用昵称首字母，`app-instance.ts:330`） |
+| `app.avatarInnerHtml(...)` | 生成头像内部 HTML（有图用图，没图用昵称首字母，见 `app-instance.ts`） |
 
-> 为什么处处传 `app` 而不用全局变量？因为 UIKit 支持**一个页面挂多个独立实例**（`layout.ts:7` 的注释点明了这点）。所有状态都挂在 `app` 上、所有 DOM 都从 `app.dom` 取，实例之间才不会串。这跟后端「不要用全局可变状态、把上下文显式传进每个函数」是同一个工程纪律。
+> 为什么处处传 `app` 而不用全局变量？因为 UIKit 支持**一个页面挂多个独立实例**（见 `layout.ts` 的模块说明）。所有状态都挂在 `app` 上、所有 DOM 都从 `app.dom` 取，实例之间才不会串。这跟后端「不要用全局可变状态、把上下文显式传进每个函数」是同一个工程纪律。
 
 ### 6.3 渲染函数：`render*` 模式
 
-每个列表/面板都有一个 `renderXxx(app)` 函数，职责是「读当前状态 → 重建这块 DOM」。典型结构（以 `conversation-list.ts` 的 `renderConversationPage` 为模板，`conversation-list.ts:122-253`）：
+普通面板常用 `renderXxx(app)` 读取状态后更新 DOM；分页列表则统一把数据、分页和交互交给 `BoundedList`。会话列表的核心结构如下：
 
 ```ts
-function renderConversationPage(app) {
-  const container = app.$('conversation-list');   // 1. 抓容器
-  // 2. 处理空态
-  if (空) { container.innerHTML = `<div class="empty-state">...</div>`; return; }
-  container.innerHTML = '';                         // 3. 清空旧内容
-  for (const conv of conversations) {               // 4. 逐条建节点
+const list = createBoundedList({
+  scrollElement: app.$('conversation-list'),
+  source: serverPageSource(request => app.client.getConversations(request)),
+  identityOf: conversationIdentity,
+  renderItem(conv) {
     const div = app.dom.ownerDocument.createElement('div');
-    div.className = 'conversation-item' + (选中 ? ' active' : '');
-    div.dataset.key = key;                          //    业务 key 记到节点上
-    div.innerHTML = `... ${app.escapeHtml(name)} ...`; //  内部结构（注意转义）
-    div.addEventListener('click', () => openConversation(app, conv)); // 5. 绑事件
-    container.appendChild(div);                      // 6. 挂上去
-  }
-}
+    div.className = 'conversation-item';
+    div.innerHTML = `... ${app.escapeHtml(name)} ...`;
+    return [div];
+  },
+  onActivate: conv => openConversation(app, conv),
+});
 ```
 
-注意这里**混用**了两种建 DOM 的方式，是有讲究的：
+组件负责翻页、防重、窗口裁剪、空态和事件委托；业务只负责稳定身份、数据源和单行渲染。单行内部仍会混用两种建 DOM 的方式：
 
 - **外层节点用 `createElement`**：因为要给它 `addEventListener` 绑点击、要写 `dataset`、要按条件加 class，用对象方式更清晰也更安全。
 - **节点内部的纯展示结构用 `innerHTML` 模板字符串**：内部是一坨静态结构（头像框、名字、时间、预览），用字符串一把写完更省事；但凡是变量都套 `app.escapeHtml(...)` 防注入。
 
-这个「外层 createElement 绑逻辑、内层 innerHTML 铺结构」的组合，是本项目视图代码的**标准手法**，在 `contacts.ts`、`message-list.ts`、`detail-panel.ts` 里反复出现。
+这个「外层 `createElement`、内层 `innerHTML` 铺结构」的组合在多个视图中复用；行激活与键盘交互由 BoundedList 统一代理，不再要求每行重复绑定点击监听。
 
 ### 6.4 视图切换靠 `hidden` class
 
-应用有「聊天 / 通讯录 / 设置」几个顶层视图，它们在 `shell.ts` 里**全部同时存在于 DOM**，只是用 `hidden` class 控制谁可见（`shell.ts:99,123` 初始就给通讯录、设置加了 `hidden`）。切换视图 = 改 class，不重建 DOM，也不读写 `location`/`history`（当前视图只是内存里的一个状态，见 `app/views/chat/navigation.ts` 的 `switchView`），导航点击在 `navbar` 上（`shell.ts:34-55`，每个 `.nav-item` 带 `data-view` 标明目标视图）。
+应用有「聊天 / 通讯录 / 设置」几个顶层视图，它们在 `shell.ts` 里**全部同时存在于 DOM**，只是用 `hidden` class 控制谁可见。切换视图 = 改 class，不重建 DOM，也不读写 `location`/`history`（当前视图只是内存里的一个状态，见 `app/views/chat/navigation.ts` 的 `switchView`）；`navbar` 中每个 `.nav-item` 都带 `data-view` 标明目标视图。
 
 ### 6.5 国际化 i18n：界面不写死中文
 
-界面上所有文案都不直接写在逻辑里，而是通过 `app.t('chat.typeMessage')` 这样的 key 取词，词典在 `app/i18n.ts`。例如 `composer.ts:46` 的输入框占位：`input.placeholder = app.t('chat.typeMessage')`。这样切换中英文（设置页的语言按钮）只需换词典，不动视图代码。读视图时看到 `app.t(...)` 就知道「这是一段会随语言变化的文案」。
+界面上所有文案都不直接写在逻辑里，而是通过 `app.t('chat.typeMessage')` 这样的 key 取词，词典在 `app/i18n.ts`。例如 `composer.ts` 用 `input.placeholder = app.t('chat.typeMessage')` 设置输入框占位。这样切换中英文（设置页的语言按钮）只需换词典，不动视图代码。读视图时看到 `app.t(...)` 就知道「这是一段会随语言变化的文案」。
 
-> `shell.ts` 模板里有些文案先写了中文（如「登录」「发送」），那是初始占位，`app-instance.ts:377` 起的一段会在挂载后用 `app.t(...)` 把它们刷成当前语言。
+> `shell.ts` 模板里有些文案先写了中文（如「登录」「发送」），那是初始占位；`app-instance.ts` 会在挂载后用 `app.t(...)` 把它们刷成当前语言。
 
 ## 7. 布局机制：一套结构，桌面与手机两种样子
 
 本项目**不为手机单独写一套 HTML**，而是同一份 `shell.ts` 骨架，靠 CSS 切换成两种布局。这是「响应式」的核心思想，值得专门理解。
 
-切换开关是挂在根节点上的一个属性：`data-layout="desktop"` 或 `data-layout="mobile"`。`layout.ts:11` 的 `applyResolvedLayoutForApp` 就在做这件事——把解析出来的布局值写到 `dataset.layout`。
+切换开关是挂在根节点上的一个属性：`data-layout="desktop"` 或 `data-layout="mobile"`。`layout.ts` 的 `applyResolvedLayoutForApp` 就在做这件事——把解析出来的布局值写到 `dataset.layout`。
 
 ```mermaid
 flowchart TD
@@ -435,17 +433,17 @@ flowchart TD
   set --> css["CSS 按属性选择器<br/>切换整套布局"]
 ```
 
-CSS 侧用**属性选择器**针对两种值写不同规则。`style.css:261` 起的一大段全是 `body[data-layout=\"mobile\"] ...`，逐条把桌面三栏改造成手机单列：
+CSS 侧用**属性选择器**针对两种值写不同规则。`style.css` 中 `body[data-layout=\"mobile\"] ...` 这一组规则逐条把桌面三栏改造成手机单列：
 
 | 桌面（默认规则） | 手机（`[data-layout="mobile"]` 覆盖） |
 |---|---|
-| `#app` 横向 flex，三栏并排 | `flex-direction:column`，纵向堆叠（`style.css:262`） |
-| `#navbar` 竖在左侧 64px | 变成底部横向 tab 栏（`order:2` 排到最后，`style.css:266`） |
+| `#app` 横向 flex，三栏并排 | `flex-direction:column`，纵向堆叠 |
+| `#navbar` 竖在左侧 64px | 变成底部横向 tab 栏（`order:2` 排到最后） |
 | 三栏同时可见 | 右侧详情面板默认 `display:none` 隐藏；点开群 / 好友详情后用 `#view-chat` 上的 `.mobile-showing-detail` 切换：全屏显示详情面板、隐藏列表与聊天区，面板内置"返回"按钮收起 |
-| 列表与聊天并排 | 选中会话后用 `.mobile-showing-chat` 切换：显示聊天、隐藏列表（`style.css:278-279`） |
+| 列表与聊天并排 | 选中会话后用 `.mobile-showing-chat` 切换：显示聊天、隐藏列表 |
 | 独立部署桌面布局有 `#app{min-width:960px}` 兜底，窗口过窄时整体横向滚动而非挤压 | 手机布局与嵌入式 UIKit（`.mc-app-shell[data-embedded]`）都不受此最小宽度限制 |
 
-判定逻辑在 `responsive-layout.ts:19` 的 `detectResponsiveLayout`：宽度 ≤ 640px（`MOBILE_LAYOUT_MAX_WIDTH`）或检测到 `pointer:coarse`（触屏）就判为手机；`layout.ts:30` 的 `watchLayoutChangesForApp` 监听窗口 `resize` 事件实时重判。
+判定逻辑在 `responsive-layout.ts` 的 `detectResponsiveLayout`：宽度 ≤ 640px（`MOBILE_LAYOUT_MAX_WIDTH`）或检测到 `pointer:coarse`（触屏）就判为手机；`layout.ts` 的 `watchLayoutChangesForApp` 监听窗口 `resize` 事件实时重判。
 
 读这段 CSS 的诀窍：**先读没有 `[data-layout]` 前缀的规则（桌面基准），再把带 `[data-layout="mobile"]` 前缀的当成「打补丁」叠上去看。** 你会发现手机布局基本是「把某些栏的尺寸/方向/显隐改掉」，结构本身没动。
 
@@ -490,15 +488,15 @@ el.innerHTML = `<span>${name}</span>`;
 
 工具都在 `app/safe-dom.ts`：
 
-1. **`escapeHtml(str)`（`safe-dom.ts:10`）**：把 `< > & " '` 转成 `&lt;` 等实体，让它们只能显示成文字、无法成为标签。**凡是要拼进 `innerHTML` 的用户数据，必须先过它。** 视图里到处可见 `app.escapeHtml(name)`。能用 `textContent` 的就更优先用 `textContent`（天生安全）。
-2. **`SafeHtml` 品牌类型（`safe-dom.ts:3-26`）**：用 TypeScript 的 `unique symbol` 给「已确认安全的 HTML 字符串」打一个类型标记。只有显式调用 `safeHtml(...)` 包装过的字符串才能进 `setSafeHtml(el, html)`（`safe-dom.ts:48`）。这样**类型系统会逼你**在编译期就想清楚「这段 HTML 真的安全吗」，而不是运行时才暴雷。
-3. **可信 URL 校验（`safe-dom.ts:32`）**：`normalizeTrustedResourceUrl` 只放行 `http:`/`https:` 和站内相对路径，挡掉 `javascript:` 这类伪协议。设置图片地址、链接地址时走 `setTrustedImageSrc`/`setTrustedAnchorHref`（`safe-dom.ts:52,59`），后者还自动加 `rel="noopener noreferrer"` 防标签劫持。
+1. **`escapeHtml(str)`（见 `safe-dom.ts`）**：把 `< > & " '` 转成 `&lt;` 等实体，让它们只能显示成文字、无法成为标签。**凡是要拼进 `innerHTML` 的用户数据，必须先过它。** 视图里到处可见 `app.escapeHtml(name)`。能用 `textContent` 的就更优先用 `textContent`（天生安全）。
+2. **`SafeHtml` 品牌类型（见 `safe-dom.ts`）**：用 TypeScript 的 `unique symbol` 给「已确认安全的 HTML 字符串」打一个类型标记。只有显式调用 `safeHtml(...)` 包装过的字符串才能进 `setSafeHtml(el, html)`。这样**类型系统会逼你**在编译期就想清楚「这段 HTML 真的安全吗」，而不是运行时才暴雷。
+3. **可信 URL 校验（见 `safe-dom.ts`）**：`normalizeTrustedResourceUrl` 只放行 `http:`/`https:` 和站内相对路径，挡掉 `javascript:` 这类伪协议。设置图片地址、链接地址时走 `setTrustedImageSrc`/`setTrustedAnchorHref`，后者还自动加 `rel="noopener noreferrer"` 防标签劫持。
 
 读视图代码时，看到 `escapeHtml` / `setSafeHtml` / `setTrusted*` 就知道「这里在处理外部不可信数据」，是正常且必须的，不要图省事绕过它们。
 
 ### 9.3 Shadow DOM：样式隔离
 
-嵌入模式（`embed.ts:138`）把整套 UI 装进 Shadow DOM。Shadow DOM 是浏览器提供的「封装边界」：里面的 CSS 不会漏到宿主页面，宿主的 CSS 也进不来。代价是 `style.css` 里写给 `body`/`:root` 的全局规则在影子里不生效，所以 `shell.ts:163` 的 `rewriteAppStylesForShadow` 会把这些选择器**改写**成影子内的等价选择器（`body` → `.mc-app-shell` 等）。这段不影响你读视图逻辑，知道「嵌入时样式是隔离的、选择器被重写过」即可。
+嵌入模式（见 `embed.ts`）把整套 UI 装进 Shadow DOM。Shadow DOM 是浏览器提供的「封装边界」：里面的 CSS 不会漏到宿主页面，宿主的 CSS 也进不来。代价是 `style.css` 里写给 `body`/`:root` 的全局规则在影子里不生效，所以 `shell.ts` 的 `rewriteAppStylesForShadow` 会把这些选择器**改写**成影子内的等价选择器（`body` → `.mc-app-shell` 等）。这段不影响你读视图逻辑，知道「嵌入时样式是隔离的、选择器被重写过」即可。
 
 ## 10. 推荐阅读路线
 
@@ -543,26 +541,25 @@ sequenceDiagram
   participant ML as message-list.ts
 
   U->>DOM: 点击 .conversation-item
-  Note over DOM: 点击回调在渲染时已绑定<br/>(conversation-list.ts:246)
+  Note over DOM: 点击回调在渲染时已绑定<br/>(conversation-list.ts)
   DOM->>CV: openConversation(app, conv)
   CV->>CV: 改 chatState、切 active class、<br/>显示 chat-header/输入区(去 hidden)
-  CV->>SDK: await app.client.getMessages({target, limit})
-  SDK-->>CV: 返回消息数组
-  CV->>ML: setInitialMessagePage + renderMessages()
-  ML->>ML: 窗口引擎 calculate → 只建可见节点
-  ML->>DOM: 上占位 + 真实消息节点 + 下占位 挂进 #message-list
+  CV->>ML: messageList.reset({query:{}})
+  ML->>SDK: app.client.getMessages({target, cursor, limit})
+  SDK-->>ML: 返回分页结果
+  ML->>DOM: 渲染有界窗口内的真实消息节点
   ML->>DOM: scrollToBottom() 滚到底
 ```
 
 逐步对照：
 
-1. **绑定**：渲染会话列表时，每个项 `div.addEventListener('click', () => openConversation(app, conv))`（`conversation-list.ts:246`）。
-2. **入口**：点击触发 `openConversation`（`conversation-list.ts:290`）。它先更新状态 `app.chatState.currentConvKey/currentConversation`，调 `clearUnread`，并用 class 操作切换界面：给选中项加 `active`、给 `chat-header`/`message-input-area` 去掉 `hidden`、给 `chat-empty` 加 `hidden`、手机布局加 `mobile-showing-chat`（`conversation-list.ts:335-343`）。
-3. **取数**：`await app.client.getMessages({ target, limit })`（`conversation-list.ts:347`）——所有网络细节封装在 SDK 里，视图只 `await`。注意它先检查 `requestId` 是否过期（`conversation-list.ts:351`）防止快速切会话时旧响应覆盖新界面，这是前端版的「请求竞态保护」。
-4. **写入分页状态**：`setInitialMessagePage(...)`（`message-page.ts`）把消息存进 `chatState`。
-5. **渲染**：`app.views.chat?.renderMessages()` → `message-list.ts:60` 的 `renderMessages`，经窗口引擎只渲染可见区间，再 `scrollToBottom()` 滚到最新。
+1. **绑定**：`BoundedList` 在列表容器上统一处理激活事件，再调用会话列表配置的 `onActivate`。
+2. **入口**：`openConversation` 更新 `currentConvKey/currentConversation`、清未读，并切换聊天界面状态。
+3. **取数**：消息列表执行 `reset({ query: {} })`；其 `serverPageSource` 通过 SDK 分页读取最新消息。
+4. **竞态保护**：请求完成后再次检查当前会话；快速切换时，旧会话结果不会继续执行占位群等业务判断。
+5. **渲染**：BoundedList 把分页结果写入有界窗口并渲染，`onItemsChanged` 同步 `currentMessages` 投影，随后滚到最新端。
 
-发消息的写路径同理：`composer.ts:50` 的 `sendMessage` 读输入框 `input.value`、校验、`await app.client.sendText(...)`、`appendLiveMessageToPage` 追加到分页、`renderMessages()` + `scrollToBottom()`。**读任何交互都可以套这个模板：事件 → 改状态 → （可能 await SDK）→ render 重建 DOM。**
+发消息的写路径同理：`sendMessage` 读取并校验输入，把乐观占位通过 `upsertLocal()` 并入窗口；请求成功后用真实消息替换，失败则移除占位。**多数交互都可以套这个模板：事件 → 更新视图意图 →（可能 await SDK）→ 由组件协调 DOM。**
 
 ## 12. 语法速查与小词典
 

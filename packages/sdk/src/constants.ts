@@ -22,6 +22,3 @@ export const GROUP_ROLE_OWNER = 2 as const;
 
 export const ORG_CHILD_PERSON = 1 as const;
 export const ORG_CHILD_TAG = 2 as const;
-export const ORG_ROLE_MEMBER = 1 as const;
-export const ORG_ROLE_ADMIN = 2 as const;
-export const ORG_RELATION_DELETED = 0xff;

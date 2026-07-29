@@ -8,3 +8,10 @@ npm run test -w @yimsg/uikit
 ```
 
 示例位于 [examples/](examples/)，组件采用 `Apache-2.0`。
+
+文档入口：
+
+- [UIKit 挂载、公开 API 与宿主接入](docs/UIKit方案.md)
+- [主应用视图、交互与样式](docs/UI设计方案.md)
+- [BoundedList 设计、生产集成、测试与缺陷证据](docs/boundedlist/README.md)
+- [代码阅读指南](docs/UIKit阅读指南.md)

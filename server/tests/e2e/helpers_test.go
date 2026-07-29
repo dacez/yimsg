@@ -281,14 +281,6 @@ func userContactTarget(uid int64) *pb.ContactTarget {
 	return &pb.ContactTarget{Kind: &pb.ContactTarget_Uid{Uid: uid}}
 }
 
-func groupContactTarget(groupID int64) *pb.ContactTarget {
-	return &pb.ContactTarget{Kind: &pb.ContactTarget_GroupId{GroupId: groupID}}
-}
-
-func orgContactTarget(orgID int64) *pb.ContactTarget {
-	return &pb.ContactTarget{Kind: &pb.ContactTarget_OrgId{OrgId: orgID}}
-}
-
 func textBody(text string) *pb.MessageBody {
 	return &pb.MessageBody{Kind: &pb.MessageBody_Text{Text: &pb.TextBody{Text: text}}}
 }

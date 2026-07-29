@@ -1,5 +1,5 @@
 // BoundedList 组件的公共类型定义。
-// 接口口径单一事实源：packages/uikit/docs/BoundedList组件设计.md。
+// 接口口径单一事实源：packages/uikit/docs/boundedlist/组件设计.md。
 
 /** 续翻方向：forward = 更靠后/更新，backward = 更靠前/更旧。 */
 export type Direction = 'forward' | 'backward';
@@ -80,7 +80,7 @@ export interface SelectionSnapshot<T> {
 
 export type ErrorPhase = 'reset' | 'forward' | 'backward' | 'refresh';
 
-export interface SelectionConfig<T> {
+export interface SelectionConfig {
   readonly mode: 'single' | 'multi';
   /** 多选上限；与 store 互斥（同时给出会在构造时抛错）。 */
   readonly max?: number;
@@ -120,7 +120,7 @@ export interface BoundedListOptions<T, Q = void> {
   readonly pinnedItems?: () => readonly T[];
   readonly text: BoundedListText;
 
-  readonly selection?: SelectionConfig<T>;
+  readonly selection?: SelectionConfig;
 
   readonly initialQuery?: Q;
 

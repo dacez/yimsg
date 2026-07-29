@@ -1,5 +1,5 @@
 // SelectionStore（选中态）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.3：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.3：
 //   A 基础语义 / B 上限 / C 订阅通知 / D 边界与大规模。
 
 import { describe, expect, it, vi } from 'vitest';

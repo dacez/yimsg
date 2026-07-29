@@ -1,5 +1,5 @@
 import { type LayoutChoice, type ResolvedLayout } from './session-storage';
-import { resolveLayout } from './startup-mode';
+import { resolveResponsiveLayout } from '../responsive-layout';
 import type { AppInstance } from './app-instance';
 
 /**
@@ -16,7 +16,7 @@ export function applyResolvedLayoutForApp(app: AppInstance, layout: ResolvedLayo
 
 function applyLayoutFromPreferenceForApp(app: AppInstance): ResolvedLayout {
   const choice = app.storage.getStoredLayout();
-  const resolved = resolveLayout(choice, {
+  const resolved = resolveResponsiveLayout(choice, {
     matchMedia: typeof window !== 'undefined' ? window.matchMedia?.bind(window) : undefined,
     innerWidth: typeof window !== 'undefined' ? window.innerWidth : undefined,
     width: app.runtime.embedded ? (app.dom.viewportHost.getBoundingClientRect().width || app.dom.viewportHost.clientWidth || undefined) : undefined,

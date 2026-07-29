@@ -1,5 +1,5 @@
 import { test, expect } from '../support/test-fixtures';
-import { uniqueUser, register, login, sendMessage, addFriend, openDMFromContacts, openConversation, expectMessage, getMessageTexts, loginSeedUser, seedPrefix, ensureModeSelected } from './helpers';
+import { uniqueUser, register, sendMessage, addFriend, openDMFromContacts, expectMessage, getMessageTexts, loginSeedUser, seedPrefix, ensureModeSelected } from './helpers';
 
 test.describe('Chat', () => {
   let user1: string, user2: string;
@@ -157,12 +157,28 @@ test.describe('Chat', () => {
     await conv2.click();
     await expectMessage(page2, 'hello from user1', 10_000);
 
+    // 同一条既有消息分别作为发送端、接收端的 DOM 身份参照；后续新增消息不应销毁它。
+    const existingOnPage1 = page1.locator('.message-row', { hasText: 'hello from user1' });
+    const existingOnPage2 = page2.locator('.message-row', { hasText: 'hello from user1' });
+    await existingOnPage1.evaluate((row) => {
+      (window as typeof window & { __messageIdentityProbe?: Element }).__messageIdentityProbe = row;
+    });
+    await existingOnPage2.evaluate((row) => {
+      (window as typeof window & { __messageIdentityProbe?: Element }).__messageIdentityProbe = row;
+    });
+
     // User2 replies
     await sendMessage(page2, 'reply from user2');
     await expectMessage(page2, 'reply from user2');
+    expect(await existingOnPage2.evaluate(
+      (row) => (window as typeof window & { __messageIdentityProbe?: Element }).__messageIdentityProbe === row,
+    )).toBe(true);
 
     // User1 should see the reply
     await expectMessage(page1, 'reply from user2', 10_000);
+    expect(await existingOnPage1.evaluate(
+      (row) => (window as typeof window & { __messageIdentityProbe?: Element }).__messageIdentityProbe === row,
+    )).toBe(true);
 
     await ctx1.close();
     await ctx2.close();

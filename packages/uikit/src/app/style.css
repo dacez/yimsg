@@ -54,7 +54,7 @@ to{opacity:1;transform:translateY(0) scale(1)}
 to{opacity:1;transform:translate(0)}
 }
 /* position+z-index：#status-bar 默认是普通文档流元素，不设置层叠上下文时会被
-   modal-overlay/msg-viewer-overlay（z-index:1000）、message-action-menu（z-index:1200）
+   modal-overlay（z-index:1000）、message-action-menu（z-index:1200）
    等 fixed 悬浮层盖住——这些悬浮层在绘制顺序上天然晚于普通流内元素。这里给它建立
    自己的层叠上下文并给到比这些悬浮层都高的 z-index，确保重连/同步提示在弹窗、
    图片预览、右键菜单等任何"窗口"打开期间都不会被盖住；toast-container（2000）
@@ -128,7 +128,6 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .auth-form .input{margin-bottom:0;height:44px;border-radius:8px}
 .auth-form .btn{margin-top:var(--space-sm);height:44px;border-radius:8px;font-size:var(--font-size-body);font-weight:600}
 #view-chat{display:flex;flex:1;overflow:hidden}
-.search-section-title{padding:var(--space-sm) var(--space-lg);font-size:var(--font-size-caption);font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;background:var(--bg-hover);border-bottom:1px solid var(--border-light)}
 .conversation-item{height:66px;padding:0 var(--space-md);display:flex;align-items:center;gap:var(--space-md);cursor:pointer;transition:background-color .15s;border-radius:var(--radius-md);margin:2px 0}
 .conversation-item:hover{background:var(--bg-hover)}
 .conversation-item.active{background:var(--bg-active)}
@@ -154,7 +153,6 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-status-sending{width:14px;height:14px;align-self:center;flex-shrink:0;border-radius:50%;border:2px solid var(--border);border-top-color:var(--text-secondary);animation:message-status-spin .8s linear infinite}
 @keyframes message-status-spin{to{transform:rotate(360deg)}}
 .message-system{text-align:center;margin:var(--space-md) 0;font-size:var(--font-size-caption);color:var(--text-secondary)}
-.message-loading{text-align:center;padding:var(--space-md);color:var(--text-placeholder);font-size:var(--font-size-caption)}
 .message-bubble:has(.message-image){padding:3px;overflow:hidden}
 .message-bubble:has(.message-file){padding:8px 10px}
 .message-image{max-width:100%;max-height:320px;border-radius:15px;cursor:pointer;display:block}
@@ -209,7 +207,6 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .contact-item .avatar{width:36px;height:36px;font-size:13px}
 .contact-info{flex:1;min-width:0}
 .contact-name{font-size:14px;font-weight:500;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.contact-remark{font-size:var(--font-size-caption);color:var(--text-secondary)}
 .contacts-right{flex:1;display:flex;flex-direction:column;overflow-y:auto;background:var(--bg-page);min-width:0}
 .contacts-detail-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:var(--font-size-body)}
 .contacts-detail-back{display:none;align-self:flex-start;padding:var(--space-sm) var(--space-md);background:none;border:none;color:var(--primary);font-size:var(--font-size-body);cursor:pointer;margin-top:var(--space-sm)}
@@ -264,7 +261,6 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .settings-header p{color:var(--text-secondary);font-size:var(--font-size-caption);margin-top:var(--space-xs)}
 .mode-badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:var(--font-size-caption);font-weight:600;margin-top:var(--space-sm)}
 .mode-badge-instant{background:#fff3e0;color:#e65100}
-.mode-badge-pwa{background:#e8f5e9;color:#2e7d32}
 .settings-card{background:var(--bg-hover);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:var(--space-xl);margin-bottom:var(--space-lg)}
 .settings-card h3{font-size:var(--font-size-heading);font-weight:600;margin-bottom:var(--space-lg)}
 .settings-card .input{margin-bottom:var(--space-md);border-radius:8px}
@@ -285,12 +281,6 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .member-select-item input[type=checkbox]{accent-color:var(--primary)}
 .chat-header-actions{display:flex;align-items:center;gap:var(--space-xs);flex-shrink:0}
 .member-picker-count{font-size:var(--font-size-body);color:var(--text-secondary);margin-bottom:8px;text-align:center}
-.msg-viewer-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:1000;background:#0006;display:flex;align-items:center;justify-content:center;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
-.msg-viewer-card{width:600px;max-width:90vw;height:70vh;max-height:80vh;background:var(--bg-panel);border-radius:12px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;animation:modal-in .2s ease-out}
-.msg-viewer-header{display:flex;align-items:center;justify-content:space-between;padding:var(--space-md) var(--space-lg);border-bottom:1px solid var(--border);flex-shrink:0}
-.msg-viewer-title{font-size:var(--font-size-heading);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.msg-viewer-actions{display:flex;gap:var(--space-sm);flex-shrink:0}
-.msg-viewer-list{flex:1;overflow-y:auto;padding:var(--space-lg);background:#fafbfc}
 .msg-highlight{animation:msg-highlight-flash 2s ease-out}
 
 @keyframes msg-highlight-flash{0%{background-color:#2196f34d}
@@ -304,9 +294,6 @@ to{background-color:transparent}
 .mode-option-title{font-size:var(--font-size-heading);font-weight:700;margin-bottom:var(--space-sm)}
 .mode-option-desc{font-size:var(--font-size-caption);color:var(--text-secondary);line-height:var(--line-height-body)}
 .status-bar.syncing{background:var(--primary-light);color:var(--primary)}
-.mode-option-disabled{opacity:.45;cursor:not-allowed;border-color:var(--border)!important;pointer-events:none}
-.mode-option-disabled .mode-option-title{color:var(--text-secondary)}
-.mode-option-note{font-size:var(--font-size-caption);color:var(--error);margin-top:var(--space-sm);font-weight:500}
 .lang-select{display:flex;gap:var(--space-sm)}
 .lang-select .btn{flex:1}
 .msg-quote-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;margin-bottom:8px;border-radius:8px;background:#f3f4f6;color:#4b5563;font-size:12px}
@@ -329,7 +316,6 @@ to{background-color:transparent}
 .message-detail-item-header{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#6b7280;margin-bottom:4px}
 .message-detail-item-name{font-weight:600;color:#111827}
 .message-detail-missing{color:#9ca3af;font-size:12px;font-style:italic}
-.message-detail-truncated{margin-top:8px;font-size:12px;color:#9ca3af;text-align:center}
 .message-markdown code{background:#f3f4f6;border-radius:4px;padding:0 4px}
 .message-markdown h1,.message-markdown h2,.message-markdown h3,.message-markdown h4{margin:4px 0;line-height:1.3;font-weight:600}
 .message-markdown h1{font-size:20px}
@@ -344,22 +330,16 @@ to{background-color:transparent}
 .forward-conversation-item{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border-bottom:1px solid var(--border-light);cursor:pointer;box-sizing:border-box}
 .forward-conversation-item:last-child{border-bottom:none}
 .forward-conversation-item:hover{background:var(--bg-hover)}
-.forward-conversation-empty{padding:12px;color:var(--text-secondary);font-size:var(--font-size-caption)}
 .group-member-picker-list{max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
 .group-member-picker-item{display:flex;align-items:center;gap:8px;height:42px;padding:0 12px;border-bottom:1px solid var(--border-light);cursor:pointer;box-sizing:border-box}
 .group-member-picker-item:last-child{border-bottom:none}
 .group-member-picker-item:hover{background:var(--bg-hover)}
 .group-member-picker-all{font-weight:600;color:var(--primary)}
-.group-member-picker-empty{padding:12px;color:var(--text-secondary);font-size:var(--font-size-caption)}
 .modal-textarea{min-height:220px;padding:12px;resize:vertical}
 .mode-select-modal{width:560px;max-width:92vw}
 .mode-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-md);margin-top:var(--space-lg)}
 .mode-option{padding:var(--space-xl) var(--space-lg)}
 .conversation-name-row{display:flex;align-items:center;gap:6px;min-width:0}
-.conversation-muted-badge{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;border-radius:999px;background:#fff7e6;color:#b26b00;font-size:11px;line-height:16px;flex-shrink:0}
-.contact-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
-.contact-remark-text{font-size:var(--font-size-caption);color:var(--text-secondary)}
-.contact-status-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;background:#ffebee;color:var(--error);font-size:11px;line-height:16px}
 #message-input-area.is-blocked{background:#fff8f8}
 #message-input-area.is-blocked .input{background:#fff1f2;border-color:#fecdd3;color:#9f1239}
 #message-input-area.is-blocked .input::placeholder{color:#be123c}
@@ -446,9 +426,9 @@ body[data-layout="mobile"] .mode-options{grid-template-columns:1fr}
 
 /* ========== 有界列表窗口 ========== */
 
-/* 所有列表都是有界窗口全量渲染：引擎在数据变更时用 keyOf 锚点保持视口位置，
-   滚动不重建 DOM，因此统一保留浏览器原生 scroll anchoring 兜底头像 / 图片等异步增高。 */
-/* 新消息提示条：悬浮于消息列表底部上方，messagePageHasNewer 时常显，点击跳到最新一页 */
+/* 所有列表都只保留有界窗口：数据变更时按 key 协调并保持视口锚点，滚动本身不重建 DOM；
+   保留浏览器原生 scroll anchoring，兜底头像 / 图片等异步增高。 */
+/* 新消息提示条：消息窗口 stale 时显示，点击后跳到最新一页。 */
 .new-message-pill{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:5;border:1px solid var(--border);border-radius:999px;background:var(--bg-panel);color:var(--primary);padding:6px 14px;font-size:var(--font-size-caption);line-height:var(--line-height-caption);cursor:pointer;box-shadow:var(--shadow-md)}
 .new-message-pill:hover{background:var(--primary-light)}
 /* 会话列表"列表有更新"提示条：悬浮于左面板底部，点击回到顶部并重拉首页 */

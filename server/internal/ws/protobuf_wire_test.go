@@ -6,10 +6,15 @@ import (
 )
 
 func TestProtobufNotificationRoundTrip(t *testing.T) {
-	typeID, body, err := EncodeNotificationBody(FrameCodecProtobuf, &appmsg.Notification{
+	msg := notificationToProto(&appmsg.Notification{
 		Type:   appmsg.NotificationNameMessagesReceived,
 		Target: &appmsg.ConversationTarget{GroupID: appmsg.Int64Ptr(12345)},
 	})
+	typeID, ok := notificationTypeOf(msg)
+	if !ok {
+		t.Fatal("notification type not found")
+	}
+	body, err := EncodeProtoBody(FrameCodecProtobuf, msg)
 	if err != nil {
 		t.Fatalf("encode notification: %v", err)
 	}

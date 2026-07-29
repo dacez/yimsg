@@ -1,5 +1,5 @@
 // 提示条（update-pill）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.5：A 挂载与显隐 / B 点击 / C 释放 / D 空实现。
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.5：A 挂载与显隐 / B 点击 / C 释放 / D 空实现。
 
 import { describe, expect, it, vi } from 'vitest';
 import { createUpdatePill } from '../../../src/app/bounded-list/update-pill';

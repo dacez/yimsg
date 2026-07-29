@@ -161,17 +161,22 @@ function renderMessageRow(
   }
 
   const row = app.dom.ownerDocument.createElement('div');
+  const isPending = app.chatState.pendingMessageIds.has(msg.messageId);
   row.className = 'message-row' + (isSelf ? ' self' : '')
+    + (isPending ? ' message-pending' : '')
     + (msg.messageId && msg.messageId === app.chatState.highlightMessageId ? ' msg-highlight' : '');
   row.dataset.seq = String(msg.seq);
   row.dataset.msgId = msg.messageId;
+  row.setAttribute('aria-busy', isPending ? 'true' : 'false');
   const sender = senderMap.get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
   const fromName = isSelf ? app.t('chat.selfName') : displayUserName(sender, fromUid);
 
-  row.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    showMessageActionMenu(app, row, msg, fromName, event.clientX, event.clientY);
-  });
+  if (!isPending) {
+    row.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      showMessageActionMenu(app, row, msg, fromName, event.clientX, event.clientY);
+    });
+  }
 
   if (!isSelf) {
     const avatarDiv = app.dom.ownerDocument.createElement('div');
@@ -180,7 +185,7 @@ function renderMessageRow(
     row.appendChild(avatarDiv);
   }
 
-  if (app.chatState.messageSelectionMode) {
+  if (app.chatState.messageSelectionMode && !isPending) {
     const checkbox = app.dom.ownerDocument.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'message-select-checkbox';
@@ -198,14 +203,14 @@ function renderMessageRow(
   fillMessageBubble(app, bubble, msg);
   row.appendChild(bubble);
 
-  if (isSelf && app.chatState.pendingMessageIds.has(msg.messageId)) {
+  if (isSelf && isPending) {
     const status = app.dom.ownerDocument.createElement('div');
     status.className = 'message-status message-status-sending';
     status.title = app.t('chat.sending');
     row.appendChild(status);
   }
 
-  if (!app.chatState.messageSelectionMode) {
+  if (!app.chatState.messageSelectionMode && !isPending) {
     const actionsBtn = app.dom.ownerDocument.createElement('button');
     actionsBtn.className = 'message-actions-trigger';
     actionsBtn.type = 'button';

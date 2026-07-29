@@ -8,7 +8,7 @@
  * 3. Multi-client scenarios (notifications, sync)
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { createClient, createAuthenticatedClient, destroyClient, waitEvent, delay, uniqueUser } from './helpers';
+import { createClient, createAuthenticatedClient, destroyClient, waitEvent, delay } from './helpers';
 import type { YimsgClient } from '../../src/client';
 import { MSG_TYPE_TEXT, MSG_TYPE_QUOTE, MSG_TYPE_FORWARD, MSG_TYPE_RECALL, CONTACT_PENDING_INCOMING } from '../../src/constants';
 import { seqCursor } from '../../src';
@@ -622,7 +622,7 @@ describe('DisplayInfoCache', () => {
     await alice.startSession({ storage: 'instant' });
 
     // First call: miss → empty
-    const initial = alice.getUserInfos([bobUid]).get(bobUid)!;
+    alice.getUserInfos([bobUid]);
     // May be empty or may have data if cached
     // Wait for display:updated event
     const event = await waitEvent(alice, 'display:updated', 3000) as { keys: readonly string[] };
@@ -794,7 +794,7 @@ describe('Edge Cases', () => {
 
   it('getContactCount', async () => {
     const { client: alice, uid: aliceUid } = await createAuthenticatedClient('pend_a');
-    const { client: bob, uid: bobUid } = await createAuthenticatedClient('pend_b');
+    const { client: bob } = await createAuthenticatedClient('pend_b');
     track(alice); track(bob);
     await alice.startSession({ storage: 'instant' });
     await bob.startSession({ storage: 'instant' });

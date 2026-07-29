@@ -11,7 +11,7 @@ let nameCounter = 0;
 const runPrefix = `sdk_${Date.now()}`;
 
 /** Generate a unique username for this test run. */
-export function uniqueUser(prefix = 'u'): string {
+function uniqueUser(prefix = 'u'): string {
   return `${runPrefix}_${prefix}_${++nameCounter}`;
 }
 
@@ -22,34 +22,6 @@ export function createClient(): YimsgClient {
     requestTimeout: 10000,
     reconnectInterval: 500,
     wsFactory: (url: string) => new WebSocket(url, { rejectUnauthorized: false }) as unknown as globalThis.WebSocket,
-  });
-}
-
-/** Wait for client to connect. */
-export function waitConnected(client: YimsgClient): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (client.getSessionSnapshot().connectionState === 'connected') { resolve(); return; }
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error('connect timeout'));
-    }, 5000);
-    const onConnected = () => {
-      clearTimeout(timeout);
-      cleanup();
-      resolve();
-    };
-    const onDisconnected = () => {
-      clearTimeout(timeout);
-      cleanup();
-      reject(new Error('disconnected before connected'));
-    };
-    const cleanup = () => {
-      client.off('connection:connected', onConnected);
-      client.off('connection:disconnected', onDisconnected);
-    };
-
-    client.on('connection:connected', onConnected);
-    client.on('connection:disconnected', onDisconnected);
   });
 }
 

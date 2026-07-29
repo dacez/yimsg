@@ -144,11 +144,6 @@ export function resolveTheme(option: ThemeOption | undefined): ResolvedTheme {
   return { preset, tokens: { ...resolvePreset(preset), ...filterUndefined(option) } };
 }
 
-/** 以内联 CSS `--mc-*` 变量字符串输出，供 style 属性使用。 */
-export function themeToInlineVars(theme: ResolvedTheme): string {
-  return THEME_VAR_ENTRIES.map(([cssVar, tokenKey]) => `${cssVar}:${theme.tokens[tokenKey]}`).join(';');
-}
-
 export function applyThemeVarsToElement(element: Pick<HTMLElement, 'style'>, theme: ResolvedTheme): void {
   for (const [cssVar, tokenKey] of THEME_VAR_ENTRIES) {
     element.style.setProperty(cssVar, theme.tokens[tokenKey] ?? '');

@@ -4,10 +4,10 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  tools/scripts/deploy-remote.sh <ssh-alias>
+  ./tools/deploy-remote.sh <ssh-alias>
 
 Examples:
-  tools/scripts/deploy-remote.sh yimsg-gz
+  ./tools/deploy-remote.sh yimsg-gz
 
 本机快速部署：交叉编译 + 本机上传，跳过 GitHub Actions 的排队等待，适合上传带宽
 较好、想更快看到效果的场景（如广州服务器）。跟 .github/workflows/deploy.yml 的

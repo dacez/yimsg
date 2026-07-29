@@ -1,7 +1,7 @@
 # SDK 设计方案
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/`、`packages/sdk/src/datagateway/`、`packages/sdk/src/state/`、`packages/sdk/src/transport/`、`protocol/generated/typescript/yimsg.ts`、`packages/sdk/src/worker/sqlite.worker.ts`、`protocol/yimsg.proto`。
-> 最后复核：2026-07-26。
+> 最后复核：2026-07-29。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../../protocol/接口总览.md`](../../../protocol/docs/接口总览.md)。
 
@@ -46,8 +46,8 @@ flowchart TD
 | `SessionLifecycleMachine` | 保存 `sessionState`、`connectionState`、`mode`、`currentUid`，派生认证和初始化状态 |
 | `WsTransport` | 维护 WebSocket、request_id 配对、请求超时、pending 上限、心跳、断线重连和 notification 分发 |
 | `generated/actions.gen.ts` | 由 protocolgen 生成的出方向 action 函数，只负责 `Type` + request/response codec + `transport.sendBinary`，不做整形 / 校验 / 归一化 |
-| `server/internal/action-mappers.ts` | 出方向 action 的无状态业务工具：target 映射、分页游标、状态校验、`msg_id` 生成等请求整形（`*Request`）与响应归一化（`normalize*` / `map*`），由 client 与 DataGateway 直接复用 |
-| `server/internal/codec.ts` | `MessageCodec` 类型与 `sendProtoAction` 底层发送点，被 `actions.gen.ts` 复用 |
+| `packages/sdk/src/internal/action-mappers.ts` | 出方向 action 的无状态业务工具：target 映射、分页游标、状态校验、`msg_id` 生成等请求整形（`*Request`）与响应归一化（`normalize*` / `map*`），由 client 与 DataGateway 直接复用 |
+| `packages/sdk/src/internal/codec.ts` | `MessageCodec` 类型与 `sendProtoAction` 底层发送点，被 `actions.gen.ts` 复用 |
 | `DataGateway` | 统一会话、消息、联系人、屏蔽、免打扰和展示资料读取接口，隐藏 instant / persistent 差异 |
 | `DisplayInfoCache` | 统一缓存用户 / 群展示资料，同步返回当前视图，后台合并加载缺失或过期 key |
 | `ClientEventBridge` | 把内部消息、同步和通知回调转换为公开事件，并冻结事件载荷 |
@@ -59,7 +59,7 @@ flowchart TD
 - `sync_*` action 只供 DataGateway 内部使用，不作为 `YimsgClient` 公开 API。
 - SDK 不维护 UI 页面状态、选中会话、完整消息窗口或完整联系人列表；调用方通过分页和事件重新读取。
 - persistent 本地库是可重建副本；schema 版本不一致时直接重建本地库，不做 migration。
-- **msg_id 唯一生成点**：`src/sdk/server/internal/msgid.ts` 的 `generateMsgId()` 是全项目唯一的用户消息 `msg_id` 生成处（UUIDv7 的 base64url 编码，22 字符，使用 `crypto.getRandomValues`，禁止 `Math.random`）。`buildSendMessageRequest` 始终生成并上送 `msg_id`；msg_id 全链路是 string，禁止二进制 UUID。
+- **msg_id 唯一生成点**：`packages/sdk/src/internal/msgid.ts` 的 `generateMsgId()` 是全项目唯一的用户消息 `msg_id` 生成处（UUIDv7 的 base64url 编码，22 字符，使用 `crypto.getRandomValues`，禁止 `Math.random`）。`buildSendMessageRequest` 始终生成并上送 `msg_id`；msg_id 全链路是 string，禁止二进制 UUID。
 - **sync-only persistence**：本地持久库只是服务端状态缓存，只允许 sync 链路写入。action 成功后只 emit 事件 / 更新内存态 / 触发 sync，禁止直接写本地表或乐观持久化。
 - **统一三段式同步**：每个 domain 为 `fullSyncXxxInternal → syncXxx → applyXxxSyncBatch`。`applyXxxSyncBatch` 是对应本地表的唯一写入点（只写表，不写游标 / meta、不发请求、不 emit、不跨 domain）；`syncXxx` 负责请求服务端、调用 apply、推进自身 seq 游标与 meta；`fullSyncXxxInternal` 负责分页循环、rebuild/reset 与是否 emit。`syncMessages` 只写 `messages`，会话仅由 `syncConversations` 维护，禁止跨 domain 写表。
 
@@ -268,7 +268,7 @@ sequenceDiagram
 
 - TS action 是出方向，生成 `generated/actions.gen.ts` 中 `login(transport, req)` 这类无状态函数（只负责 `Type` + request/response codec + `sendBinary`，不做校验、缓存、事件、分页规则或 `msg_id` 生成）。
 - TS notification 是入方向，生成 `generated/notifications.gen.ts` 中的 `NotificationHandler` 接口（方法不可选，漏实现即编译失败）与 `dispatchNotificationFrame`。
-- SDK 公开接口、`server/internal/action-mappers.ts` 的请求整形与响应归一化、DataGateway、缓存、状态机继续手写；client 与 DataGateway 直接调用 `actions.gen.ts` 并复用 `action-mappers.ts` 工具，`msg_id` 仍只在 `server/internal/msgid.ts` 唯一生成点生成。
+- SDK 公开接口、`packages/sdk/src/internal/action-mappers.ts` 的请求整形与响应归一化、DataGateway、缓存、状态机继续手写；client 与 DataGateway 直接调用 `actions.gen.ts` 并复用 `action-mappers.ts` 工具，`msg_id` 仍只在 `packages/sdk/src/internal/msgid.ts` 唯一生成点生成。
 
 ## 7. DataGateway
 
@@ -537,7 +537,7 @@ storage(open DB + read meta)
 |---|---|---|
 | 公开边界 | 清晰。调用方只依赖 `YimsgClient`、公开类型、错误类、常量和纯工具函数；公开面手写，保持稳定 | 单门面易学，但门面方法继续增长会降低可读性 |
 | 协议机械映射 | 成熟。`protocolgen` 以 `protocol/yimsg.proto` 为唯一事实源生成出方向 action 与入方向通知分发 | 机械映射不写业务规则，避免生成代码变成第二套业务层 |
-| 业务编排 | 可控但偏重。`server/internal/action-mappers.ts` 做请求整形与响应归一化，门面层做认证、会话、缓存写后更新 | 业务语义手写更清楚，但要靠测试和文档同步防漂移 |
+| 业务编排 | 可控但偏重。`packages/sdk/src/internal/action-mappers.ts` 做请求整形与响应归一化，门面层做认证、会话、缓存写后更新 | 业务语义手写更清楚，但要靠测试和文档同步防漂移 |
 | 读模型 | 合理。`instant` 轻量直连，`persistent` 负责本地副本和离线优先读取 | 两种模式必须保持同一公开语义，否则调用方心智成本会上升 |
 | 同步模型 | 符合“轻通知 + 主动拉取”。通知只驱动同步或失效，UI 通过分页重读 | 最终一致简单稳定，但不提供 SDK 内置乐观 UI |
 | 展示资料 | 适合高频渲染。同步返回当前缓存，后台刷新后发事件 | 调用方必须接受短暂旧值或空值 |

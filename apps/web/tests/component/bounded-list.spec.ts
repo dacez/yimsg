@@ -1,12 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '../support/test-fixtures';
-import { openBoundedListHarness } from '../support/bounded-list/fixture';
-
-interface TestItem {
-  readonly id: string;
-  readonly label: string;
-  readonly order: number;
-}
+import {
+  callBoundedListHarness as call,
+  openBoundedListHarness,
+  type BoundedListTestItem as TestItem,
+} from '../support/bounded-list/fixture';
 
 interface HarnessEvent {
   readonly type: string;
@@ -26,22 +24,6 @@ interface ListState {
   readonly pendingCount: number;
   readonly atFreshEdge: boolean;
   readonly failed: boolean;
-}
-
-async function call<T>(
-  page: Page,
-  method: string,
-  ...args: unknown[]
-): Promise<T> {
-  return page.evaluate(
-    ({ methodName, methodArgs }) => {
-      const harness = (window as unknown as {
-        boundedListTestHarness: Record<string, (...values: unknown[]) => unknown>;
-      }).boundedListTestHarness;
-      return harness[methodName](...methodArgs);
-    },
-    { methodName: method, methodArgs: args },
-  ) as Promise<T>;
 }
 
 async function mount(page: Page, config: Record<string, unknown> = {}): Promise<string> {
@@ -1332,6 +1314,68 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       order: 1,
     });
     expect(changedPayloads[2].some((item) => item.id === '2')).toBe(false);
+  });
+
+  test('单条新增与修改只变更对应 DOM，未变化行保持真实节点身份', async ({ page }) => {
+    const key = await mount(page, {
+      itemCount: 3,
+      pageSize: 5,
+      freshEdge: 'tail',
+      reachPx: -1,
+    });
+    await call(page, 'rememberRows', key);
+
+    await call(page, 'upsertLocal', key, { id: '3', label: 'item-3', order: 3 });
+    expect(await call<Record<string, boolean>>(page, 'rememberedRowIdentity', key)).toEqual({
+      '0': true,
+      '1': true,
+      '2': true,
+    });
+
+    await call(page, 'rememberRows', key);
+    expect(await call(page, 'patchLabel', key, '1', 'patched')).toBe(true);
+    expect(await call<Record<string, boolean>>(page, 'rememberedRowIdentity', key)).toEqual({
+      '0': true,
+      '1': false,
+      '2': true,
+      '3': true,
+    });
+  });
+
+  test('贴在新鲜端收到 invalidate 时保留当前 DOM，权威首页到达后只追加变化行', async ({ page }) => {
+    const key = await mount(page, {
+      itemCount: 3,
+      pageSize: 5,
+      freshEdge: 'tail',
+      reachPx: -1,
+    });
+    await call(page, 'rememberRows', key);
+    await call(page, 'setItems', key, [
+      { id: '0', label: 'item-0', order: 0 },
+      { id: '1', label: 'item-1', order: 1 },
+      { id: '2', label: 'item-2', order: 2 },
+      { id: '3', label: 'item-3', order: 3 },
+    ]);
+    await call(page, 'pauseNextPage', key);
+
+    await call(page, 'invalidate', key, { count: 1 });
+    await call(page, 'frames', 2);
+    await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
+    expect(await call<string[]>(page, 'rowIds', key)).toEqual(['0', '1', '2']);
+    expect(await call<Record<string, boolean>>(page, 'rememberedRowIdentity', key)).toEqual({
+      '0': true,
+      '1': true,
+      '2': true,
+    });
+
+    await call(page, 'resolvePage', key);
+    await call(page, 'waitForIdle', key);
+    expect(await call<string[]>(page, 'rowIds', key)).toEqual(['0', '1', '2', '3']);
+    expect(await call<Record<string, boolean>>(page, 'rememberedRowIdentity', key)).toEqual({
+      '0': true,
+      '1': true,
+      '2': true,
+    });
   });
 
   test('重复 id 注册覆盖旧实例，广播只命中当前注册实例', async ({ page }) => {

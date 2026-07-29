@@ -55,42 +55,6 @@ func ErrorCodeNumber(code string) int64 {
 	}
 }
 
-// ErrorCodeByNumber 返回 protobuf enum 数值对应的对外稳定错误码。
-func ErrorCodeByNumber(number int64) string {
-	switch number {
-	case 1002:
-		return ErrorCodeInvalidFrame
-	case 1003:
-		return ErrorCodeFrameTooLarge
-	case 1004:
-		return ErrorCodeInvalidProtobuf
-	case 1101:
-		return ErrorCodeAuthRequired
-	case 1102:
-		return ErrorCodeAuthFailed
-	case 1201:
-		return ErrorCodeUnknownAction
-	case 1301:
-		return ErrorCodeInvalidArgument
-	case 1401:
-		return ErrorCodeNotFound
-	case 1402:
-		return ErrorCodeAlreadyExists
-	case 1403:
-		return ErrorCodeConflict
-	case 1404:
-		return ErrorCodeForbidden
-	case 1501:
-		return ErrorCodeSeqTooOld
-	case 1502:
-		return ErrorCodeBatchLimitExceeded
-	case 9001:
-		return ErrorCodeInternal
-	default:
-		return ErrorCodeInternal
-	}
-}
-
 // ErrorCodeToPb 返回对外稳定错误码对应的 pb.ErrorCode enum 值。
 func ErrorCodeToPb(code string) pb.ErrorCode {
 	return pb.ErrorCode(ErrorCodeNumber(code))

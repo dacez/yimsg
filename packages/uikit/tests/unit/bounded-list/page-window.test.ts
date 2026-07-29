@@ -1,5 +1,5 @@
 // PageWindow（数据窗口层）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.1：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.1：
 //   A 基础记账 / B 整页裁剪 / C 跨页去重 / D 就地增删改 / E 实时并入 / F 大数据量与长序列。
 
 import { describe, expect, it, vi } from 'vitest';

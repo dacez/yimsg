@@ -1,5 +1,5 @@
 import { test, expect } from '../support/test-fixtures';
-import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts } from './helpers';
+import { uniqueUser, register, addFriend, sendMessage, openDMFromContacts } from './helpers';
 
 test.describe('Navigation', () => {
   const password = '123456';

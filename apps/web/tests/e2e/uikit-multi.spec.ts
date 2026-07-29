@@ -81,16 +81,11 @@ async function acceptFirstRequest(page: Page, hostId: string) {
 
 async function openFriendChat(page: Page, hostId: string, name: string) {
   await switchContactsTab(page, hostId, 'friends');
-  await page.waitForFunction(({ hostId, name }) => {
-    const root = document.getElementById(hostId)?.shadowRoot;
-    return Array.from(root?.querySelectorAll<HTMLElement>('.contact-item') ?? []).some((item) => item.textContent?.includes(name));
-  }, { hostId, name });
-  await page.evaluate(({ hostId, name }) => {
-    const root = document.getElementById(hostId)?.shadowRoot;
-    const item = Array.from(root?.querySelectorAll<HTMLElement>('.contact-item') ?? []).find((el) => el.textContent?.includes(name));
-    if (!item) throw new Error(`contact item missing for ${name} in ${hostId}`);
-    item.click();
-  }, { hostId, name });
+  // 联系人同步会触发 BoundedList 协调 DOM。分开的 waitForFunction + evaluate
+  // 存在检查通过后、点击前节点被替换的 TOCTOU 窗口；locator 会在动作时重新解析节点。
+  const contact = page.locator(`#${hostId}`).locator('.contact-item').filter({ hasText: name });
+  await expect(contact).toHaveCount(1, { timeout: 15_000 });
+  await contact.click();
   await waitForShadow(page, hostId, '#contacts-detail-panel [data-action="chat"]');
   await clickShadow(page, hostId, '#contacts-detail-panel [data-action="chat"]');
   await waitForShadow(page, hostId, '#message-input-area:not(.hidden)', 30_000);
@@ -241,7 +236,6 @@ test.describe('uikit multi instance', () => {
 
     await searchAndAddFriend(page, 'host-u2-persistent', user1);
     await acceptFirstRequest(page, 'host-u1-persistent');
-    await page.waitForTimeout(800);
 
     await openFriendChat(page, 'host-u2-persistent', 'User One');
     await sendShadowMessage(page, 'host-u2-persistent', 'hello multi grid');

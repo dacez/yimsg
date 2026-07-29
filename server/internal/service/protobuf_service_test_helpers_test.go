@@ -167,16 +167,8 @@ func favoriteGroupService(s *AppState, _ string, uid, groupID int64, remarkName 
 	return s.FavoriteGroup(testInfo(uid), &pb.FavoriteGroupRequest{GroupId: groupID, RemarkName: remarkName})
 }
 
-func unfavoriteGroupService(s *AppState, _ string, uid, groupID int64) *pb.UnfavoriteGroupResponse {
-	return s.UnfavoriteGroup(testInfo(uid), &pb.UnfavoriteGroupRequest{GroupId: groupID})
-}
-
 func listContactsService(s *AppState, _ string, uid int64, filter dal.ContactListFilter, cursor string, limit int64) *pb.GetContactsResponse {
 	return s.GetContacts(testInfo(uid), &pb.GetContactsRequest{Status: optContactStatus(filter.Status), Targets: testContactTargets(filter.FriendUID, filter.GroupID, filter.FriendUIDs, filter.GroupIDs), Page: &pb.PageQuery{Cursor: cursor, Limit: limit}})
-}
-
-func countPendingContactsService(s *AppState, _ string, uid int64) *pb.GetContactCountResponse {
-	return s.GetContactCount(testInfo(uid), &pb.GetContactCountRequest{Status: pb.ContactStatus_CONTACT_STATUS_PENDING_INCOMING})
 }
 
 func syncContactsService(s *AppState, _ string, uid, lastSeq, limit int64, rebuild bool) *pb.SyncContactsResponse {
@@ -272,12 +264,6 @@ func sendMessageService(s *AppState, _ string, uid int64, req *appmsg.Request) s
 		id = msgid.Generate()
 	}
 	result := s.sendMessage(testInfo(uid), &pb.SendMessageRequest{MsgId: id, Target: testTarget(req.ToUID, req.GroupID), MsgType: pb.MessageType(req.MsgType), Body: testBodyFromContent(req.MsgType, req.Content)})
-	return sendResult{Response: toSendMessageResponse(result.Response)}
-}
-
-// sendBodyService 直接发送指定强类型 body，用于引用/图片/文件等结构化消息测试。
-func sendBodyService(s *AppState, uid, toUID, groupID int64, msgType int8, body *pb.MessageBody) sendResult {
-	result := s.sendMessage(testInfo(uid), &pb.SendMessageRequest{MsgId: msgid.Generate(), Target: testTarget(toUID, groupID), MsgType: pb.MessageType(msgType), Body: body})
 	return sendResult{Response: toSendMessageResponse(result.Response)}
 }
 

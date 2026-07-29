@@ -1,5 +1,5 @@
 // BoundedList 注册表单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.4：A 注册与注销 / B 广播 / C 边界。
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.4：A 注册与注销 / B 广播 / C 边界。
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {

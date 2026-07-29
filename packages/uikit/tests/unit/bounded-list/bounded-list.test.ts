@@ -1,5 +1,5 @@
 // BoundedList（组件外壳）单测。
-// 分类见 packages/uikit/docs/BoundedList测试方案.md §4.7：
+// 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.7：
 //   A 构造与默认值 / B reset 首屏 / C loadMore 双向续翻 / D setQuery 防抖
 //   E invalidate 决策树 / F 提示条三条消失路径 / G 本端增删改 / H 渲染与文案
 //   I 交互与选中态 / J scrollToIdentity / K 错误处理 / L 释放 / M 只读状态 / N 防御性守卫。
@@ -1810,6 +1810,25 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     expect(rendered(host)[0]).toBe('row--1');
     expect(host.scroller.scrollTop).toBe(0); // pinEdge:true
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
+    list.dispose();
+  });
+
+  it('F6b tail 提示条追平后回到尾部新鲜端', async () => {
+    const items = makeTestItems(10);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      freshEdge: 'tail',
+    }));
+    await list.reset();
+    host.scroller.scrollTop = 100;
+    items.push({ id: 10, label: 'new-tail' });
+    list.invalidate({ count: 1 });
+
+    pillOf(host).dispatch('click');
+    await flushAsync();
+    expect(list.getState().stale).toBe(false);
+    expect(list.getState().atFreshEdge).toBe(true);
+    expect(host.scroller.scrollTop).toBe(host.scroller.scrollHeight);
     list.dispose();
   });
 

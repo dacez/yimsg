@@ -8,6 +8,12 @@ const HARNESS_ENTRY = path.join(__dirname, 'browser-harness.ts');
 const HARNESS_ORIGIN = 'http://bounded-list.test';
 let bundlePromise: Promise<string> | undefined;
 
+export interface BoundedListTestItem {
+  readonly id: string;
+  readonly label: string;
+  readonly order: number;
+}
+
 const html = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -74,6 +80,22 @@ async function harnessBundle(): Promise<string> {
   return bundlePromise;
 }
 
+export async function callBoundedListHarness<T>(
+  page: Page,
+  method: string,
+  ...args: unknown[]
+): Promise<T> {
+  return page.evaluate(
+    ({ methodName, methodArgs }) => {
+      const harness = (window as unknown as {
+        boundedListTestHarness: Record<string, (...values: unknown[]) => unknown>;
+      }).boundedListTestHarness;
+      return harness[methodName](...methodArgs);
+    },
+    { methodName: method, methodArgs: args },
+  ) as Promise<T>;
+}
+
 export async function openBoundedListHarness(page: Page): Promise<void> {
   const javascript = await harnessBundle();
   await page.route(`${HARNESS_ORIGIN}/**`, async (route) => {
@@ -95,5 +117,3 @@ export async function openBoundedListHarness(page: Page): Promise<void> {
   await page.goto(`${HARNESS_ORIGIN}/`);
   await page.waitForFunction(() => document.documentElement.dataset.ready === 'true');
 }
-
-export const boundedListHarnessOrigin = HARNESS_ORIGIN;

@@ -4,9 +4,40 @@ import (
 	"crypto/tls"
 	"io"
 	"net/http"
+	"path"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+var websiteImageSourcePattern = regexp.MustCompile(`(?i)<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']`)
+
+func localWebsiteImagePaths(pageHTML string) []string {
+	seen := make(map[string]struct{})
+	var paths []string
+	for _, match := range websiteImageSourcePattern.FindAllStringSubmatch(pageHTML, -1) {
+		if len(match) != 2 {
+			continue
+		}
+		src := strings.TrimSpace(match[1])
+		if src == "" ||
+			strings.HasPrefix(src, "data:") ||
+			strings.HasPrefix(src, "http://") ||
+			strings.HasPrefix(src, "https://") ||
+			strings.HasPrefix(src, "//") {
+			continue
+		}
+		if !strings.HasPrefix(src, "/") {
+			src = "/" + strings.TrimPrefix(src, "./")
+		}
+		if _, exists := seen[src]; exists {
+			continue
+		}
+		seen[src] = struct{}{}
+		paths = append(paths, src)
+	}
+	return paths
+}
 
 // TestWebsiteServedOnRootPath 验证官网（纯静态营销站）被服务端挂载在根路径
 // 作为首页，聊天相关静态资源挂载在 /app/、/demo/、/uikit/ 三个平级子路径下
@@ -39,11 +70,6 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 	}
 	pageHTML := string(body)
 	for _, marker := range []string{
-		"assets/hero-product.svg",
-		"assets/illustration-deploy.svg",
-		"assets/illustration-embed.svg",
-		"assets/illustration-customize.svg",
-		"assets/minipc-hand.png",
 		"data-i18n-html=\"customizeItem3\"",
 		"data-i18n-html=\"customizeItem5\"",
 		"data-i18n-html=\"customizeItem6\"",
@@ -77,52 +103,41 @@ func TestWebsiteServedOnRootPath(t *testing.T) {
 		t.Fatalf("expected 200 from /assets/style.css, got %d", cssResp.StatusCode)
 	}
 
-	// 官网产品视觉使用可缩放 SVG，所有资源都必须被根路径静态服务正确提供。
-	for _, assetName := range []string{
-		"hero-product.svg",
-		"illustration-deploy.svg",
-		"illustration-embed.svg",
-		"illustration-customize.svg",
-	} {
-		assetResp, err := httpClient.Get(httpBaseURL + "/assets/" + assetName)
+	// 从页面提取所有本地图片并逐一访问，避免 HTML 与测试中的手写资产名单漂移。
+	imagePaths := localWebsiteImagePaths(pageHTML)
+	if len(imagePaths) == 0 {
+		t.Fatal("expected official site HTML to reference at least one local image")
+	}
+	for _, imagePath := range imagePaths {
+		assetResp, err := httpClient.Get(httpBaseURL + imagePath)
 		if err != nil {
-			t.Fatalf("GET /assets/%s: %v", assetName, err)
+			t.Fatalf("GET %s: %v", imagePath, err)
 		}
 		assetBody, readErr := io.ReadAll(assetResp.Body)
 		assetResp.Body.Close()
 		if readErr != nil {
-			t.Fatalf("read /assets/%s: %v", assetName, readErr)
+			t.Fatalf("read %s: %v", imagePath, readErr)
 		}
 		if assetResp.StatusCode != http.StatusOK {
-			t.Fatalf("expected 200 from /assets/%s, got %d", assetName, assetResp.StatusCode)
+			t.Fatalf("expected 200 from %s, got %d", imagePath, assetResp.StatusCode)
 		}
-		if !strings.Contains(assetResp.Header.Get("Content-Type"), "image/svg+xml") {
-			t.Fatalf("expected SVG content type from /assets/%s, got %q", assetName, assetResp.Header.Get("Content-Type"))
+		contentType := assetResp.Header.Get("Content-Type")
+		if !strings.HasPrefix(contentType, "image/") {
+			t.Fatalf("expected image content type from %s, got %q", imagePath, contentType)
 		}
-		if !strings.Contains(string(assetBody), "<svg") {
-			t.Fatalf("expected /assets/%s to contain SVG markup", assetName)
+		switch path.Ext(imagePath) {
+		case ".svg":
+			if !strings.Contains(contentType, "image/svg+xml") || !strings.Contains(string(assetBody), "<svg") {
+				t.Fatalf("expected %s to contain SVG markup with an SVG content type", imagePath)
+			}
+		case ".png":
+			pngMagic := []byte{0x89, 'P', 'N', 'G'}
+			if !strings.Contains(contentType, "image/png") ||
+				len(assetBody) < len(pngMagic) ||
+				!strings.HasPrefix(string(assetBody), string(pngMagic)) {
+				t.Fatalf("expected %s to contain PNG bytes with a PNG content type", imagePath)
+			}
 		}
-	}
-
-	// yimsg Box 硬件版块使用实拍照片，同样必须被根路径静态服务正确提供。
-	photoResp, err := httpClient.Get(httpBaseURL + "/assets/minipc-hand.png")
-	if err != nil {
-		t.Fatalf("GET /assets/minipc-hand.png: %v", err)
-	}
-	photoBody, readErr := io.ReadAll(photoResp.Body)
-	photoResp.Body.Close()
-	if readErr != nil {
-		t.Fatalf("read /assets/minipc-hand.png: %v", readErr)
-	}
-	if photoResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 from /assets/minipc-hand.png, got %d", photoResp.StatusCode)
-	}
-	if !strings.Contains(photoResp.Header.Get("Content-Type"), "image/png") {
-		t.Fatalf("expected PNG content type from /assets/minipc-hand.png, got %q", photoResp.Header.Get("Content-Type"))
-	}
-	pngMagic := []byte{0x89, 'P', 'N', 'G'}
-	if len(photoBody) < len(pngMagic) || !strings.HasPrefix(string(photoBody), string(pngMagic)) {
-		t.Fatalf("expected /assets/minipc-hand.png to contain PNG magic bytes")
 	}
 
 	// 真正需要注册登录的聊天 App 挂载在 /app/，不被官网覆盖。

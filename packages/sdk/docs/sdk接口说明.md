@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/generated/actions.gen.ts`、`packages/sdk/src/internal/action-mappers.ts`。
-> 最后复核：2026-07-26。
+> 最后复核：2026-07-29。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；通用同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -432,7 +432,7 @@ client.on('conversations:delete', (event) => {});
 client.on('conversations:sent', (event) => {});
 client.on('contacts:updated', (event) => {});
 client.on('blocklist:updated', (event) => {});
-client.on('conversations:mutelist-updated', (event) => {});
+client.on('mutelist:updated', (event) => {});
 client.on('org:updated', (event) => {});
 client.on('display:updated', (event) => {});
 client.on('error', (event) => {});
@@ -447,7 +447,7 @@ client.on('error', (event) => {});
 | `messages:deleted` | `MessagesDeletedEvent` | 消息窗口就地删除该消息并往上补齐；并对会话 `key` 定向刷新预览 |
 | `contacts:updated` | `ContactsUpdatedEvent` | 联系人索引或服务端联系人分页已变化，UI 应重新拉取 当前页 |
 | `blocklist:updated` | `BlocklistUpdatedEvent` | 收到 `blocklist:updated` 后，提示 UI 失效当前可见屏蔽列表状态 |
-| `conversations:mutelist-updated` | `MutelistUpdatedEvent` | 收到 `conversations:mutelist-updated` 后，提示 UI 失效当前可见免打扰状态 |
+| `mutelist:updated` | `MutelistUpdatedEvent` | 收到 `mutelist:updated` 后，提示 UI 失效当前可见免打扰状态 |
 | `org:updated` | `OrgUpdatedEvent` | 组织架构发生变化，UI 应按 `orgIds` 重拉受影响组织的 `getTags`/`getTagInfos`/`getOrgInfos` 展开数据 |
 | `display:updated` | `DisplayInfoUpdatedEvent` | 显示名缓存刷新完成 |
 | `error` | `ClientErrorEvent` | SDK 内部异步错误 |
@@ -472,7 +472,7 @@ client.on('error', (event) => {});
 - `conversations:clearunread` / `conversations:delete` 是轻量定向信号，携带 `keys`：UI 对仍在数据窗口内的会话调用 `getConversations({ targets })` 拉取当前状态并更新窗口（删除态返回空 → 从窗口移除、剩余往上补齐）；不在窗口则忽略，靠后续全量刷新追平。`getConversations({ targets })` 遵守轻通知原则，按目标只读取单个/多个会话当前状态、不分页。
 - `conversations:sent` 仅在本端发送消息成功时触发（`keys` 为目标会话）。默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页（newest，发出的会话因 `seq` 最大落在顶部）并滚回顶部，不点亮提示条。会话列表初始渲染由 UI `renderReadyState` 负责、不发事件；他端来消息走 `messages:received`（贴顶重拉、非贴顶点亮提示条），与本端主动发送区分。
 - `messages:deleted` 由 `delete_message`（本端或他端 `messages:delete` 通知）触发，携带 `messageId` 与会话 `key`；打开中的会话 UI 在消息数据窗口内就地删除该消息、剩余往上补齐，并对会话 `key` 定向刷新预览，不重拉当前会话。持久模式先同步本地再发事件。
-- `blocklist:updated` / `conversations:mutelist-updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)。
+- `blocklist:updated` / `mutelist:updated` 是轻量同步信号，业务层按当前场景调用过滤分页读取或增量同步；完整同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)。
 - `org:updated` 只携带发生变化的 `orgIds`，不带增量数据；SDK 按 `org_id` 合并去重多条通知后一次性触发。`grant_org_admin`/`revoke_org_admin` 只变更管理员授权（与组织架构位置解耦，不出现在 `getTags` 结果里），不会触发该事件；`delete_org` 走 `contacts:updated` 异步清理各成员通讯录组织行，也不触发该事件。
 - `InstantDataGateway` 的内存增量流与 `PersistentDataGateway` 的本地消息库都遵循同一规则，避免 UI 看见一条额外的空白系统消息。
 
@@ -641,7 +641,7 @@ await client.updateRemark({ groupId }, '研发沟通');
 4. 会话列表、好友通讯录和待处理请求主路径都使用分页读取；本地联系人索引只保留待处理请求计数所需的最小状态
 5. recall event 在 SDK / DataGateway 层被收口为“原消息更新”
 6. 内部组件拆分，但对外不扩散
-7. **所有 SDK 默认配置集中在 `sdk/sdk-defaults.ts`**，可通过 `ClientOptions` 构造参数提供初始值；显示信息缓存 TTL / 条目上限只在构造时生效，不随登录 / 鉴权后的 `client_config.cache_ttl_seconds` / `client_config.cache_max_entries` 运行期改变；撤回时限由服务端 `client_config.recall_window_seconds` 驱动，批量接口单次网络请求上限取构造参数 `batchMaxLimit` 与服务端 `client_config.batch_max_limit` 的较小值并硬封顶 500
+7. **所有 SDK 默认配置集中在 `packages/sdk/src/internal/sdk-defaults.ts`**，可通过 `ClientOptions` 构造参数提供初始值；显示信息缓存 TTL / 条目上限只在构造时生效，不随登录 / 鉴权后的 `client_config.cache_ttl_seconds` / `client_config.cache_max_entries` 运行期改变；撤回时限由服务端 `client_config.recall_window_seconds` 驱动，批量接口单次网络请求上限取构造参数 `batchMaxLimit` 与服务端 `client_config.batch_max_limit` 的较小值并硬封顶 500
 8. **SDK 内存严格可控** 是对外契约的一部分；新增 API、事件、缓存或队列时必须同时说明上限、淘汰或释放策略
 
 ## 10.1 ClientOptions 主要可配置项
@@ -664,7 +664,7 @@ await client.updateRemark({ groupId }, '研发沟通');
 
 公开分页读取接口（会话、联系人、消息）会裁剪 `limit` 到当前批量上限与 500 硬上限中的较小值；持久存储 / 已初始化 DataGateway 路径下的屏蔽列表和免打扰分页、增量接口也使用当前批量上限。`getGroupMembers()` 以及尚未 `startSession()` 时直连后端的屏蔽列表 / 免打扰分页使用 500 硬上限。四个 `getXxxInfos()` 会先把调用方传入的 key 按字符串值去重，去重后超过当前批量上限时抛 `INVALID_ARGUMENT`；调用方应按 `getClientConfig().batchMaxLimit` 循环分批调用。
 
-所有默认值均定义于 `packages/sdk/src/sdk-defaults.ts`，修改时应同步更新该文件注释。
+所有默认值均定义于 `packages/sdk/src/internal/sdk-defaults.ts`，修改时应同步更新该文件注释。
 
 如实现发生变化，应优先同步：
 

@@ -1,7 +1,7 @@
 # 服务端文档索引
 
 > 主要对照：`server/cmd/yimsg-server/`、`server/internal/`、`server/tests/e2e/` 与 `server/docs/` 实际文件树。
-> 最后复核：2026-07-16。
+> 最后复核：2026-07-29。
 > 触发更新：服务端文档增删改名、专题分组或关键代码目录变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文只负责服务端文档的二级导航和专题归类。
 
@@ -43,8 +43,8 @@
 |---|---|---|
 | [`db/数据库设计总览.md`](db/数据库设计总览.md) | 分片组、表清单、全局约束、GC 总览 | `server/internal/dal/schema.go`、`server/internal/service/gc.go` |
 | [`db/schema字段对照.md`](db/schema字段对照.md) | 全部表字段、主键、索引与用途对照 | `server/internal/dal/schema.go` |
-| [`db/用户数据库设计.md`](db/用户数据库设计.md) | `user_lookup`、`user_info` 与注册 / 登录相关约束 | `server/internal/dal/user*_store.go`、`server/internal/service/auth.go` |
-| [`db/登录态数据库设计.md`](db/登录态数据库设计.md) | `session`、`user_session` 与踢下线 / GC | `server/internal/dal/session_store.go`、`server/internal/dal/user_session_store.go` |
+| [`db/用户数据库设计.md`](db/用户数据库设计.md) | `user_lookup`、`user_info` 与注册 / 登录相关约束 | `server/internal/dal/user*_store.go`、`server/internal/auth/auth.go`、`server/internal/service/session.go` |
+| [`db/登录态数据库设计.md`](db/登录态数据库设计.md) | `session`、`user_session` 与踢下线 / GC | `server/internal/dal/session_store.go`、`server/internal/dal/user_session_store.go`、`server/internal/auth/auth.go`、`server/internal/service/session.go` |
 | [`db/通讯录数据库设计.md`](db/通讯录数据库设计.md) | 联系人、收藏群、增量同步、排序缓存名 | `server/internal/dal/contact_store.go`、`server/internal/service/contact.go` |
 | [`db/消息数据库设计.md`](db/消息数据库设计.md) | 消息收件箱、会话物化视图、消息 / 会话 GC | `server/internal/dal/message_store.go`、`server/internal/dal/conversation_store.go` |
 | [`db/群数据库设计.md`](db/群数据库设计.md) | 群属性、成员关系、成员分页读取 | `server/internal/dal/group_store.go`、`server/internal/service/group.go` |

@@ -6,7 +6,7 @@
  * 4. 会话未读红点数字正确
  */
 import { test, expect } from '../support/test-fixtures';
-import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation } from './helpers';
+import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts } from './helpers';
 
 test.describe('Enhanced Sync Tests', () => {
   const password = '123456';

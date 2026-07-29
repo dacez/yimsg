@@ -195,4 +195,16 @@ describe('startApp connection/bounded-list wiring', () => {
 
     expect(app.invalidateBoundedLists).toHaveBeenCalledOnce();
   });
+
+  it('passes conversations:sent keys into targeted top promotion', () => {
+    const app = createFakeApp(client);
+    startApp(app);
+
+    client.emit('conversations:sent', { keys: ['u:200', 'g:300'] });
+
+    expect(app.views.chat.renderConversationList).toHaveBeenCalledWith({
+      toTop: true,
+      keys: ['u:200', 'g:300'],
+    });
+  });
 });

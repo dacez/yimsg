@@ -29,6 +29,8 @@ interface FakeNode {
   listeners: Map<string, Array<() => void>>;
   className: string;
   appendChild(child: FakeNode): FakeNode;
+  insertBefore(child: FakeNode, reference: FakeNode | null): FakeNode;
+  removeChild(child: FakeNode): FakeNode;
   setAttribute(name: string, value: string): void;
   getAttribute(name: string): string | null;
   addEventListener(type: string, handler: () => void): void;
@@ -60,8 +62,23 @@ function createFakeElement(): FakeNode {
       },
     },
     appendChild(child: FakeNode) {
+      child.parentElement?.removeChild(child);
       node.children.push(child);
       child.parentElement = node;
+      return child;
+    },
+    insertBefore(child: FakeNode, reference: FakeNode | null) {
+      child.parentElement?.removeChild(child);
+      const index = reference ? node.children.indexOf(reference) : -1;
+      if (index < 0) node.children.push(child);
+      else node.children.splice(index, 0, child);
+      child.parentElement = node;
+      return child;
+    },
+    removeChild(child: FakeNode) {
+      const index = node.children.indexOf(child);
+      if (index >= 0) node.children.splice(index, 1);
+      child.parentElement = null;
       return child;
     },
     setAttribute(name: string, value: string) { attributes.set(name, value); },

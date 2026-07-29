@@ -94,23 +94,6 @@ function setupClientWithMocks(
   };
 }
 
-/**
- * 设置 transportSendBinary mock 为登录成功的返回值。
- * 因为 auth 模块现在使用 sendBinary（proto 原生路径），
- * 需要单独 mock sendBinary 来模拟登录/鉴权成功。
- */
-function mockAuthSuccess(
-  transportSendBinary: ReturnType<typeof vi.fn>,
-  overrides: Record<string, unknown> = {},
-) {
-  transportSendBinary.mockResolvedValueOnce({
-    base: { code: 0 },
-    uid: "100",
-    token: "tok123",
-    ...overrides,
-  });
-}
-
 describe("YimsgClient", () => {
   beforeEach(() => {
     // 全局 mock sendBinary，因为 auth 模块现在使用 proto 原生路径

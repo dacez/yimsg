@@ -111,6 +111,7 @@ function createApp() {
     t: vi.fn((key: string) => key),
     emitAuthenticated: vi.fn(),
     emitAppError: vi.fn(),
+    emitLogout: vi.fn(),
     showToast: vi.fn(),
   };
 
@@ -149,5 +150,27 @@ describe('uikit auth view', () => {
     expect(initAfterAuth).toHaveBeenCalledTimes(2);
     expect(ctx.mocks.emitAuthenticated).toHaveBeenNthCalledWith(1, expect.objectContaining({ token: 'tok-login', uid: '1001' }));
     expect(ctx.mocks.emitAuthenticated).toHaveBeenNthCalledWith(2, expect.objectContaining({ token: 'saved-token', uid: '1002' }));
+  });
+
+  it('waits for kicked-session cleanup before starting a new login', async () => {
+    const ctx = createApp();
+    let resolveLogout!: () => void;
+    ctx.mocks.client.logout.mockImplementation(() => new Promise<void>((resolve) => {
+      resolveLogout = resolve;
+    }));
+    const view = createAuthView(ctx.app);
+    view.setupAuth();
+
+    view.handleSessionKicked();
+    const loginPromise = ctx.elements.loginForm.trigger('submit');
+    await Promise.resolve();
+
+    expect(ctx.mocks.client.logout).toHaveBeenCalledOnce();
+    expect(ctx.mocks.client.login).not.toHaveBeenCalled();
+
+    resolveLogout();
+    await loginPromise;
+
+    expect(ctx.mocks.client.login).toHaveBeenCalledWith('alice', 'secret');
   });
 });

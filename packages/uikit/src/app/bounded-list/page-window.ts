@@ -1,8 +1,8 @@
 // BoundedList 的数据窗口层：按页边界游标记账的有界滑动窗口。
 //
 // 记账规则（整页裁剪、跨页去重、就地增删改）原理见
-// packages/uikit/docs/BoundedList组件设计.md §8 与
-// packages/uikit/docs/有界消息流窗口设计方案.md §2.3、§7.1、§7.2。
+// packages/uikit/docs/boundedlist/组件设计.md §8 与
+// packages/uikit/docs/boundedlist/生产集成.md。
 //
 // 三条防御性约束（对应已修复缺陷，改动前请先看它们的成因）：
 // - maxPages 至少为 1：否则 setInitial 放进来的页会被随后任意一次 mergeLive 整页裁光（BL-BUG-17）；

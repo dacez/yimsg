@@ -62,6 +62,17 @@ if (packageJson.includes('yimsg-uikit.iife')) {
   fail('package.json 不应引用 IIFE UIKit 产物');
 }
 
+for (const configPath of [
+  'packages/sdk/tsconfig.json',
+  'packages/uikit/tsconfig.json',
+  'apps/web/tsconfig.json',
+]) {
+  const compilerOptions = JSON.parse(read(configPath)).compilerOptions ?? {};
+  if (compilerOptions.noUnusedLocals !== true || compilerOptions.noUnusedParameters !== true) {
+    fail(`${configPath} 必须启用 noUnusedLocals 与 noUnusedParameters`);
+  }
+}
+
 const sourceAndTestRoots = [
   'protocol/generated/typescript',
   'packages/sdk/src',

@@ -221,6 +221,28 @@ interface RenderConversationListOptions {
   readonly keys?: ReadonlyArray<string>;
 }
 
+async function promoteConversations(app: AppInstance, keys: ReadonlyArray<string>): Promise<void> {
+  const list = getConversationList(app);
+  if (keys.length === 0) {
+    list.invalidate();
+    app.$("conversation-list").scrollTop = 0;
+    return;
+  }
+  try {
+    const page = await app.client.getConversations({
+      targets: keys.map(keyToTarget),
+    });
+    // getConversations 返回新到旧顺序；head 端逐条 upsert 时反向并入，保持服务端顺序。
+    for (const conversation of [...page.conversations].reverse()) {
+      list.upsertLocal(conversation);
+    }
+    app.$("conversation-list").scrollTop = 0;
+  } catch (error) {
+    console.warn("promoteConversations failed:", error);
+    list.invalidate({ identities: keys.map(sdkKeyToIdentity) });
+  }
+}
+
 export function renderConversationList(
   app: AppInstance,
   options: RenderConversationListOptions = {},
@@ -228,9 +250,9 @@ export function renderConversationList(
   const list = getConversationList(app);
 
   if (options.toTop) {
-    // 本端发送：无论当前滚动位置都重拉首页（newest），让发出的会话回到顶部并置顶视口，
-    // 这是主动行为，不点亮提示条。
-    void list.reset({ pinEdge: true });
+    // 本端发送：只拉受影响会话并移到 head，新旧兄弟节点都由有键协调器保留；
+    // 无论当前滚动位置都回到顶部，这是主动行为，不点亮提示条。
+    void promoteConversations(app, options.keys ?? []);
     void refreshUnreadBadge(app);
     return;
   }

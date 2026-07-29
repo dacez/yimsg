@@ -1,7 +1,7 @@
 # Yimsg 文档索引
 
 > 主要对照：当前 monorepo 目录、各组件 README、根 README 与文档一致性检查工具。
-> 最后复核：2026-07-26。
+> 最后复核：2026-07-29。
 > 触发更新：组件目录、文档入口、维护边界或验证命令发生变化时同步更新。
 > 入口关系：根目录 [`../README.zh-CN.md`](../README.zh-CN.md) 面向使用者；本文件负责跨组件文档导航。
 
@@ -13,7 +13,7 @@ Yimsg 文档跟随代码所有权放置：组件专属文档与组件同目录�
 server/docs/             服务端架构、业务与数据库
 protocol/docs/           协议治理、接口总览与生成速查
 packages/sdk/docs/       SDK 设计、公开接口与 DataGateway
-packages/uikit/docs/     UIKit 接入、UI 与渲染窗口
+packages/uikit/docs/     UIKit 接入、UI 与 BoundedList 专题
 cli/docs/                yimsg-cli 命令行客户端方案
 agent/docs/              yimsg-agent 多账号自动回复方案
 docs/architecture/       跨端架构与同步机制
@@ -29,7 +29,8 @@ docs/archive/            历史资料，不作为当前事实源
 | 理解服务端 | [`../server/docs/README.md`](../server/docs/README.md) |
 | 修改协议 | [`../protocol/docs/README.md`](../protocol/docs/README.md) → [`../protocol/docs/接口总览.md`](../protocol/docs/接口总览.md) |
 | 使用或维护 SDK | [`../packages/sdk/docs/sdk接口说明.md`](../packages/sdk/docs/sdk接口说明.md) → [`../packages/sdk/docs/sdk设计方案.md`](../packages/sdk/docs/sdk设计方案.md) |
-| 嵌入或维护 UIKit | [`../packages/uikit/docs/UIKit方案.md`](../packages/uikit/docs/UIKit方案.md) → [`../packages/uikit/docs/UI设计方案.md`](../packages/uikit/docs/UI设计方案.md) |
+| 嵌入或维护 UIKit | [`architecture/前端文档索引.md`](architecture/前端文档索引.md) → [`../packages/uikit/docs/UIKit方案.md`](../packages/uikit/docs/UIKit方案.md) |
+| 使用或维护 BoundedList | [`../packages/uikit/docs/boundedlist/README.md`](../packages/uikit/docs/boundedlist/README.md) |
 | 使用或维护 AI 调用的 CLI | [`../cli/README.md`](../cli/README.md) → [`../cli/docs/cli方案.md`](../cli/docs/cli方案.md) |
 | 使用或维护多账号自动回复 Agent | [`../agent/README.md`](../agent/README.md) → [`../agent/docs/agent方案.md`](../agent/docs/agent方案.md) |
 | 理解跨端同步 | [`architecture/同步机制方案.md`](architecture/同步机制方案.md) |

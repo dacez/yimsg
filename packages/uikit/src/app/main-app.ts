@@ -219,8 +219,8 @@ export function startApp(app: AppInstance): () => void {
     void app.views.chat?.refreshConversations([...event.keys]);
   });
   // 本端发送消息：让该会话移动到顶部（重拉首页+滚回顶部），不点亮提示条。
-  bindClient('conversations:sent', () => {
-    app.views.chat?.renderConversationList({ toTop: true });
+  bindClient('conversations:sent', (event) => {
+    app.views.chat?.renderConversationList({ toTop: true, keys: event.keys });
   });
 
   bindClient('messages:deleted', (event) => {

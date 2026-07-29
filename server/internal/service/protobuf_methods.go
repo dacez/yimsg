@@ -40,11 +40,6 @@ func errBase(code pb.ErrorCode, msg string) *pb.BaseResponse {
 	return &pb.BaseResponse{Code: code, Msg: msg}
 }
 
-// batchLimitExceeded 构造批量超限通用响应。
-func batchLimitExceeded(max int64) *pb.BaseResponse {
-	return errBase(pb.ErrorCode_ERROR_BATCH_LIMIT_EXCEEDED, fmt.Sprintf("batch limit exceeded: max %d", max))
-}
-
 // errBatchLimit 保留给现有调用点使用。
 func errBatchLimit(reqID uint64, max int64) *appmsg.Response {
 	return appmsg.ErrResponseCode(reqID, appmsg.ErrorCodeBatchLimitExceeded, fmt.Sprintf("batch limit exceeded: max %d", max))

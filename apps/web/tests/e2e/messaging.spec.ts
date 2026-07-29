@@ -255,8 +255,13 @@ test.describe('Messaging', () => {
     await page1.click('#msg-markdown-toggle');
     await expect(page1.locator('#msg-markdown-toggle')).toHaveClass(/active/);
 
-    await page1.locator('.message-row').first().hover();
-    await page1.locator('.message-actions-trigger').first().click();
+    const originRow = page1.locator('.message-row', { hasText: 'origin message' }).first();
+    // 乐观消息在服务端确认前没有稳定消息 ID，不应暴露引用、转发或多选入口。
+    // 动作按钮出现同时证明当前行已经从发送中占位切换为权威消息。
+    await expect(originRow.locator('.message-actions-trigger')).toBeVisible();
+    await expect(originRow).toHaveAttribute('aria-busy', 'false');
+    await originRow.hover();
+    await originRow.locator('.message-actions-trigger').click();
     await page1.locator('.message-action-item').getByText('引用').click();
     await expect(page1.locator('#msg-quote-bar')).not.toHaveClass(/hidden/);
 

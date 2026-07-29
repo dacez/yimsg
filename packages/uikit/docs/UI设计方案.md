@@ -55,7 +55,7 @@
 - [14. SDK 使用边界](#14-sdk-使用边界)
 - [15. 维护检查点](#15-维护检查点)
 
-本文档详细描述 UI 视图层（`packages/uikit/src/app/views/`、`packages/uikit/src/app/main-app.ts`、`packages/uikit/src/app/utils.ts`、`packages/uikit/src/app/bounded-list/`）的设计逻辑；有界列表窗口组件的完整契约、参数、事件与迁移记录以 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) 与 [`BoundedList组件设计.md`](BoundedList组件设计.md) 为单一事实源，本文 §8 只保留概述表格。
+本文档详细描述 UI 视图层（`packages/uikit/src/app/views/`、`packages/uikit/src/app/main-app.ts`、`packages/uikit/src/app/utils.ts`、`packages/uikit/src/app/bounded-list/`）的设计逻辑。BoundedList 专题已集中到 [`boundedlist/README.md`](boundedlist/README.md)：接口以 [`组件设计.md`](boundedlist/组件设计.md) 为准，宿主接线与事件路由以 [`生产集成.md`](boundedlist/生产集成.md) 为准；本文 §8 只保留 UI 视角的使用概览，不重复组件契约。
 
 **依赖关系：** UI 层仅通过当前 `AppInstance.client` 与业务逻辑交互，不直接接触 WebSocket、DataGateway 或缓存内部。SDK 的公开接口和事件见 [SDK 设计方案](../../sdk/docs/sdk设计方案.md)；双模式架构、DataGateway、内存状态等全局设计见 [前端设计方案](../../../docs/architecture/前端设计方案.md)；UIKit 的整体架构与嵌入接口见 [UIKit 方案](UIKit方案.md)。
 
@@ -87,7 +87,7 @@
 └── packages/uikit/src/app/
     ├── main-app.ts                 — 统一装配、事件订阅、认证后初始化
     ├── app-instance.ts             — AppInstance、DOM scope、存储 scope
-    ├── bounded-list/               — 有界列表窗口组件（BoundedList，见有界消息流窗口设计方案.md）
+    ├── bounded-list/               — 有界列表窗口组件（见 docs/boundedlist/）
     ├── list-identity.ts            — 跨列表复用的稳定身份键（conversationIdentity / contactIdentity）
     ├── style.css                   — 完整应用样式
     └── views/
@@ -135,7 +135,7 @@
 
 点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`。只改内存态和 DOM class，不触碰 `location`/`history`：无论在应用内做任何操作（登录/注册、聊天、建群、加好友等），浏览器"后退"都应该直接离开应用本身，而不是回退到应用内部的上一个视图或上一个打开的会话——这是所有视图切换和打开会话都不写 URL 的直接原因。
 
-会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪（细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §6），触底向后翻、触顶向前翻；未读角标直接使用会话项携带的 `unreadCount`；instant 模式由后端返回，持久存储模式来自本地会话表。他端来消息 `messages:received` 触发 `force` 刷新：用户贴顶时直接清空重拉首页；不贴顶时列表不动，只点亮"有新消息"提示条（`#conversation-update-pill`）并刷新未读角标，点击提示条或滚回顶部后追平。本端发送消息 `conversations:sent` 默认让该会话「移动到顶部」：无论当前滚动位置都重拉首页并滚回顶部（`renderConversationList({ toTop:true })`），不点亮提示条；会话列表初始渲染由 `renderReadyState` 负责、不依赖该事件。`conversations:clearunread` / `conversations:delete` 携带 `keys`：对仍在数据窗口内的会话调 `getConversations({ targets })` 定向拉取当前状态并更新窗口（删除态返回空 → 移除往上补齐），不整列表重拉、会话不在窗口则忽略（`refreshConversations`）。
+会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪；未读角标直接使用会话项携带的 `unreadCount`。他端来消息时，贴顶就追平最新页，不贴顶只刷新窗口内受影响的会话并点亮更新提示；本端发送则回到最新端。删除和清未读只定向处理当前窗口内的会话。完整分页与事件路由见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。
 
 不支持会话深链：应用不读取、也不写入任何 URL 状态（无论独立主应用 `embedded: false` 还是嵌入式 widget `embedded: true`），进入 ready 状态固定落在会话列表（chat 视图，不预选会话）。宿主页面如需让嵌入式 widget 直接打开指定会话，走 `mount()` 返回的 `handle.openConversation(target)` 编程式接口，不经过 URL。这个设计同时解决了两个问题：一是同一页面可以同时挂载多个 widget（如客服工作台一屏多开多个客服账号）时，多个 widget 不再需要抢同一份浏览器 `location`/`history`；二是应用内部导航（切视图、打开会话等）不再往宿主页面的浏览器历史里塞状态，避免用户点"后退"时先被迫在应用内部状态间来回，而不是直接离开应用。
 
@@ -229,41 +229,23 @@ initAfterAuth():
 | `connection:connected` | — | 隐藏全局状态栏；若当前已处于已登录状态，则读 UI 层保存的 token 并调 `authenticate(token)` 重新认证；若此前确实断过线（`connection:disconnected`/`connection:reconnecting` 发生过）且会话已初始化过，广播 `app.invalidateBoundedLists()`（见 §4.5） |
 | `connection:disconnected` / `connection:reconnecting` | — | 显示 "Reconnecting..." 全局状态栏（每次断线/重连尝试都立即显示，不设失败次数阈值） |
 | `session:sync` | — | `started` / `reset` 时显示同步状态栏；对应域 `success` / `failed` 后隐藏或保留其他同步域状态，并按域刷新会话 / 联系人 |
-| `messages:received` | `handleMessagesReceived` | 重绘信号：`renderConversationList({force, keys})` + `refreshOpenConversation()` 重新拉取打开中会话；贴顶整列表 reset 重排，不贴顶则按 `event.conversationKeys` 定向刷新窗口内会话（不重排）；`event.messages` 仅用于 `onMessages`（角标/响铃），不直接追加 |
+| `messages:received` | `handleMessagesReceived` | 重绘信号：`renderConversationList({force, keys})` + `refreshOpenConversation()` 重新拉取打开中会话；贴顶以 staged reconcile 保留当前 DOM，权威首页到达后只协调变化行；不贴顶则按 `event.conversationKeys` 定向刷新窗口内会话（不重排）；`event.messages` 仅用于 `onMessages`（角标/响铃），不直接追加 |
 | `conversations:clearunread` / `conversations:delete` | — | `refreshConversations(keys)`：对在窗口会话 `getConversations({targets})` 定向拉取并更新/移除 |
-| `conversations:sent` | — | `renderConversationList({toTop:true})`（本端发送，移动到顶部） |
+| `conversations:sent` | — | `renderConversationList({toTop:true, keys})` 定向拉取受影响会话，以 `upsertLocal` 移到顶部并滚回顶部；不清空重拉整份会话窗口 |
 | `messages:deleted` | — | `removeMessage(messageId)` 就地从消息窗口删除并往上补齐，不重拉 |
 | `contacts:updated` | `handleContactsChanged` | 更新通讯录红点；若通讯录可见 → 刷新待处理请求和当前好友分页 |
 | `blocklist:updated` | — | 失效当前详情页状态并重绘当前详情面板 |
-| `conversations:mutelist-updated` | — | 失效当前详情页状态并重绘当前详情面板 |
-| `session:kicked` | `handleSessionKicked` | Toast 提示 → 登出 → 回到登录页 |
+| `mutelist:updated` | — | 刷新会话列表、会话守卫和当前详情面板；通讯录可见时同步刷新展示状态 |
+| `session:kicked` | `handleSessionKicked` | 先登记旧连接清理任务，再 Toast 提示并回到登录页；用户立即重新登录时必须等待该任务结束，避免旧 `logout()` 断开刚建立的新连接 |
 | `display:updated` | — | 重绘会话列表、消息列表、详情面板（贴底时保持贴底，上翻阅读位置不动）；若通讯录 / 设置页可见 → 重绘对应视图，组织详情面板也随成员资料补齐刷新 |
 
 ### 4.4 handleMessagesReceived 详解
 
-```
-bindClient('messages:received', event):  // main-app.ts
-  if event.messages.length: app.emitMessages(event.messages)  // 仅供 onMessages（角标/响铃）
-  handleMessagesReceived(app, event.conversationKeys)         // 重绘信号，不消费 payload
+`messages:received` 是重绘信号，不是列表数据源。`main-app.ts` 只把 `event.messages` 交给宿主的 `onMessages`（角标、响铃等），再用 `event.conversationKeys` 定向刷新会话窗口，并让当前消息列表执行 `invalidate({ count: 1 })`。
 
-handleMessagesReceived(app, keys):     // main-app.ts — 重绘分发
-  renderConversationList({ force: true, keys })  // 不贴顶时据 keys 定向刷新窗口内会话
-  refreshOpenConversation()            // 委托给 chat 门面 / message-list 子模块
+`BoundedList.invalidate()` 统一决定是否立即追平：用户位于新鲜端时在保留当前 DOM 的前提下后台拉取最新页，成功后按 identity 原子协调变化行；正在阅读历史时保留当前 DOM 与滚动位置，只累计提示条计数。提示条点击后跳回最新端。删除与本端发送分别走 `removeLocal()` 和 `upsertLocal()`，不再维护一套平行的消息页状态。
 
-// chat/message-list.ts — refreshOpenConversation():
-  if !currentConvKey → return          // currentConvKey 存在于 chat/state.ts
-  if 聊天视图不可见 → return
-  if messagePageHasNewer → 同步新消息提示条后 return   // 交给触底加载或提示条跳转
-  if 用户未贴底（距底部 > 50px）:
-    messagePageHasNewer = true → 点亮新消息提示条 → return   // 不打断阅读
-  // 贴底：reloadLatestMessagePage()
-  messages = await client.getMessages({ target, limit })   // 重新拉取最新一页
-  setInitialMessagePage(messages)      // 新消息/撤回/删除按服务端最新态统一反映
-  renderMessages(); scrollToBottom()
-  if 可自动清未读: client.clearUnread(target)  // 异步，fire-and-forget
-```
-
-> 新消息提示条由 `BoundedList` 内置的 `pillHost` + `text.updatePill` 管理（挂在 `#message-list` 的父元素下，显隐只看 `stale`），点击跳到最新一页并滚到底部，细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §5。
+消息列表事件、会话列表事件和重连广播的完整路由表见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。
 
 ### 4.5 有界列表 invalidate 契约
 
@@ -308,7 +290,7 @@ export function render*()       — 渲染/重绘函数，可被 main-app.ts 或
 | `ensureInitialModeSelection()` | 进入页面时若无 token，则先要求用户选择模式 |
 | `showAuthView()` | 显示 `#view-auth`、隐藏 `#app` |
 | `showAppView()` | 隐藏 `#view-auth`、显示 `#app` |
-| `handleSessionKicked()` | Toast 提示 → `client.logout()` → 显示登录页 |
+| `handleSessionKicked()` | 登记并异步执行 `client.logout()` → Toast 提示 → 显示登录页；新登录串行等待旧会话清理 |
 
 #### 内部函数
 
@@ -381,10 +363,11 @@ sequenceDiagram
 | 变量 | 类型 | 说明 |
 |------|------|------|
 | `currentConvKey` | `string\|null` | 当前打开的会话 convKey |
-| `currentMessages` | `Message[]` | 当前消息面板中展示的有界消息页，按 seq 升序保存 |
-| `loadingMoreMessages` | `boolean` | 是否正在加载更早消息（防抖） |
-| `loadingNewerMessages` | `boolean` | 是否正在加载更新消息（防抖） |
-| `messagePageHasOlder` / `messagePageHasNewer` | `boolean` | 当前页旧侧 / 新侧是否还有可分页数据 |
+| `conversationList` | `BoundedList<LocalConversation>\|null` | 惰性创建的会话窗口 |
+| `messageList` | `BoundedList<Message, MessageQuery>\|null` | 当前消息窗口；切换会话时复用实例并 `reset()` |
+| `currentMessages` | `Message[]` | 消息窗口的同步只读投影，供选择栏等非渲染逻辑读取 |
+| `messageGeneration` | `number` | 会话切换 / 锚点跳转的世代号，用于丢弃过期意图 |
+| `highlightMessageId` | `string\|null` | 搜索跳转后跨重渲染保留的高亮消息 |
 
 #### 导出函数
 
@@ -397,8 +380,7 @@ sequenceDiagram
 | `openConversation(conv)` | 切换到指定会话，加载消息 |
 | `renderMessages()` | 重绘中栏消息列表 |
 | `scrollToBottom()` | 消息列表滚动到底部；动态高度消息会在多帧测量后继续收敛到底部 |
-| `loadNewerMessages()` | 消息下滚加载被分页裁掉的更新历史 |
-| `refreshOpenConversation()` | 收到 `messages:received` 重绘信号时刷新打开中的会话（不消费 payload）：贴底时重拉最新一页并滚底，上翻阅读中只点亮新消息提示条，由 main-app.ts 调用 |
+| `refreshOpenConversation()` | 收到 `messages:received` 后对当前消息窗口调用 `invalidate()`；位于新鲜端时追平，否则只点亮提示条 |
 | `refreshDetailPanel()` | 轻量刷新详情面板的昵称/头像，由 main-app.ts 在 `display:updated` 时调用 |
 | `rerenderCurrentDetailPanel()` | 当前详情面板整块重绘，用于屏蔽 / 免打扰状态变更后的刷新 |
 | `applyConversationGuards()` | 根据屏蔽列表状态禁用当前单聊的输入、表情与附件按钮 |
@@ -410,8 +392,7 @@ sequenceDiagram
 | 函数 | 说明 |
 |------|------|
 | `msgPreview(msg, isGroup)` | 生成会话列表的最后消息预览文本 |
-| `getConversations()` | 触底用上一页 `page.endCursor` 调 `client.getConversations({ cursor, limit })`，只渲染当前页和预取范围 |
-| `loadOlderMessages()` | 消息上滚加载更早历史，更新 chat/state.ts 中的 `currentMessages` 数据页 |
+| `getConversationList()` / `getMessageList()` | 惰性创建并返回对应 `BoundedList`；分页、防重、游标和裁剪由组件统一处理 |
 | `sendMessage()` | 先调 `client.validateTextMessage()`，再通过 `client.sendMessage()` / `client.sendQuotedTextMessage()` 发送 |
 | `uploadAndSend(file, type)` | 上传文件 → 发送消息 |
 | `showGroupDetail(groupId)` | 右栏渲染群详情 + 成员列表 |
@@ -514,10 +495,10 @@ openConversation(conv):
   applyConversationGuards()                        // 若当前单聊已被我屏蔽，则禁用输入区
   隐藏 #chat-empty
 
-  messages = await client.getMessages({ target, limit: 30 })
-  setInitialMessagePage(messages.reverse(), hasOlder)
-  renderMessages()
-  scrollToBottom()
+  messageList = getMessageList(app)
+  await messageList.reset({ query: {} })             // 拉最新页并由组件渲染
+  if 会话已在等待期间切换 → 丢弃后续业务判断
+  if 占位群且成功得到空页 → 关闭过期会话
 ```
 
 补充约束：
@@ -568,7 +549,7 @@ sendMessage():
 
 移动端输入区只常驻三个触控目标：`#msg-attach`（更多）、可自适应增高的 `#msg-input` 和使用纸飞机图标的 `#msg-send`。表情与 Markdown 入口收进更多菜单，避免多个 `44px` 触控目标把正文输入区域压缩；按钮图形保持约 `20px`，实际触控区仍不小于 `44×44px`。输入框从单行开始随内容增高，最多四行，达到上限后才启用内部纵向滚动，单行状态不显示滚动条。桌面端继续平铺附件、表情、Markdown 和文字发送按钮。
 
-占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。
+占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。占位消息尚无稳定的服务端消息身份，因此只显示发送状态，不开放引用、转发、撤回、多选、右键或长按菜单；服务端确认并换成权威消息后才开放这些入口，避免临时 id 被写入引用等后续业务。
 
 图片 / 文件发送（`uploadAndSend`）同样接入该乐观流程，且占位插入时机在上传之前（上传+发送是这条链路里最长的等待，越早展示占位越有意义）：
 
@@ -594,7 +575,7 @@ uploadAndSend(file, type):
 
 图片占位消息的 `media_id` 直接是本地 `blob:` 预览地址：`message-list.ts` 的 `fillMessageBubble` 只在该消息命中 `pendingMessageIds` 且 `media_id` 以 `blob:` 开头时才直接使用它做 `img.src`（不经过面向远端内容的 `setTrustedImageSrc` 协议白名单，因为这条消息是本条会话自己刚创建的本地对象，不是外部输入）；文件占位消息没有可视预览，`media_id` 为空时按现有兜底逻辑展示文件名即可，不需要额外处理。
 
-**占位换真实消息不闪烁**：`bounded-list/stream-window.ts` 的渲染引擎是"有界窗口全量渲染"（每次 `render()` 都 `innerHTML=''` 整段重建，`identityOf` 只用于滚动锚点，不做按 key 的 DOM 复用，见该文件顶部设计取舍注释）。普通消息重渲染不闪是因为 `<img src>` 没变，浏览器直接走内存缓存；但占位换真实消息这一刻，`src` 会从本地 `blob:` 预览地址换成一个浏览器从没请求过的 `/media/image/{id}`，若不预热就会在这次整段重建里对着这个新 URL 发起真实请求，画面上就是一闪。`uploadAndSend` 在 `sendImage` 成功后、`sendOptimistically` 把占位换成真实消息触发重渲染之前，先用一个不挂载到 DOM 的 `Image()` 把 `mediaUrl('image', data.mediaId)` 拉进浏览器缓存（`preloadImage`，加载失败也放行，不能因为预热失败卡住发送），换入的新 `<img>` 节点就能直接命中缓存瞬间画出，不再有可见的加载间隙。
+**占位换真实消息不闪烁**：`bounded-list/stream-window.ts` 按稳定身份协调真实 DOM。发送确认或接收通知触发渲染时，语义和候选 DOM 都未变化的消息行沿用原节点，只插入新消息或替换确实从占位态变成权威态的那一行，不再清空整个消息容器。图片占位换成权威消息时，`src` 仍会从本地 `blob:` 预览地址变成 `/media/image/{id}`；`uploadAndSend` 在替换前用未挂载的 `Image()` 预热该 URL（失败也放行），避免目标行自身出现可见加载间隙。
 
 #### 引用与转发
 
@@ -729,10 +710,9 @@ showGroupDetail(groupId):
 
 | 函数 | 说明 |
 |------|------|
-| `loadFriendPage({ mode })` | reset / forward / backward 三种模式维护好友窗口；关键字（`#friends-search-input`，300ms 防抖）为空时调用 `client.getContacts()`，非空时改调 `client.searchContacts()`，二者共用同一个 `friendWindow`/keyset 游标状态 |
-| `applyFriendKeywordChange(keyword)` | 关键字变化（去空白后与当前值不同）时重置好友窗口并按 `mode:'reset'` 重新拉首页 |
-| `renderFriends()` | 全量渲染好友窗口条目 |
-| `renderRequests(requests)` | 渲染待处理请求列表 |
+| `getFriendList()` | 惰性创建好友 `BoundedList`；关键字为空时读 `getContacts()`，非空时读 `searchContacts()` |
+| `applyFriendKeywordChange(keyword)` | 关键字变化后调用 `setQuery()`；300ms 防抖与重拉首页由组件统一处理 |
+| `getRequestList()` / `getOutgoingRequestList()` | 分别维护待我处理和我发出的请求窗口，避免状态与操作权限混用 |
 | `refreshContactsDisplay()` | `display:updated` 等显示资料变化时重绘联系人列表；若组织详情面板打开，也重新渲染当前 tag |
 | `searchUser()` | 按用户名搜索用户 |
 | `addFriend(friendUid)` | 发送好友请求 |
@@ -771,20 +751,17 @@ showGroupDetail(groupId):
 #### 好友列表项渲染
 
 ```
-renderFriends():
-  items = state.friendWindow.items                                 // 有界窗口，全量渲染
-  预取窗口内条目的展示信息（getUserInfos / getGroupInfos）
-  friendListView.render({ items, hasMoreBefore, hasMoreAfter, loadBefore, loadAfter, keyOf, renderItem }):
-    对窗口内每个 friend:
-      createElement('div.contact-item'):
-        avatar(display) + name（无内联按钮）
-        click → showContactDetail(friend)，右侧详情面板渲染 Chat / Remark / Mute / Block / Delete 操作
-    触顶且 hasMoreBefore → loadBefore → loadFriendPage({ mode:'backward' })
-    触底且 hasMoreAfter → loadAfter → loadFriendPage({ mode:'forward' })
+getFriendList():
+  createBoundedList({
+    source: keyword
+      ? client.searchContacts({ keyword, status: FRIEND, cursor, backward, limit })
+      : client.getContacts({ status: FRIEND, cursor, backward, limit }),
+    renderItem: contact => avatar(display) + name,
+    onActivate: contact => showContactDetail(contact)
+  })
 
 #friends-search-input 输入（300ms 防抖）→ applyFriendKeywordChange(value):
-  keyword 为空 → loadFriendPage 走 client.getContacts({status:FRIEND, ...})
-  keyword 非空 → loadFriendPage 走 client.searchContacts({keyword, status:FRIEND, ...})，同一套 friendWindow/游标、同一个 renderFriends()
+  getFriendList().setQuery({ keyword: value.trim() })
 ```
 
 组织条目打开后右侧进入组织架构浏览器：根 tag 名称来自 `getOrgInfos()`；直接子项来自 `getTags()`。子 tag 行使用响应里的 `name` / `avatar`；成员行只拿到 `uid` 和职务，昵称 / 头像必须通过 `getUserInfos()` 的显示资料缓存补齐。成员资料冷缓存未命中时显示加载态，不得把 UID 当作成员名长期展示；后续 `display:updated` 会触发 `refreshContactsDisplay()`，打开中的组织详情面板随之重新渲染为真实昵称。面包屑栏右侧的"管理"按钮打开 `views/org-admin.ts` 弹层（对当前节点无管理权限时，写操作提交后由服务端拒绝、UI 用 toast 提示，浏览器本身不做权限预判）。该弹层同样只拿到 tag/成员 `uid`，展示名称走同一套 `getTagInfos()` / `getUserInfos()` 缓存；弹层自身也订阅 `display:updated` 并在事件到来时重新渲染当前节点，避免新建部门等操作后名称冷缓存未命中时长期停留在 UID 兜底态。该弹层的 `showTextInputModal`/`showConfirmModal` 等嵌套提示框复用同一个 `#modal-overlay`/`#modal-content`，resolve 时会短暂把 `hidden` 加回去，因此订阅解绑不能监听 `modal-overlay` 的 `hidden` class（会把嵌套提示框关闭误判成弹层整体关闭而提前解绑），而是监听 `modal-content` 上只在本弹层自身两个真正关闭路径才摘掉的 `modal-content-wide` class；事件触发时还要先确认 `modal-content` 当前渲染的确实是本弹层自己的列表视图，避免在嵌套提示框还开着或弹层已关闭时误重渲染。
@@ -937,7 +914,7 @@ registerViewCallbacks(loadContacts, renderSettings);
 ```
 SDK emit('messages:received')        → main-app.ts → renderConversationList({force, keys}) + refreshOpenConversation()（不贴顶时按 conversationKeys 定向刷新窗口内会话；payload.messages 仅供 onMessages）
 SDK emit('conversations:clearunread'/'conversations:delete') → main-app.ts → refreshConversations(keys)（定向 getConversations({targets}) 更新/移除窗口）
-SDK emit('conversations:sent')    → main-app.ts → renderConversationList({ toTop:true })（本端发送移动到顶部）
+SDK emit('conversations:sent')    → main-app.ts → renderConversationList({ toTop:true, keys })（定向更新并把本端发送会话移动到顶部，保留其它会话 DOM）
 SDK emit('messages:deleted')         → main-app.ts → removeMessage(messageId) + refreshConversations([key])（定向刷新会话预览）
 SDK emit('contacts:updated')         → main-app.ts → updateContactBadges() + loadContacts()
 SDK emit('display:updated')          → main-app.ts → renderConversationList() + renderSettings()
@@ -987,7 +964,7 @@ hideStatus()                             // 隐藏
 
 挂在 `#app` 顶层（`#status-bar`，`#app-frame` 之上）的全局提示条（非 fixed，不覆盖全局视口，占用文档流内一行高度），聊天/通讯录/设置所有视图都能看到，移动端/桌面端布局共用同一实现。`syncing` → 浅蓝底 + 蓝字；`reconnecting` → 灰底 + 灰字（不使用红色，避免过度告警）。
 
-`.status-bar` 显式设置 `position:relative;z-index:1300`：普通文档流元素默认会被 `.modal-overlay`/`.msg-viewer-overlay`（`z-index:1000`）、`.message-action-menu`（`z-index:1200`）这类 `position:fixed` 悬浮层盖住（这些悬浮层在绘制顺序上天然晚于普通流内元素，与 DOM 先后顺序无关），所以需要单独建立层叠上下文并给到比它们都高的 z-index，确保创建群组、图片预览、消息右键菜单等任何弹出层打开期间，重连/同步提示都不会被盖住；`#toast-container`（`z-index:2000`）仍在其上，瞬时 toast 提示不受影响。
+`.status-bar` 显式设置 `position:relative;z-index:1300`：普通文档流元素默认会被 `.modal-overlay`（`z-index:1000`）、`.message-action-menu`（`z-index:1200`）这类悬浮层盖住，所以需要单独建立层叠上下文，确保弹窗或消息操作菜单打开期间仍能看到重连 / 同步状态；`#toast-container`（`z-index:2000`）仍在其上。
 
 ### 7.4 Modal
 
@@ -1031,7 +1008,7 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 
 搜索框输入：纯本地按昵称/用户名子串过滤已加载好的成员数组，不发起任何服务端搜索请求（BoundedList 的 `setQuery` 统一处理防抖与重新过滤）
 
-面板开着期间收到 display:updated（缓存后台刷新补齐昵称）→ 宿主调用 `render()`，`renderItem` 现读最新展示名缓存，不重新全量拉取；已知限制：排序只在首次全量拉取时按当时可得的名字算一次，不会因为之后异步到达的昵称重新排序（见有界消息流窗口设计方案.md §7.4）
+面板开着期间收到 display:updated（缓存后台刷新补齐昵称）→ 宿主调用 `render()`，`renderItem` 现读最新展示名缓存，不重新全量拉取；已知限制：排序只在首次全量拉取时按当时可得的名字算一次，不会因为之后异步到达的昵称重新排序（见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)）。
 
 "所有人"选项（includeMentionAll=true 时）：静态选项，钉在列表头部（`pinnedItems`），不依赖成员拉取结果，不参与搜索过滤，加载中也可点
 
@@ -1047,50 +1024,18 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 
 | 场景 | 策略 | 说明 |
 |------|------|------|
-| 会话列表 | **BoundedList（有界窗口全量渲染）** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
-| 消息列表 | **BoundedList（有界窗口全量渲染）** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
-| 好友列表 | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=FRIEND)` 双向翻页，不为总数预拉全量；`#friends-search-input` 关键字非空时改走 `search_contacts()`，同一套窗口/游标机制，同样双向翻页、不预拉全量 |
-| 消息搜索结果（单会话） | **BoundedList（有界窗口全量渲染）** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，双向翻页（关键字为空时保持空白，不发请求）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮 |
-| 全局搜索结果（联系人 + 聊天记录） | **一次性拉取，不分页**（保留现状，未接入组件） | 会话列表顶部 `#global-search-input`，并行 `search_contacts({keyword})` 取固定条数（8）+ `search_messages({keyword})` 不传 `target` 跨全部会话（20），替换 `#conversation-list` 展示两组结果；联系人组点击 `openConversation`，聊天记录组点击先切会话再按锚点跳转高亮 |
-| 请求列表（待我处理） | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
-| 请求列表（我发出的） | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=PENDING_OUTGOING)` 双向翻页，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
-| 建群候选 / 转发候选 / 群成员 | **BoundedList（有界窗口全量渲染）** | 选中状态用组件内置 `SelectionStore` 独立于 DOM 保存，双向翻页，群成员标题用 `state.total` 显示成员总数 |
-| 提及群成员 / 添加群成员候选 | **BoundedList + `localPageSource`** | 数据侧一次性全量拉取（刻意取舍，§7.6），渲染侧交给组件的有界窗口 |
-| 组织架构浏览 | **一次性拉取，不分页**（保留现状，未接入组件） | `get_tags({limit: 200})` |
-| 设置页 | **局部更新** | 更新特定元素的 `textContent` / `src` |
+| 服务端分页列表 | `BoundedList` | 会话、消息、好友、请求、群成员、候选列表与单会话搜索统一双向翻页并保持有界 |
+| 本地过滤列表 | `BoundedList + localPageSource` | 提及成员和添加群成员先取得受控全集，再由同一组件处理过滤、选择和渲染窗口 |
+| 小型聚合结果 | 一次性拉取 | 全局搜索与组织架构浏览有明确条数上限，不复制分页组件 |
+| 表单与设置 | 局部更新 | 只更新受影响的文本、属性或输入状态 |
 
-**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 全量渲染 + 双向翻页」，UIKit 用 `BoundedList`（`packages/uikit/src/app/bounded-list/`）作为唯一列表组件（单一渲染模式，无 `itemSize` / spacer / 切片）。全局搜索、组织架构浏览目前仍是「一次性拉取 + 手写全量渲染」，保留现状未接入——原因与后续计划见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §3.2。滚动条不要求精确反映完整数据集，滚动空间只代表"已加载窗口"；服务端尚未加载的数据只由 `hasMoreBefore` / `hasMoreAfter` 和"已到顶 / 已到底 / 没有更多"边界提示表达。背景数据变化不打断浏览：消息列表用户不贴底时只点亮新消息提示条，贴底才重拉最新一页；会话列表用户不贴顶时只点亮"列表有更新"提示条，贴顶才重拉首页。
+**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 窗口内真实 DOM + 双向翻页」，UIKit 用 `BoundedList`（`packages/uikit/src/app/bounded-list/`）作为唯一列表组件。全局搜索和组织架构浏览仍是一次性拉取；生产接入边界与理由统一记录在 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)，本文不再维护第二份迁移清单。滚动空间只代表已加载窗口；背景变化按是否位于新鲜端决定立即追平或点亮提示条，不打断历史阅读。
 
 ### 8.2 有界列表窗口与分页口径
 
-列表渲染的目标是：DOM 和 UI 内存只保留有界数量的数据与节点；滚动空间只代表当前已加载窗口，不模拟未加载数据高度。当前实现没有引入第三方虚拟列表库，全部使用 Vanilla TypeScript 与 DOM API。完整设计（组件契约、参数 / 接口 / 事件、场景矩阵、迁移记录）见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)，下表只作概述。
+列表渲染的目标是：DOM 和 UI 内存只保留有界数量的数据与节点，滚动空间只代表当前已加载窗口，不模拟未加载数据高度。窗口内使用真实 DOM；数据变化时按稳定身份协调节点，滚动本身不重建。
 
-| 区域 | 代码入口 | 数据窗口 | 数据来源 |
-|---|---|---|---|
-| 会话列表 | `views/chat/conversation-list.ts` | `BoundedList`，双向翻页 | `client.getConversations()` |
-| 消息列表 | `views/chat/message-list.ts`、`message-page.ts` | `BoundedList`（≤150 条），双向翻页 | `client.getMessages()` |
-| 通讯录好友 | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` / `client.searchContacts()`（关键字非空时） |
-| 消息搜索结果（单会话） | `views/chat/message-search.ts` | `BoundedList`，双向翻页 | `client.searchMessages()` |
-| 全局搜索结果 | `views/chat/global-search.ts` | 一次性列表，不分页（保留现状） | `client.searchContacts()` + `client.searchMessages()` |
-| 好友请求（待我处理 / 我发出的） | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` |
-| 群成员 | `views/chat/detail-panel.ts` | `BoundedList`，双向翻页 | `client.getGroupMembers()` |
-| 转发候选（最近会话 tab / 通讯录 tab） | `views/chat/forward.ts` | `BoundedList`，双向翻页，共享 `SelectionStore` | `client.getConversations()` / `client.getContacts()` / `client.searchContacts()` |
-| 建群候选 | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` |
-| 提及群成员（@ 选择器） | `views/group-member-picker.ts` | `BoundedList` + `localPageSource`：一次性全量拉取（刻意取舍，§7.6）+ 本地拼音排序 / 子串过滤，渲染侧有界 | `client.getGroupMembers()` |
-| 添加群成员候选 | `views/chat/detail-panel.ts` | 同上取舍：全量拉好友并排除已在群成员，本地子串过滤，渲染侧有界 | `client.getGroupMembers()` + `client.getContacts()` |
-| 组织架构浏览 | `views/contacts.ts` | 一次性列表，不分页（保留现状，上限 200） | `client.getTags()` |
-
-组件内部结构（`packages/uikit/src/app/bounded-list/`）：
-
-| 文件 | 责任 |
-| --- | --- |
-| `bounded-list.ts` | 编排数据窗口、渲染引擎、查询、`invalidate` 决策树、提示条、选中态、生命周期与事件回调（`createBoundedList`） |
-| `page-window.ts`、`page-source.ts` | 按页保存条目与不透明边界游标、跨页去重、硬预算裁剪；`serverPageSource` / `localPageSource` 两种数据源 |
-| `stream-window.ts` | 持有 scroll / pointer / keydown 监听（帧合并），全量渲染窗口条目，锚点保持，事件委托，`dispose()` |
-| `selection.ts`、`registry.ts` | 可跨实例共享的 `SelectionStore`，实例注册表 |
-| `update-pill.ts` | "有更新"提示条的创建 / 显隐 / 释放 |
-
-不再做逐行实测高度、测量缓存、估算校正或窗口切片：数据窗口本身有上限，全部渲染，浏览器布局即真实位置；翻页锚点由组件据 `identityOf`（消息列表用 `messageId`）单次 DOM 读取恢复。所有列表都保留浏览器原生 scroll anchoring 兜底头像 / 图片等异步增高，不再对任何列表设 `overflow-anchor: none`。
+组件文件职责、参数、不变量与协调算法统一见 [`boundedlist/组件设计.md`](boundedlist/组件设计.md)；十二个生产接入点、事件路由和未接入边界统一见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。UI 文档只约束用户可见行为：历史阅读不被后台更新打断、提示条可回到新鲜端、翻页后焦点与可见锚点保持。
 
 ### 8.3 显示名称更新
 
@@ -1191,11 +1136,11 @@ SDK 层（YimsgClient — 单门面）
 ├── DisplayInfoCache                      — 用户/群显示信息缓存
 └── DataGateway                            — instant / 持久存储数据读取与同步
 
-视图层（模块级变量 — 辅助状态）
-├── views/chat/state.ts: currentConvKey, currentMessages, loadingMoreMessages,
-│                        detailRequestId, detailOpen, memberScrollHandler
-├── contacts.ts: friendPage, friendPageLoading, requestPage, requestPageLoading
-└── settings.ts: 无（状态在 input 元素中）
+视图层（AppInstance 中的实例私有状态）
+├── chatState: currentConvKey, conversationList, messageList, currentMessages,
+│              detailRequestId, detailOpen
+├── contactsState: friendList, requestList, outgoingRequestList, contactsLoading
+└── settings: 表单元素中的短期输入状态
 
 持久存储
 ├── localStorage.token                     — 登录令牌

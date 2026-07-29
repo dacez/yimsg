@@ -1,7 +1,7 @@
 # DisplayInfoCache 接口说明
 
-> 主要对照：`packages/sdk/src/state/cache.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/client-session-runtime.ts`、`packages/sdk/tests/unit/sdk/cache.test.ts`。
-> 最后复核：2026-07-26。
+> 主要对照：`packages/sdk/src/state/cache.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/client-session-runtime.ts`、`packages/sdk/tests/unit/sdk/cache.test.ts`。
+> 最后复核：2026-07-29。
 > 触发更新：`DisplayInfoCache` 构造参数、公开方法、回调字段或缓存协作语义变化时同步更新。  
 > 入口关系：上级索引见 [`README.md`](../README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；`DataGateway` 协作接口见 [`DataGateway接口.md`](DataGateway接口.md)。
 

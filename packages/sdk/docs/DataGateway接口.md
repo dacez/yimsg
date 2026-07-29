@@ -1,7 +1,7 @@
 # DataGateway 接口说明
 
-> 主要对照：`packages/sdk/src/datagateway/interface.ts`、`base.ts`、`instant.ts`、`persistent.ts`、`packages/sdk/src/state/cache.ts`。
-> 最后复核：2026-07-26。
+> 主要对照：`packages/sdk/src/datagateway/interface.ts`、`packages/sdk/src/datagateway/base.ts`、`packages/sdk/src/datagateway/instant.ts`、`packages/sdk/src/datagateway/persistent.ts`、`packages/sdk/src/state/cache.ts`。
+> 最后复核：2026-07-29。
 > 触发更新：DataGateway 接口、同步事件、显示信息本地缓存接口或 instant / persistent 数据来源变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；SDK 整体设计见 [`sdk设计方案.md`](sdk设计方案.md)；公开 API 见 [`sdk接口说明.md`](sdk接口说明.md)。
 
@@ -39,7 +39,7 @@
 
 ### 3.1 persistent 本地 keyset 索引
 
-persistent 模式的展示通道读取与服务端一致，使用本地自产自销的不透明 keyset 游标（`page-cursor.ts`，与服务端 `server/internal/service/page.go` 同一 base64url 方案，因此两模式游标可互相解码、切换模式时可透传）。本地 SQLite 索引按展示序对齐 keyset 查询，避免全表排序：
+persistent 模式的展示通道读取与服务端一致，使用本地自产自销的不透明 keyset 游标（`packages/sdk/src/internal/page-cursor.ts`，与服务端 `server/internal/service/page.go` 同一 base64url 方案，因此两模式游标可互相解码、切换模式时可透传）。本地 SQLite 索引按展示序对齐 keyset 查询，避免全表排序：
 
 | 本地表 | 展示序 | 支撑索引 |
 |---|---|---|
@@ -81,7 +81,7 @@ persistent 模式的展示通道读取与服务端一致，使用本地自产自
 | `conversations:delete` | 无本地副本，仅回调 `onConversationDeleted(convKey)`（UI 定向拉取后移除） | `deleteLocalConversation` 删本地会话行（sync-first），再回调 `onConversationDeleted(convKey)` |
 | `messages:delete` | 无本地副本，仅回调 `onMessageDeleted(messageId, convKey)` | `deleteLocalMessage` 删本地消息行（sync-first），再回调 `onMessageDeleted(messageId, convKey)` |
 | `blocklist:updated` | 发屏蔽列表失效事件 | `syncBlocklist` → `applyBlocklistSyncBatch` 更新本地表 |
-| `conversations:mutelist-updated` | 发免打扰失效事件 | `syncMutelist` → `applyMutelistSyncBatch` 更新本地表 |
+| `mutelist:updated` | 发免打扰失效事件 | `syncMutelist` → `applyMutelistSyncBatch` 更新本地表 |
 | `session:kicked` | 直接派发踢下线回调 | 同 instant |
 
 ## 6. 同步事件

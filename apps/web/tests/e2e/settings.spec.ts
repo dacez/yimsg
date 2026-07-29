@@ -1,7 +1,7 @@
 import { test, expect } from '../support/test-fixtures';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { uniqueUser, register, login, ensureModeSelected, addFriend } from './helpers';
+import { uniqueUser, register, ensureModeSelected, addFriend } from './helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

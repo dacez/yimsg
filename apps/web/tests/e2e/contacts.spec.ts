@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '../support/test-fixtures';
-import { uniqueUser, register, login, addFriend, openDMFromContacts, getMessageTexts, loginSeedUser } from './helpers';
+import { uniqueUser, register, addFriend, openDMFromContacts, loginSeedUser } from './helpers';
 
 async function expectResolvedSortedContactNames(page: Page): Promise<string[]> {
   let names: string[] = [];

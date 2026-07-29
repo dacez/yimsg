@@ -37,9 +37,29 @@ function makeClassListElement() {
 function makeFakeElement(): any {
   const el: any = {
     children: [] as unknown[],
+    parentElement: null,
     className: '',
     textContent: '',
-    appendChild: (child: unknown) => { el.children.push(child); return child; },
+    appendChild: (child: any) => {
+      child.parentElement?.removeChild(child);
+      el.children.push(child);
+      child.parentElement = el;
+      return child;
+    },
+    insertBefore: (child: any, reference: unknown | null) => {
+      child.parentElement?.removeChild(child);
+      const index = reference ? el.children.indexOf(reference) : -1;
+      if (index < 0) el.children.push(child);
+      else el.children.splice(index, 0, child);
+      child.parentElement = el;
+      return child;
+    },
+    removeChild: (child: any) => {
+      const index = el.children.indexOf(child);
+      if (index >= 0) el.children.splice(index, 1);
+      child.parentElement = null;
+      return child;
+    },
     setAttribute: () => {},
     removeAttribute: () => {},
     getAttribute: () => null,

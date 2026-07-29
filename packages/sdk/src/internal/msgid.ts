@@ -33,25 +33,6 @@ function base64urlEncode(bytes: Uint8Array): string {
   return out;
 }
 
-function base64urlDecode(id: string): Uint8Array | null {
-  const out = new Uint8Array(RAW_LEN);
-  let bits = 0;
-  let acc = 0;
-  let n = 0;
-  for (let i = 0; i < id.length; i++) {
-    const v = B64URL.indexOf(id[i]);
-    if (v < 0) return null;
-    acc = (acc << 6) | v;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      if (n >= RAW_LEN) return null;
-      out[n++] = (acc >> bits) & 0xff;
-    }
-  }
-  return n === RAW_LEN ? out : null;
-}
-
 /** 生成一个新的 msg_id（UUIDv7 的 base64url 编码）。仅供 SDK 内部为用户消息生成。 */
 export function generateMsgId(): string {
   const bytes = new Uint8Array(RAW_LEN);
@@ -68,14 +49,4 @@ export function generateMsgId(): string {
   bytes[6] = (bytes[6] & 0x0f) | 0x70; // version = 7
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant = 0b10
   return base64urlEncode(bytes);
-}
-
-/** 校验 msg_id 是否为合法的 UUIDv7 base64url 表示。 */
-export function isValidMsgId(id: string): boolean {
-  if (typeof id !== "string" || id.length !== MSG_ID_LENGTH) return false;
-  const raw = base64urlDecode(id);
-  if (!raw) return false;
-  if ((raw[6] & 0xf0) !== 0x70) return false; // version = 7
-  if ((raw[8] & 0xc0) !== 0x80) return false; // variant = 0b10
-  return true;
 }

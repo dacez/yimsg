@@ -481,7 +481,7 @@ export interface ConversationsDeleteEvent {
 
 /**
  * 会话变化事件：本端发送消息成功后触发，`keys` 为发出消息所在会话 key。
- * UI 据此让该会话「移动到顶部」（重拉首页 + 滚回顶部）。他端来消息走 `messages:received`。
+ * UI 据此让该会话「移动到顶部」并滚回顶部；具体可定向拉取这些会话后就地提升，无需重拉整窗。他端来消息走 `messages:received`。
  */
 export interface ConversationsSentEvent {
   readonly keys: ReadonlyArray<string>;

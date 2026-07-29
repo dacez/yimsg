@@ -1,15 +1,13 @@
 // BoundedList 组件外壳：编排数据窗口、渲染引擎、选中态、提示条与事件。
-// 接口口径单一事实源：packages/uikit/docs/BoundedList组件设计.md。
+// 接口口径单一事实源：packages/uikit/docs/boundedlist/组件设计.md。
 //
-// 两处对《有界消息流窗口设计方案》§4 的刻意偏离（均属「不合理之处可以修改」范畴）：
+// 两项容易被误改的语义决策：
 // 1. `state.loaded` 不直接用 PageWindow.loaded：PageWindow 对「真实为空的首页」和
 //    「尚未加载」都表现为 pages.length===0，无法区分「还在转圈」与「确认没有数据」。
 //    这里改用组件自己的 firstLoadDone（reset 发出的首次请求落定即置 true，无论
 //    结果是否为空），空态与加载态才能被渲染引擎正确区分。
-// 2. §4.5 决策图里「多选点击复选框才检查上限」被统一成「无论点在行的哪个区域都检查
-//    上限」：按原图，点击复选框以外的区域会绕开 S3 的上限判断直接翻转选中，等于
-//    允许点几下行内空白就能突破 `max`——这是竞态之外的一个真实可利用的上限绕过，
-//    不是有意的产品行为，因此统一走 SelectionStore.toggle 内置的上限检查。
+// 2. 多选无论从复选框还是行内其他区域触发，都统一走 SelectionStore.toggle 的上限
+//    检查，不能让点击区域差异绕过 `max`。
 
 import { PageWindow } from './page-window';
 import { SelectionStore } from './selection';
@@ -227,7 +225,7 @@ export class BoundedList<T, Q = void> {
     this.pendingCount = 0;
     this.emitStaleChange();
     this.emitLoadState();
-    this.render();
+    this.render(false);
 
     const request: FetchPageRequest<Q> = {
       cursor: undefined,
@@ -258,7 +256,7 @@ export class BoundedList<T, Q = void> {
       this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
       if (overlayEvicted > 0) this.emitStaleChange();
-      this.render();
+      this.render(false);
       if (pinEdge) {
         this.pinToFreshEdge();
       } else {
@@ -280,7 +278,7 @@ export class BoundedList<T, Q = void> {
         this.emitStaleChange();
       }
       this.reportError(err, 'reset');
-      this.render();
+      this.render(false);
       this.emitLoadState();
       this.flushDeferredInvalidate();
     }
@@ -315,7 +313,7 @@ export class BoundedList<T, Q = void> {
     }
     if (dir === 'backward') this.loadingBefore = true; else this.loadingAfter = true;
     this.emitLoadState();
-    this.render();
+    this.render(false);
 
     const myRequestId = this.requestId;
     try {
@@ -337,7 +335,7 @@ export class BoundedList<T, Q = void> {
         this.pendingCount = Math.max(1, this.pendingCount);
         this.emitStaleChange();
         this.emitLoadState();
-        this.render();
+        this.render(false);
         return;
       }
       let acceptedCount: number;
@@ -367,7 +365,7 @@ export class BoundedList<T, Q = void> {
       if (acceptedCount === 0) this.opts.onEmptyPage?.(dir);
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
-      this.render();
+      this.render(false);
       this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
@@ -384,7 +382,7 @@ export class BoundedList<T, Q = void> {
       }
       this.reportError(err, dir);
       this.emitLoadState();
-      this.render();
+      this.render(false);
       this.flushDeferredInvalidate();
     }
   }
@@ -436,7 +434,7 @@ export class BoundedList<T, Q = void> {
     }
     this.emitItemsChanged();
     this.emitLoadState();
-    this.render();
+    this.render(false);
     if (evicted > 0) {
       // live 条目没有可重建的服务端游标：先同步裁剪保证硬有界，再按用户原贴边状态
       // 选择权威 reset 或提示稍后追平，避免用失真的旧边界继续分页。
@@ -462,7 +460,7 @@ export class BoundedList<T, Q = void> {
         }
       }
       this.emitItemsChanged();
-      this.render();
+      this.render(false);
     }
     return changed;
   }
@@ -480,12 +478,12 @@ export class BoundedList<T, Q = void> {
       this.selection?.delete(id);
       this.emitItemsChanged();
       this.emitLoadState();
-      this.render();
+      this.render(false);
     }
     return changed;
   }
 
-  render(): void {
+  render(forceRows = true): void {
     if (this.disposed) return;
     const pinned = this.opts.pinnedItems?.() ?? [];
     const windowItems = this.window.items;
@@ -513,6 +511,8 @@ export class BoundedList<T, Q = void> {
       loadAfter: () => this.autoLoadMore('forward'),
       renderItem: (item, index) => this.renderItemWithContext(item, index, items),
       keyOf: (item) => this.opts.identityOf(item),
+      reuseUnchangedRows: !forceRows,
+      revisionOf: (item, index) => this.rowRevision(item, index, items),
     });
     this.syncPill();
   }
@@ -637,10 +637,9 @@ export class BoundedList<T, Q = void> {
   }
 
   private catchUp(): Promise<void> {
-    if (this.hasInvalidCapacityCursor()) {
-      return this.reconcileCapacity(true);
-    }
-    return this.reset({ pinEdge: true });
+    this.stickToFreshEdge = true;
+    if (!this.firstLoadDone) return this.reset({ pinEdge: true });
+    return this.reconcileCapacity(true);
   }
 
   private hasInvalidCapacityCursor(): boolean {
@@ -720,7 +719,7 @@ export class BoundedList<T, Q = void> {
       this.pendingCount = Math.max(1, this.pendingCount);
       this.emitStaleChange();
       this.emitLoadState();
-      this.render();
+      this.render(false);
       return;
     }
     const myRequestId = ++this.requestId;
@@ -738,7 +737,7 @@ export class BoundedList<T, Q = void> {
     this.clearResetError();
     this.emitLoadState();
     // 保留当前有界窗口，只更新 loading / pill；权威请求成功前不清空 DOM。
-    this.render();
+    this.render(false);
 
     const request: FetchPageRequest<Q> = {
       cursor: undefined,
@@ -770,7 +769,7 @@ export class BoundedList<T, Q = void> {
       this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
       this.emitStaleChange();
-      this.render();
+      this.render(false);
       if (this.stickToFreshEdge) this.pinToFreshEdge();
       this.emitLoadState();
       this.flushDeferredInvalidate();
@@ -783,7 +782,7 @@ export class BoundedList<T, Q = void> {
       this.stale = true;
       this.reportError(err, 'reset');
       this.emitStaleChange();
-      this.render();
+      this.render(false);
       this.emitLoadState();
       this.flushDeferredInvalidate();
     }
@@ -896,7 +895,7 @@ export class BoundedList<T, Q = void> {
       this.stale = true;
       this.pendingCount += deferredCount;
       this.emitStaleChange();
-      this.render();
+      this.render(false);
       return;
     }
     const identities = [...this.pendingIdentities];
@@ -910,7 +909,7 @@ export class BoundedList<T, Q = void> {
       this.pendingCount += count;
       this.emitStaleChange();
       // 仍然重渲一次：宿主切回可见时提示条要已经是最新状态，不能等下一次 render。
-      this.render();
+      this.render(false);
       return;
     }
     if (this.atFreshEdge()) {
@@ -922,7 +921,7 @@ export class BoundedList<T, Q = void> {
     this.pendingCount += count;
     this.emitStaleChange();
     // 先同步一次提示条再发定向请求：否则请求慢时提示条要等几百毫秒才亮。
-    this.render();
+    this.render(false);
 
     const hits = identities.filter((id) => this.window.hasIdentity(id));
     const fetchByIdentity = this.opts.fetchByIdentity;
@@ -949,7 +948,7 @@ export class BoundedList<T, Q = void> {
       );
       if (!this.disposed && myRequestId === this.requestId && hasCurrentIdentity) {
         this.reportError(err, 'refresh');
-        this.render();
+        this.render(false);
       }
       clearRefreshTokens();
       return;
@@ -992,7 +991,7 @@ export class BoundedList<T, Q = void> {
         if (!changed) return;
         this.emitItemsChanged();
         this.emitLoadState();
-        this.render();
+        this.render(false);
       })
       .catch((err) => {
         if (this.disposed || myRequestId !== this.requestId) return;
@@ -1001,7 +1000,7 @@ export class BoundedList<T, Q = void> {
         );
         if (!hasCurrentIdentity) return;
         this.reportError(err, 'refresh');
-        this.render();
+        this.render(false);
       })
       .finally(clearRefreshTokens);
   }
@@ -1045,6 +1044,14 @@ export class BoundedList<T, Q = void> {
       if (this.selection) elements[0].setAttribute?.('aria-selected', String(selected));
     }
     return elements;
+  }
+
+  private rowRevision(item: T, index: number, items: readonly T[]): string {
+    const identity = this.opts.identityOf(item);
+    const previousIdentity = index > 0 ? this.opts.identityOf(items[index - 1]) : '';
+    const selected = this.selection?.has(identity) ?? false;
+    const selectable = this.selection ? !this.selection.isExceeded(identity) : true;
+    return `${index}\u0000${previousIdentity}\u0000${selected ? 1 : 0}\u0000${selectable ? 1 : 0}`;
   }
 
   private syncPill(): void {

@@ -23,6 +23,9 @@ function setMessageHighlight(app: AppInstance, msgId: string): void {
   const existing = highlightTimers.get(app);
   if (existing) clearTimeout(existing);
   app.chatState.highlightMessageId = msgId;
+  // 高亮属于条目之外的宿主状态；reset 已经在 setMessageHighlight 之前完成，后续没有
+  // 必然发生的数据渲染。必须立即显式重绘一次，不能依赖触界续页“顺便”带上 class。
+  renderMessages(app);
   const timer = setTimeout(() => {
     highlightTimers.delete(app);
     if (app.chatState.highlightMessageId !== msgId) return;

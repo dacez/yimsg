@@ -15,16 +15,6 @@ func EncodeProtoBody(codec FrameCodec, msg proto.Message) ([]byte, error) {
 	return proto.Marshal(msg)
 }
 
-func EncodeNotificationBody(codec FrameCodec, n *appmsg.Notification) (uint16, []byte, error) {
-	msg := notificationToProto(n)
-	typeID, ok := notificationTypeOf(msg)
-	if !ok {
-		return 0, nil, fmt.Errorf("unknown notification type: %s", n.Type)
-	}
-	body, err := EncodeProtoBody(codec, msg)
-	return typeID, body, err
-}
-
 func DecodeNotificationBody(codec FrameCodec, typeID uint16, body []byte) (*appmsg.Notification, error) {
 	msg, ok := NewNotificationMessageByType(typeID)
 	if !ok {

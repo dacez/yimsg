@@ -5,7 +5,7 @@
  * 注：持久存储模式在 headless Chromium 中不支持持久存储后端，因此仅测试 instant + instant 模式。
  */
 import { test, expect, type Page, type BrowserContext } from '../support/test-fixtures';
-import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, getMessageTexts } from './helpers';
+import { uniqueUser, register, login, addFriend, sendMessage, expectMessage, openDMFromContacts } from './helpers';
 
 test.describe('Multi-Device Sync', () => {
   const password = '123456';
