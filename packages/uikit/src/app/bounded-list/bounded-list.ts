@@ -93,7 +93,8 @@ export class BoundedList<T, Q = void> {
    * 也不会把每次操作都永久留在内存里。
    */
   private readonly pendingMutations = new Map<string, LocalMutation<T>>();
-  private resetInFlightRequestId: number | null = null;
+  /** clearWindow=true 的权威首页请求（reset）是否在飞；容量 reconcile 见 capacityReconciling。 */
+  private resetInFlight = false;
   private capacityReconciling = false;
   private capacityReconcilePromise: Promise<void> | null = null;
 
@@ -322,7 +323,7 @@ export class BoundedList<T, Q = void> {
     }
     const wasAtFreshEdge = this.atFreshEdge();
     this.stickToFreshEdge = wasAtFreshEdge;
-    const rememberBeforeMerge = this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor();
+    const rememberBeforeMerge = this.shouldDeferToOverlay();
     if (rememberBeforeMerge) {
       this.rememberPendingMutation({ kind: 'upsert', item });
     }
@@ -355,7 +356,7 @@ export class BoundedList<T, Q = void> {
     const changed = this.window.updateMatching((item) => this.opts.identityOf(item) === id, update);
     if (changed) {
       this.invalidateRefresh(id);
-      if (this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor()) {
+      if (this.shouldDeferToOverlay()) {
         const current = this.window.items.find((item) => this.opts.identityOf(item) === id);
         if (current) {
           this.rememberPendingMutation({ kind: 'replace', identity: id, item: current });
@@ -380,7 +381,7 @@ export class BoundedList<T, Q = void> {
     const changed = this.window.removeMatching((item) => this.opts.identityOf(item) === id);
     if (changed) {
       this.invalidateRefresh(id);
-      if (this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor()) {
+      if (this.shouldDeferToOverlay()) {
         this.rememberPendingMutation({ kind: 'remove', identity: id });
       }
       // 只精确摘掉被删的这一个身份：共享 store 时其它实例（以及 pinnedItems、
@@ -413,14 +414,17 @@ export class BoundedList<T, Q = void> {
     const emptyText = items.length === 0
       ? (filtered ? (text.emptyFiltered?.() ?? text.empty?.()) : text.empty?.())
       : undefined;
+    // loaded/hasMoreBefore/hasMoreAfter/loadingBefore/loadingAfter 与 getState() 是同一份口径，
+    // 复用而不是各写一遍，避免以后改判定条件时漏改其中一处。
+    const state = this.getState();
 
     this.stream.render({
       items,
-      loaded: this.firstLoadDone,
-      hasMoreBefore: this.window.hasMoreBefore && !this.dir.backward.cursorInvalid,
-      hasMoreAfter: this.window.hasMoreAfter && !this.dir.forward.cursorInvalid,
-      loadingBefore: this.dir.backward.loading,
-      loadingAfter: this.dir.forward.loading,
+      loaded: state.loaded,
+      hasMoreBefore: state.hasMoreBefore,
+      hasMoreAfter: state.hasMoreAfter,
+      loadingBefore: state.loadingBefore,
+      loadingAfter: state.loadingAfter,
       emptyText,
       errorText,
       loadingText: text.loading?.(),
@@ -449,7 +453,7 @@ export class BoundedList<T, Q = void> {
     this.disposed = true;
     this.scheduleInvalidateFlush.cancel();
     this.scheduleCapacityReconcile.cancel();
-    this.resetInFlightRequestId = null;
+    this.resetInFlight = false;
     this.capacityReconciling = false;
     this.capacityReconcilePromise = null;
     this.pendingMutations.clear();
@@ -644,7 +648,7 @@ export class BoundedList<T, Q = void> {
     const { clearWindow, pinEdge } = opts;
     const myRequestId = ++this.requestId;
     if (clearWindow) {
-      this.resetInFlightRequestId = myRequestId;
+      this.resetInFlight = true;
       this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
       this.window.reset();
       this.firstLoadDone = false;
@@ -656,7 +660,7 @@ export class BoundedList<T, Q = void> {
       this.pendingCount = 0;
       this.emitStaleChange();
     } else {
-      this.resetInFlightRequestId = null;
+      this.resetInFlight = false;
       this.capacityReconciling = true;
     }
     this.dir.backward.loading = false;
@@ -681,7 +685,7 @@ export class BoundedList<T, Q = void> {
       const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
-      this.resetInFlightRequestId = null;
+      this.resetInFlight = false;
       this.capacityReconciling = false;
       this.scheduleCapacityReconcile.cancel();
       this.firstLoadDone = true;
@@ -700,7 +704,7 @@ export class BoundedList<T, Q = void> {
       this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
-      this.resetInFlightRequestId = null;
+      this.resetInFlight = false;
       this.capacityReconciling = false;
       this.scheduleCapacityReconcile.cancel();
       // 不清空 pendingMutations：本次失败期间发生的本地写入仍要等下一次成功的
@@ -777,11 +781,20 @@ export class BoundedList<T, Q = void> {
   }
 
   private isAuthoritativeRequestInFlight(): boolean {
-    return this.resetInFlightRequestId === this.requestId || this.capacityReconciling;
+    return this.resetInFlight || this.capacityReconciling;
   }
 
   private hasDataRequestInFlight(): boolean {
     return this.isAuthoritativeRequestInFlight() || this.dir.backward.loading || this.dir.forward.loading;
+  }
+
+  /**
+   * 本地写入此刻是否只能记入 overlay、不能直接改真实窗口：要么有数据请求在飞
+   * （其响应落地时会整体替换/并入窗口，直接改当前窗口会被覆盖或对不上），要么
+   * 某一端游标已经因为 live 裁剪失效（旧边界不可信，必须等下一次权威 reconcile）。
+   */
+  private shouldDeferToOverlay(): boolean {
+    return this.hasDataRequestInFlight() || this.hasInvalidCapacityCursor();
   }
 
   private cancelOrdinaryPageLoads(): void {
@@ -969,10 +982,17 @@ export class BoundedList<T, Q = void> {
     return undefined;
   }
 
+  /** 某个身份当前的选中态：renderItemWithContext 与 rowRevision 共用同一份判定，避免各改一半。 */
+  private selectionFlags(identity: string): { selected: boolean; selectable: boolean } {
+    return {
+      selected: this.selection?.has(identity) ?? false,
+      selectable: this.selection ? !this.selection.isExceeded(identity) : true,
+    };
+  }
+
   private renderItemWithContext(item: T, index: number, items: readonly T[]): readonly HTMLElement[] {
     const identity = this.opts.identityOf(item);
-    const selected = this.selection?.has(identity) ?? false;
-    const selectable = this.selection ? !this.selection.isExceeded(identity) : true;
+    const { selected, selectable } = this.selectionFlags(identity);
     const previous = index > 0 ? items[index - 1] : undefined;
     const ctx: RenderItemContext<T> = { index, identity, selected, selectable, previous };
     const elements = this.opts.renderItem(item, ctx);
@@ -986,8 +1006,7 @@ export class BoundedList<T, Q = void> {
   private rowRevision(item: T, index: number, items: readonly T[]): string {
     const identity = this.opts.identityOf(item);
     const previousIdentity = index > 0 ? this.opts.identityOf(items[index - 1]) : '';
-    const selected = this.selection?.has(identity) ?? false;
-    const selectable = this.selection ? !this.selection.isExceeded(identity) : true;
+    const { selected, selectable } = this.selectionFlags(identity);
     // 只记「是否首行」而非精确 index：renderItem 唯一依赖 index 的地方是 index===0
     // 的判定（首行批量预取），精确下标一旦入 revision，任何头部插入都会让每一行的
     // revision 一起变化，导致整窗口跳过复用、重跑 renderItem。

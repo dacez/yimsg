@@ -31,6 +31,9 @@ export interface LocalPageSourceOptions<T, Q> {
  * [start, end) 半开区间端点。这套编码完全是 localPageSource 内部实现细节，
  * 与服务端不透明游标不共享、不混用。非法游标（无法解析成有限数）按 0 处理，
  * 绝不产出 "NaN" 这种此后永远翻不动的游标。
+ *
+ * 仅适配 `freshEdge: 'head'`：reset（cursor 未提供）固定返回 entries 最前面一页。
+ * 配 `freshEdge: 'tail'` 使用会在 reset 时取错端，现有调用方都是默认的 'head'。
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
   let entries: T[] = [];
