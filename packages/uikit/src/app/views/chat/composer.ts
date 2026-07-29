@@ -71,9 +71,14 @@ async function sendOptimistically(
   app.views.chat?.scrollToBottom();
   try {
     const result = await send();
+    const pendingWasSelected = app.chatState.selectedMessageIds.delete(pending.messageId);
     removeMessageFromPage(app, pending.messageId);
     appendLiveMessageToPage(app, result.message);
+    if (pendingWasSelected) {
+      app.chatState.selectedMessageIds.add(result.message.messageId);
+    }
   } catch (error) {
+    app.chatState.selectedMessageIds.delete(pending.messageId);
     removeMessageFromPage(app, pending.messageId);
     throw error;
   } finally {

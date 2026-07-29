@@ -1,6 +1,6 @@
 # BoundedList 测试方案
 
-> 主要对照：`packages/uikit/tests/unit/bounded-list/`（`bounded-list.test.ts`、`stream-window.test.ts`、`page-window.test.ts`、`page-source.test.ts`、`selection.test.ts`、`registry.test.ts`、`update-pill.test.ts`、`stress.test.ts`、`fake-dom.ts`、`test-sources.ts`）与 `packages/uikit/src/app/bounded-list/`。
+> 主要对照：`packages/uikit/tests/unit/bounded-list/`、`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/bounded-list.spec.ts`、`apps/web/tests/performance/bounded-list.performance.spec.ts` 与 `apps/web/tests/support/bounded-list/`。
 > 最后复核：2026-07-29。
 > 触发更新：`bounded-list/` 源码行为变化、测试用例增删、覆盖率口径调整，或 §6 缺陷清单新增条目时同步更新。
 > 入口关系：上级索引见 [`../../../docs/architecture/前端文档索引.md`](../../../docs/architecture/前端文档索引.md)；接口口径见 [`BoundedList组件设计.md`](BoundedList组件设计.md)，仓库整体测试分层见 [`../../../docs/development/测试方案.md`](../../../docs/development/测试方案.md)。
@@ -44,7 +44,7 @@
 
 不在本方案范围内：
 
-- 真实浏览器里的布局、重绘、滚动惯性 —— 由 Playwright UI 测试覆盖（`apps/web/tests/ui/`）。
+- 真实浏览器里的布局、重绘、滚动惯性 —— 由 Playwright 组件与性能测试覆盖（`apps/web/tests/component/`、`apps/web/tests/performance/`）。
 - 具体宿主视图（会话列表、消息列表、通讯录）如何使用组件 —— 由各自的视图测试覆盖。
 - SDK 分页接口本身 —— 由 SDK 单测与服务端 E2E 覆盖。
 
@@ -320,12 +320,20 @@ cd packages/uikit && npx vitest run --config vitest.config.ts \
 # UIKit 全量单测（从仓库根目录）
 npm run test:uikit
 
-# 仓库全量测试（从仓库根目录）
+# BoundedList 真实 Chromium 功能测试（从仓库根目录）
+./tools/run_component_tests.sh
+# 等价 npm 分类入口：npm run test:component
+
+# BoundedList 独立性能测试（从仓库根目录）
+./tools/run_performance_tests.sh
+# 等价 npm 分类入口：npm run test:performance
+
+# 仓库全量正确性测试（从仓库根目录）
 ./tools/run_all_tests.sh
 ```
 
-仓库全量脚本的 UI 步骤显式选择 Playwright `chromium` 项目并传入 `--retries=0`，因此会以零重试运行 BoundedList 功能 spec，并通过该项目的 `testIgnore` 排除 `*.performance.spec.ts`；同一批功能用例不会重复执行。性能 spec 的独立命令、阈值与结果口径见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)。
+仓库全量脚本按 unit → integration → E2E → component 调用公开分类入口；`chromium-component` 以零重试运行 BoundedList 功能 spec，且不会发现 `apps/web/tests/performance/`，因此同一批功能用例不会重复执行。性能分类保持独立，由 `run_performance_tests.sh` 以 `chromium-performance`、单 worker、零重试执行。性能阈值与结果口径见 [`测试方案.md` §7](../../../docs/development/测试方案.md#7-boundedlist-playwright-与性能专项)。
 
 用例数与整体统计以 `tools/scripts/check_docs_consistency.sh` 的输出为准；本文 §4 的分项数量在用例增删时同步更新。当前通过 Vitest 列举与实际执行核对为 441 项，其中 `bounded-list.test.ts` 为 190 项、`page-window.test.ts` 为 53 项。
 
-修改 `bounded-list/` 源码后至少要跑前两条；改动涉及宿主接线（`app-instance.ts` / `main-app.ts`）时再补一次 `npm run test:uikit`。
+修改 `bounded-list/` 源码后至少要跑定向单元、浏览器组件和性能三个入口，再以 `./tools/run_all_tests.sh` 收口；改动涉及宿主接线（`app-instance.ts` / `main-app.ts`）时，E2E 分类会同时覆盖真实 Web 宿主。

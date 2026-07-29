@@ -55,6 +55,12 @@ type checker struct {
 	stats    consistencyStats
 }
 
+type testStats struct {
+	files        int
+	declarations int
+	hasTestMain  bool
+}
+
 type consistencyStats struct {
 	docFiles       int
 	schemaTables   int
@@ -63,17 +69,18 @@ type consistencyStats struct {
 	wsActions      int
 	httpInterfaces int
 	sdkMethods     int
-	goUnitFiles    int
-	goUnitTests    int
-	goE2EFiles     int
-	goE2ETests     int
-	goE2EHasMain   bool
-	frontUnitFiles int
-	frontUnitTests int
-	frontSDKFiles  int
-	frontSDKTests  int
-	frontUIFiles   int
-	frontUITests   int
+
+	goNonE2E       testStats
+	serverE2E      testStats
+	cliE2E         testStats
+	agentE2E       testStats
+	sdkUnit        testStats
+	uikitUnit      testStats
+	webUnit        testStats
+	sdkIntegration testStats
+	webE2E         testStats
+	webComponent   testStats
+	webPerformance testStats
 }
 
 func (c *checker) addError(msg string) {
@@ -92,16 +99,30 @@ func (c *checker) printSummary() {
 	fmt.Printf("- Schema：%d 张表，%d 个字段，%d 个索引\n", c.stats.schemaTables, c.stats.schemaFields, c.stats.schemaIndexes)
 	fmt.Printf("- 对外接口：%d 个 WebSocket Type action，%d 个 HTTP 接口\n", c.stats.wsActions, c.stats.httpInterfaces)
 	fmt.Printf("- SDK 公开 API：%d 个方法\n", c.stats.sdkMethods)
-	fmt.Println("测试用例统计：")
-	fmt.Printf("- 服务端单元/组件：%d 个文件，%d 个业务测试\n", c.stats.goUnitFiles, c.stats.goUnitTests)
+	fmt.Println("测试静态声明统计（不代表运行结果）：")
+	printGoTestStats("Go 非 E2E（全仓，排除任意 tests/e2e）", c.stats.goNonE2E)
+	printGoTestStats("Server E2E", c.stats.serverE2E)
+	printGoTestStats("CLI E2E", c.stats.cliE2E)
+	printGoTestStats("Agent E2E", c.stats.agentE2E)
+	printFrontendTestStats("SDK unit", c.stats.sdkUnit)
+	printFrontendTestStats("UIKit unit", c.stats.uikitUnit)
+	printFrontendTestStats("Web unit", c.stats.webUnit)
+	printFrontendTestStats("SDK integration", c.stats.sdkIntegration)
+	printFrontendTestStats("Web E2E", c.stats.webE2E)
+	printFrontendTestStats("Web component", c.stats.webComponent)
+	printFrontendTestStats("Web performance", c.stats.webPerformance)
+}
+
+func printGoTestStats(label string, stats testStats) {
 	mainNote := ""
-	if c.stats.goE2EHasMain {
-		mainNote = "，另有 TestMain 启动入口"
+	if stats.hasTestMain {
+		mainNote = "，另有 TestMain 静态入口（不计入 Test*）"
 	}
-	fmt.Printf("- 服务端 E2E：%d 个文件，%d 个业务测试%s\n", c.stats.goE2EFiles, c.stats.goE2ETests, mainNote)
-	fmt.Printf("- 前端单元：%d 个文件，%d 个测试\n", c.stats.frontUnitFiles, c.stats.frontUnitTests)
-	fmt.Printf("- 前端 SDK 集成：%d 个文件，%d 个测试\n", c.stats.frontSDKFiles, c.stats.frontSDKTests)
-	fmt.Printf("- 前端 UI：%d 个文件，%d 个测试\n", c.stats.frontUIFiles, c.stats.frontUITests)
+	fmt.Printf("- %s：%d 个文件，%d 个 Test* 静态声明%s\n", label, stats.files, stats.declarations, mainNote)
+}
+
+func printFrontendTestStats(label string, stats testStats) {
+	fmt.Printf("- %s：%d 个文件，%d 个 it/test 静态声明\n", label, stats.files, stats.declarations)
 }
 
 func (c *checker) readFile(path string) string {
@@ -714,44 +735,174 @@ var (
 	tsTestCallRe = regexp.MustCompile(`\b(?:it|test)\s*\(`)
 )
 
-func (c *checker) collectTestStats() {
-	c.collectGoTests(filepath.Join(c.root, "server/internal"), &c.stats.goUnitFiles, &c.stats.goUnitTests, nil)
-	c.collectGoTests(filepath.Join(c.root, "server/tests/e2e"), &c.stats.goE2EFiles, &c.stats.goE2ETests, &c.stats.goE2EHasMain)
-	c.collectFrontendTests(filepath.Join(c.root, "packages/sdk/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
-	c.collectFrontendTests(filepath.Join(c.root, "packages/uikit/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
-	c.collectFrontendTests(filepath.Join(c.root, "apps/web/tests/unit"), &c.stats.frontUnitFiles, &c.stats.frontUnitTests)
-	c.collectFrontendTests(filepath.Join(c.root, "packages/sdk/tests/integration"), &c.stats.frontSDKFiles, &c.stats.frontSDKTests)
-	c.collectFrontendTests(filepath.Join(c.root, "apps/web/tests/ui"), &c.stats.frontUIFiles, &c.stats.frontUITests)
+type testCategory uint8
+
+const (
+	testCategoryIgnored testCategory = iota
+	testCategoryGoNonE2E
+	testCategoryServerE2E
+	testCategoryCLIE2E
+	testCategoryAgentE2E
+	testCategorySDKUnit
+	testCategoryUIKitUnit
+	testCategoryWebUnit
+	testCategorySDKIntegration
+	testCategoryWebE2E
+	testCategoryWebComponent
+	testCategoryWebPerformance
+)
+
+func normalizeTestPath(path string) string {
+	path = strings.ReplaceAll(path, `\`, "/")
+	return strings.TrimPrefix(filepath.ToSlash(path), "./")
 }
 
-func (c *checker) collectGoTests(dir string, files *int, tests *int, hasMain *bool) {
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
-			return err
+func pathWithin(path, dir string) bool {
+	return path == dir || strings.HasPrefix(path, dir+"/")
+}
+
+func isAnyGoE2EPath(path string) bool {
+	parts := strings.Split(path, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "tests" && parts[i+1] == "e2e" {
+			return true
 		}
-		(*files)++
-		text := c.readFile(path)
-		for _, m := range goTestFuncRe.FindAllStringSubmatch(text, -1) {
-			if m[1] == "TestMain" {
-				if hasMain != nil {
-					*hasMain = true
-				}
-				continue
-			}
-			(*tests)++
+	}
+	return false
+}
+
+func isFrontendTestFile(path string) bool {
+	for _, suffix := range []string{".test.ts", ".spec.ts", ".test.tsx", ".spec.tsx"} {
+		if strings.HasSuffix(path, suffix) {
+			return true
 		}
+	}
+	return false
+}
+
+func classifyTestPath(path string) testCategory {
+	path = normalizeTestPath(path)
+	if strings.HasSuffix(path, "_test.go") {
+		switch {
+		case pathWithin(path, "server/tests/e2e"):
+			return testCategoryServerE2E
+		case pathWithin(path, "cli/tests/e2e"):
+			return testCategoryCLIE2E
+		case pathWithin(path, "agent/tests/e2e"):
+			return testCategoryAgentE2E
+		case isAnyGoE2EPath(path):
+			// 未声明类别的其它 tests/e2e 仍然必须排除在 Go 非 E2E 之外。
+			return testCategoryIgnored
+		default:
+			return testCategoryGoNonE2E
+		}
+	}
+	if !isFrontendTestFile(path) {
+		return testCategoryIgnored
+	}
+	switch {
+	case pathWithin(path, "packages/sdk/tests/unit"):
+		return testCategorySDKUnit
+	case pathWithin(path, "packages/uikit/tests/unit"):
+		return testCategoryUIKitUnit
+	case pathWithin(path, "apps/web/tests/unit"):
+		return testCategoryWebUnit
+	case pathWithin(path, "packages/sdk/tests/integration"):
+		return testCategorySDKIntegration
+	case pathWithin(path, "apps/web/tests/e2e"):
+		return testCategoryWebE2E
+	case pathWithin(path, "apps/web/tests/component"):
+		return testCategoryWebComponent
+	case pathWithin(path, "apps/web/tests/performance"):
+		return testCategoryWebPerformance
+	default:
+		// apps/web/tests/support 即使出现 *.spec.ts 也只是夹具，不计测试声明。
+		return testCategoryIgnored
+	}
+}
+
+func shouldSkipTestStatsDir(path string) bool {
+	path = normalizeTestPath(path)
+	if path == "" || path == "." {
+		return false
+	}
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		switch part {
+		case ".git", "node_modules", "vendor":
+			return true
+		}
+	}
+	switch parts[0] {
+	case ".tmp", ".tmp-test-bin", "data", "dist", "work":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *consistencyStats) testStatsFor(category testCategory) *testStats {
+	switch category {
+	case testCategoryGoNonE2E:
+		return &s.goNonE2E
+	case testCategoryServerE2E:
+		return &s.serverE2E
+	case testCategoryCLIE2E:
+		return &s.cliE2E
+	case testCategoryAgentE2E:
+		return &s.agentE2E
+	case testCategorySDKUnit:
+		return &s.sdkUnit
+	case testCategoryUIKitUnit:
+		return &s.uikitUnit
+	case testCategoryWebUnit:
+		return &s.webUnit
+	case testCategorySDKIntegration:
+		return &s.sdkIntegration
+	case testCategoryWebE2E:
+		return &s.webE2E
+	case testCategoryWebComponent:
+		return &s.webComponent
+	case testCategoryWebPerformance:
+		return &s.webPerformance
+	default:
 		return nil
-	})
+	}
 }
 
-func (c *checker) collectFrontendTests(dir string, files *int, tests *int) {
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !(strings.HasSuffix(path, ".test.ts") || strings.HasSuffix(path, ".spec.ts")) {
+func (c *checker) collectTestStats() {
+	_ = filepath.WalkDir(c.root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
 			return err
 		}
-		(*files)++
+		rel, relErr := filepath.Rel(c.root, path)
+		if relErr != nil {
+			return relErr
+		}
+		if d.IsDir() {
+			if shouldSkipTestStatsDir(rel) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		stats := c.stats.testStatsFor(classifyTestPath(rel))
+		if stats == nil {
+			return nil
+		}
+		stats.files++
 		text := c.readFile(path)
-		(*tests) += len(tsTestCallRe.FindAllStringSubmatch(text, -1))
+		if strings.HasSuffix(normalizeTestPath(rel), "_test.go") {
+			for _, match := range goTestFuncRe.FindAllStringSubmatch(text, -1) {
+				if match[1] == "TestMain" {
+					stats.hasTestMain = true
+					continue
+				}
+				stats.declarations++
+			}
+		} else {
+			stats.declarations += len(tsTestCallRe.FindAllStringSubmatch(text, -1))
+		}
 		return nil
 	})
 }

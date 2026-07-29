@@ -46,7 +46,7 @@
     // 不必等待下面 mount 用的 yimsg-uikit.js（体积大得多）下载完成，避免先闪一下中文再变英文。
     import { detectDemoLang, applyDemoI18n } from './demo-i18n.js';
 
-    // 本页专门用来验证多实例间语言互不共享（见 apps/web/tests/ui/uikit-multi.spec.ts），
+    // 本页专门用来验证多实例间语言互不共享（见 apps/web/tests/e2e/uikit-multi.spec.ts），
     // 因此每个 widget 的初始 locale 固定为 zh-CN，不跟随访客语言；页面自身的说明文字仍会跟随语言切换。
     const TRANSLATIONS = {
       zh: {

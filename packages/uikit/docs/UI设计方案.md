@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-28。
+> 最后复核：2026-07-29。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -1303,4 +1303,4 @@ SDK 公开方法、类型和事件的完整清单统一维护在 [`sdk接口说�
 - `packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/views/chat/*`：有界消息流窗口、消息操作、转发 / 引用 / 详情面板。
 - `packages/uikit/src/app/style.css`：布局断点、移动端按钮可见性、主题变量和宿主样式隔离。
 - `packages/sdk/src/**`：若 SDK 事件、分页读取、会话偏好、屏蔽列表、撤回或显示缓存语义变化，需要同步 UI 调用关系。
-- `packages/sdk/tests/unit/`、`apps/web/tests/ui/`：新增或调整 UI 行为测试时，应回写本文的测试映射和边界说明。
+- `packages/sdk/tests/unit/`、`apps/web/tests/e2e/`、`apps/web/tests/component/`、`apps/web/tests/performance/`：新增或调整 UI 行为测试时，应回写本文的测试映射和边界说明。

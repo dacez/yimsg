@@ -305,7 +305,10 @@ export function createContactsView(app: AppInstance) {
   // 用窗口尾 / 首页边界游标双向续翻；reset 走 loadContacts / 备注变更 / 通讯录更新等路径。
   async function loadFriendPage(options: { mode: ListMode }) {
     const window = state.friendWindow;
-    if (state.friendPageLoading) return;
+    // reset 是权威刷新，必须能抢占仍在飞行的普通分页；否则备注更新恰好撞上 forward 时，
+    // reset 意图会被静默丢弃，旧分页列表继续显示且不会按新备注重排。requestId 让旧响应
+    // 及其 finally 自动失效，只有最新 reset 能提交窗口并清除 loading。
+    if (state.friendPageLoading && options.mode !== 'reset') return;
     if (options.mode === 'forward' && !window.hasMoreAfter) { renderFriends(); return; }
     if (options.mode === 'backward' && !window.hasMoreBefore) { renderFriends(); return; }
 
@@ -351,7 +354,8 @@ export function createContactsView(app: AppInstance) {
 
   async function loadRequestPage(options: { mode: ListMode }) {
     const window = state.requestWindow;
-    if (state.requestPageLoading) return;
+    // 与好友列表一致：权威 reset 可以抢占普通分页，旧响应由 requestId 丢弃。
+    if (state.requestPageLoading && options.mode !== 'reset') return;
     if (options.mode === 'forward' && !window.hasMoreAfter) { renderRequests(); return; }
     if (options.mode === 'backward' && !window.hasMoreBefore) { renderRequests(); return; }
 
