@@ -231,7 +231,7 @@ export class BoundedList<T, Q = void> {
 
     this.dir[dir].loading = true;
     this.emitLoadState();
-    this.render(false);
+    this.repaint();
 
     const myRequestId = this.requestId;
     try {
@@ -257,7 +257,7 @@ export class BoundedList<T, Q = void> {
       this.emitItemsChanged();
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
-      this.render(false);
+      this.repaint();
       this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
@@ -265,7 +265,7 @@ export class BoundedList<T, Q = void> {
       this.dir[dir].autoBlocked = true;
       this.reportError(err, dir);
       this.emitLoadState();
-      this.render(false);
+      this.repaint();
       this.flushDeferredInvalidate();
     }
   }
@@ -325,7 +325,7 @@ export class BoundedList<T, Q = void> {
     }
     this.emitItemsChanged();
     this.emitLoadState();
-    this.render(false);
+    this.repaint();
     if (evicted > 0) {
       // live 条目没有可重建的服务端游标：先同步裁剪保证硬有界，再按用户原贴边状态
       // 选择权威 reset 或提示稍后追平，避免用失真的旧边界继续分页。
@@ -351,7 +351,7 @@ export class BoundedList<T, Q = void> {
         }
       }
       this.emitItemsChanged();
-      this.render(false);
+      this.repaint();
       return true;
     }
     // 窗口里没有，但可能是一条还没追平新鲜端、只存在于 overlay 里的本端 upsert
@@ -377,7 +377,7 @@ export class BoundedList<T, Q = void> {
       this.selection?.delete(id);
       this.emitItemsChanged();
       this.emitLoadState();
-      this.render(false);
+      this.repaint();
       return true;
     }
     // 窗口里没有，但可能是一条还没追平新鲜端的 pending upsert：仍然要记一条
@@ -391,7 +391,22 @@ export class BoundedList<T, Q = void> {
     return false;
   }
 
-  render(forceRows = true): void {
+  /**
+   * 宿主显式重绘：每一行都重跑 `renderItem`。
+   *
+   * 宿主在行内挂了自己的监听 / 读了组件不知道的外部状态（展示名缓存、选中模式等）
+   * 时需要它。组件内部的数据更新走 `repaint()`，只重建真正变化的行。
+   */
+  render(): void {
+    this.paint(true);
+  }
+
+  /** 组件内部重绘：未变化的行复用已有 DOM，不重跑 renderItem。 */
+  private repaint(): void {
+    this.paint(false);
+  }
+
+  private paint(rebuildRows: boolean): void {
     if (this.disposed) return;
     const pinned = this.opts.pinnedItems?.() ?? [];
     const windowItems = this.window.items;
@@ -422,7 +437,7 @@ export class BoundedList<T, Q = void> {
       loadAfter: () => this.autoLoadMore('forward'),
       renderItem: (item, index) => this.renderItemWithContext(item, index, items),
       keyOf: (item) => this.opts.identityOf(item),
-      reuseUnchangedRows: !forceRows,
+      reuseUnchangedRows: !rebuildRows,
       revisionOf: (item, index) => this.rowRevision(item, index, items),
     });
     this.syncPill();
@@ -648,7 +663,7 @@ export class BoundedList<T, Q = void> {
     this.emitLoadState();
     // clearWindow=false（容量 reconcile）时保留当前有界窗口，只更新 loading / pill；
     // 权威响应落地前不清空 DOM。
-    this.render(false);
+    this.repaint();
 
     const request: FetchPageRequest<Q> = {
       cursor: undefined,
@@ -669,7 +684,7 @@ export class BoundedList<T, Q = void> {
       this.firstLoadDone = true;
       this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
-      this.render(false);
+      this.repaint();
       if (pinEdge) {
         this.pinToFreshEdge();
       } else if (clearWindow) {
@@ -694,7 +709,7 @@ export class BoundedList<T, Q = void> {
         this.pendingCount = Math.max(1, this.pendingCount);
       }
       this.reportError(err, 'reset');
-      this.render(false);
+      this.repaint();
       this.emitLoadState();
       this.flushDeferredInvalidate();
     }
@@ -820,7 +835,7 @@ export class BoundedList<T, Q = void> {
       this.pendingInvalidateCount = 0;
       this.stale = true;
       this.pendingCount += deferredCount;
-      this.render(false);
+      this.repaint();
       return;
     }
     const identities = [...this.pendingIdentities];
@@ -833,7 +848,7 @@ export class BoundedList<T, Q = void> {
       this.stale = true;
       this.pendingCount += count;
       // 仍然重渲一次：宿主切回可见时提示条要已经是最新状态，不能等下一次 render。
-      this.render(false);
+      this.repaint();
       return;
     }
     if (this.atFreshEdge()) {
@@ -844,7 +859,7 @@ export class BoundedList<T, Q = void> {
     this.stale = true;
     this.pendingCount += count;
     // 先同步一次提示条再发定向请求：否则请求慢时提示条要等几百毫秒才亮。
-    this.render(false);
+    this.repaint();
 
     const hits = identities.filter((id) => this.window.hasIdentity(id));
     const fetchByIdentity = this.opts.fetchByIdentity;
@@ -871,7 +886,7 @@ export class BoundedList<T, Q = void> {
       );
       if (!this.disposed && myRequestId === this.requestId && hasCurrentIdentity) {
         this.reportError(err, 'refresh');
-        this.render(false);
+        this.repaint();
       }
       clearRefreshTokens();
       return;
@@ -914,7 +929,7 @@ export class BoundedList<T, Q = void> {
         if (!changed) return;
         this.emitItemsChanged();
         this.emitLoadState();
-        this.render(false);
+        this.repaint();
       })
       .catch((err) => {
         if (this.disposed || myRequestId !== this.requestId) return;
@@ -923,7 +938,7 @@ export class BoundedList<T, Q = void> {
         );
         if (!hasCurrentIdentity) return;
         this.reportError(err, 'refresh');
-        this.render(false);
+        this.repaint();
       })
       .finally(clearRefreshTokens);
   }

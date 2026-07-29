@@ -305,16 +305,20 @@ describe('PageWindow / C 跨页去重（identityOf）', () => {
     expect(window.items).toEqual([5, 1, 2, 4, 6]);
   });
 
-  it('C5 整页被去重清空后不再贡献条目，但仍占一个 maxPages 名额（已知取舍）', () => {
+  it('C5 整页被去重清空后立即回收页位，不再挤掉另一端的真实数据页', () => {
     const window = new PageWindow<number>(2, undefined, asKey);
     window.setInitial(page([1, 2], 'sA', 'eA', false, true));
-    window.appendForward(page([1, 2], 'sB', 'eB', true, true)); // 页A 被完全清空
+    window.appendForward(page([1, 2], 'sB', 'eB', true, true)); // 页A 被完全清空并回收
     expect(window.items).toEqual([1, 2]);
-    expect(window.backwardCursor).toBe('sA'); // 空页仍是首页，游标仍有效
-    window.appendForward(page([3], 'sC', 'eC', true, false));   // 已达 maxPages → 裁掉空的页A
+    // 窗口的 backward 边界不因页被回收而改变：sA 之前（以及页A 自己的区间）仍未加载。
+    expect(window.backwardCursor).toBe('sA');
+
+    // 关键回归：此时只占 1 个页位，再来一页不会触发 maxPages 淘汰，
+    // 两页真实数据都留在窗口里。空页占位的旧实现在这里会裁掉一整页真实数据。
+    window.appendForward(page([3], 'sC', 'eC', true, false));
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.backwardCursor).toBe('sB');
-    expect(window.hasMoreBefore).toBe(true);
+    expect(window.backwardCursor).toBe('sA');
+    expect(window.hasMoreBefore).toBe(false);
   });
 
   it('C6 未提供 identityOf 时不跨页去重（保持消息窗口的默认行为）', () => {
@@ -415,13 +419,46 @@ describe('PageWindow / D 就地增删改', () => {
     expect(window.forwardCursor).toBe('e2');
   });
 
-  it('D7 删光全部条目后 loaded 仍为 true（页还在，只是没有条目）', () => {
+  it('D7 删光全部条目后空页被回收，但窗口边界仍然保留', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, false));
     window.removeMatching(() => true);
     expect(window.items).toEqual([]);
     expect(window.count).toBe(0);
-    expect(window.loaded).toBe(true);
+    expect(window.loaded).toBe(false); // 空页不再占页位
+    // 边界与 pages 解耦：页没了，续翻锚点还在，窗口仍能从原位置续翻。
+    expect(window.backwardCursor).toBe('s1');
+    expect(window.forwardCursor).toBe('e1');
+  });
+  it('D8 中间页被 removeMatching 删空后回收，续翻不再淘汰另一端的真实数据页', () => {
+    // BL-BUG-013 回归：空页留在数组里会挤占 maxPages 名额，随后的 prepend/append
+    // 按 maxPages 淘汰时淘汰的是另一端的真实数据页——用户翻一页净损失一页内容。
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([1, 2], 's1', 'e1', true, true));
+    window.appendForward(page([3], 's2', 'e2', true, true));   // 中间页，只有一条
+    window.appendForward(page([4, 5], 's3', 'e3', true, true));
+    expect(window.items).toEqual([1, 2, 3, 4, 5]);
+
+    window.removeMatching((item) => item === 3); // 中间页被删空
+    expect(window.items).toEqual([1, 2, 4, 5]);
+
+    // 只剩 2 个页位；再来一页正好填满 maxPages，两端真实数据都不该被淘汰。
+    window.appendForward(page([6, 7], 's4', 'e4', true, false));
+    expect(window.items).toEqual([1, 2, 4, 5, 6, 7]);
+    expect(window.hasMoreBefore).toBe(true); // 保持 setInitial 的取值，没有因淘汰被改写
+    expect(window.backwardCursor).toBe('s1');
+  });
+
+  it('D9 首页被删空后回收，backward 边界仍停在原处，不会跳过未加载区间', () => {
+    const window = new PageWindow<number>(3);
+    window.setInitial(page([1], 's1', 'e1', true, true));
+    window.appendForward(page([2, 3], 's2', 'e2', true, false));
+
+    window.removeMatching((item) => item === 1); // 首页被删空并回收
+    expect(window.items).toEqual([2, 3]);
+    // 锚点不跟着页走：s1 之前仍未加载，从 s1 续翻才不会跳过数据。
+    expect(window.backwardCursor).toBe('s1');
+    expect(window.hasMoreBefore).toBe(true);
   });
 });
 

@@ -371,3 +371,45 @@ describe('PageSource / D 大数据量', () => {
     expect(page.hasMoreForward).toBe(false);
   });
 });
+
+// ───────────────────────── E 新鲜端 ─────────────────────────
+
+describe('localPageSource / E 新鲜端', () => {
+  it('E1 freshEdge=head（默认）时 reset 取 entries 最前面一页', async () => {
+    const source = localPageSource<Item, void>({ loadAll: async () => makeItems(10) });
+    const page = await source.fetch({ backward: false, limit: 3, query: undefined });
+    expect(page.items.map((i) => i.id)).toEqual([0, 1, 2]);
+    expect(page.startCursor).toBe('0');
+    expect(page.hasMoreBackward).toBe(false);
+    expect(page.hasMoreForward).toBe(true);
+  });
+
+  it('E2 freshEdge=tail 时 reset 取最后一页，并从那里向前续翻', async () => {
+    // 早前 reset 写死取最前面一页，与 freshEdge:'tail' 搭配会静默取错端：
+    // 消息列表那类「新数据从尾部进来」的列表首屏会显示最旧一页。
+    const source = localPageSource<Item, void>({
+      loadAll: async () => makeItems(10),
+      freshEdge: 'tail',
+    });
+    const page = await source.fetch({ backward: false, limit: 3, query: undefined });
+    expect(page.items.map((i) => i.id)).toEqual([7, 8, 9]);
+    expect(page.startCursor).toBe('7');
+    expect(page.endCursor).toBe('10');
+    expect(page.hasMoreBackward).toBe(true);
+    expect(page.hasMoreForward).toBe(false);
+
+    const older = await source.fetch({ cursor: '7', backward: true, limit: 3, query: undefined });
+    expect(older.items.map((i) => i.id)).toEqual([4, 5, 6]);
+  });
+
+  it('E3 freshEdge=tail 且总量不足一页时返回全部，两端都没有更多', async () => {
+    const source = localPageSource<Item, void>({
+      loadAll: async () => makeItems(2),
+      freshEdge: 'tail',
+    });
+    const page = await source.fetch({ backward: false, limit: 5, query: undefined });
+    expect(page.items.map((i) => i.id)).toEqual([0, 1]);
+    expect(page.hasMoreBackward).toBe(false);
+    expect(page.hasMoreForward).toBe(false);
+  });
+});

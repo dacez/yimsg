@@ -111,6 +111,7 @@ export async function showGroupMemberPicker(
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
+        freshEdge: 'head',
         loadAll: () => loadAllMemberEntries(app, groupId, excluded, (n) => {
           loadingCount = n;
         }),

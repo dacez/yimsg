@@ -330,6 +330,7 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
+        freshEdge: 'head',
         loadAll: () => loadAddMemberCandidates(app, groupId, controller.signal),
         filter: (entry, query) => !query.keyword || entry.name.toLowerCase().includes(query.keyword.toLowerCase()),
         compare: (a, b) => collator.compare(a.name, b.name),
