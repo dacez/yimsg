@@ -62,6 +62,7 @@ to{opacity:1;transform:translate(0)}
 .status-bar{position:relative;z-index:1300;flex-shrink:0;padding:6px var(--space-lg);text-align:center;font-size:var(--font-size-caption);line-height:var(--line-height-caption);border-bottom:1px solid var(--border-light)}
 .status-bar.reconnecting{background:var(--bg-hover);color:var(--text-secondary)}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-placeholder);font-size:var(--font-size-body);text-align:center;padding:var(--space-xl)}
+.list-error-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--error);font-size:var(--font-size-body);text-align:center;padding:var(--space-xl)}
 .form-group{display:flex;flex-direction:column;gap:var(--space-sm);margin-bottom:var(--space-lg)}
 .form-group label{font-size:var(--font-size-caption);color:var(--text-secondary);font-weight:500}
 .error-text{color:var(--error);font-size:var(--font-size-caption);min-height:var(--line-height-caption);margin-top:var(--space-xs)}
@@ -192,7 +193,11 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .contacts-resizer:hover:before,.contacts-resizer.dragging:before{left:2px;width:3px;background:var(--primary)}
 .contacts-resizing{cursor:col-resize;user-select:none}
 .contacts-tabs{flex-shrink:0;padding:var(--space-md) var(--space-md) 0;margin-bottom:var(--space-sm)}
-.contacts-content{flex:1;overflow-y:auto;padding:0 var(--space-xs)}
+.contacts-content{flex:1;overflow:hidden;padding:0 var(--space-xs);display:flex;flex-direction:column}
+#friends-tab,#search-tab{height:100%;overflow-y:auto}
+#requests-tab{height:100%;display:flex;flex-direction:column;overflow:hidden}
+#requests-outgoing{flex:0 0 auto;max-height:38%;overflow-y:auto;margin-bottom:var(--space-sm)}
+#requests-incoming{flex:1;overflow-y:auto;min-height:0}
 .contacts-footer{padding:var(--space-md);border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:var(--space-sm)}
 .contact-item{display:flex;align-items:center;gap:var(--space-sm);height:52px;padding:0 var(--space-sm);box-sizing:border-box;border-radius:var(--radius-md);cursor:pointer;transition:background-color .15s}
 .contact-item:hover{background:var(--bg-hover)}
@@ -437,8 +442,8 @@ body[data-layout="mobile"] .mode-options{grid-template-columns:1fr}
 /* 会话列表"列表有更新"提示条：悬浮于左面板底部，点击回到顶部并重拉首页 */
 .list-updated-pill{bottom:16px}
 .list-boundary-hint{width:100%;padding:8px 12px;text-align:center;color:var(--text-secondary);font-size:var(--font-size-caption);line-height:var(--line-height-caption);box-sizing:border-box}
-#conversation-list,#message-list,.contacts-content,#members-list,.member-select-list,.forward-conversation-list,.group-member-picker-list{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
-#conversation-list::-webkit-scrollbar,#message-list::-webkit-scrollbar,.contacts-content::-webkit-scrollbar,#members-list::-webkit-scrollbar,.member-select-list::-webkit-scrollbar,.forward-conversation-list::-webkit-scrollbar,.group-member-picker-list::-webkit-scrollbar{display:none}
+#conversation-list,#message-list,#friends-tab,#requests-outgoing,#requests-incoming,#search-tab,#members-list,.member-select-list,.forward-conversation-list,.group-member-picker-list{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
+#conversation-list::-webkit-scrollbar,#message-list::-webkit-scrollbar,#friends-tab::-webkit-scrollbar,#requests-outgoing::-webkit-scrollbar,#requests-incoming::-webkit-scrollbar,#search-tab::-webkit-scrollbar,#members-list::-webkit-scrollbar,.member-select-list::-webkit-scrollbar,.forward-conversation-list::-webkit-scrollbar,.group-member-picker-list::-webkit-scrollbar{display:none}
 
 /* ---- 组织架构浏览器 ---- */
 .contact-org-badge {

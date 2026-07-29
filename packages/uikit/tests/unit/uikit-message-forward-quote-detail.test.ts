@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MSG_TYPE_FORWARD, MSG_TYPE_QUOTE, MSG_TYPE_TEXT } from '@yimsg/sdk';
 import type { ConversationTarget, Message, MessageContentDescriptor } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
-import { createMessageWindow, setInitialMessagePage, type MessagePageResultLike } from '../../src/app/views/chat/message-page';
-import { renderMessages } from '../../src/app/views/chat/message-list';
+import { getMessageList } from '../../src/app/views/chat/message-list';
 
 // 回归的 bug：转发消息气泡文案是"转发 N 条（点击查看）"、引用消息气泡本该能点开查看原文，
 // 但两者点击都没有绑定任何跳转/展开逻辑——转发块压根没有点击事件，引用块的点击只是在原地
@@ -169,7 +168,7 @@ function fakeDescribeMessage(msg: Message): MessageContentDescriptor {
   return { ...base, text: body.text?.text || '', bodyKind: msg.messageType, quote: null, forward: null } as MessageContentDescriptor;
 }
 
-function pageResult(messages: Message[]): MessagePageResultLike {
+function pageResult(messages: Message[]) {
   return {
     messages,
     page: {
@@ -177,11 +176,12 @@ function pageResult(messages: Message[]): MessagePageResultLike {
       endCursor: messages.length ? `e-${messages[messages.length - 1].seq}` : '',
       hasMoreBackward: false,
       hasMoreForward: false,
+      total: -1,
     },
   };
 }
 
-function createTestApp(messages: Message[]) {
+async function createTestApp(messages: Message[]) {
   const root = createFakeElement();
   const messageList = createFakeElement();
   messageList.clientHeight = 500;
@@ -190,16 +190,20 @@ function createTestApp(messages: Message[]) {
   const modalOverlay = createFakeElement();
   modalOverlay.classList.add('hidden');
   const modalContent = createFakeElement();
+  const viewChat = createFakeElement();
   root.appendChild(modalOverlay);
   root.appendChild(modalContent);
+  root.appendChild(viewChat);
 
   const elements = new Map<string, FakeNode>([
     ['message-list', messageList],
     ['modal-overlay', modalOverlay],
     ['modal-content', modalContent],
+    ['view-chat', viewChat],
   ]);
 
   const getMessagesByIds = vi.fn(async (): Promise<Message[]> => []);
+  const getMessages = vi.fn(async () => pageResult(messages));
 
   const app = {
     $: (id: string) => elements.get(id) as unknown as HTMLElement,
@@ -226,27 +230,24 @@ function createTestApp(messages: Message[]) {
         target: { toUid: '2' } as ConversationTarget,
       }),
       getMessagesByIds,
+      getMessages,
     },
+    registerBoundedList: () => () => {},
+    registerDisposer: () => {},
     chatState: {
       currentConvKey: 'u:2',
-      messageWindow: createMessageWindow(5),
+      currentConversation: { groupId: '0', friendUid: '2', lastSeq: messages.length ? messages[messages.length - 1].seq : 0, lastMessage: null },
+      messageList: null,
       currentMessages: [] as Message[],
-      messageListStickToBottom: true,
-      loadingMoreMessages: false,
-      loadingNewerMessages: false,
-      messagePageHasOlder: false,
-      messagePageHasNewer: false,
-      messagePageRequestId: 0,
-      pendingNewMessageCount: 0,
       highlightMessageId: null,
+      messageGeneration: 0,
       messageSelectionMode: false,
       selectedMessageIds: new Set<string>(),
       pendingMessageIds: new Set<string>(),
     },
   } as unknown as AppInstance;
 
-  setInitialMessagePage(app, pageResult(messages));
-  renderMessages(app);
+  await getMessageList(app).reset({ query: {} });
 
   return { app, messageList, modalOverlay, modalContent, getMessagesByIds };
 }
@@ -258,7 +259,7 @@ async function flushMicrotasks(): Promise<void> {
 describe('转发消息点击查看', () => {
   it('点击"转发 N 条（点击查看）"块：按 msg_ids 拉取被转发消息全文并在弹窗逐条展示，已删除的条目用占位文案兜底', async () => {
     const forward = forwardMessage(1, ['a', 'b'], '转发标题');
-    const { modalOverlay, modalContent, getMessagesByIds, messageList } = createTestApp([forward]);
+    const { modalOverlay, modalContent, getMessagesByIds, messageList } = await createTestApp([forward]);
     expect(modalOverlay.classList.contains('hidden')).toBe(true);
 
     getMessagesByIds.mockResolvedValueOnce([textMessage(100, 'a', 'hello a')]); // 'b' 已被删除，服务端不返回
@@ -292,7 +293,7 @@ describe('转发消息点击查看', () => {
 describe('引用消息点击查看', () => {
   it('点击引用预览块：按 quote_msg_id 拉取被引用原始消息全文并展示', async () => {
     const quote = quoteMessage(1, 'q1', '预览摘要', '这是回复');
-    const { modalOverlay, modalContent, getMessagesByIds, messageList } = createTestApp([quote]);
+    const { modalOverlay, modalContent, getMessagesByIds, messageList } = await createTestApp([quote]);
 
     getMessagesByIds.mockResolvedValueOnce([textMessage(200, 'q1', '被引用的完整原文')]);
 
@@ -314,7 +315,7 @@ describe('引用消息点击查看', () => {
 
   it('被引用的原始消息已不存在时，退回展示引用预览摘要', async () => {
     const quote = quoteMessage(1, 'q1', '预览摘要', '这是回复');
-    const { modalContent, getMessagesByIds, messageList } = createTestApp([quote]);
+    const { modalContent, getMessagesByIds, messageList } = await createTestApp([quote]);
 
     getMessagesByIds.mockResolvedValueOnce([]);
 

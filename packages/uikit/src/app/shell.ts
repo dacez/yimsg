@@ -174,7 +174,8 @@ export const APP_SHELL_HTML = `
           <div class="contacts-content">
             <div id="friends-tab"></div>
             <div id="requests-tab" class="hidden">
-              <div id="requests-outgoing" class="hidden"></div>
+              <div id="requests-outgoing-title" class="request-section-title hidden"></div>
+              <div id="requests-outgoing"></div>
               <div id="requests-incoming"></div>
             </div>
             <div id="search-tab" class="hidden">

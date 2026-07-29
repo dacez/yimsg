@@ -1,7 +1,7 @@
 # UI 设计方案
 
-> 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-28。
+> 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/view-refresh.ts`。
+> 最后复核：2026-07-29。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -55,7 +55,7 @@
 - [14. SDK 使用边界](#14-sdk-使用边界)
 - [15. 维护检查点](#15-维护检查点)
 
-本文档详细描述 UI 视图层（`packages/uikit/src/app/views/`、`packages/uikit/src/app/main-app.ts`、`packages/uikit/src/app/utils.ts`、`packages/uikit/src/app/bounded-stream-window.ts`）的设计逻辑。原独立的“有界消息流窗口改造”说明已经并入本文，本文是 UI 结构、交互、有界消息流窗口和样式约束的单一事实源。
+本文档详细描述 UI 视图层（`packages/uikit/src/app/views/`、`packages/uikit/src/app/main-app.ts`、`packages/uikit/src/app/utils.ts`、`packages/uikit/src/app/bounded-list/`）的设计逻辑；有界列表窗口组件的完整契约、参数、事件与迁移记录以 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) 与 [`BoundedList组件设计.md`](BoundedList组件设计.md) 为单一事实源，本文 §8 只保留概述表格。
 
 **依赖关系：** UI 层仅通过当前 `AppInstance.client` 与业务逻辑交互，不直接接触 WebSocket、DataGateway 或缓存内部。SDK 的公开接口和事件见 [SDK 设计方案](../../sdk/docs/sdk设计方案.md)；双模式架构、DataGateway、内存状态等全局设计见 [前端设计方案](../../../docs/architecture/前端设计方案.md)；UIKit 的整体架构与嵌入接口见 [UIKit 方案](UIKit方案.md)。
 
@@ -69,7 +69,7 @@
 | **渲染** | `createElement` + 受控 `SafeHtml` | 用户输入默认 `textContent`；需要 HTML 的路径必须显式包装 |
 | **样式** | 单文件 CSS + CSS Variables | `style.css`，BEM 风格命名，CSS 变量主题 |
 | **路由** | 无 URL 路由 | 当前视图（chat/contacts/settings）与打开中的会话只存于 `AppInstance` 内存状态，不读写 `location`/`history`，不支持 URL 深链 |
-| **大列表** | `BoundedPageWindow` + `BoundedStreamWindow` | 所有列表统一为有界滑动窗口全量渲染、双向翻页；滚动处理按动画帧合并，翻页用 `keyOf` 锚点保持位置 |
+| **大列表** | `BoundedList`（`bounded-list/`） | 所有已接入列表统一为有界滑动窗口全量渲染、双向翻页；滚动处理按动画帧合并，翻页用 `identityOf` 锚点保持位置 |
 | **状态** | `AppInstance` 本地状态 + SDK 只读快照 API | 按事件局部刷新可见页 |
 
 **XSS 防护：** 外部 URL 必须通过 allowlist；普通文本不直接进入 `innerHTML`；Markdown / 扩展消息 HTML 只能通过 `SafeHtml` 显式进入 DOM。安全单测与 UI 恶意输入回归覆盖该约束。
@@ -87,8 +87,8 @@
 └── packages/uikit/src/app/
     ├── main-app.ts                 — 统一装配、事件订阅、认证后初始化
     ├── app-instance.ts             — AppInstance、DOM scope、存储 scope
-    ├── bounded-page-window.ts               — 列表数据窗口 BoundedPageWindow（按页边界游标记账、整页裁剪）
-    ├── bounded-stream-window.ts             — 列表渲染引擎 BoundedStreamWindow（单一全量渲染模式）
+    ├── bounded-list/               — 有界列表窗口组件（BoundedList，见有界消息流窗口设计方案.md）
+    ├── list-identity.ts            — 跨列表复用的稳定身份键（conversationIdentity / contactIdentity）
     ├── style.css                   — 完整应用样式
     └── views/
         ├── auth.ts                 — 认证（登录 / 注册 / 模式选择）
@@ -263,11 +263,11 @@ handleMessagesReceived(app, keys):     // main-app.ts — 重绘分发
   if 可自动清未读: client.clearUnread(target)  // 异步，fire-and-forget
 ```
 
-> 新消息提示条 `#new-message-pill` 的可见性与 `messagePageHasNewer` 同步（`renderMessages` 末尾 `syncNewMessagePill`），点击跳到最新一页并滚到底部，细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §5。
+> 新消息提示条由 `BoundedList` 内置的 `pillHost` + `text.updatePill` 管理（挂在 `#message-list` 的父元素下，显隐只看 `stale`），点击跳到最新一页并滚到底部，细节见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §5。
 
 ### 4.5 有界列表 invalidate 契约
 
-`AppInstance` 提供一个跨列表的最小抽象（`app/bounded-list.ts`、`app/app-instance.ts`），把"某个有界列表需要追平"这件事和"谁来触发追平"解耦：
+`AppInstance` 提供一个跨列表的最小抽象（`app/bounded-list/registry.ts`、`app/app-instance.ts`），把"某个有界列表需要追平"这件事和"谁来触发追平"解耦：
 
 ```typescript
 interface BoundedListController {
@@ -279,15 +279,9 @@ app.registerBoundedList(controller): () => void   // 注册，返回值用于注
 app.invalidateBoundedLists(): void                // 广播给所有已注册控制器
 ```
 
-`invalidate()` 内部要做什么完全由各列表自己决定——立即重拉追平还是推迟并点亮"有更新"提示，遵循的是各列表既有的贴顶/可见性规则，与收到 `messages:received`/`contacts:updated` 时一致。`startApp`（`main-app.ts`）注册了三个控制器，直接复用已有的重绘函数，不新增任何刷新逻辑：
+每个 `BoundedList` 实例在构造时通过 `register: (c) => app.registerBoundedList(c)` 参数自行登记（`dispose()` 时自动注销），`main-app.ts` 不再手写注册代码——`invalidate()` 内部要做什么完全由组件按 `isActive` / 贴边规则自己决定，与收到 `messages:received` / `contacts:updated` 时各列表自身的 `renderConversationList` / `refreshOpenConversation` / `loadContacts({ background: true })` 路径一致。
 
-| id | invalidate 动作 | 等价于 |
-|---|---|---|
-| `conversations` | `renderConversationList({ force: true })` | 收到一条新消息/新会话通知 |
-| `open-conversation-messages` | `refreshOpenConversation()` | 当前打开会话收到新消息 |
-| `contacts` | `loadContacts({ background: true })` | 收到 `contacts:updated` |
-
-目前唯一的调用方是 §4.3 的 `connection:connected`：断线（`connection:disconnected` 或达到重试阈值的 `connection:reconnecting`）之后重连成功，且会话已初始化过，就调用 `app.invalidateBoundedLists()`——效果上等价于断线期间错过的每一类通知都被补发了一次，而不必等服务端真正重发。
+唯一的调用方是 §4.3 的 `connection:connected`：断线（`connection:disconnected` 或达到重试阈值的 `connection:reconnecting`）之后重连成功，且会话已初始化过，就调用 `app.invalidateBoundedLists()`——效果上等价于断线期间错过的每一类通知都被补发了一次，而不必等服务端真正重发。
 
 > `event.messages` 只承载按累积的通知 `msg_id` 批量取到的内容，用于 `onMessages`；会话列表与消息列表一律通过 `get_conversations` / `get_messages` 重新拉取重绘，不把通知 payload 当作完整集合。
 
@@ -426,7 +420,7 @@ sequenceDiagram
 | `cleanupMemberScroll()` | 清理成员列表滚动监听 |
 | `setupMessageSearch(app)`（`views/chat/message-search.ts`） | 绑定 `#message-search-toggle`/`#message-search-input`/`#message-search-close`；300ms 防抖调 `client.searchMessages({keyword, target})` 限定当前会话，结果列表点击后用 `get_messages({target, around: msgId})` 重建消息窗口并滚动高亮（复用 `.msg-highlight` 动画） |
 | `closeMessageSearchPanel(app)`（`views/chat/message-search.ts`） | 关闭搜索面板并清空输入/结果；`openConversation` 切换会话时调用，避免搜索结果跨会话残留 |
-| `jumpToMessageInConversation(app, target, msgId)`（`views/chat/message-search.ts`） | 单会话搜索面板与全局搜索共用的跳转实现：`get_messages({target, around: msgId})` 重建消息窗口、把 `msgId` 写入 `chatState.highlightMessageId` 后渲染（`views/chat/message-list.ts` 按此声明式加 `.msg-highlight`，超时后清空该字段并重渲染移除）、再滚动定位；调用方需保证 `target` 对应的会话已经是当前打开的会话。`get_messages({around})` 按协议约定两端 `has_more` 先乐观置真，`BoundedStreamWindow` 触边会自动续拉一页并整份重渲——高亮做成跟 `msgId` 绑定的声明式状态而非渲染后临时补的 class，就是为了在这类自动续拉重渲后依然带出高亮，不被冲掉 |
+| `jumpToMessageInConversation(app, target, msgId)`（`views/chat/message-search.ts`） | 单会话搜索面板与全局搜索共用的跳转实现：`get_messages({target, around: msgId})` 重建消息窗口、把 `msgId` 写入 `chatState.highlightMessageId` 后渲染（`views/chat/message-list.ts` 按此声明式加 `.msg-highlight`，超时后清空该字段并重渲染移除）、再滚动定位；调用方需保证 `target` 对应的会话已经是当前打开的会话。`get_messages({around})` 按协议约定两端 `has_more` 先乐观置真，`BoundedList` 触边会自动续拉一页并整份重渲——高亮做成跟 `msgId` 绑定的声明式状态而非渲染后临时补的 class，就是为了在这类自动续拉重渲后依然带出高亮，不被冲掉 |
 | `setupGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 会话列表顶部入口，类似微信「搜索」；绑定 `#global-search-input`/`#global-search-cancel`，300ms 防抖并行调 `client.searchContacts({keyword})` 和 `client.searchMessages({keyword})`（不传 `target`，跨全部会话），结果替换 `#conversation-list` 渲染成「联系人」「聊天记录」两组，一次性列表（不分页）；联系人组点击直接 `openConversation`，聊天记录组点击先按命中消息的 `describeMessageConversation()` 用 `openConversationShellForJump`（`views/chat/conversation-list.ts`，只做会话骨架初始化、不拉最新页）切到对应会话（若非当前会话），再调 `jumpToMessageInConversation` 一次性以锚点加载并跳转高亮——避免先渲染最新页、又立刻被锚点页覆盖重渲的双重渲染 |
 | `closeGlobalChatSearch(app)`（`views/chat/global-search.ts`） | 关闭全局搜索、清空输入与结果、恢复 `#conversation-list` 可见；点击结果或切到非聊天主视图（`switchView`）时调用 |
 
@@ -598,7 +592,7 @@ uploadAndSend(file, type):
 
 图片占位消息的 `media_id` 直接是本地 `blob:` 预览地址：`message-list.ts` 的 `fillMessageBubble` 只在该消息命中 `pendingMessageIds` 且 `media_id` 以 `blob:` 开头时才直接使用它做 `img.src`（不经过面向远端内容的 `setTrustedImageSrc` 协议白名单，因为这条消息是本条会话自己刚创建的本地对象，不是外部输入）；文件占位消息没有可视预览，`media_id` 为空时按现有兜底逻辑展示文件名即可，不需要额外处理。
 
-**占位换真实消息不闪烁**：`bounded-stream-window.ts` 的渲染引擎是"有界窗口全量渲染"（每次 `render()` 都 `innerHTML=''` 整段重建，`keyOf` 只用于滚动锚点，不做按 key 的 DOM 复用，见该文件顶部设计取舍注释）。普通消息重渲染不闪是因为 `<img src>` 没变，浏览器直接走内存缓存；但占位换真实消息这一刻，`src` 会从本地 `blob:` 预览地址换成一个浏览器从没请求过的 `/media/image/{id}`，若不预热就会在这次整段重建里对着这个新 URL 发起真实请求，画面上就是一闪。`uploadAndSend` 在 `sendImage` 成功后、`sendOptimistically` 把占位换成真实消息触发重渲染之前，先用一个不挂载到 DOM 的 `Image()` 把 `mediaUrl('image', data.mediaId)` 拉进浏览器缓存（`preloadImage`，加载失败也放行，不能因为预热失败卡住发送），换入的新 `<img>` 节点就能直接命中缓存瞬间画出，不再有可见的加载间隙。
+**占位换真实消息不闪烁**：`bounded-list/stream-window.ts` 的渲染引擎是"有界窗口全量渲染"（每次 `render()` 都 `innerHTML=''` 整段重建，`identityOf` 只用于滚动锚点，不做按 key 的 DOM 复用，见该文件顶部设计取舍注释）。普通消息重渲染不闪是因为 `<img src>` 没变，浏览器直接走内存缓存；但占位换真实消息这一刻，`src` 会从本地 `blob:` 预览地址换成一个浏览器从没请求过的 `/media/image/{id}`，若不预热就会在这次整段重建里对着这个新 URL 发起真实请求，画面上就是一闪。`uploadAndSend` 在 `sendImage` 成功后、`sendOptimistically` 把占位换成真实消息触发重渲染之前，先用一个不挂载到 DOM 的 `Image()` 把 `mediaUrl('image', data.mediaId)` 拉进浏览器缓存（`preloadImage`，加载失败也放行，不能因为预热失败卡住发送），换入的新 `<img>` 节点就能直接命中缓存瞬间画出，不再有可见的加载间隙。
 
 #### 引用与转发
 
@@ -1033,11 +1027,11 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
   按 Intl.Collator('zh-Hans-CN-u-co-pinyin') 拼音排序
   → 搜索框启用，聚焦
 
-搜索框输入：纯本地按昵称/用户名子串过滤已加载好的成员数组，不发起任何服务端搜索请求
+搜索框输入：纯本地按昵称/用户名子串过滤已加载好的成员数组，不发起任何服务端搜索请求（BoundedList 的 `setQuery` 统一处理防抖与重新过滤）
 
-面板开着期间收到 display:updated（缓存后台刷新补齐昵称）→ 只重算受影响成员的展示名并重排，不重新全量拉取
+面板开着期间收到 display:updated（缓存后台刷新补齐昵称）→ 宿主调用 `render()`，`renderItem` 现读最新展示名缓存，不重新全量拉取；已知限制：排序只在首次全量拉取时按当时可得的名字算一次，不会因为之后异步到达的昵称重新排序（见有界消息流窗口设计方案.md §7.4）
 
-"所有人"选项（includeMentionAll=true 时）：静态选项，不依赖成员拉取结果，不参与搜索过滤，加载中也可点
+"所有人"选项（includeMentionAll=true 时）：静态选项，钉在列表头部（`pinnedItems`），不依赖成员拉取结果，不参与搜索过滤，加载中也可点
 
 点击某一行 → resolve({ kind: 'member', uid }) 或 resolve({ kind: 'all' }) 并关闭；
 取消按钮 / Esc / 点击遮罩 → resolve(null)
@@ -1051,50 +1045,50 @@ setNavBadge(selector: string, visible: boolean)   // 增删红点
 
 | 场景 | 策略 | 说明 |
 |------|------|------|
-| 会话列表 | **有界窗口全量渲染** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
-| 消息列表 | **有界窗口全量渲染** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
-| 好友列表 | **有界窗口全量渲染** | `get_contacts(status=FRIEND)` 双向翻页，不为总数预拉全量；`#friends-search-input` 关键字非空时改走 `search_contacts()`，同一套窗口/游标机制，同样双向翻页、不预拉全量 |
-| 消息搜索结果（单会话） | **一次性拉取，不分页** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，取固定条数（30）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮，不做无限滚动 |
-| 全局搜索结果（联系人 + 聊天记录） | **一次性拉取，不分页** | 会话列表顶部 `#global-search-input`，并行 `search_contacts({keyword})` 取固定条数（8）+ `search_messages({keyword})` 不传 `target` 跨全部会话（20），替换 `#conversation-list` 展示两组结果；联系人组点击 `openConversation`，聊天记录组点击先切会话再按锚点跳转高亮，同不做无限滚动 |
-| 请求列表（待我处理） | **有界窗口全量渲染** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
-| 请求列表（我发出的） | **一次性拉取，不分页** | `get_contacts(status=PENDING_OUTGOING, limit=N)`，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
-| 建群候选 / 转发候选 / 群成员 | **有界窗口全量渲染** | 选中状态独立于 DOM 保存，双向翻页，群成员标题用 `page.total` 显示成员总数 |
+| 会话列表 | **BoundedList（有界窗口全量渲染）** | `getConversations()` 无游标拉首页，触底用尾页边界游标向后翻、触顶向前翻，超限整页裁剪 |
+| 消息列表 | **BoundedList（有界窗口全量渲染）** | 窗口只保留有限消息页（≤150 条），全部交给浏览器布局，滚动零重建 |
+| 好友列表 | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=FRIEND)` 双向翻页，不为总数预拉全量；`#friends-search-input` 关键字非空时改走 `search_contacts()`，同一套窗口/游标机制，同样双向翻页、不预拉全量 |
+| 消息搜索结果（单会话） | **BoundedList（有界窗口全量渲染）** | 聊天头 `#message-search-toggle` 打开面板，`search_messages({keyword, target})` 限定当前会话，双向翻页（关键字为空时保持空白，不发请求）；点击结果用 `get_messages({target, around: msgId})` 以该消息为锚点重建消息窗口并滚动高亮 |
+| 全局搜索结果（联系人 + 聊天记录） | **一次性拉取，不分页**（保留现状，未接入组件） | 会话列表顶部 `#global-search-input`，并行 `search_contacts({keyword})` 取固定条数（8）+ `search_messages({keyword})` 不传 `target` 跨全部会话（20），替换 `#conversation-list` 展示两组结果；联系人组点击 `openConversation`，聊天记录组点击先切会话再按锚点跳转高亮 |
+| 请求列表（待我处理） | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=PENDING_INCOMING)` 双向翻页，带接受/拒绝按钮；红点只表达已加载窗口内是否存在请求 |
+| 请求列表（我发出的） | **BoundedList（有界窗口全量渲染）** | `get_contacts(status=PENDING_OUTGOING)` 双向翻页，仅展示"等待验证"文案，不带接受/拒绝按钮，不参与红点 |
+| 建群候选 / 转发候选 / 群成员 | **BoundedList（有界窗口全量渲染）** | 选中状态用组件内置 `SelectionStore` 独立于 DOM 保存，双向翻页，群成员标题用 `state.total` 显示成员总数 |
+| 提及群成员 / 添加群成员候选 | **BoundedList + `localPageSource`** | 数据侧一次性全量拉取（刻意取舍，§7.6），渲染侧交给组件的有界窗口 |
+| 组织架构浏览 | **一次性拉取，不分页**（保留现状，未接入组件） | `get_tags({limit: 200})` |
 | 设置页 | **局部更新** | 更新特定元素的 `textContent` / `src` |
 
-**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 全量渲染 + 双向翻页」，UIKit 用 `BoundedStreamWindow` 作为唯一渲染引擎（单一模式，无 `itemSize` / spacer / 切片）。搜索结果、我发出的请求、组织架构浏览目前仍是「一次性拉取 + 手写全量渲染」，尚未接入；群成员选择器与添加成员候选的**一次性全量拉取是刻意取舍**（§7.6，为不在 `group_member` 冗余昵称），只有渲染侧待接入。差距与落地顺序见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §3.3、§6.4、§8。滚动条不要求精确反映完整数据集，滚动空间只代表“已加载窗口”；服务端尚未加载的数据只由 `hasMoreBefore` / `hasMoreAfter` 和“已到顶 / 已到底 / 没有更多”边界提示表达。背景数据变化不打断浏览：消息列表用户不贴底时只点亮新消息提示条，贴底才重拉最新一页；会话列表用户不贴顶时只点亮“列表有更新”提示条，贴顶才重拉首页。
+**设计取舍：** 已接入的分页列表统一为「有界滑动窗口 + 全量渲染 + 双向翻页」，UIKit 用 `BoundedList`（`packages/uikit/src/app/bounded-list/`）作为唯一列表组件（单一渲染模式，无 `itemSize` / spacer / 切片）。全局搜索、组织架构浏览目前仍是「一次性拉取 + 手写全量渲染」，保留现状未接入——原因与后续计划见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md) §3.2。滚动条不要求精确反映完整数据集，滚动空间只代表"已加载窗口"；服务端尚未加载的数据只由 `hasMoreBefore` / `hasMoreAfter` 和"已到顶 / 已到底 / 没有更多"边界提示表达。背景数据变化不打断浏览：消息列表用户不贴底时只点亮新消息提示条，贴底才重拉最新一页；会话列表用户不贴顶时只点亮"列表有更新"提示条，贴顶才重拉首页。
 
 ### 8.2 有界列表窗口与分页口径
 
-列表渲染的目标是：DOM 和 UI 内存只保留有界数量的数据与节点；滚动空间只代表当前已加载窗口，不模拟未加载数据高度。当前实现没有引入第三方虚拟列表库，全部使用 Vanilla TypeScript 与 DOM API。完整设计（组件契约、参数 / 接口 / 事件、场景矩阵、差距清单）见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)，下表只作概述。
+列表渲染的目标是：DOM 和 UI 内存只保留有界数量的数据与节点；滚动空间只代表当前已加载窗口，不模拟未加载数据高度。当前实现没有引入第三方虚拟列表库，全部使用 Vanilla TypeScript 与 DOM API。完整设计（组件契约、参数 / 接口 / 事件、场景矩阵、迁移记录）见 [`有界消息流窗口设计方案.md`](有界消息流窗口设计方案.md)，下表只作概述。
 
 | 区域 | 代码入口 | 数据窗口 | 数据来源 |
 |---|---|---|---|
-| 会话列表 | `views/chat/conversation-list.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
-| 消息列表 | `views/chat/message-list.ts`、`message-page.ts` | 有界滑动窗口（≤150 条），双向翻页 | `client.getMessages()` |
-| 通讯录好友 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` / `client.searchContacts()`（关键字非空时） |
-| 消息搜索结果（单会话） | `views/chat/message-search.ts` | 一次性列表，不分页 | `client.searchMessages()` |
-| 全局搜索结果 | `views/chat/global-search.ts` | 一次性列表，不分页 | `client.searchContacts()` + `client.searchMessages()` |
-| 好友请求 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
-| 群成员 | `views/chat/detail-panel.ts` | 有界滑动窗口，双向翻页 | `client.getGroupMembers()` |
-| 转发候选（最近会话 tab） | `views/chat/forward.ts` | 有界滑动窗口，双向翻页 | `client.getConversations()` |
-| 转发候选（通讯录 tab） | `views/chat/forward.ts` | 有界滑动窗口，双向翻页，切到该 tab 才首次拉取 | `client.getContacts({status: CONTACT_FRIEND})` / `client.searchContacts()`（关键字非空时） |
-| 建群候选 | `views/contacts.ts` | 有界滑动窗口，双向翻页 | `client.getContacts()` |
-| 请求列表（我发出的） | `views/contacts.ts` | 一次性列表，不分页（上限 `list.pageSize × 4`） | `client.getContacts({status: CONTACT_PENDING_OUTGOING})` |
-| 提及群成员（@ 选择器） | `views/group-member-picker.ts` | 一次性全量拉取（刻意取舍，§7.6）+ 本地拼音排序 / 子串过滤；渲染侧仍是全量渲染 | `client.getGroupMembers()` |
-| 添加群成员候选 | `views/chat/detail-panel.ts` | 同上取舍：全量拉好友并排除已在群成员，本地子串过滤，全量渲染 | `client.getGroupMembers()` + `client.getContacts()` |
-| 组织架构浏览 | `views/contacts.ts` | 一次性列表，不分页（上限 200） | `client.getTags()` |
+| 会话列表 | `views/chat/conversation-list.ts` | `BoundedList`，双向翻页 | `client.getConversations()` |
+| 消息列表 | `views/chat/message-list.ts`、`message-page.ts` | `BoundedList`（≤150 条），双向翻页 | `client.getMessages()` |
+| 通讯录好友 | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` / `client.searchContacts()`（关键字非空时） |
+| 消息搜索结果（单会话） | `views/chat/message-search.ts` | `BoundedList`，双向翻页 | `client.searchMessages()` |
+| 全局搜索结果 | `views/chat/global-search.ts` | 一次性列表，不分页（保留现状） | `client.searchContacts()` + `client.searchMessages()` |
+| 好友请求（待我处理 / 我发出的） | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` |
+| 群成员 | `views/chat/detail-panel.ts` | `BoundedList`，双向翻页 | `client.getGroupMembers()` |
+| 转发候选（最近会话 tab / 通讯录 tab） | `views/chat/forward.ts` | `BoundedList`，双向翻页，共享 `SelectionStore` | `client.getConversations()` / `client.getContacts()` / `client.searchContacts()` |
+| 建群候选 | `views/contacts.ts` | `BoundedList`，双向翻页 | `client.getContacts()` |
+| 提及群成员（@ 选择器） | `views/group-member-picker.ts` | `BoundedList` + `localPageSource`：一次性全量拉取（刻意取舍，§7.6）+ 本地拼音排序 / 子串过滤，渲染侧有界 | `client.getGroupMembers()` |
+| 添加群成员候选 | `views/chat/detail-panel.ts` | 同上取舍：全量拉好友并排除已在群成员，本地子串过滤，渲染侧有界 | `client.getGroupMembers()` + `client.getContacts()` |
+| 组织架构浏览 | `views/contacts.ts` | 一次性列表，不分页（保留现状，上限 200） | `client.getTags()` |
 
-数据层 `bounded-page-window.ts` 与渲染层 `bounded-stream-window.ts`：
+组件内部结构（`packages/uikit/src/app/bounded-list/`）：
 
-| 组件 / 方法 | 责任 | 使用场景 |
-| --- | --- | --- |
-| `BoundedPageWindow<T>` | 按页保存条目与不透明边界游标，`setInitial` / `appendForward` / `prependBackward` / `appendLive` 维护窗口，`updateMatching` / `removeMatching` 就地增删改（定向刷新用），超 `maxPages` 整页裁剪 | 所有列表数据窗口 |
-| `BoundedStreamWindow<T>` | 持有 scroll 监听（帧合并），全量渲染窗口条目 | 所有列表渲染 |
-| `render()` | 统一执行空态 / 加载态 / 边界提示、全量节点渲染、scrollTop 先读后清恢复、`keyOf` 锚点保持和触顶 / 触底分页触发 | 所有列表渲染 |
-| `createFrameScheduler()` | 将高频滚动重绘合并到同一动画帧 | 引擎内部滚动处理 |
-| `getOrCreateBoundedStreamWindow()` | 按 owner 复用引擎实例 | UIKit 页面级列表 |
+| 文件 | 责任 |
+| --- | --- |
+| `bounded-list.ts` | 编排数据窗口、渲染引擎、查询、`invalidate` 决策树、提示条、选中态、生命周期与事件回调（`createBoundedList`） |
+| `page-window.ts`、`page-source.ts` | 按页保存条目与不透明边界游标、跨页去重、硬预算裁剪；`serverPageSource` / `localPageSource` 两种数据源 |
+| `stream-window.ts` | 持有 scroll / pointer / keydown 监听（帧合并），全量渲染窗口条目，锚点保持，事件委托，`dispose()` |
+| `selection.ts`、`registry.ts` | 可跨实例共享的 `SelectionStore`，实例注册表 |
+| `update-pill.ts` | "有更新"提示条的创建 / 显隐 / 释放 |
 
-不再做逐行实测高度、测量缓存、估算校正或窗口切片：数据窗口本身有上限，全部渲染，浏览器布局即真实位置；翻页锚点由引擎据 `keyOf`（消息列表用 `messageId`）单次 DOM 读取恢复。所有列表都保留浏览器原生 scroll anchoring 兜底头像 / 图片等异步增高，不再对任何列表设 `overflow-anchor: none`。
+不再做逐行实测高度、测量缓存、估算校正或窗口切片：数据窗口本身有上限，全部渲染，浏览器布局即真实位置；翻页锚点由组件据 `identityOf`（消息列表用 `messageId`）单次 DOM 读取恢复。所有列表都保留浏览器原生 scroll anchoring 兜底头像 / 图片等异步增高，不再对任何列表设 `overflow-anchor: none`。
 
 ### 8.3 显示名称更新
 
@@ -1144,7 +1138,7 @@ container.appendChild(div);
 
 ### 9.3 滚动分页
 
-滚动监听由 `BoundedStreamWindow` 统一持有（帧合并），render 末尾做触界检测：
+滚动监听由 `BoundedList` 统一持有（帧合并），render 末尾做触界检测：
 
 ```
 checkReach():
@@ -1300,7 +1294,7 @@ SDK 公开方法、类型和事件的完整清单统一维护在 [`sdk接口说�
 
 - `packages/uikit/src/app/main-app.ts`、`packages/uikit/src/app/app-instance.ts`：启动、生命周期、事件订阅、视图切换。
 - `packages/uikit/src/app/views/**`：认证、会话、聊天、联系人、设置、会话偏好等视图结构与交互。
-- `packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/views/chat/*`：有界消息流窗口、消息操作、转发 / 引用 / 详情面板。
+- `packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/views/chat/*`：有界列表窗口组件、消息操作、转发 / 引用 / 详情面板。
 - `packages/uikit/src/app/style.css`：布局断点、移动端按钮可见性、主题变量和宿主样式隔离。
 - `packages/sdk/src/**`：若 SDK 事件、分页读取、会话偏好、屏蔽列表、撤回或显示缓存语义变化，需要同步 UI 调用关系。
 - `packages/sdk/tests/unit/`、`apps/web/tests/ui/`：新增或调整 UI 行为测试时，应回写本文的测试映射和边界说明。

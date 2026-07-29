@@ -13,11 +13,7 @@ import type { UIKitMode, UIKitViewMode, WidgetEvents } from '../options';
 import type { LayoutChoice } from './session-storage';
 import { detectLocale } from '../i18n';
 import { translations, type Lang } from './i18n';
-import { APP_CONFIG } from '../app-config';
-import type { BoundedListController } from './bounded-list/registry';
-import { BoundedPageWindow } from './bounded-page-window';
-import { conversationIdentity, contactIdentity } from './list-identity';
-import { createMessageWindow } from './views/chat/message-page';
+import type { BoundedList, BoundedListController } from './bounded-list';
 import { escapeHtml, normalizeTrustedResourceUrl } from './safe-dom';
 import {
   StorageScope,
@@ -51,35 +47,25 @@ interface AppRuntimeContext {
   readonly hooks: AppRuntimeHooks;
 }
 
+/** 消息列表的查询条件：仅用于「以某条消息为锚点重新加载」（搜索跳转），无锚点时是 reset 到最新一页。 */
+export interface MessageQuery {
+  readonly aroundMsgId?: string;
+}
+
 interface ChatState {
   currentConvKey: string | null;
   currentConversation: LocalConversation | null;
-  /** 会话列表有界滑动窗口：按页边界游标记账，双向翻页。 */
-  conversationWindow: BoundedPageWindow<LocalConversation>;
-  /** 背景刷新被推迟（用户不在列表顶部）时点亮"列表有更新"提示。 */
-  conversationListStale: boolean;
+  /** 会话列表 BoundedList 实例；首次使用时惰性创建（构造需要 DOM 元素就绪）。 */
+  conversationList: BoundedList<LocalConversation> | null;
   conversationTotalUnreadCount: number;
-  conversationPageLoaded: boolean;
-  conversationPageLoading: boolean;
-  conversationPageRequestId: number;
-  /** 消息有界滑动窗口；currentMessages 是它 flatten 后的同步投影。 */
-  messageWindow: BoundedPageWindow<Message>;
+  /** 当前会话消息列表 BoundedList 实例；每次切换会话调用 reset() 复用同一实例。 */
+  messageList: BoundedList<Message, MessageQuery> | null;
+  /** BoundedList 窗口内容的同步投影，供选择栏等外部读取当前渲染的消息集合。 */
   currentMessages: Message[];
-  /**
-   * 消息列表是否"贴底跟随"：由真实滚动事件（含程序化贴底触发的 scroll）持续更新，
-   * 图片等异步增高内容 load 完成时读它决定要不要把 scrollTop 摁回底部。不能在 load
-   * 事件里现算 isNearBottom——那时图片已经把内容撑高，用旧 scrollTop 对比新
-   * scrollHeight 必然因为增高超阈值而误判成"已经不贴底"。
-   */
-  messageListStickToBottom: boolean;
-  loadingMoreMessages: boolean;
-  loadingNewerMessages: boolean;
-  messagePageHasOlder: boolean;
-  messagePageHasNewer: boolean;
-  messagePageRequestId: number;
-  /** 跳转定位的高亮消息 id；渲染时据此加 msg-highlight class，跨重渲染（含 checkReach 自动补页）存活直到超时清除。 */
+  /** 会话切换 / 锚点跳转的简单世代计数器，供 resetMessagePage 调用方判断自己是否仍是最新一次意图。 */
+  messageGeneration: number;
+  /** 跳转定位的高亮消息 id；渲染时据此加 msg-highlight class，跨重渲染（含链式补页）存活直到超时清除。 */
   highlightMessageId: string | null;
-  pendingNewMessageCount: number;
   composerMarkdownMode: boolean;
   /** 输入框里通过 @ 面板选中、仍待发送的提及：uid → 插入时的展示名，发送时按文本里是否还留着该名字过滤。 */
   composerMentions: Map<string, string>;
@@ -106,20 +92,13 @@ interface ChatState {
 }
 
 interface ContactsViewState {
-  /** 好友列表有界滑动窗口：按页边界游标记账，双向翻页。 */
-  friendWindow: BoundedPageWindow<Contact>;
-  friendPageLoaded: boolean;
-  friendPageLoading: boolean;
-  friendPageRequestId: number;
+  /** 好友列表 BoundedList 实例；Q 承载关键字过滤（非空时 source 改走 search_contacts）。 */
+  friendList: BoundedList<Contact, { keyword: string }> | null;
+  /** 好友请求列表 BoundedList 实例：只装待我处理的请求（PENDING_INCOMING），驱动接受/拒绝与红点。 */
+  requestList: BoundedList<Contact> | null;
+  /** 我发出的待处理请求（PENDING_OUTGOING）BoundedList 实例：仅信息展示，不可操作。 */
+  outgoingRequestList: BoundedList<Contact> | null;
   contactsLoading: boolean;
-  /** 好友请求列表有界滑动窗口：只装待我处理的请求（PENDING_INCOMING），驱动接受/拒绝与红点。 */
-  requestWindow: BoundedPageWindow<Contact>;
-  requestPageLoaded: boolean;
-  requestPageLoading: boolean;
-  requestPageRequestId: number;
-  /** 我发出的待处理请求（PENDING_OUTGOING）：仅信息展示，不可操作，reset 时整批重拉，不做滚动分页。 */
-  outgoingRequests: readonly Contact[];
-  outgoingRequestsLoaded: boolean;
 }
 
 interface AppViews {
@@ -213,26 +192,12 @@ export class AppInstance {
   readonly chatState: ChatState = {
     currentConvKey: null,
     currentConversation: null,
-    conversationWindow: new BoundedPageWindow<LocalConversation>(
-      APP_CONFIG.list.maxPages,
-      undefined,
-      conversationIdentity,
-    ),
-    conversationListStale: false,
+    conversationList: null,
     conversationTotalUnreadCount: 0,
-    conversationPageLoaded: false,
-    conversationPageLoading: false,
-    conversationPageRequestId: 0,
-    messageWindow: createMessageWindow(APP_CONFIG.chat.messagePageMaxPages),
+    messageList: null,
     currentMessages: [],
-    messageListStickToBottom: true,
-    loadingMoreMessages: false,
-    loadingNewerMessages: false,
-    messagePageHasOlder: false,
-    messagePageHasNewer: false,
-    messagePageRequestId: 0,
+    messageGeneration: 0,
     highlightMessageId: null,
-    pendingNewMessageCount: 0,
     composerMarkdownMode: false,
     composerMentions: new Map<string, string>(),
     composerMentionAll: false,
@@ -248,17 +213,10 @@ export class AppInstance {
     forwardSelectionHandler: null,
   };
   readonly contactsState: ContactsViewState = {
-    friendWindow: new BoundedPageWindow<Contact>(APP_CONFIG.list.maxPages, undefined, contactIdentity),
-    friendPageLoaded: false,
-    friendPageLoading: false,
-    friendPageRequestId: 0,
+    friendList: null,
+    requestList: null,
+    outgoingRequestList: null,
     contactsLoading: false,
-    requestWindow: new BoundedPageWindow<Contact>(APP_CONFIG.list.maxPages, undefined, contactIdentity),
-    requestPageLoaded: false,
-    requestPageLoading: false,
-    requestPageRequestId: 0,
-    outgoingRequests: [],
-    outgoingRequestsLoaded: false,
   };
   readonly views: Partial<AppViews> = {};
   private readonly disposers: Array<() => void> = [];

@@ -134,6 +134,77 @@ test.describe('Contacts', () => {
     await ctx2.close();
   });
 
+  test('outgoing requests list shows pending sends and shrinks after acceptance', async ({ browser }) => {
+    const host = uniqueUser('or_host');
+    const r1 = uniqueUser('or_r1');
+    const r2 = uniqueUser('or_r2');
+    const ctxHost = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctxR1 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const ctxR2 = await browser.newContext({ ignoreHTTPSErrors: true });
+    const pageHost = await ctxHost.newPage();
+    const pageR1 = await ctxR1.newPage();
+    const pageR2 = await ctxR2.newPage();
+
+    await register(pageHost, host, password, 'Host');
+    await register(pageR1, r1, password, 'Recipient1');
+    await register(pageR2, r2, password, 'Recipient2');
+
+    // Host 依次向 r1、r2 发起好友请求，但都不接受，制造两条“我发出的请求”。
+    async function sendRequestOnly(target: string) {
+      const requestSentToast = pageHost.locator('#toast-container .toast', {
+        hasText: /好友请求已发送|Friend request sent/,
+      });
+      await expect(requestSentToast).toHaveCount(0, { timeout: 6_000 });
+      await pageHost.click('[data-ctab="search"]');
+      await pageHost.fill('#search-username', target);
+      await pageHost.click('#search-btn');
+      const targetResult = pageHost.locator('#search-results .search-result', { hasText: `@${target}` });
+      await expect(targetResult).toBeVisible({ timeout: 5_000 });
+      await targetResult.locator('#add-friend-btn').click();
+      const remarkModal = pageHost.locator('#modal-overlay:not(.hidden)');
+      if (await remarkModal.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await pageHost.click('#modal-confirm-btn');
+      }
+      await expect(requestSentToast).toBeVisible({ timeout: 10_000 });
+    }
+
+    await pageHost.click('[data-view="contacts"]');
+    await sendRequestOnly(r1);
+    await sendRequestOnly(r2);
+
+    // Host 查看“我发出的请求”：标题与两条待验证记录都应该出现，且不带接受/拒绝按钮。
+    await pageHost.click('[data-ctab="requests"]');
+    const outgoingTitle = pageHost.locator('#requests-outgoing-title');
+    await expect(outgoingTitle).toBeVisible({ timeout: 10_000 });
+    const outgoingPanel = pageHost.locator('#requests-outgoing');
+    await expect(outgoingPanel).toContainText('Recipient1', { timeout: 10_000 });
+    await expect(outgoingPanel).toContainText('Recipient2', { timeout: 10_000 });
+    await expect(outgoingPanel.locator('.btn-primary')).toHaveCount(0);
+    await expect(outgoingPanel.locator('.btn-danger')).toHaveCount(0);
+
+    // r1 接受请求后，host 的“我发出的请求”应该在后台刷新时收缩为只剩 r2。
+    const acceptBtn = pageR1.locator('#requests-tab .btn-primary').first();
+    await expect(async () => {
+      await pageR1.click('[data-view="chat"]');
+      await pageR1.click('[data-view="contacts"]');
+      await pageR1.click('[data-ctab="requests"]');
+      await expect(acceptBtn).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await acceptBtn.click();
+    await expect(pageR1.locator('#toast-container .toast', { hasText: /已添加好友|Friend added/ })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await expect(async () => {
+      await expect(outgoingPanel).not.toContainText('Recipient1', { timeout: 2_000 });
+      await expect(outgoingPanel).toContainText('Recipient2', { timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+
+    await ctxHost.close();
+    await ctxR1.close();
+    await ctxR2.close();
+  });
+
   test('accept friend request - both see each other in friends list', async ({ browser }) => {
     const u1 = uniqueUser('af1');
     const u2 = uniqueUser('af2');
@@ -376,7 +447,7 @@ test.describe('Contacts', () => {
     }).toPass({ timeout: 10_000 });
 
     const boundedMetrics = await page.evaluate(() => {
-      const el = document.querySelector('.contacts-content') as HTMLElement | null;
+      const el = document.querySelector('#friends-tab') as HTMLElement | null;
       return { scrollHeight: el?.scrollHeight ?? 0, clientHeight: el?.clientHeight ?? 0 };
     });
     expect(boundedMetrics.scrollHeight).toBeLessThan(10_000);
@@ -388,7 +459,7 @@ test.describe('Contacts', () => {
     // Display names have settled above, so issue exactly one scroll intent. Repeating
     // the scroll inside the polling callback would request multiple pages and test a
     // different scenario than one-step pagination.
-    await page.locator('.contacts-content').evaluate((element) => {
+    await page.locator('#friends-tab').evaluate((element) => {
       element.scrollTop = element.scrollHeight;
       element.dispatchEvent(new Event('scroll'));
     });
@@ -413,7 +484,7 @@ test.describe('Contacts', () => {
     await expect(page.locator('#friends-tab .contact-item').first()).toBeVisible({ timeout: 10_000 });
 
     await page.evaluate(() => {
-      const el = document.querySelector('.contacts-content');
+      const el = document.querySelector('#friends-tab');
       if (el) {
         el.scrollTop = el.scrollHeight;
         el.dispatchEvent(new Event('scroll'));

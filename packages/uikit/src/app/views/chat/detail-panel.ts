@@ -7,10 +7,21 @@ import {
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { describeError } from '../../error-i18n';
-import { BoundedStreamWindow } from '../../bounded-stream-window';
-import { BoundedPageWindow } from '../../bounded-page-window';
+import { createBoundedList, localPageSource, serverPageSource, type BoundedList } from '../../bounded-list';
 import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
 import { contactFriendUid } from '../contacts';
+
+// 群详情面板每次 showGroupDetail 都会重建成员列表实例（面板重开即重建，无背景刷新）；
+// 重建前必须先 dispose 上一个实例，否则每次改备注/收藏/换头像/移除成员都会泄漏一个实例。
+const groupMemberLists = new WeakMap<AppInstance, BoundedList<GroupMember>>();
+
+function disposeGroupMemberList(app: AppInstance): void {
+  const existing = groupMemberLists.get(app);
+  if (existing) {
+    existing.dispose();
+    groupMemberLists.delete(app);
+  }
+}
 
 export async function showGroupDetail(app: AppInstance, groupId: string) {
   const requestId = ++app.chatState.detailRequestId;
@@ -19,57 +30,89 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
     // 群资料变更不向全部成员主动广播；显式查看详情时绕过 TTL 强制后台刷新。
     // 方法同步返回当前缓存，服务端结果到达后由 display:updated 刷新本面板和其它可见视图。
     app.client.getGroupInfos([groupId], { forceRefresh: true });
-    // 三个独立请求并行执行，比串行节省约 2 个 RTT
-    const [firstMemberPage, favoritePage, muted] = await Promise.all([
-      app.client.getGroupMembers(groupId, { limit: APP_CONFIG.list.pageSize }),
+    const [favoritePage, muted] = await Promise.all([
       app.client.getContacts({ status: CONTACT_FRIEND, groupId, limit: 1 }),
       app.views.sessionPreferences?.isMuted({ groupId }) ?? Promise.resolve(false),
     ]);
     if (app.chatState.detailRequestId !== requestId) return;
 
-    // 群成员是有界滑动窗口（按整页裁剪）：游标用服务端返回的不透明 start / end_cursor，双向续翻。
-    // 按 userId 跨页去重，避免成员重排（如角色变更）后同一成员跨页重复显示。
-    const memberWindow = new BoundedPageWindow<GroupMember>(
-      APP_CONFIG.list.maxPages,
-      undefined,
-      (member) => member.userId || '0',
-    );
-    memberWindow.setInitial({
-      items: firstMemberPage.members,
-      startCursor: firstMemberPage.page.startCursor,
-      endCursor: firstMemberPage.page.endCursor,
-      hasMoreBackward: firstMemberPage.page.hasMoreBackward,
-      hasMoreForward: firstMemberPage.page.hasMoreForward,
-    });
-    let memberLoading = false;
-    // 群成员总数来自服务端 page.total（窗口有界、按整页裁剪，渲染数 ≤ 上限，表头显示的是总数）。
-    let memberTotal = firstMemberPage.total;
-
-    app.client.getUserInfos(memberWindow.items.map((member) => member.userId || '0'));
     const favorited = favoritePage.contacts.length > 0;
     const info = app.client.getGroupInfos([groupId]).get(groupId) || { name: '', avatarUrl: '', remarkName: '' };
 
     const panel = app.$('detail-panel');
-    const ownerMember = memberWindow.items.find((member) => member.role === GROUP_ROLE_OWNER);
-    const isOwner = ownerMember ? (ownerMember.userId || '0') === app.client.getSessionSnapshot().currentUid : false;
+    let memberItems: readonly GroupMember[] = [];
+    let memberTotal = -1;
+
+    // BoundedList 构造时要求 scrollElement 已经在 DOM 里，但面板头部（含群主专属的
+    // 头像上传入口）要等首页成员到位、算出 isOwner 后才知道怎么画。先铺一个骨架
+    // （空头部占位 + 成员列表容器），创建并 reset 列表拿到首页数据后，只重写
+    // `#group-detail-header` 这一段，不触碰 `#members-list`，避免列表刚绑定的节点
+    // 被整体 innerHTML 重建顶替掉。
+    panel.innerHTML = `
+      <div class="detail-header" id="group-detail-header"></div>
+      <div class="detail-section">
+        <h4 id="members-title"></h4>
+        <div id="members-list"></div>
+      </div>
+    `;
+
+    disposeGroupMemberList(app);
+    const memberList = createBoundedList<GroupMember>({
+      id: 'detail.groupMembers',
+      scrollElement: app.$('members-list'),
+      pageSize: APP_CONFIG.list.pageSize,
+      maxPages: APP_CONFIG.list.maxPages,
+      register: (controller) => app.registerBoundedList(controller),
+      source: serverPageSource(
+        ({ cursor, backward, limit }) => app.client.getGroupMembers(groupId, { cursor, backward, limit }),
+        (page) => ({
+          items: page.members,
+          startCursor: page.page.startCursor,
+          endCursor: page.page.endCursor,
+          hasMoreBackward: page.page.hasMoreBackward,
+          hasMoreForward: page.page.hasMoreForward,
+          total: page.total,
+        }),
+      ),
+      identityOf: (member) => member.userId || '0',
+      freshEdge: 'head',
+      renderItem: (member) => renderGroupMemberRow(app, member, groupId, () => isOwner, () => void showGroupDetail(app, groupId)),
+      text: {
+        empty: () => app.t('detail.noMembers'),
+        loading: () => app.t('common.loading'),
+        tailBoundary: () => app.t('detail.noMoreMembers'),
+      },
+      onItemsChanged: (items) => {
+        memberItems = items;
+        app.client.getUserInfos(items.map((member) => member.userId || '0'));
+      },
+      onLoadStateChange: (s) => {
+        memberTotal = s.total;
+        const title = app.dom.getElementById('members-title');
+        if (title) title.textContent = app.t('detail.memberCount', { n: memberTotal >= 0 ? memberTotal : s.count });
+      },
+      onError: (error) => console.warn('[yimsg/uikit] group member list failed:', error),
+    });
+    groupMemberLists.set(app, memberList);
+    let isOwner = false;
+    await memberList.reset();
+    if (app.chatState.detailRequestId !== requestId) { memberList.dispose(); groupMemberLists.delete(app); return; }
+
+    const ownerMember = memberItems.find((member) => member.role === GROUP_ROLE_OWNER);
+    isOwner = ownerMember ? (ownerMember.userId || '0') === app.client.getSessionSnapshot().currentUid : false;
     const groupAvatarHtml = app.avatarInnerHtml({ avatar: info.avatarUrl, nickname: info.name || 'G' });
     const groupName = displayGroupName(info, app.t('detail.group'));
-    panel.innerHTML = `
-      <div class="detail-header">
-        <div class="avatar avatar-xl${isOwner ? ' avatar-clickable' : ''}" id="group-avatar-display"${isOwner ? ` title="${app.t('detail.clickToChangeAvatar')}"` : ''}>${groupAvatarHtml}</div>
-        ${isOwner ? '<input type="file" id="group-avatar-picker" accept="image/jpeg,image/png,image/webp" class="hidden">' : ''}
-        <div class="detail-name">${app.escapeHtml(groupName)}</div>
-        ${info.remarkName ? `<div class="detail-subname">${app.escapeHtml(info.name || app.t('detail.group'))}</div>` : `<div class="detail-subname">${app.t('detail.group')}</div>`}
-        <div class="panel-actions">
-          ${panelActionBtn(SVG_REMARK, 'panel-action-gray', app.escapeHtml(app.t('detail.setRemark')), 'remark')}
-          ${panelActionBtn(muted ? SVG_BELL_OFF : SVG_BELL, muted ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(app.t('contacts.mute')), 'mute')}
-          ${panelActionBtn(favorited ? SVG_STAR_FILLED : SVG_STAR, favorited ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(favorited ? app.t('detail.unfavoriteGroup') : app.t('detail.favoriteGroup')), 'favorite')}
-          ${panelActionBtn(SVG_PLUS, 'panel-action-gray', app.escapeHtml(app.t('detail.addMember')), 'add-member')}
-        </div>
-      </div>
-      <div class="detail-section">
-        <h4 id="members-title">${app.t('detail.memberCount', { n: memberTotal >= 0 ? memberTotal : memberWindow.count })}</h4>
-        <div id="members-list"></div>
+    const header = app.$('group-detail-header');
+    header.innerHTML = `
+      <div class="avatar avatar-xl${isOwner ? ' avatar-clickable' : ''}" id="group-avatar-display"${isOwner ? ` title="${app.t('detail.clickToChangeAvatar')}"` : ''}>${groupAvatarHtml}</div>
+      ${isOwner ? '<input type="file" id="group-avatar-picker" accept="image/jpeg,image/png,image/webp" class="hidden">' : ''}
+      <div class="detail-name">${app.escapeHtml(groupName)}</div>
+      ${info.remarkName ? `<div class="detail-subname">${app.escapeHtml(info.name || app.t('detail.group'))}</div>` : `<div class="detail-subname">${app.t('detail.group')}</div>`}
+      <div class="panel-actions">
+        ${panelActionBtn(SVG_REMARK, 'panel-action-gray', app.escapeHtml(app.t('detail.setRemark')), 'remark')}
+        ${panelActionBtn(muted ? SVG_BELL_OFF : SVG_BELL, muted ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(app.t('contacts.mute')), 'mute')}
+        ${panelActionBtn(favorited ? SVG_STAR_FILLED : SVG_STAR, favorited ? 'panel-action-mute-on' : 'panel-action-gray', app.escapeHtml(favorited ? app.t('detail.unfavoriteGroup') : app.t('detail.favoriteGroup')), 'favorite')}
+        ${panelActionBtn(SVG_PLUS, 'panel-action-gray', app.escapeHtml(app.t('detail.addMember')), 'add-member')}
       </div>
     `;
     (panel.querySelector('[data-action="remark"]') as HTMLElement | null)?.setAttribute('id', 'detail-group-remark-btn');
@@ -96,93 +139,9 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
       });
     }
 
-    const membersList = app.$('members-list');
-    const memberListView = new BoundedStreamWindow<GroupMember>({
-      scrollElement: membersList,
-    });
-    const renderMemberWindow = () => {
-      app.$('members-title').textContent = app.t('detail.memberCount', { n: memberTotal >= 0 ? memberTotal : memberWindow.count });
-      const items = memberWindow.items;
-      const displayMap = app.client.getUserInfos(items.map((member) => member.userId || '0'));
-      memberListView.render({
-        items,
-        hasMoreBefore: memberWindow.hasMoreBefore,
-        hasMoreAfter: memberWindow.hasMoreAfter,
-        loadingBefore: memberLoading,
-        loadingAfter: memberLoading,
-        emptyText: app.t('detail.noMembers'),
-        loadingText: app.t('common.loading'),
-        bottomBoundaryText: app.t('detail.noMoreMembers'),
-        loadBefore: () => { void loadMoreMembers({ mode: 'backward' }); },
-        loadAfter: () => { void loadMoreMembers({ mode: 'forward' }); },
-        keyOf: (member) => member.userId || '0',
-        renderItem: (member) => {
-          const uid = member.userId || '0';
-          const user = displayMap.get(uid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
-          const name = displayUserName(user, uid);
-          const avatarHtml = app.avatarInnerHtml({ avatar: user.avatarUrl, nickname: name });
-          const div = app.dom.ownerDocument.createElement('div');
-          div.className = 'member-item';
-          div.dataset.uid = uid;
-          // 群主可以把除自己以外的成员移出群聊；群主自己不显示移出按钮（需先转让群主 / 解散群，非本次范围）。
-          const canRemove = isOwner && member.role !== GROUP_ROLE_OWNER;
-          div.innerHTML = `
-            <div class="avatar avatar-sm">${avatarHtml}</div>
-            <span class="member-name">${app.escapeHtml(name)}</span>
-            ${member.role === GROUP_ROLE_OWNER ? `<span class="member-badge">${app.t('detail.owner')}</span>` : ''}
-            ${canRemove ? `<button class="member-remove-btn" data-uid="${app.escapeHtml(uid)}" title="${app.escapeHtml(app.t('detail.removeMember'))}">&minus;</button>` : ''}
-          `;
-          if (canRemove) {
-            div.querySelector('.member-remove-btn')!.addEventListener('click', async (event) => {
-              event.stopPropagation();
-              const ok = await app.showConfirmModal({
-                title: app.t('detail.removeMemberConfirmTitle'),
-                desc: app.t('detail.removeMemberConfirmDesc', { name }),
-                confirmText: app.t('detail.removeMember'),
-                cancelText: app.t('group.cancel'),
-                danger: true,
-              });
-              if (!ok) return;
-              try {
-                await app.client.removeGroupMember(groupId, uid);
-                app.showToast(app.t('detail.memberRemoved'), 'success');
-                await showGroupDetail(app, groupId);
-              } catch (err) {
-                app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
-              }
-            });
-          }
-          return [div];
-        },
-      });
-    };
-    async function loadMoreMembers(options: { mode: 'forward' | 'backward' }) {
-      if (memberLoading) return;
-      if (options.mode === 'forward' && !memberWindow.hasMoreAfter) return;
-      if (options.mode === 'backward' && !memberWindow.hasMoreBefore) return;
-      memberLoading = true;
-      renderMemberWindow();
-      try {
-        const backward = options.mode === 'backward';
-        const cursor = (backward ? memberWindow.backwardCursor : memberWindow.forwardCursor) || undefined;
-        const page = await app.client.getGroupMembers(groupId, { cursor, backward, limit: APP_CONFIG.list.pageSize });
-        if (app.chatState.detailRequestId !== requestId) return;
-        const result = {
-          items: page.members,
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreBackward: page.page.hasMoreBackward,
-          hasMoreForward: page.page.hasMoreForward,
-        };
-        if (page.total >= 0) memberTotal = page.total;
-        if (backward) memberWindow.prependBackward(result);
-        else memberWindow.appendForward(result);
-      } finally {
-        memberLoading = false;
-        renderMemberWindow();
-      }
-    }
-    renderMemberWindow();
+    // isOwner 在成员首页拿到之前恒为 false，renderItem 用的 canRemove 判断已经用
+    // () => isOwner 惰性读取；这里补一次渲染，让移出按钮按最终 isOwner 值出现。
+    memberList.render();
 
     panel.querySelector('[data-action="remark"]')!.addEventListener('click', async () => {
       const remark = await app.showTextInputModal({
@@ -246,18 +205,104 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
   }
 }
 
+function renderGroupMemberRow(
+  app: AppInstance,
+  member: GroupMember,
+  groupId: string,
+  isOwner: () => boolean,
+  onRemoved: () => void,
+): HTMLElement[] {
+  const uid = member.userId || '0';
+  const user = app.client.getUserInfos([uid]).get(uid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
+  const name = displayUserName(user, uid);
+  const avatarHtml = app.avatarInnerHtml({ avatar: user.avatarUrl, nickname: name });
+  const div = app.dom.ownerDocument.createElement('div');
+  div.className = 'member-item';
+  div.dataset.uid = uid;
+  // 群主可以把除自己以外的成员移出群聊；群主自己不显示移出按钮（需先转让群主 / 解散群，非本次范围）。
+  const canRemove = isOwner() && member.role !== GROUP_ROLE_OWNER;
+  div.innerHTML = `
+    <div class="avatar avatar-sm">${avatarHtml}</div>
+    <span class="member-name">${app.escapeHtml(name)}</span>
+    ${member.role === GROUP_ROLE_OWNER ? `<span class="member-badge">${app.t('detail.owner')}</span>` : ''}
+    ${canRemove ? `<button class="member-remove-btn" data-uid="${app.escapeHtml(uid)}" title="${app.escapeHtml(app.t('detail.removeMember'))}">&minus;</button>` : ''}
+  `;
+  if (canRemove) {
+    div.querySelector('.member-remove-btn')!.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      const ok = await app.showConfirmModal({
+        title: app.t('detail.removeMemberConfirmTitle'),
+        desc: app.t('detail.removeMemberConfirmDesc', { name }),
+        confirmText: app.t('detail.removeMember'),
+        cancelText: app.t('group.cancel'),
+        danger: true,
+      });
+      if (!ok) return;
+      try {
+        await app.client.removeGroupMember(groupId, uid);
+        app.showToast(app.t('detail.memberRemoved'), 'success');
+        onRemoved();
+      } catch (err) {
+        app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
+      }
+    });
+  }
+  return [div];
+}
+
+interface AddMemberEntry {
+  readonly uid: string;
+  readonly name: string;
+}
+
+async function loadAddMemberCandidates(
+  app: AppInstance,
+  groupId: string,
+  signal: AbortSignal,
+): Promise<AddMemberEntry[]> {
+  // 全量拉取当前群成员 uid 用于排除，翻页安全上限与群成员选择器一致（groupMemberPicker.maxPages）。
+  const existingUids = new Set<string>();
+  let memberCursor: string | undefined;
+  for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
+    const result = await app.client.getGroupMembers(groupId, { cursor: memberCursor, limit: APP_CONFIG.list.pageSize });
+    if (signal.aborted) return [];
+    for (const member of result.members) existingUids.add(member.userId || '0');
+    if (!result.page.hasMoreForward) break;
+    memberCursor = result.page.endCursor;
+  }
+
+  const friendUids: string[] = [];
+  let friendCursor: string | undefined;
+  for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
+    const result = await app.client.getContacts({ status: CONTACT_FRIEND, cursor: friendCursor, limit: APP_CONFIG.list.pageSize });
+    if (signal.aborted) return [];
+    for (const contact of result.contacts) {
+      const uid = contactFriendUid(contact);
+      if (uid !== '0' && !existingUids.has(uid)) friendUids.push(uid);
+    }
+    if (!result.page.hasMoreForward) break;
+    friendCursor = result.page.endCursor;
+  }
+
+  const batchMaxLimit = app.client.getClientConfig().batchMaxLimit;
+  for (let i = 0; i < friendUids.length; i += batchMaxLimit) {
+    app.client.getUserInfos(friendUids.slice(i, i + batchMaxLimit));
+  }
+  if (signal.aborted) return [];
+
+  return friendUids.map((uid) => ({ uid, name: displayUserName(app.client.getUserInfos([uid]).get(uid), uid) }));
+}
+
 /**
- * 添加群成员弹窗：一次性全量拉取"好友 - 已在群内的成员"作为候选（与群成员搜索器
- * §7.6 同样的低频操作、一次性全量拉取取舍），点击候选立即调用 addGroupMember 并从
- * 列表移除，不做批量勾选 + 确认二次交互，保持与需求一致的最小复杂度。
+ * 添加群成员弹窗：一次性全量拉取"好友 - 已在群内的成员"作为候选（与群成员选择器
+ * 同样的低频操作、一次性全量拉取取舍，数据侧完全不变），点击候选立即调用 addGroupMember
+ * 并从列表移除。渲染侧改走 localPageSource + BoundedList：全量数据留在组件私有数组里，
+ * DOM 里始终只有 pageSize×maxPages 条，不再是"过滤后的全部条目"直接 appendChild。
  */
 async function showAddMemberModal(app: AppInstance, groupId: string): Promise<void> {
   return new Promise((resolve) => {
     const modal = app.$('modal-content');
     const controller = new AbortController();
-    let entries: { uid: string; name: string }[] = [];
-    let loaded = false;
-    let loadFailed = false;
 
     modal.innerHTML = `
       <div class="modal-title">${app.escapeHtml(app.t('detail.addMember'))}</div>
@@ -272,113 +317,75 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
     app.$('modal-overlay').classList.remove('hidden');
 
     const searchInput = app.$('add-member-search') as HTMLInputElement;
-    const listEl = app.$('add-member-list');
+    const collator = new Intl.Collator('zh-Hans-CN-u-co-pinyin', { numeric: true, sensitivity: 'base' });
 
-    const finish = () => {
-      controller.abort();
-      app.closeModal();
-      resolve();
-    };
-
-    const appendEmptyRow = (text: string) => {
-      const row = app.dom.ownerDocument.createElement('div');
-      row.className = 'group-member-picker-empty';
-      row.textContent = text;
-      listEl.appendChild(row);
-    };
-
-    const renderList = () => {
-      listEl.innerHTML = '';
-      if (loadFailed) {
-        appendEmptyRow(app.t('detail.addMemberLoadFailed'));
-        return;
-      }
-      if (!loaded) {
-        appendEmptyRow(app.t('common.loading'));
-        return;
-      }
-      const query = searchInput.value.trim().toLowerCase();
-      const filtered = query
-        ? entries.filter((entry) => entry.name.toLowerCase().includes(query))
-        : entries;
-      if (filtered.length === 0) {
-        appendEmptyRow(app.t(query ? 'detail.addMemberNoResults' : 'detail.addMemberEmpty'));
-        return;
-      }
-      for (const entry of filtered) {
+    const list = createBoundedList<AddMemberEntry, { keyword: string }>({
+      id: 'detail.addMember',
+      scrollElement: app.$('add-member-list'),
+      pillHost: false,
+      pageSize: APP_CONFIG.list.pageSize,
+      maxPages: APP_CONFIG.groupMemberPicker.maxPages,
+      initialQuery: { keyword: '' },
+      source: localPageSource({
+        loadAll: (_query, onProgress) => loadAddMemberCandidates(app, groupId, controller.signal).then((entries) => {
+          onProgress?.(entries.length);
+          return entries;
+        }),
+        filter: (entry, query) => !query.keyword || entry.name.toLowerCase().includes(query.keyword.toLowerCase()),
+        compare: (a, b) => collator.compare(a.name, b.name),
+      }),
+      identityOf: (entry) => entry.uid,
+      freshEdge: 'head',
+      renderItem: (entry) => {
+        // entry.name 是 loadAll 时的一次性快照（localPageSource 排序/过滤只在
+        // reset 时算一遍，见设计方案已知限制）；名字可能当时还没入缓存，展示侧
+        // 每次渲染都重新读一次缓存，配合 display:updated 重绘就能补上最新展示名。
+        const name = displayUserName(app.client.getUserInfos([entry.uid]).get(entry.uid), entry.uid) || entry.name;
         const item = app.dom.ownerDocument.createElement('div');
         item.className = 'group-member-picker-item';
         item.dataset.uid = entry.uid;
-        const avatarHtml = app.avatarInnerHtml({ nickname: entry.name });
-        item.innerHTML = `<div class="avatar avatar-sm">${avatarHtml}</div><span>${app.escapeHtml(entry.name)}</span>`;
-        item.addEventListener('click', () => { void addOne(entry.uid); }, { signal: controller.signal });
-        listEl.appendChild(item);
-      }
-    };
+        const avatarHtml = app.avatarInnerHtml({ nickname: name });
+        item.innerHTML = `<div class="avatar avatar-sm">${avatarHtml}</div><span>${app.escapeHtml(name)}</span>`;
+        item.addEventListener('click', () => void addOne(entry.uid));
+        return [item];
+      },
+      text: {
+        empty: () => app.t('detail.addMemberEmpty'),
+        emptyFiltered: () => app.t('detail.addMemberNoResults'),
+        loading: () => app.t('common.loading'),
+        error: () => app.t('detail.addMemberLoadFailed'),
+      },
+      onLoadStateChange: (s) => { searchInput.disabled = !s.loaded; },
+      onError: (error) => console.warn('[yimsg/uikit] add-member candidates failed:', error),
+    });
+    void list.reset();
+
+    const onDisplayUpdated = (): void => list.render();
+    app.client.on('display:updated', onDisplayUpdated);
 
     const addOne = async (uid: string) => {
       try {
         await app.client.addGroupMember(groupId, uid);
-        entries = entries.filter((entry) => entry.uid !== uid);
+        list.removeLocal(uid);
         app.showToast(app.t('detail.memberAdded'), 'success');
-        renderList();
       } catch (err) {
         app.showToast(app.t('detail.failed') + describeError(app, err), 'error');
       }
     };
 
-    const loadCandidates = async () => {
-      // 全量拉取当前群成员 uid 用于排除，翻页安全上限与群成员搜索器一致（groupMemberPicker.maxPages）。
-      const existingUids = new Set<string>();
-      let memberCursor: string | undefined;
-      for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
-        const result = await app.client.getGroupMembers(groupId, { cursor: memberCursor, limit: APP_CONFIG.list.pageSize });
-        if (controller.signal.aborted) return;
-        for (const member of result.members) existingUids.add(member.userId || '0');
-        if (!result.page.hasMoreForward) break;
-        memberCursor = result.page.endCursor;
-      }
-
-      const friendUids: string[] = [];
-      let friendCursor: string | undefined;
-      for (let page = 0; page < APP_CONFIG.groupMemberPicker.maxPages; page++) {
-        const result = await app.client.getContacts({ status: CONTACT_FRIEND, cursor: friendCursor, limit: APP_CONFIG.list.pageSize });
-        if (controller.signal.aborted) return;
-        for (const contact of result.contacts) {
-          const uid = contactFriendUid(contact);
-          if (uid !== '0' && !existingUids.has(uid)) friendUids.push(uid);
-        }
-        if (!result.page.hasMoreForward) break;
-        friendCursor = result.page.endCursor;
-      }
-
-      const batchMaxLimit = app.client.getClientConfig().batchMaxLimit;
-      for (let i = 0; i < friendUids.length; i += batchMaxLimit) {
-        app.client.getUserInfos(friendUids.slice(i, i + batchMaxLimit));
-      }
-      if (controller.signal.aborted) return;
-
-      const collator = new Intl.Collator('zh-Hans-CN-u-co-pinyin', { numeric: true, sensitivity: 'base' });
-      entries = friendUids
-        .map((uid) => ({ uid, name: displayUserName(app.client.getUserInfos([uid]).get(uid), uid) }))
-        .sort((a, b) => collator.compare(a.name, b.name));
-      loaded = true;
-      searchInput.disabled = false;
-      renderList();
+    const finish = () => {
+      controller.abort();
+      app.client.off('display:updated', onDisplayUpdated);
+      list.dispose();
+      app.closeModal();
+      resolve();
     };
 
-    loadCandidates().catch(() => {
-      if (controller.signal.aborted) return;
-      loadFailed = true;
-      renderList();
-    });
-
-    renderList();
-    searchInput.addEventListener('input', () => renderList(), { signal: controller.signal });
+    searchInput.addEventListener('input', () => list.setQuery({ keyword: searchInput.value.trim() }));
     searchInput.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Escape') finish();
-    }, { signal: controller.signal });
-    app.$('add-member-done').addEventListener('click', finish, { signal: controller.signal });
+    });
+    app.$('add-member-done').addEventListener('click', finish);
   });
 }
 

@@ -55,7 +55,7 @@ packages/uikit/src/
     ├── shell.ts           — Light DOM / Shadow DOM 共用应用骨架与样式重写
     ├── app-instance.ts    — AppInstance、DOM scope、存储 scope、运行时回调上下文
     ├── main-app.ts        — 统一装配逻辑：setup、事件订阅、认证后初始化
-    ├── bounded-stream-window.ts    — 统一分页列表引擎 BoundedStreamWindow（窗口切片 / 全量渲染）
+    ├── bounded-list/       — 统一的有界列表窗口组件 BoundedList（全量渲染、双向翻页、无窗口切片）
     ├── safe-dom.ts        — URL allowlist、SafeHtml、统一转义
     ├── storage-base.ts    — 浏览器存储回退、seeded memory 与 StorageScope
     ├── session-storage.ts — ClientMode / LayoutChoice 等共享类型定义
@@ -268,8 +268,8 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | 单元测试 | `packages/uikit/tests/unit/uikit-theme-i18n.test.ts` | 主题变量、locale 覆盖、运行期切换 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-mode.test.ts`、`startup-mode.test.ts` | mode 分支、布局决策 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-navigation.test.ts` | `switchView` 在 `chat-only` / `contacts-only` 显示范围下强制落回对应视图 |
-| 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | 独立 BoundedList 核心：组件外壳、PageWindow、PageSource、SelectionStore、registry、StreamWindow、提示条 |
-| 单元测试 | `packages/uikit/tests/unit/uikit-bounded-stream-window.test.ts`、`uikit-bounded-page-window.test.ts` | 生产视图仍使用的旧分页窗口：全量渲染、边界提示、触界加载 |
+| 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | BoundedList 核心：组件外壳、PageWindow、PageSource、SelectionStore、registry、StreamWindow、提示条 |
+| 单元测试 | `packages/uikit/tests/unit/uikit-message-page.test.ts`、`uikit-message-search-jump.test.ts` | 生产视图接入 BoundedList 后的状态清理、锚点跳转与投影同步 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-security.test.ts` | URL allowlist、SafeHtml、转义约束 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-settings-clear-data.test.ts` | 设置页「清除数据」按钮：仅 persistent 模式展示、确认弹窗、resetLocalData=current-user 重新初始化、失败与降级分支 |
 | UI 测试 | `apps/web/tests/ui/uikit-embed.spec.ts` | ESM 挂载、Shadow DOM、认证、句柄、主题、卸载、`viewMode: 'chat-only'` 隐藏底部导航栏 |

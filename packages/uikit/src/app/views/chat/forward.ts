@@ -6,9 +6,7 @@ import { describeError } from "../../error-i18n";
 import { conversationLabel } from "./helpers";
 import { exitMessageSelectionMode } from "./selection";
 import { appendLiveMessageToPage } from "./message-page";
-import { BoundedStreamWindow } from "../../bounded-stream-window";
-import { BoundedPageWindow } from "../../bounded-page-window";
-import { conversationIdentity, contactIdentity } from "../../list-identity";
+import { createBoundedList, serverPageSource, SelectionStore } from "../../bounded-list";
 import { contactFriendUid, contactGroupId } from "../contacts";
 
 const FORWARD_MAX_TARGETS = APP_CONFIG.forward.maxTargets;
@@ -25,251 +23,37 @@ function forwardContactConv(contact: Contact): LocalConversation {
     : { groupId: "0", friendUid: contactFriendUid(contact), lastSeq: 0, lastMessage: null };
 }
 
+function renderForwardRow(app: AppInstance, label: string, ctx: { readonly selected: boolean; readonly selectable: boolean }): HTMLElement {
+  const item = app.dom.ownerDocument.createElement("label");
+  item.className = "forward-conversation-item";
+  item.innerHTML = `
+    <input type="checkbox" ${ctx.selected ? "checked" : ""} ${!ctx.selectable ? "disabled" : ""}>
+    <span>${app.escapeHtml(label)}</span>
+  `;
+  return item;
+}
+
 async function showForwardModal(
   app: AppInstance,
   defaultTargetKey: string | null,
   selectedCount: number,
 ): Promise<{ targetKeys: string[]; comment: string } | null> {
-  const firstPage = await app.client.getConversations({
-    limit: APP_CONFIG.list.pageSize,
-  });
-
   return new Promise((resolve) => {
     const modal = app.$("modal-content");
     const controller = new AbortController();
-    const selectedKeys = new Set<string>();
-    if (defaultTargetKey) selectedKeys.add(defaultTargetKey);
+    // 共享选中集：两个 tab 的同一个目标勾选状态自动同步，任一实例改动都会通知另一个重渲。
+    const selectionStore = new SelectionStore(FORWARD_MAX_TARGETS);
+    if (defaultTargetKey) selectionStore.toggle(defaultTargetKey);
     let activeTab: ForwardTargetTab = "conversations";
-    let loading = false;
-    let forwardListView: BoundedStreamWindow<LocalConversation> | null = null;
-    // 会话候选是有界滑动窗口（按整页裁剪）：游标用服务端返回的不透明边界游标，双向续翻。
-    const convWindow = new BoundedPageWindow<LocalConversation>(APP_CONFIG.list.maxPages, undefined, conversationIdentity);
-    convWindow.setInitial({
-      items: firstPage.conversations,
-      startCursor: firstPage.page.startCursor,
-      endCursor: firstPage.page.endCursor,
-      hasMoreBackward: firstPage.page.hasMoreBackward,
-      hasMoreForward: firstPage.page.hasMoreForward,
-    });
-
-    // 通讯录候选（好友 / 收藏群）：切到「通讯录」tab 时才首次拉取，避免每次转发都多一次请求。
-    // 与好友列表关键字过滤同一套机制：关键字非空时改走 search_contacts，游标/窗口机制不变。
     let contactKeyword = "";
-    let contactKeywordDebounce: ReturnType<typeof setTimeout> | null = null;
-    let contactsLoading = false;
-    let contactsLoaded = false;
-    let contactRequestId = 0;
-    let contactListView: BoundedStreamWindow<Contact> | null = null;
-    const contactWindow = new BoundedPageWindow<Contact>(APP_CONFIG.list.maxPages, undefined, contactIdentity);
-
-    const finish = (
-      value: { targetKeys: string[]; comment: string } | null,
-    ) => {
-      controller.abort();
-      if (contactKeywordDebounce) clearTimeout(contactKeywordDebounce);
-      app.$("modal-overlay").classList.add("hidden");
-      resolve(value);
-    };
-
-    const pickDefaultIfNeeded = (
-      conversations: readonly LocalConversation[],
-    ) => {
-      if (selectedKeys.size === 0 && conversations.length > 0) {
-        selectedKeys.add(app.client.describeConversation(conversations[0]).key);
-      }
-    };
 
     const updateSelectedSummary = () => {
       const summary = app.dom.getElementById("forward-target-selected-summary");
       if (!summary) return;
       summary.textContent = app.t("chat.forwardSelectedTargets", {
-        n: String(selectedKeys.size),
+        n: String(selectionStore.size),
         max: String(FORWARD_MAX_TARGETS),
       });
-    };
-
-    const renderConversationItems = () => {
-      const list = app.dom.getElementById("forward-conversation-list");
-      if (!list) return;
-      if (!forwardListView) {
-        forwardListView = new BoundedStreamWindow<LocalConversation>({
-          scrollElement: list,
-        });
-      }
-
-      const items = convWindow.items;
-      pickDefaultIfNeeded(items);
-      forwardListView.render({
-        items,
-        hasMoreBefore: convWindow.hasMoreBefore,
-        hasMoreAfter: convWindow.hasMoreAfter,
-        loadingBefore: loading,
-        loadingAfter: loading,
-        emptyText: app.t("chat.forwardNoConversation"),
-        loadingText: app.t("common.loading"),
-        bottomBoundaryText: app.t("chat.noMoreConversations"),
-        loadBefore: () => { void maybeLoadMore({ mode: "backward" }); },
-        loadAfter: () => { void maybeLoadMore({ mode: "forward" }); },
-        keyOf: (conv) => app.client.describeConversation(conv).key,
-        renderItem: (conv) => {
-          const key = app.client.describeConversation(conv).key;
-          const checked = selectedKeys.has(key) ? "checked" : "";
-          const item = app.dom.ownerDocument.createElement("label");
-          item.className = "forward-conversation-item";
-          item.innerHTML = `
-            <input type="checkbox" name="forward-target" value="${app.escapeHtml(key)}" ${checked}>
-            <span>${app.escapeHtml(conversationLabel(app, conv))}</span>
-          `;
-          item.querySelector("input")!.addEventListener(
-            "change",
-            (event) => {
-              const input = event.currentTarget as HTMLInputElement;
-              if (input.checked) {
-                if (selectedKeys.size >= FORWARD_MAX_TARGETS && !selectedKeys.has(key)) {
-                  input.checked = false;
-                  app.showToast(app.t("chat.forwardTargetLimit", { max: String(FORWARD_MAX_TARGETS) }), "error");
-                  return;
-                }
-                selectedKeys.add(key);
-              } else {
-                selectedKeys.delete(key);
-              }
-              updateSelectedSummary();
-              // 同一个目标可能同时出现在「通讯录」tab，需要重渲染那边的勾选框保持同步。
-              if (contactsLoaded || contactsLoading) renderContactItems();
-            },
-            { signal: controller.signal },
-          );
-          return [item];
-        },
-      });
-      updateSelectedSummary();
-    };
-
-    const maybeLoadMore = async (options: { mode: "forward" | "backward" }) => {
-      if (loading) return;
-      if (options.mode === "forward" && !convWindow.hasMoreAfter) return;
-      if (options.mode === "backward" && !convWindow.hasMoreBefore) return;
-      loading = true;
-      renderConversationItems();
-      try {
-        const backward = options.mode === "backward";
-        const cursor = (backward ? convWindow.backwardCursor : convWindow.forwardCursor) || undefined;
-        const page = await app.client.getConversations({ cursor, backward, limit: APP_CONFIG.list.pageSize });
-        const result = {
-          items: page.conversations,
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreBackward: page.page.hasMoreBackward,
-          hasMoreForward: page.page.hasMoreForward,
-        };
-        if (backward) convWindow.prependBackward(result);
-        else convWindow.appendForward(result);
-      } finally {
-        loading = false;
-        renderConversationItems();
-      }
-    };
-
-    const renderContactItems = () => {
-      const list = app.dom.getElementById("forward-contact-list");
-      if (!list) return;
-      if (!contactListView) {
-        contactListView = new BoundedStreamWindow<Contact>({
-          scrollElement: list,
-        });
-      }
-
-      contactListView.render({
-        items: contactWindow.items,
-        loaded: contactsLoaded,
-        hasMoreBefore: contactWindow.hasMoreBefore,
-        hasMoreAfter: contactWindow.hasMoreAfter,
-        loadingBefore: contactsLoading,
-        loadingAfter: contactsLoading,
-        emptyText: app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
-        loadingText: app.t("common.loading"),
-        bottomBoundaryText: app.t("contacts.noMoreContacts"),
-        loadBefore: () => { void maybeLoadMoreContacts({ mode: "backward" }); },
-        loadAfter: () => { void maybeLoadMoreContacts({ mode: "forward" }); },
-        keyOf: (contact) => app.client.describeConversation(forwardContactConv(contact)).key,
-        renderItem: (contact) => {
-          const conv = forwardContactConv(contact);
-          const key = app.client.describeConversation(conv).key;
-          const checked = selectedKeys.has(key) ? "checked" : "";
-          const item = app.dom.ownerDocument.createElement("label");
-          item.className = "forward-conversation-item";
-          item.innerHTML = `
-            <input type="checkbox" name="forward-target" value="${app.escapeHtml(key)}" ${checked}>
-            <span>${app.escapeHtml(conversationLabel(app, conv))}</span>
-          `;
-          item.querySelector("input")!.addEventListener(
-            "change",
-            (event) => {
-              const input = event.currentTarget as HTMLInputElement;
-              if (input.checked) {
-                if (selectedKeys.size >= FORWARD_MAX_TARGETS && !selectedKeys.has(key)) {
-                  input.checked = false;
-                  app.showToast(app.t("chat.forwardTargetLimit", { max: String(FORWARD_MAX_TARGETS) }), "error");
-                  return;
-                }
-                selectedKeys.add(key);
-              } else {
-                selectedKeys.delete(key);
-              }
-              updateSelectedSummary();
-              // 同一个目标可能同时出现在「最近会话」tab，需要重渲染那边的勾选框保持同步。
-              renderConversationItems();
-            },
-            { signal: controller.signal },
-          );
-          return [item];
-        },
-      });
-      updateSelectedSummary();
-    };
-
-    const maybeLoadMoreContacts = async (options: { mode: "reset" | "forward" | "backward" }) => {
-      if (contactsLoading) return;
-      if (options.mode === "forward" && !contactWindow.hasMoreAfter) return;
-      if (options.mode === "backward" && !contactWindow.hasMoreBefore) return;
-      const requestId = ++contactRequestId;
-      contactsLoading = true;
-      if (options.mode === "reset") {
-        contactWindow.reset();
-        contactsLoaded = false;
-      }
-      renderContactItems();
-      try {
-        const backward = options.mode === "backward";
-        const cursor = options.mode === "reset"
-          ? undefined
-          : (backward ? contactWindow.backwardCursor : contactWindow.forwardCursor) || undefined;
-        const page = contactKeyword
-          ? await app.client.searchContacts({ keyword: contactKeyword, status: CONTACT_FRIEND, cursor, backward, limit: FORWARD_CONTACT_PAGE_SIZE })
-          : await app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit: FORWARD_CONTACT_PAGE_SIZE });
-        if (requestId !== contactRequestId) return;
-        // 组织类通讯录条目不是会话目标，只保留可直接开聊的好友 / 收藏群。
-        const targets = page.contacts.filter((c) => contactFriendUid(c) !== "0" || contactGroupId(c) !== "0");
-        const result = {
-          items: targets,
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreBackward: page.page.hasMoreBackward,
-          hasMoreForward: page.page.hasMoreForward,
-        };
-        if (options.mode === "reset") contactWindow.setInitial(result);
-        else if (options.mode === "forward") contactWindow.appendForward(result);
-        else contactWindow.prependBackward(result);
-        contactsLoaded = true;
-      } catch (_) {
-        app.showToast(app.t(contactKeyword ? "contacts.searchContactsFailed" : "contacts.failedToLoadContacts"), "error");
-      } finally {
-        if (requestId === contactRequestId) {
-          contactsLoading = false;
-          renderContactItems();
-        }
-      }
     };
 
     modal.innerHTML = `
@@ -296,8 +80,100 @@ async function showForwardModal(
       </div>
     `;
     app.$("modal-overlay").classList.remove("hidden");
+    updateSelectedSummary();
 
-    renderConversationItems();
+    // 会话候选：有界滑动窗口，游标用服务端整页边界双向续翻；首页在弹窗打开时立即拉取。
+    const conversationList = createBoundedList<LocalConversation>({
+      id: "forward.conversations",
+      scrollElement: app.$("forward-conversation-list"),
+      pillHost: false,
+      pageSize: APP_CONFIG.list.pageSize,
+      maxPages: APP_CONFIG.list.maxPages,
+      register: (c) => app.registerBoundedList(c),
+      source: serverPageSource(
+        ({ cursor, backward, limit }) => app.client.getConversations({ cursor, backward, limit }),
+        (page) => ({
+          items: page.conversations,
+          startCursor: page.page.startCursor,
+          endCursor: page.page.endCursor,
+          hasMoreBackward: page.page.hasMoreBackward,
+          hasMoreForward: page.page.hasMoreForward,
+          total: page.page.total,
+        }),
+      ),
+      identityOf: (conv) => app.client.describeConversation(conv).key,
+      freshEdge: "head",
+      selection: { mode: "multi", store: selectionStore },
+      renderItem: (conv, ctx) => [renderForwardRow(app, conversationLabel(app, conv), ctx)],
+      text: {
+        empty: () => app.t("chat.forwardNoConversation"),
+        loading: () => app.t("common.loading"),
+        tailBoundary: () => app.t("chat.noMoreConversations"),
+      },
+      onItemsChanged: (items) => {
+        // 未指定默认目标（无正在打开的会话）时，首页到达后自动预选第一个候选。
+        if (selectionStore.size === 0 && items.length > 0) {
+          selectionStore.toggle(app.client.describeConversation(items[0]).key);
+        }
+      },
+      onError: (error) => console.warn("[yimsg/uikit] forward conversation list failed:", error),
+    });
+    void conversationList.reset();
+
+    // 通讯录候选（好友 / 收藏群）：切到该 tab 才首次拉取，避免每次转发都多一次请求。
+    // 关键字非空时改走 search_contacts，setQuery 的防抖由组件统一处理。
+    const contactList = createBoundedList<Contact, { keyword: string }>({
+      id: "forward.contacts",
+      scrollElement: app.$("forward-contact-list"),
+      pillHost: false,
+      pageSize: FORWARD_CONTACT_PAGE_SIZE,
+      maxPages: APP_CONFIG.list.maxPages,
+      register: (c) => app.registerBoundedList(c),
+      initialQuery: { keyword: "" },
+      source: serverPageSource(
+        ({ cursor, backward, limit, query }) => query.keyword
+          ? app.client.searchContacts({ keyword: query.keyword, status: CONTACT_FRIEND, cursor, backward, limit })
+          : app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit }),
+        (page) => ({
+          // 组织类通讯录条目不是会话目标，只保留可直接开聊的好友 / 收藏群。
+          items: page.contacts.filter((c) => contactFriendUid(c) !== "0" || contactGroupId(c) !== "0"),
+          startCursor: page.page.startCursor,
+          endCursor: page.page.endCursor,
+          hasMoreBackward: page.page.hasMoreBackward,
+          hasMoreForward: page.page.hasMoreForward,
+          total: page.page.total,
+        }),
+      ),
+      identityOf: (contact) => app.client.describeConversation(forwardContactConv(contact)).key,
+      freshEdge: "head",
+      selection: { mode: "multi", store: selectionStore },
+      renderItem: (contact, ctx) => [renderForwardRow(app, conversationLabel(app, forwardContactConv(contact)), ctx)],
+      text: {
+        empty: () => app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
+        loading: () => app.t("common.loading"),
+        tailBoundary: () => app.t("contacts.noMoreContacts"),
+      },
+      onError: (error) => console.warn("[yimsg/uikit] forward contact list failed:", error),
+    });
+
+    // 会话 / 联系人标签里的昵称、群名首次渲染时可能还没入缓存，异步补齐后
+    // 靠 display:updated 重绘两个候选列表。
+    const onDisplayUpdated = (): void => {
+      conversationList.render();
+      contactList.render();
+    };
+    app.client.on("display:updated", onDisplayUpdated);
+
+    const finish = (
+      value: { targetKeys: string[]; comment: string } | null,
+    ) => {
+      controller.abort();
+      app.client.off("display:updated", onDisplayUpdated);
+      conversationList.dispose();
+      contactList.dispose();
+      app.$("modal-overlay").classList.add("hidden");
+      resolve(value);
+    };
 
     const switchTargetTab = (tab: ForwardTargetTab) => {
       if (activeTab === tab) return;
@@ -308,8 +184,8 @@ async function showForwardModal(
       app.$("forward-conversation-list").classList.toggle("hidden", tab !== "conversations");
       app.$("forward-contact-list").classList.toggle("hidden", tab !== "contacts");
       app.$("forward-contact-search-input").classList.toggle("hidden", tab !== "contacts");
-      if (tab === "contacts" && !contactsLoaded && !contactsLoading) {
-        void maybeLoadMoreContacts({ mode: "reset" });
+      if (tab === "contacts" && !contactList.getState().loaded) {
+        void contactList.reset();
       }
     };
     app.dom.querySelectorAll<HTMLElement>("#forward-target-tabs [data-target-tab]").forEach((el) => {
@@ -324,14 +200,10 @@ async function showForwardModal(
     contactSearchInput.addEventListener(
       "input",
       () => {
-        if (contactKeywordDebounce) clearTimeout(contactKeywordDebounce);
-        const value = contactSearchInput.value;
-        contactKeywordDebounce = setTimeout(() => {
-          const keyword = value.trim();
-          if (keyword === contactKeyword) return;
-          contactKeyword = keyword;
-          void maybeLoadMoreContacts({ mode: "reset" });
-        }, 300);
+        const keyword = contactSearchInput.value.trim();
+        if (keyword === contactKeyword) return;
+        contactKeyword = keyword;
+        contactList.setQuery({ keyword });
       },
       { signal: controller.signal },
     );
@@ -345,11 +217,11 @@ async function showForwardModal(
     app.$("forward-confirm-btn").addEventListener(
       "click",
       () => {
-        if (selectedKeys.size === 0) {
+        if (selectionStore.size === 0) {
           app.showToast(app.t("chat.forwardNoConversation"), "error");
           return;
         }
-        finish({ targetKeys: [...selectedKeys], comment: input.value.trim() });
+        finish({ targetKeys: [...selectionStore.snapshotIds()], comment: input.value.trim() });
       },
       { signal: controller.signal },
     );
@@ -357,11 +229,11 @@ async function showForwardModal(
       "keydown",
       (e) => {
         if ((e as KeyboardEvent).key !== "Enter") return;
-        if (selectedKeys.size === 0) {
+        if (selectionStore.size === 0) {
           app.showToast(app.t("chat.forwardNoConversation"), "error");
           return;
         }
-        finish({ targetKeys: [...selectedKeys], comment: input.value.trim() });
+        finish({ targetKeys: [...selectionStore.snapshotIds()], comment: input.value.trim() });
       },
       { signal: controller.signal },
     );

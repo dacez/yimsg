@@ -4,7 +4,6 @@ import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
 import { setupGlobalChatSearch } from './global-search';
-import { stickToBottomAfterContentGrew } from './message-list';
 import { setupMessageSearch } from './message-search';
 import { registerSelectionForwardHandler } from './selection';
 import { isMobileInteractionLayout } from '../../utils';
@@ -105,9 +104,8 @@ export function setupChat(app: AppInstance) {
     }
   });
 
-  // 滚动监听由各列表的 BoundedStreamWindow 统一持有（首次 render 时挂载）。
-  // 这里只兜底"贴底时图片完成加载使内容增高"：load 不冒泡，用捕获监听。
-  app.$('message-list').addEventListener('load', () => stickToBottomAfterContentGrew(app), true);
+  // 滚动监听、贴底时图片加载完成的自动回贴由 BoundedList 自身持有（构造时挂载，
+  // 见 message-list.ts 的 getMessageList），这里不再需要手动兜底 load 事件。
 
   app.$('toggle-detail').addEventListener('click', () => {
     if (app.chatState.detailOpen) {

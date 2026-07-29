@@ -5,16 +5,18 @@ import type { Message } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
 import {
   appendLiveMessageToPage,
-  appendNewerMessagesToPage,
-  createMessageWindow,
-  markMessagesHasNewer,
-  messageBackwardCursor,
-  messageForwardCursor,
-  prependOlderMessagesToPage,
+  messageKey,
+  removeMessageFromPage,
   resetMessagePage,
-  setInitialMessagePage,
-  type MessagePageResultLike,
+  sortUniqueBySeq,
+  syncCurrentMessages,
 } from '../../src/app/views/chat/message-page';
+
+// message-page.ts 现在只是 chatState 上的一层薄封装：真正的分页记账（游标、hasMore、
+// pageSize×maxPages 硬上限、跨页去重）全部收敛进 BoundedList 自身的 PageWindow，
+// 由 packages/uikit/tests/unit/bounded-list/page-window.test.ts 覆盖。这里只测试
+// message-page.ts 自己仍然承担的三件事：seq 归一化、外部只读投影同步、以及
+// upsertLocal/removeLocal 委托。
 
 function message(seq: number, status = 0): Message {
   return {
@@ -30,117 +32,87 @@ function message(seq: number, status = 0): Message {
   } as Message;
 }
 
-function range(start: number, end: number): Message[] {
-  return Array.from({ length: end - start + 1 }, (_, index) => message(start + index));
-}
+describe('messageKey / sortUniqueBySeq（归一化）', () => {
+  it('messageKey 优先取 messageId，缺失时退化为 seq 字符串', () => {
+    expect(messageKey(message(5))).toBe('m-5');
+    expect(messageKey({ ...message(5), messageId: '' } as Message)).toBe('5');
+  });
 
-function pageResult(
-  messages: Message[],
-  opts: { hasMoreBackward?: boolean; hasMoreForward?: boolean } = {},
-): MessagePageResultLike {
-  return {
-    messages,
-    page: {
-      startCursor: messages.length ? `s-${messages[0].seq}` : '',
-      endCursor: messages.length ? `e-${messages[messages.length - 1].seq}` : '',
-      hasMoreBackward: opts.hasMoreBackward ?? false,
-      hasMoreForward: opts.hasMoreForward ?? false,
-    },
-  };
-}
-
-const MAX_PAGES = 3;
+  it('同 messageId 保留最新状态、删除态剔除、按 seq 升序', () => {
+    const dup = message(5);
+    const result = sortUniqueBySeq([message(3), message(1), dup, message(1), message(2, STATUS_DELETED)]);
+    expect(result.map((m) => m.seq)).toEqual([1, 3, 5]);
+  });
+});
 
 function appWithMessages(): AppInstance {
   return {
     chatState: {
-      messageWindow: createMessageWindow(MAX_PAGES),
-      currentMessages: [],
-      loadingMoreMessages: false,
-      loadingNewerMessages: false,
-      messagePageHasOlder: false,
-      messagePageHasNewer: false,
-      messagePageRequestId: 0,
-      pendingNewMessageCount: 0,
-      selectedMessageIds: new Set<string>(),
-      pendingMessageIds: new Set<string>(),
+      highlightMessageId: 'm-1',
+      messageGeneration: 0,
+      currentMessages: [] as Message[],
+      selectedMessageIds: new Set<string>(['m-1', 'm-2']),
+      pendingMessageIds: new Set<string>(['m-1']),
+      messageList: {
+        upsertLocal: () => {},
+        removeLocal: () => false,
+      },
     },
   } as unknown as AppInstance;
 }
 
-describe('message page (按页边界游标记账)', () => {
-  it('setInitial 同步窗口投影、hasMore 与边界游标', () => {
+describe('resetMessagePage', () => {
+  it('清空高亮 / 选中 / 待发送状态并递增世代计数器', () => {
     const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(1, 30), { hasMoreBackward: true }));
+    const generation = resetMessagePage(app);
+    expect(generation).toBe(1);
+    expect(app.chatState.highlightMessageId).toBeNull();
+    expect(app.chatState.selectedMessageIds.size).toBe(0);
+    expect(app.chatState.pendingMessageIds.size).toBe(0);
+    expect(resetMessagePage(app)).toBe(2);
+  });
+});
 
-    expect(app.chatState.currentMessages).toHaveLength(30);
-    expect(app.chatState.currentMessages[0].seq).toBe(1);
-    expect(app.chatState.messagePageHasOlder).toBe(true);
-    expect(app.chatState.messagePageHasNewer).toBe(false);
-    expect(messageBackwardCursor(app)).toBe('s-1');
-    expect(messageForwardCursor(app)).toBe('e-30');
+describe('syncCurrentMessages', () => {
+  it('同步窗口投影并修剪已经滚出窗口的选中 id', () => {
+    const app = appWithMessages();
+    syncCurrentMessages(app, [message(2)]);
+    expect(app.chatState.currentMessages.map((m) => m.seq)).toEqual([2]);
+    // 'm-1' 已经不在最新窗口投影里，应该被修剪；'m-2' 仍然保留。
+    expect([...app.chatState.selectedMessageIds]).toEqual(['m-2']);
   });
 
-  it('归一化：同 messageId 去重、删除态剔除、按 seq 升序', () => {
+  it('选中集为空时不做任何多余的遍历（幂等）', () => {
     const app = appWithMessages();
-    const dup = message(5);
-    setInitialMessagePage(app, pageResult([message(3), message(1), dup, message(1), message(2, STATUS_DELETED)]));
-    expect(app.chatState.currentMessages.map((m) => m.seq)).toEqual([1, 3, 5]);
+    app.chatState.selectedMessageIds.clear();
+    syncCurrentMessages(app, [message(9)]);
+    expect(app.chatState.selectedMessageIds.size).toBe(0);
+  });
+});
+
+describe('appendLiveMessageToPage / removeMessageFromPage', () => {
+  it('委托给 chatState.messageList 的 upsertLocal / removeLocal', () => {
+    const upserted: Message[] = [];
+    let removedId: string | null = null;
+    const app = {
+      chatState: {
+        messageList: {
+          upsertLocal: (m: Message) => { upserted.push(m); },
+          removeLocal: (id: string) => { removedId = id; return true; },
+        },
+      },
+    } as unknown as AppInstance;
+
+    appendLiveMessageToPage(app, message(7));
+    expect(upserted.map((m) => m.seq)).toEqual([7]);
+
+    expect(removeMessageFromPage(app, 'm-7')).toBe(true);
+    expect(removedId).toBe('m-7');
   });
 
-  it('appendForward 超过窗口页数上限时整页裁旧并标记 hasOlder', () => {
-    const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(1, 30), { hasMoreForward: true }));
-    appendNewerMessagesToPage(app, pageResult(range(31, 60), { hasMoreForward: true }));
-    appendNewerMessagesToPage(app, pageResult(range(61, 90), { hasMoreForward: true }));
-    expect(app.chatState.currentMessages).toHaveLength(90);
-
-    // 第 4 页触发整页裁首（MAX_PAGES=3）。
-    appendNewerMessagesToPage(app, pageResult(range(91, 120), { hasMoreForward: false }));
-    expect(app.chatState.currentMessages).toHaveLength(90);
-    expect(app.chatState.currentMessages[0].seq).toBe(31);
-    expect(app.chatState.messagePageHasOlder).toBe(true);
-    expect(app.chatState.messagePageHasNewer).toBe(false);
-    expect(messageForwardCursor(app)).toBe('e-120');
-  });
-
-  it('prependBackward 超过上限时整页裁新并标记 hasNewer', () => {
-    const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(91, 120), { hasMoreBackward: true }));
-    prependOlderMessagesToPage(app, pageResult(range(61, 90), { hasMoreBackward: true }));
-    prependOlderMessagesToPage(app, pageResult(range(31, 60), { hasMoreBackward: true }));
-    prependOlderMessagesToPage(app, pageResult(range(1, 30), { hasMoreBackward: false }));
-
-    expect(app.chatState.currentMessages).toHaveLength(90);
-    expect(app.chatState.currentMessages[0].seq).toBe(1);
-    expect(app.chatState.messagePageHasOlder).toBe(false);
-    expect(app.chatState.messagePageHasNewer).toBe(true);
-    expect(messageBackwardCursor(app)).toBe('s-1');
-  });
-
-  it('appendLive 追加到尾页并保持贴底（hasNewer=false）', () => {
-    const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(1, 30)));
-    appendLiveMessageToPage(app, message(31));
-    expect(app.chatState.currentMessages[app.chatState.currentMessages.length - 1].seq).toBe(31);
-    expect(app.chatState.messagePageHasNewer).toBe(false);
-  });
-
-  it('markMessagesHasNewer 标记尾部之后有更新', () => {
-    const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(1, 30)));
-    markMessagesHasNewer(app);
-    expect(app.chatState.messagePageHasNewer).toBe(true);
-  });
-
-  it('reset 清空窗口与状态', () => {
-    const app = appWithMessages();
-    setInitialMessagePage(app, pageResult(range(1, 30), { hasMoreBackward: true }));
-    const requestId = resetMessagePage(app);
-    expect(app.chatState.currentMessages).toEqual([]);
-    expect(app.chatState.messagePageHasOlder).toBe(false);
-    expect(app.chatState.messagePageHasNewer).toBe(false);
-    expect(messageBackwardCursor(app)).toBe('');
-    expect(requestId).toBe(1);
+  it('messageList 尚未创建时安全地退化为无操作 / 未命中', () => {
+    const app = { chatState: { messageList: null } } as unknown as AppInstance;
+    expect(() => appendLiveMessageToPage(app, message(1))).not.toThrow();
+    expect(removeMessageFromPage(app, 'm-1')).toBe(false);
   });
 });

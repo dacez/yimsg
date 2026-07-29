@@ -886,7 +886,7 @@ test.describe('Messaging', () => {
     await sendMessage(page1, 'pill trigger message');
 
     // 提示条出现，且阅读位置未被拽到底部。
-    const pill = page2.locator('#new-message-pill');
+    const pill = page2.locator('#center-panel .new-message-pill');
     await expect(pill).toBeVisible({ timeout: 10_000 });
     const distanceFromBottom = await page2.evaluate(() => {
       const list = document.querySelector('#message-list') as HTMLElement;
@@ -942,7 +942,7 @@ test.describe('Messaging', () => {
 
     await sendMessage(page1, 'pill scroll trigger message');
 
-    const pill = page2.locator('#new-message-pill');
+    const pill = page2.locator('#center-panel .new-message-pill');
     await expect(pill).toBeVisible({ timeout: 10_000 });
 
     // 不点击提示条，直接把消息列表滑到底部——模拟"上滑拉最新消息"。

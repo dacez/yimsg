@@ -21,7 +21,7 @@ import { currentConversation, quotePreview } from './helpers';
 import { mediaUrl } from './message-list';
 import { appendLiveMessageToPage, removeMessageFromPage } from './message-page';
 
-/** 提前把图片解码进浏览器缓存：占位消息换成真实消息时会整段重建 DOM（bounded-stream-window
+/** 提前把图片解码进浏览器缓存：占位消息换成真实消息时会整段重建 DOM（BoundedList
  * 全量渲染），新 <img> 若还没被浏览器缓存过就要重新拉取，视觉上会闪一下；预加载后再替换，
  * 新节点直接命中缓存，不闪。加载失败（或非浏览器环境，如单测）也放行，不能因为预热失败卡住发送流程。 */
 function preloadImage(url: string): Promise<void> {

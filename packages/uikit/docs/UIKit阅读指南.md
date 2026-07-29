@@ -1,7 +1,7 @@
 # UIKit 阅读指南
 
-> 主要对照：`packages/uikit/src/app/shell.ts`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/app-instance.ts`、`packages/uikit/src/app/views/`、`packages/uikit/src/app/bounded-stream-window.ts`、`packages/uikit/src/app/safe-dom.ts`、`packages/uikit/src/embed.ts`。
-> 最后复核：2026-07-19。
+> 主要对照：`packages/uikit/src/app/shell.ts`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/app-instance.ts`、`packages/uikit/src/app/views/`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/safe-dom.ts`、`packages/uikit/src/embed.ts`。
+> 最后复核：2026-07-29。
 > 触发更新：UIKit 视图结构、样式系统、DOM 构建模式、布局机制或新手上手路线发生变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
 
@@ -453,8 +453,8 @@ CSS 侧用**属性选择器**针对两种值写不同规则。`style.css:261` �
 
 会话、联系人、消息都可能成千上万条。如果每条都建一个 DOM 节点，浏览器会卡死。本项目所有列表共用同一种模式：**有界滑动窗口 + 全量渲染 + 双向翻页**，分两层。
 
-- **数据层** `app/bounded-page-window.ts` 的 `BoundedPageWindow`：内存里只保留「用户附近的若干页」，每页带服务端返回的不透明边界游标。向后 / 向前翻页用尾 / 首页游标拉下一页，窗口超过 `maxPages` 页就**整页裁掉相反端**，并把那一端的 `hasMore` 置 true——用户滚回去时再用相邻保留页的游标拉回来。
-- **渲染层** `app/bounded-stream-window.ts` 的 `BoundedStreamWindow`：因为数据窗口本身有上限，干脆把窗口里的条目**全部**渲染成真实 DOM，滚动时一个节点都不重建。没有窗口切片、没有 spacer、没有行高配置。
+- **数据层** `app/bounded-list/page-window.ts` 的 `PageWindow`：内存里只保留「用户附近的若干页」，每页带服务端返回的不透明边界游标。向后 / 向前翻页用尾 / 首页游标拉下一页，窗口超过 `maxPages` 页就**整页裁掉相反端**，并把那一端的 `hasMore` 置 true——用户滚回去时再用相邻保留页的游标拉回来。
+- **渲染层** `app/bounded-list/stream-window.ts` 的 `BoundedStreamWindow`：因为数据窗口本身有上限，干脆把窗口里的条目**全部**渲染成真实 DOM，滚动时一个节点都不重建。没有窗口切片、没有 spacer、没有行高配置。两层由 `app/bounded-list/bounded-list.ts` 的 `createBoundedList` 统一编排，视图代码只提供数据源和单行渲染函数。
 
 ```mermaid
 flowchart TB
@@ -467,7 +467,7 @@ flowchart TB
 
 滚动事件由引擎自己监听并按帧合并：滚到距顶 / 距底阈值内且该方向 `hasMore`，就向服务端再翻一页；未加载部分由 `hasMore` 标志和「加载中 / 没有更多」提示行表达，不为未加载数据模拟滚动高度。
 
-读消息列表 `message-list.ts` 时，关注三步：①把窗口里全部消息交给 `BoundedStreamWindow.render(...)`；②对每条消息按类型（文本/图片/文件/系统/引用…）建不同结构；③翻页头 / 尾插入或裁剪后，引擎据调用方传入的 `keyOf`（消息用 `messageId`）保持视口顶部第一条可见条目位置不变，画面不跳。
+读消息列表 `message-list.ts` 时，关注三步：①`getMessageList(app)` 创建 `createBoundedList` 实例并传入数据源与 `renderItem`；②`renderItem` 对每条消息按类型（文本/图片/文件/系统/引用…）建不同结构；③翻页头 / 尾插入或裁剪后，组件据构造时传入的 `identityOf`（消息用 `messageId`）保持视口顶部第一条可见条目位置不变，画面不跳。
 
 > 内存纪律：每个列表的数据窗口都有页数上限（消息 5×30=150 条、其它列表 5×40=200 条），DOM 节点数随之有界。这呼应 CLAUDE.md「长期内存状态必须有上限和淘汰策略」的要求。
 
@@ -510,7 +510,7 @@ flowchart TD
   B --> C["3. app-instance.ts<br/>认识 app 工具箱与状态容器"]
   C --> D["4. views/chat/conversation-list.ts<br/>吃透一个标准 render 套路"]
   D --> E["5. views/chat/composer.ts + message-page.ts<br/>看发消息的写路径"]
-  E --> F["6. views/chat/message-list.ts + bounded-stream-window.ts<br/>理解有界消息流窗口渲染"]
+  E --> F["6. views/chat/message-list.ts + bounded-list/<br/>理解有界消息流窗口渲染"]
   F --> G["7. layout.ts + responsive-layout.ts + style.css 手机段<br/>理解响应式布局"]
   G --> H["8. safe-dom.ts + embed.ts<br/>理解安全与嵌入隔离"]
 ```
@@ -524,7 +524,7 @@ flowchart TD
 | 3 上下文 | `app/app-instance.ts` | §6.2、§6.5 |
 | 4 列表渲染 | `app/views/chat/conversation-list.ts` | §5、§6.3 |
 | 5 写路径 | `app/views/chat/composer.ts`、`message-page.ts` | §5.6、§11 |
-| 6 有界消息流窗口 | `app/views/chat/message-list.ts`、`app/bounded-stream-window.ts` | §8 |
+| 6 有界消息流窗口 | `app/views/chat/message-list.ts`、`app/bounded-list/` | §8 |
 | 7 响应式 | `app/layout.ts`、`responsive-layout.ts` | §7 |
 | 8 安全/嵌入 | `app/safe-dom.ts`、`embed.ts` | §9 |
 
@@ -632,4 +632,4 @@ sequenceDiagram
 | `render*` 函数 | 读状态重建某块 DOM |
 | `.hidden` class | 控制显隐 |
 | `data-layout` | desktop/mobile 布局开关 |
-| `bounded-stream-spacer` / `BoundedStreamWindow` | 有界消息流窗口占位与统一分页列表引擎 |
+| `BoundedList` / `createBoundedList` | 统一的有界列表窗口组件（`app/bounded-list/`），无 spacer 占位 |

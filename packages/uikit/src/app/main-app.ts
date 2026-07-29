@@ -81,20 +81,10 @@ export function startApp(app: AppInstance): () => void {
     () => app.views.settings?.renderSettings(),
   );
 
-  // 三个有界列表的 invalidate 动作直接复用各自"收到新会话/新消息/新联系人通知"时的既有动作，
-  // 贴顶/可见则重拉追平，否则按各自规则推迟——语义与 handleMessagesReceived/handleContactsChanged 一致。
-  app.registerDisposer(app.registerBoundedList({
-    id: 'conversations',
-    invalidate: () => app.views.chat?.renderConversationList({ force: true }),
-  }));
-  app.registerDisposer(app.registerBoundedList({
-    id: 'open-conversation-messages',
-    invalidate: () => app.views.chat?.refreshOpenConversation(),
-  }));
-  app.registerDisposer(app.registerBoundedList({
-    id: 'contacts',
-    invalidate: () => app.views.contacts?.loadContacts({ background: true }),
-  }));
+  // 会话列表 / 当前会话消息列表 / 通讯录好友与请求列表都已经是 BoundedList 实例，
+  // 构造时通过 register 参数自行登记到 app 的注册表（见各自 views/*.ts 的
+  // createBoundedList 调用），重连广播 invalidateBoundedLists() 时天然覆盖到它们，
+  // 不再需要在这里手工注册。
 
   app.dom.querySelectorAll<HTMLElement>('.nav-item[data-view]').forEach(item => {
     item.addEventListener('click', () => app.views.chat?.switchView(item.dataset.view!));

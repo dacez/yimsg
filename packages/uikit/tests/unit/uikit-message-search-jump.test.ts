@@ -1,18 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MSG_TYPE_TEXT } from '@yimsg/sdk';
-import type { ConversationDescriptor, ConversationTarget, Message } from '@yimsg/sdk';
+import type { ConversationDescriptor, ConversationTarget, LocalConversation, Message } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
-import { createMessageWindow } from '../../src/app/views/chat/message-page';
 import { jumpToMessageInConversation } from '../../src/app/views/chat/message-search';
 import { openConversationAndJumpToMessage } from '../../src/app/views/chat/global-search';
 import { openConversationShellForJump } from '../../src/app/views/chat/conversation-list';
-
-// jumpToMessageInConversation 内部 renderMessages 会做完整 DOM 渲染（虚拟窗口、消息气泡等），
-// 这里只关心"是否正确加载了锚点页 + 是否展示了聊天面板"这两件事，把渲染整体 mock 成空操作，
-// 避免为一个跳转单测搭一整套消息列表 DOM。
-vi.mock('../../src/app/views/chat/message-list', () => ({
-  renderMessages: vi.fn(),
-}));
 
 vi.mock('../../src/app/views/chat/conversation-list', async () => {
   const actual = await vi.importActual<typeof import('../../src/app/views/chat/conversation-list')>(
@@ -41,6 +33,43 @@ function makeClassListElement() {
   };
 }
 
+/** 供 BoundedList 内部渲染用的最小假元素：本文件不关心真实渲染内容，只关心加载参数。 */
+function makeFakeElement(): any {
+  const el: any = {
+    children: [] as unknown[],
+    className: '',
+    textContent: '',
+    appendChild: (child: unknown) => { el.children.push(child); return child; },
+    setAttribute: () => {},
+    removeAttribute: () => {},
+    getAttribute: () => null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  Object.defineProperty(el, 'innerHTML', {
+    get: () => '',
+    set: () => { el.children.length = 0; },
+  });
+  el.ownerDocument = { createElement: () => makeFakeElement() };
+  return el;
+}
+
+/** 供 BoundedList 挂监听用的最小假滚动容器：本文件不关心真实渲染，只关心加载参数。 */
+function makeScrollElement() {
+  const listeners = new Map<string, Array<() => void>>();
+  const el = makeFakeElement();
+  el.scrollTop = 0;
+  el.scrollHeight = 0;
+  el.clientHeight = 0;
+  el.addEventListener = (type: string, handler: () => void) => {
+    const handlers = listeners.get(type) ?? [];
+    handlers.push(handler);
+    listeners.set(type, handlers);
+  };
+  el.ownerDocument = { createElement: () => makeFakeElement(), defaultView: undefined };
+  return el;
+}
+
 function message(seq: number, messageId: string): Message {
   return {
     seq,
@@ -56,48 +85,59 @@ function message(seq: number, messageId: string): Message {
 
 function createApp() {
   const viewChat = makeClassListElement();
-  const elements = new Map<string, ReturnType<typeof makeClassListElement>>([['view-chat', viewChat]]);
+  const messageListEl = makeScrollElement();
+  const elements = new Map<string, unknown>([
+    ['view-chat', viewChat],
+    ['message-list', messageListEl],
+  ]);
 
   const getMessages = vi.fn(async () => ({
     messages: [],
-    page: { startCursor: '', endCursor: '', hasMoreBackward: true, hasMoreForward: true },
+    page: { startCursor: '', endCursor: '', hasMoreBackward: true, hasMoreForward: true, total: -1 },
   }));
+
+  const conversation: LocalConversation = { groupId: '0', friendUid: '2', lastSeq: 0, lastMessage: null };
+  const descriptor: ConversationDescriptor = { key: 'u:2', kind: 'direct', id: '2', target: { toUid: '2' } };
 
   const app = {
     $: (id: string) => elements.get(id),
     dom: { querySelector: () => null },
     showToast: vi.fn(),
-    client: { getMessages },
+    t: (key: string) => key,
+    registerBoundedList: () => () => {},
+    registerDisposer: () => {},
+    client: {
+      getMessages,
+      describeConversation: vi.fn(() => descriptor),
+    },
     chatState: {
       currentConvKey: null as string | null,
-      messageWindow: createMessageWindow(3),
-      currentMessages: [],
-      loadingMoreMessages: false,
-      loadingNewerMessages: false,
-      messagePageHasOlder: false,
-      messagePageHasNewer: false,
-      messagePageRequestId: 0,
-      pendingNewMessageCount: 0,
+      currentConversation: conversation as LocalConversation | null,
+      messageList: null,
+      messageGeneration: 0,
+      currentMessages: [] as Message[],
       selectedMessageIds: new Set<string>(),
       pendingMessageIds: new Set<string>(),
       highlightMessageId: null as string | null,
     },
   } as unknown as AppInstance;
 
-  return { app, viewChat, getMessages };
+  return { app, viewChat, getMessages, descriptor };
 }
 
 describe('jumpToMessageInConversation（消息锚点跳转）', () => {
   it('跳转前移动端聊天面板尚未展示（如刚从聊天页返回会话列表）时，也要补上 mobile-showing-chat', async () => {
-    const { app, viewChat, getMessages } = createApp();
+    const { app, viewChat, getMessages, descriptor } = createApp();
     expect(viewChat.hasClass('mobile-showing-chat')).toBe(false);
 
     const target: ConversationTarget = { toUid: '2' };
     await jumpToMessageInConversation(app, target, 'm-3');
 
     expect(viewChat.hasClass('mobile-showing-chat')).toBe(true);
+    // 消息列表的 source 从 app.chatState.currentConversation 派生目标，
+    // 与调用方传入的 target 应该一致（调用方已确保该会话是当前会话）。
     expect(getMessages).toHaveBeenCalledWith(
-      expect.objectContaining({ target, around: 'm-3' }),
+      expect.objectContaining({ target: descriptor.target, around: 'm-3' }),
     );
   });
 
@@ -117,9 +157,8 @@ describe('全局搜索命中消息后的跳转决策（global-search.ts）', () 
   });
 
   it('命中消息属于当前会话（移动端返回后 currentConvKey 未清空）时跳过 shell 初始化，仍要展示聊天面板', async () => {
-    const { app, viewChat } = createApp();
+    const { app, viewChat, descriptor } = createApp();
 
-    const descriptor: ConversationDescriptor = { key: 'u:2', kind: 'direct', id: '2', target: { toUid: '2' } };
     app.chatState.currentConvKey = descriptor.key;
     (app as unknown as { client: Record<string, unknown> }).client.describeMessageConversation = vi.fn(() => descriptor);
 
@@ -133,9 +172,8 @@ describe('全局搜索命中消息后的跳转决策（global-search.ts）', () 
   });
 
   it('命中消息属于其它会话时正常走 shell 初始化', async () => {
-    const { app } = createApp();
+    const { app, descriptor } = createApp();
 
-    const descriptor: ConversationDescriptor = { key: 'u:2', kind: 'direct', id: '2', target: { toUid: '2' } };
     app.chatState.currentConvKey = 'u:3';
     (app as unknown as { client: Record<string, unknown> }).client.describeMessageConversation = vi.fn(() => descriptor);
 

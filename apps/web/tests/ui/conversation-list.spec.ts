@@ -201,7 +201,7 @@ test.describe('Conversation list bounded stream window', () => {
       // 贴顶背景刷新必须自动滚回最顶端（reset 后归零），而不是被锚点恢复下推（旧 bug 下 scrollTop>4）。
       await expect.poll(() => convListScrollTop(page), { timeout: 10_000 }).toBeLessThanOrEqual(4);
       // 贴顶自动追平，不应点亮「有新消息」提示条。
-      await expect(page.locator('#conversation-update-pill')).toBeHidden();
+      await expect(page.locator('#left-panel .new-message-pill')).toBeHidden();
     } finally {
       await ctx2.close();
     }
@@ -253,7 +253,7 @@ test.describe('Conversation list bounded stream window', () => {
       // 不在顶部：列表不重排、不滚回顶部。
       expect(await convListScrollTop(page)).toBeGreaterThan(4);
       // 不在顶部收到消息：点亮「列表有更新」提示条。
-      await expect(page.locator('#conversation-update-pill')).toBeVisible();
+      await expect(page.locator('#left-panel .new-message-pill')).toBeVisible();
     } finally {
       await ctx2.close();
     }
@@ -267,7 +267,7 @@ test.describe('Conversation list bounded stream window', () => {
   //
   // 这里用一个确定性的「按下→重建→抬起」时序验证：mousedown 落在某一行后，立刻让另一端
   // 持续发消息触发整列表重建，再 mouseup；修复后该行仍被打开。引擎层的同一不变量另有确定性
-  // 单测覆盖（tests/unit/uikit-bounded-stream-window.test.ts：指针按下期间不重建）。
+  // 单测覆盖（packages/uikit/tests/unit/bounded-list/stream-window.test.ts：指针按下期间不重建）。
   test('clicking a conversation still opens it while the list is churning from incoming messages', async ({ browser, page }) => {
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
     const page2 = await ctx2.newPage();

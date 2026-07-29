@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MSG_TYPE_IMAGE, MSG_TYPE_TEXT } from '@yimsg/sdk';
 import type { AppInstance } from '../../src/app/app-instance';
-import { createMessageWindow } from '../../src/app/views/chat/message-page';
 import { sendMessage, uploadAndSend } from '../../src/app/views/chat/composer';
 
 /** 手动可控的 Promise：测试用它精确摆放"网络往返尚未完成"这一时刻。 */
@@ -12,24 +11,46 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/**
+ * appendLiveMessageToPage / removeMessageFromPage 现在只是 app.chatState.messageList
+ * 的薄封装（见 message-page.ts），本测试只关心 composer.ts 的乐观发送编排本身
+ * （占位消息插入 / 替换 / 撤回），不需要真正的 BoundedList 与滚动容器，
+ * 这里用一个只操作 currentMessages 数组的最小假实现顶替真实窗口。
+ */
+function createFakeMessageList(chatState: { currentMessages: { messageId: string }[] }) {
+  return {
+    upsertLocal(message: { messageId: string }): void {
+      const idx = chatState.currentMessages.findIndex((m) => m.messageId === message.messageId);
+      if (idx >= 0) chatState.currentMessages[idx] = message;
+      else chatState.currentMessages.push(message);
+    },
+    removeLocal(id: string): boolean {
+      const idx = chatState.currentMessages.findIndex((m) => m.messageId === id);
+      if (idx < 0) return false;
+      chatState.currentMessages.splice(idx, 1);
+      return true;
+    },
+  };
+}
+
 function createApp(sendText: (...args: unknown[]) => Promise<unknown>) {
   const renderMessages = vi.fn();
   const scrollToBottom = vi.fn();
   const showToast = vi.fn();
   const input = { value: '好积极了', disabled: false };
 
+  const chatState = {
+    currentConvKey: 'u:2',
+    currentMessages: [] as { messageId: string }[],
+    composerMentions: new Map<string, string>(),
+    composerMentionAll: false,
+    composerMarkdownMode: false,
+    composerQuote: null,
+    pendingMessageIds: new Set<string>(),
+    selectedMessageIds: new Set<string>(),
+  };
   const app = {
-    chatState: {
-      currentConvKey: 'u:2',
-      messageWindow: createMessageWindow(3),
-      currentMessages: [] as unknown[],
-      composerMentions: new Map<string, string>(),
-      composerMentionAll: false,
-      composerMarkdownMode: false,
-      composerQuote: null,
-      pendingMessageIds: new Set<string>(),
-      selectedMessageIds: new Set<string>(),
-    },
+    chatState: { ...chatState, messageList: createFakeMessageList(chatState) },
     client: {
       describeConversation: () => ({ target: { toUid: '2' }, kind: 'dm', id: '2' }),
       validateTextMessage: () => {},
@@ -54,14 +75,14 @@ function createUploadApp(client: {
   const scrollToBottom = vi.fn();
   const showToast = vi.fn();
 
+  const chatState = {
+    currentConvKey: 'u:2',
+    currentMessages: [] as { messageId: string }[],
+    pendingMessageIds: new Set<string>(),
+    selectedMessageIds: new Set<string>(),
+  };
   const app = {
-    chatState: {
-      currentConvKey: 'u:2',
-      messageWindow: createMessageWindow(3),
-      currentMessages: [] as unknown[],
-      pendingMessageIds: new Set<string>(),
-      selectedMessageIds: new Set<string>(),
-    },
+    chatState: { ...chatState, messageList: createFakeMessageList(chatState) },
     client: {
       describeConversation: () => ({ target: { toUid: '2' }, kind: 'dm', id: '2' }),
       getSessionSnapshot: () => ({ currentUid: '1' }),

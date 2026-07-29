@@ -3,21 +3,20 @@ import { MSG_TYPE_RECALL, displayUserName, formatTime } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { currentConversation, recallPlaceholderText } from './helpers';
-import { renderMessages } from './message-list';
-import { resetMessagePage, setInitialMessagePage } from './message-page';
+import { getMessageList, renderMessages } from './message-list';
+import { messageKey, resetMessagePage } from './message-page';
+import { createBoundedList, serverPageSource, type BoundedList } from '../../bounded-list';
 
-const SEARCH_DEBOUNCE_MS = 300;
-const SEARCH_RESULT_LIMIT = 30;
 const HIGHLIGHT_MS = 1500;
 
 // 跳转锚点渲染后，get_messages around 两端 has_more 按设计先乐观置 true（协议文档：
-// 客户端滚动到真实边界拿到空页后再收敛），BoundedStreamWindow 的 checkReach 会在锚点
-// 窗口不足一屏或贴边时自动触发 loadOlderMessages/loadNewerMessages 续拉一页——而这些续拉
-// 完成后都会整份重渲消息列表。如果高亮只是渲染后再用 classList.add 补上去的临时状态，
-// 这类紧随跳转发生的自动续拉一重渲就会把 class 冲掉，表现为"跳转命中会话中间的消息时
-// 高亮/定位很快消失，只有命中没有更早更新消息的最后一条时才稳定"。因此高亮改为跟 msgId
-// 一起写进 chatState、由 message-list.ts 的 renderItem 按此声明式补 class，任何重渲染
-// （含上述自动续拉）都会一并带上，不再是渲染之外的旁路副作用。
+// 客户端滚动到真实边界拿到空页后再收敛），BoundedList 的触界检测会在锚点窗口不足一屏
+// 或贴边时自动触发续拉一页——而这些续拉完成后都会整份重渲消息列表。如果高亮只是渲染后
+// 再用 classList.add 补上去的临时状态，这类紧随跳转发生的自动续拉一重渲就会把 class
+// 冲掉，表现为"跳转命中会话中间的消息时高亮/定位很快消失，只有命中没有更早更新消息的
+// 最后一条时才稳定"。因此高亮改为跟 msgId 一起写进 chatState、由 message-list.ts 的
+// renderItem 按此声明式补 class，任何重渲染（含上述自动续拉）都会一并带上，不再是渲染
+// 之外的旁路副作用。
 const highlightTimers = new WeakMap<AppInstance, ReturnType<typeof setTimeout>>();
 
 function setMessageHighlight(app: AppInstance, msgId: string): void {
@@ -46,43 +45,112 @@ function setMessageHighlight(app: AppInstance, msgId: string): void {
  * 确保聊天面板可见——桌面端两栏同时展示，这一步是无害的空操作。
  */
 export async function jumpToMessageInConversation(app: AppInstance, target: ConversationTarget, msgId: string): Promise<void> {
+  void target; // 消息列表的 source 从 app.chatState.currentConversation 派生目标，调用方只需确保该会话已是当前会话。
   app.$('view-chat').classList.add('mobile-showing-chat');
-  const messagePageRequestId = resetMessagePage(app);
-  try {
-    const page = await app.client.getMessages({
-      target,
-      around: msgId,
-      limit: APP_CONFIG.chat.messagePageSize,
-    });
-    if (messagePageRequestId !== app.chatState.messagePageRequestId) return;
-    setInitialMessagePage(app, page);
-    setMessageHighlight(app, msgId);
-    renderMessages(app);
-    scrollToMessage(app, msgId);
-  } catch (_) {
-    app.showToast(app.t('chat.failedToLoadMessages'), 'error');
-  }
+  const generation = resetMessagePage(app);
+  await getMessageList(app).reset({ query: { aroundMsgId: msgId } });
+  if (generation !== app.chatState.messageGeneration) return;
+  setMessageHighlight(app, msgId);
+  scrollToMessage(app, msgId);
 }
+
+const searchResultLists = new WeakMap<AppInstance, BoundedList<Message, { keyword: string }>>();
 
 /** 关闭消息搜索面板并清空输入/结果；切换会话时调用，避免搜索结果跨会话残留。 */
 export function closeMessageSearchPanel(app: AppInstance): void {
   app.$('message-search-panel').classList.add('hidden');
   (app.$('message-search-input') as HTMLInputElement).value = '';
-  app.$('message-search-results').innerHTML = '';
+  searchResultLists.get(app)?.setQuery({ keyword: '' }, { debounceMs: 0 });
+}
+
+function renderSearchResultRow(app: AppInstance, msg: Message): HTMLElement {
+  const myUid = app.client.getSessionSnapshot().currentUid;
+  const fromUid = msg.senderId || '0';
+  const isSelf = fromUid === myUid;
+  const sender = app.client.getUserInfos([fromUid]).get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
+  const senderName = isSelf ? app.t('chat.selfName') : displayUserName(sender, fromUid);
+  const preview = msg.messageType === MSG_TYPE_RECALL
+    ? recallPlaceholderText(app, msg)
+    : app.client.describeMessage(msg).text;
+  const div = app.dom.ownerDocument.createElement('div');
+  div.className = 'message-search-result';
+  div.innerHTML = `
+    <div class="message-search-result-header">
+      <span class="message-search-result-sender">${app.escapeHtml(senderName)}</span>
+      <span class="message-search-result-time">${app.escapeHtml(formatTime(msg.sentAt))}</span>
+    </div>
+    <div class="message-search-result-preview">${app.escapeHtml(preview)}</div>
+  `;
+  return div;
 }
 
 /** 消息搜索：限定当前打开的会话内搜索，不支持跨会话全局搜索（UI 上只暴露单会话入口）。 */
 export function setupMessageSearch(app: AppInstance): void {
-  let requestId = 0;
-  let debounce: ReturnType<typeof setTimeout> | null = null;
-
   const panel = () => app.$('message-search-panel');
   const input = () => app.$('message-search-input') as HTMLInputElement;
-  const resultsEl = () => app.$('message-search-results');
+
+  // 点开结果：以该消息为锚点重新加载消息窗口，当前会话内搜索不需要切会话。
+  const jumpToResult = async (msgId: string): Promise<void> => {
+    const conversation = currentConversation(app);
+    if (!conversation) return;
+    closePanel();
+    await jumpToMessageInConversation(app, conversation.target, msgId);
+  };
+
+  // 结果列表是有界滑动窗口：关键字非空时才真正发起 search_messages，双向续翻用服务端
+  // 整页边界游标；关键字为空（未搜索 / 已清空）时 initialQuery 与当前 query 相等，
+  // isQueryActive() 为 false，emptyFiltered 不生效、也没有配置 empty 文案，面板保持空白。
+  const resultsList = createBoundedList<Message, { keyword: string }>({
+    id: 'message-search-results',
+    scrollElement: app.$('message-search-results'),
+    pillHost: false,
+    pageSize: APP_CONFIG.list.pageSize,
+    maxPages: APP_CONFIG.list.maxPages,
+    register: (controller) => app.registerBoundedList(controller),
+    initialQuery: { keyword: '' },
+    source: serverPageSource(
+      ({ cursor, backward, limit, query }) => {
+        if (!query.keyword) {
+          return Promise.resolve({
+            messages: [] as readonly Message[],
+            page: { startCursor: '', endCursor: '', hasMoreBackward: false, hasMoreForward: false, total: 0 },
+          });
+        }
+        const conversation = currentConversation(app);
+        const target = conversation?.target ?? { toUid: '0' };
+        return app.client.searchMessages({ keyword: query.keyword, target, cursor, backward, limit });
+      },
+      (page) => ({
+        items: page.messages,
+        startCursor: page.page.startCursor,
+        endCursor: page.page.endCursor,
+        hasMoreBackward: page.page.hasMoreBackward,
+        hasMoreForward: page.page.hasMoreForward,
+        total: page.page.total,
+      }),
+    ),
+    identityOf: messageKey,
+    freshEdge: 'head',
+    renderItem: (msg) => [renderSearchResultRow(app, msg)],
+    text: {
+      emptyFiltered: () => app.t('chat.searchNoResults'),
+      loading: () => app.t('common.loading'),
+      error: () => app.t('chat.searchFailed'),
+    },
+    onActivate: (msg) => void jumpToResult(msg.messageId),
+    onError: (error) => console.warn('[yimsg/uikit] message search failed:', error),
+  });
+  searchResultLists.set(app, resultsList);
+  void resultsList.reset();
+  app.registerDisposer(() => resultsList.dispose());
+
+  // 搜索结果里的发送者昵称首次渲染时可能还没入缓存，异步补齐后靠 display:updated 重绘。
+  const onDisplayUpdated = (): void => resultsList.render();
+  app.client.on('display:updated', onDisplayUpdated);
+  app.registerDisposer(() => app.client.off('display:updated', onDisplayUpdated));
 
   function closePanel(): void {
     closeMessageSearchPanel(app);
-    requestId++;
   }
 
   function openPanel(): void {
@@ -91,83 +159,15 @@ export function setupMessageSearch(app: AppInstance): void {
     input().focus();
   }
 
-  function renderResults(messages: readonly Message[]): void {
-    const container = resultsEl();
-    if (messages.length === 0) {
-      container.innerHTML = `<div class="empty-state">${app.escapeHtml(app.t('chat.searchNoResults'))}</div>`;
-      return;
-    }
-    const myUid = app.client.getSessionSnapshot().currentUid;
-    const senderUids = [...new Set(messages.map((m) => m.senderId).filter((uid) => uid && uid !== '0'))];
-    const senderMap = app.client.getUserInfos(senderUids);
-    const sorted = [...messages].sort((a, b) => b.seq - a.seq);
-    const frag = app.dom.ownerDocument.createDocumentFragment();
-    for (const msg of sorted) {
-      const fromUid = msg.senderId || '0';
-      const isSelf = fromUid === myUid;
-      const sender = senderMap.get(fromUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
-      const senderName = isSelf ? app.t('chat.selfName') : displayUserName(sender, fromUid);
-      const preview = msg.messageType === MSG_TYPE_RECALL
-        ? recallPlaceholderText(app, msg)
-        : app.client.describeMessage(msg).text;
-      const div = app.dom.ownerDocument.createElement('div');
-      div.className = 'message-search-result';
-      div.innerHTML = `
-        <div class="message-search-result-header">
-          <span class="message-search-result-sender">${app.escapeHtml(senderName)}</span>
-          <span class="message-search-result-time">${app.escapeHtml(formatTime(msg.sentAt))}</span>
-        </div>
-        <div class="message-search-result-preview">${app.escapeHtml(preview)}</div>
-      `;
-      div.addEventListener('click', () => void jumpToResult(msg.messageId));
-      frag.appendChild(div);
-    }
-    container.innerHTML = '';
-    container.appendChild(frag);
-  }
-
-  async function runSearch(rawKeyword: string): Promise<void> {
-    const keyword = rawKeyword.trim();
-    const myRequestId = ++requestId;
-    if (!keyword) {
-      resultsEl().innerHTML = '';
-      return;
-    }
-    const conversation = currentConversation(app);
-    if (!conversation) return;
-    resultsEl().innerHTML = `<div class="empty-state">${app.escapeHtml(app.t('common.loading'))}</div>`;
-    try {
-      const page = await app.client.searchMessages({
-        keyword,
-        target: conversation.target,
-        limit: SEARCH_RESULT_LIMIT,
-      });
-      if (myRequestId !== requestId) return;
-      renderResults(page.messages);
-    } catch (_) {
-      if (myRequestId !== requestId) return;
-      resultsEl().innerHTML = `<div class="empty-state">${app.escapeHtml(app.t('chat.searchFailed'))}</div>`;
-    }
-  }
-
-  // 点开结果：以该消息为锚点重新加载消息窗口，当前会话内搜索不需要切会话。
-  async function jumpToResult(msgId: string): Promise<void> {
-    const conversation = currentConversation(app);
-    if (!conversation) return;
-    closePanel();
-    await jumpToMessageInConversation(app, conversation.target, msgId);
-  }
-
   input().addEventListener('input', () => {
-    if (debounce) clearTimeout(debounce);
-    const value = input().value;
-    debounce = setTimeout(() => void runSearch(value), SEARCH_DEBOUNCE_MS);
+    const keyword = input().value.trim();
+    // 清空关键字立即回到空白态，不需要等待防抖；非空关键字沿用组件内置 300ms 防抖。
+    resultsList.setQuery({ keyword }, keyword ? undefined : { debounceMs: 0 });
   });
   input().addEventListener('keydown', (event) => {
     const key = (event as KeyboardEvent).key;
     if (key === 'Enter') {
-      if (debounce) clearTimeout(debounce);
-      void runSearch(input().value);
+      resultsList.setQuery({ keyword: input().value.trim() }, { debounceMs: 0 });
     } else if (key === 'Escape') {
       closePanel();
     }
@@ -177,10 +177,6 @@ export function setupMessageSearch(app: AppInstance): void {
     else closePanel();
   });
   app.$('message-search-close').addEventListener('click', () => closePanel());
-
-  app.registerDisposer(() => {
-    if (debounce) clearTimeout(debounce);
-  });
 }
 
 // 高亮 class 已由 message-list.ts 按 chatState.highlightMessageId 声明式渲染（见上方

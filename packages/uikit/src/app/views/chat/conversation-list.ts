@@ -6,12 +6,10 @@ import { msgPreview } from "./helpers";
 import { applyConversationGuards } from "./composer";
 import { closeMessageActionMenu, exitMessageSelectionMode } from "./selection";
 import { closeMessageSearchPanel } from "./message-search";
-import {
-  getOrCreateBoundedStreamWindow,
-  BoundedStreamWindow,
-  catchUpAtEdge,
-} from "../../bounded-stream-window";
-import { resetMessagePage, setInitialMessagePage } from "./message-page";
+import { createBoundedList, serverPageSource, type BoundedList, type RenderItemContext } from "../../bounded-list";
+import { conversationIdentity } from "../../list-identity";
+import { resetMessagePage } from "./message-page";
+import { getMessageList } from "./message-list";
 
 // 设置聊天头部标题；群名 / 好友昵称取自 DisplayInfoCache 的同步快照，
 // 首次打开陌生对端时可能还没缓存，靠 refreshChatHeader 在展示资料到达后补上。
@@ -35,120 +33,24 @@ export function refreshChatHeader(app: AppInstance): void {
   updateChatHeaderTitle(app, app.client.describeConversation(conv), conv);
 }
 
-// 贴顶判定阈值（px）：背景刷新只在贴顶时直接重拉，否则只点亮"列表有更新"提示。
-const LIST_TOP_STICKY_PX = 4;
-const CONVERSATION_PILL_ID = "conversation-update-pill";
-const conversationListViews = new WeakMap<AppInstance, BoundedStreamWindow<LocalConversation>>();
-
-function getConversationListView(app: AppInstance): BoundedStreamWindow<LocalConversation> {
-  return getOrCreateBoundedStreamWindow(conversationListViews, app, () => new BoundedStreamWindow<LocalConversation>({
-    scrollElement: app.$("conversation-list"),
-    onScroll: () => maybeCatchUpStale(app),
-  }));
+function keyToTarget(key: string): ConversationTarget {
+  return key.startsWith("g:")
+    ? { groupId: key.slice(2) }
+    : { toUid: key.slice(2) };
 }
 
-interface RenderConversationListOptions {
-  readonly force?: boolean;
-  // 无条件重拉首页并滚回顶部：本端发送消息后让该会话「移动到顶部」，不点亮提示条。
-  readonly toTop?: boolean;
-  // force 背景刷新时受影响的会话 key（如 messages:received 的 conversationKeys）：
-  // 用户不在顶部时不重排，但对仍在数据窗口内的这些会话定向拉取并就地更新未读/预览。
-  readonly keys?: ReadonlyArray<string>;
+// SDK 通知里的会话 key 是 describeConversation() 口径（"u:<uid>" / "g:<gid>"），
+// BoundedList 的 identityOf 用的是路由身份口径（conversationIdentity，"friendUid:groupId"）。
+// 两套口径彻底解耦（见设计方案 §4.2「身份键」），跨边界时必须显式转换，不能混用。
+function sdkKeyToIdentity(key: string): string {
+  return key.startsWith("g:") ? `0:${key.slice(2)}` : `${key.slice(2)}:0`;
 }
 
-// "列表有更新"且用户已滚回顶部：自动重拉首页追平。
-function maybeCatchUpStale(app: AppInstance): void {
-  catchUpAtEdge(
-    () => app.chatState.conversationListStale && !app.chatState.conversationPageLoading,
-    () => app.$("conversation-list").scrollTop <= LIST_TOP_STICKY_PX,
-    () => loadConversations(app, { mode: "reset" }),
-  );
-}
-
-// 会话列表是有界滑动窗口（conversationWindow，按整页裁剪）：
-// - reset：无游标拉首页（最活跃端）重建窗口，实时重排 / 备注变更都走 reset；
-// - forward：触底用尾页 end_cursor 向后拉一页追加，超限裁掉首部并标记 hasMoreBefore；
-// - backward：触顶用首页 start_cursor 向前拉回被裁掉的更活跃页。
-async function loadConversations(
-  app: AppInstance,
-  options: { mode: "reset" | "forward" | "backward" },
-): Promise<void> {
-  if (app.chatState.conversationPageLoading) return;
-  const window = app.chatState.conversationWindow;
-  if (options.mode === "forward" && !window.hasMoreAfter) return;
-  if (options.mode === "backward" && !window.hasMoreBefore) return;
-
-  const requestId = ++app.chatState.conversationPageRequestId;
-  app.chatState.conversationPageLoading = true;
-  try {
-    const backward = options.mode === "backward";
-    const cursor =
-      options.mode === "reset"
-        ? undefined
-        : (backward ? window.backwardCursor : window.forwardCursor) || undefined;
-    // reset 时拉取首页后才知道整体未读数；续翻只需调整窗口，未读数沿用已有值。
-    const [page, unreadCount] = await Promise.all([
-      app.client.getConversations({ cursor, backward, limit: APP_CONFIG.list.pageSize }),
-      options.mode === "reset"
-        ? app.client.getUnreadCount()
-        : Promise.resolve(app.chatState.conversationTotalUnreadCount),
-    ]);
-    if (requestId !== app.chatState.conversationPageRequestId) return;
-
-    const result = {
-      items: page.conversations,
-      startCursor: page.page.startCursor,
-      endCursor: page.page.endCursor,
-      hasMoreBackward: page.page.hasMoreBackward,
-      hasMoreForward: page.page.hasMoreForward,
-    };
-    if (options.mode === "reset") window.setInitial(result);
-    else if (options.mode === "forward") window.appendForward(result);
-    else window.prependBackward(result);
-
-    app.chatState.conversationTotalUnreadCount = unreadCount;
-    app.chatState.conversationPageLoaded = true;
-    if (options.mode === "reset") app.chatState.conversationListStale = false;
-  } catch (error) {
-    console.warn("loadConversations failed:", error);
-  } finally {
-    if (requestId === app.chatState.conversationPageRequestId) {
-      app.chatState.conversationPageLoading = false;
-    }
-  }
-  // 渲染放在清除 loading 之后：render 末尾的触界检测会在视窗未填满且仍有更多时
-  // 链式补页，直到窗口被覆盖或全部加载完。
-  if (requestId === app.chatState.conversationPageRequestId) {
-    renderConversationPage(app);
-    // reset 语义是回到「最活跃端」重建首页：render 的锚点恢复会把原视口顶部条目顶在
-    // 原位，把新置顶 / 新增的会话挤出视口（贴顶时表现为「要下拉才看得到新会话」、
-    // 下一条消息又因 scrollTop>4 点亮提示条）。渲染后显式归零覆盖锚点恢复，
-    // 确保贴顶时自动刷新到最顶端（与消息列表贴底时 scrollToBottom 对称）。
-    if (options.mode === "reset") app.$("conversation-list").scrollTop = 0;
-  }
-}
-
-// 背景刷新（新消息、会话重排）时若用户不在列表顶部，不重拉数据、列表不动，
-// 只点亮"列表有更新"提示条；点击或滚回顶部后再追平。
-function ensureConversationUpdatePill(app: AppInstance): HTMLElement {
-  const existing = app.dom.getElementById(CONVERSATION_PILL_ID);
-  if (existing) return existing;
-  const pill = app.dom.ownerDocument.createElement("button");
-  pill.id = CONVERSATION_PILL_ID;
-  pill.type = "button";
-  pill.className = "new-message-pill list-updated-pill hidden";
-  pill.addEventListener("click", () => {
-    app.$("conversation-list").scrollTop = 0;
-    void loadConversations(app, { mode: "reset" });
-  });
-  app.$("conversation-list").parentElement?.appendChild(pill);
-  return pill;
-}
-
-function syncConversationUpdatePill(app: AppInstance): void {
-  const pill = ensureConversationUpdatePill(app);
-  pill.textContent = app.t("chat.listUpdated");
-  pill.classList.toggle("hidden", !app.chatState.conversationListStale);
+function identityToTarget(identity: string): ConversationTarget {
+  const separator = identity.indexOf(":");
+  const uid = separator >= 0 ? identity.slice(0, separator) : identity;
+  const groupId = separator >= 0 ? identity.slice(separator + 1) : "0";
+  return groupId !== "0" ? { groupId } : { toUid: uid };
 }
 
 async function refreshUnreadBadge(app: AppInstance): Promise<void> {
@@ -161,38 +63,16 @@ async function refreshUnreadBadge(app: AppInstance): Promise<void> {
   }
 }
 
-function renderConversationPage(app: AppInstance): void {
-  // 列表有更新且用户已滚回顶部：自动追平（重拉首页）。
-  maybeCatchUpStale(app);
-  const windowConversations = app.chatState.conversationWindow.items;
-  const currentConversation = app.chatState.currentConversation;
-  const includeCurrentEmptyConversation = Boolean(
-    currentConversation &&
-    currentConversation.lastSeq === 0 &&
-    (!currentConversation.groupId || currentConversation.groupId === "0") &&
-    !windowConversations.some(
-      (conv) =>
-        app.client.describeConversation(conv).key ===
-        app.chatState.currentConvKey,
-    ),
-  );
-  // 仅展示用的占位会话固定在窗口条目头部，与窗口条目合并后统一全量渲染。
-  const conversations =
-    includeCurrentEmptyConversation && currentConversation
-      ? [currentConversation, ...windowConversations]
-      : windowConversations;
+// 仅展示用的「空会话占位」（刚从通讯录点开、还没有任何消息的会话）：固定钉在窗口条目头部，
+// 不进数据窗口，不参与分页与身份去重。真实存在消息的会话不会有 lastSeq===0，不会与窗口内条目冲突。
+function pinnedConversations(app: AppInstance): readonly LocalConversation[] {
+  const current = app.chatState.currentConversation;
+  if (!current) return [];
+  const isEmptyPlaceholder = current.lastSeq === 0 && (!current.groupId || current.groupId === "0");
+  return isEmptyPlaceholder ? [current] : [];
+}
 
-  if (!app.chatState.conversationPageLoaded) return;
-
-  app.setNavBadge(
-    '.nav-item[data-view="chat"]',
-    app.chatState.conversationTotalUnreadCount > 0,
-  );
-
-  const view = getConversationListView(app);
-  const window = app.chatState.conversationWindow;
-
-  // 窗口有界，全量渲染：为窗口内全部会话预取展示信息（昵称、群名）。
+function collectDisplayMaps(app: AppInstance, conversations: readonly LocalConversation[]) {
   const userIds: string[] = [];
   const groupIds: string[] = [];
   for (const conv of conversations) {
@@ -200,186 +80,194 @@ function renderConversationPage(app: AppInstance): void {
     if (conversation.kind === "group") {
       groupIds.push(conv.groupId || "0");
       const lastMessage = conv.lastMessage;
-      if (lastMessage && lastMessage.senderId !== "0")
-        userIds.push(lastMessage.senderId);
+      if (lastMessage && lastMessage.senderId !== "0") userIds.push(lastMessage.senderId);
     } else {
-      const friendUid = conv.friendUid || "0";
-      userIds.push(friendUid);
+      userIds.push(conv.friendUid || "0");
     }
   }
-  const userDisplayMap = app.client.getUserInfos(userIds);
-  const groupDisplayMap = app.client.getGroupInfos(groupIds);
+  return {
+    userDisplayMap: app.client.getUserInfos(userIds),
+    groupDisplayMap: app.client.getGroupInfos(groupIds),
+  };
+}
 
-  view.render({
-    items: conversations,
-    hasMoreBefore: window.hasMoreBefore,
-    hasMoreAfter: window.hasMoreAfter,
-    loadingBefore: app.chatState.conversationPageLoading,
-    loadingAfter: app.chatState.conversationPageLoading,
-    loaded: app.chatState.conversationPageLoaded,
-    emptyText: app.t("chat.noConversations"),
-    loadingText: app.t("common.loading"),
-    bottomBoundaryText: app.t("chat.noMoreConversations"),
-    loadBefore: () => { void loadConversations(app, { mode: "backward" }); },
-    loadAfter: () => { void loadConversations(app, { mode: "forward" }); },
-    keyOf: (conv) => app.client.describeConversation(conv).key,
-    renderItem: (conv) => {
-    const conversation = app.client.describeConversation(conv);
-    const key = conversation.key;
-    const isGroup = conversation.kind === "group";
+function renderConversationRow(
+  app: AppInstance,
+  conv: LocalConversation,
+  ctx: RenderItemContext<LocalConversation>,
+  displayMaps: { userDisplayMap: ReturnType<typeof app.client.getUserInfos>; groupDisplayMap: ReturnType<typeof app.client.getGroupInfos> },
+): HTMLElement {
+  const conversation = app.client.describeConversation(conv);
+  const key = conversation.key;
+  const isGroup = conversation.kind === "group";
 
-    let name = "";
-    let avatarText = "";
-    let avatarUrl = "";
-    if (isGroup) {
-      const group = groupDisplayMap.get(conv.groupId || "0") || {
-        name: "",
-        avatarUrl: "",
-        remarkName: "",
-      };
-      name = displayGroupName(group, app.t("chat.group"));
-      avatarText = name[0];
-      avatarUrl = group.avatarUrl || "";
-    } else {
-      const friendUid = conv.friendUid || "0";
-      const user = userDisplayMap.get(friendUid) || {
-        nickname: "",
-        avatarUrl: "",
-        remarkName: "",
-        username: "",
-      };
-      name = displayUserName(user, friendUid);
-      avatarText = name[0];
-      avatarUrl = user.avatarUrl || "";
-    }
+  let name = "";
+  let avatarText = "";
+  let avatarUrl = "";
+  if (isGroup) {
+    const group = displayMaps.groupDisplayMap.get(conv.groupId || "0") || { name: "", avatarUrl: "", remarkName: "" };
+    name = displayGroupName(group, app.t("chat.group"));
+    avatarText = name[0];
+    avatarUrl = group.avatarUrl || "";
+  } else {
+    const friendUid = conv.friendUid || "0";
+    const user = displayMaps.userDisplayMap.get(friendUid) || { nickname: "", avatarUrl: "", remarkName: "", username: "" };
+    name = displayUserName(user, friendUid);
+    avatarText = name[0];
+    avatarUrl = user.avatarUrl || "";
+  }
 
-    const lastMessage = conv.lastMessage;
-    const preview = lastMessage
-      ? msgPreview(app, lastMessage, isGroup, userDisplayMap)
+  const lastMessage = conv.lastMessage;
+  const preview = lastMessage
+    ? msgPreview(app, lastMessage, isGroup, displayMaps.userDisplayMap)
+    : "";
+  const timeStr = lastMessage ? formatTime(lastMessage.sentAt) : "";
+  const unread = conv.unreadCount || 0;
+
+  const div = app.dom.ownerDocument.createElement("div");
+  div.className =
+    "conversation-item" +
+    (app.chatState.currentConvKey === key ? " active" : "");
+  div.dataset.key = key;
+  const badge =
+    unread > 0
+      ? `<span class="unread-badge">${unread > 99 ? "99+" : unread}</span>`
       : "";
-    const timeStr = lastMessage ? formatTime(lastMessage.sentAt) : "";
-    const unread = conv.unreadCount || 0;
-
-    const div = app.dom.ownerDocument.createElement("div");
-    div.className =
-      "conversation-item" +
-      (app.chatState.currentConvKey === key ? " active" : "");
-    div.dataset.key = key;
-    const badge =
-      unread > 0
-        ? `<span class="unread-badge">${unread > 99 ? "99+" : unread}</span>`
-        : "";
-    div.innerHTML = `
-        <div class="avatar-wrapper">
-          <div class="avatar avatar-md">${app.avatarInnerHtml({ avatar: avatarUrl, nickname: avatarText })}</div>
-          ${badge}
-        </div>
-        <div class="conversation-info">
-          <div class="conversation-top">
-            <div class="conversation-name-row">
-              <span class="conversation-name">${app.escapeHtml(name)}</span>
-            </div>
-            <span class="conversation-time">${timeStr}</span>
+  div.innerHTML = `
+      <div class="avatar-wrapper">
+        <div class="avatar avatar-md">${app.avatarInnerHtml({ avatar: avatarUrl, nickname: avatarText })}</div>
+        ${badge}
+      </div>
+      <div class="conversation-info">
+        <div class="conversation-top">
+          <div class="conversation-name-row">
+            <span class="conversation-name">${app.escapeHtml(name)}</span>
           </div>
-          <span class="conversation-preview">${app.escapeHtml(preview)}</span>
+          <span class="conversation-time">${timeStr}</span>
         </div>
-      `;
-    div.addEventListener("click", () => {
-      void openConversation(app, conv);
-    });
-    return [div];
+        <span class="conversation-preview">${app.escapeHtml(preview)}</span>
+      </div>
+    `;
+  void ctx;
+  return div;
+}
+
+function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
+  if (app.chatState.conversationList) return app.chatState.conversationList;
+
+  let displayMaps: ReturnType<typeof collectDisplayMaps> | null = null;
+  let windowItems: readonly LocalConversation[] = [];
+
+  const list = createBoundedList<LocalConversation>({
+    id: "conversations",
+    scrollElement: app.$("conversation-list"),
+    pageSize: APP_CONFIG.list.pageSize,
+    maxPages: APP_CONFIG.list.maxPages,
+    register: (controller) => app.registerBoundedList(controller),
+    source: serverPageSource(
+      ({ cursor, backward, limit }) => app.client.getConversations({ cursor, backward, limit }),
+      (page) => ({
+        items: page.conversations,
+        startCursor: page.page.startCursor,
+        endCursor: page.page.endCursor,
+        hasMoreBackward: page.page.hasMoreBackward,
+        hasMoreForward: page.page.hasMoreForward,
+      }),
+    ),
+    fetchByIdentity: (ids) =>
+      app.client.getConversations({ targets: ids.map(identityToTarget) }).then((p) => p.conversations),
+    identityOf: conversationIdentity,
+    freshEdge: "head",
+    // 占位会话一旦真实存在（发出的消息落库后重拉首页能拉到同身份的真实条目），
+    // 就不再钉在头部——组件本身不去重 pinnedItems 与窗口条目，需要调用方自己避免
+    // 同一身份同时出现在两处而渲染出两个重复 DOM 节点。
+    pinnedItems: () => {
+      const pinned = pinnedConversations(app);
+      if (pinned.length === 0) return pinned;
+      return pinned.filter((p) => !windowItems.some((w) => conversationIdentity(w) === conversationIdentity(p)));
+    },
+    renderItem: (conv, ctx) => {
+      if (ctx.index === 0) {
+        displayMaps = collectDisplayMaps(app, [...pinnedConversations(app), ...windowItems]);
+      }
+      return [renderConversationRow(app, conv, ctx, displayMaps!)];
+    },
+    text: {
+      empty: () => app.t("chat.noConversations"),
+      loading: () => app.t("common.loading"),
+      tailBoundary: () => app.t("chat.noMoreConversations"),
+      updatePill: () => app.t("chat.listUpdated"),
+    },
+    onActivate: (conv) => { void openConversation(app, conv); },
+    onItemsChanged: (items) => { windowItems = items; },
+    onLoadStateChange: () => {
+      app.setNavBadge('.nav-item[data-view="chat"]', app.chatState.conversationTotalUnreadCount > 0);
     },
   });
-  syncConversationUpdatePill(app);
-}
 
-function keyToTarget(key: string): ConversationTarget {
-  return key.startsWith("g:")
-    ? { groupId: key.slice(2) }
-    : { toUid: key.slice(2) };
-}
-
-// 轻通知后定向刷新：clearunread / delete / messages:received 等收到后，对仍在数据窗口内的会话
-// 调 getConversations({ targets }) 拉当前状态并就地更新窗口；拉取后不存在 = 已删除，
-// 从窗口移除、剩余条目往上补齐。命中条目都不在数据窗口（不可见）时不做定向拉取，但仍刷新未读角标
-// 并重渲（同步提示条），靠后续贴顶 / 全量刷新追平排序。
-export async function refreshConversations(app: AppInstance, keys: string[]): Promise<void> {
-  const window = app.chatState.conversationWindow;
-  const describe = (conv: LocalConversation) => app.client.describeConversation(conv).key;
-  const inWindow = [...new Set(keys)].filter((k) =>
-    window.items.some((conv) => describe(conv) === k),
-  );
-
-  // 命中数据窗口的会话才定向拉取并就地更新；不在窗口（不可见）的会话不拉，
-  // 但仍需刷新未读角标并重渲（同步提示条），让总角标和「列表有更新」提示及时反映。
-  if (inWindow.length > 0) {
-    let fresh: ReadonlyArray<LocalConversation> | null = null;
-    try {
-      fresh = (await app.client.getConversations({ targets: inWindow.map(keyToTarget) })).conversations;
-    } catch (error) {
-      console.warn("refreshConversations failed:", error);
-    }
-    if (fresh) {
-      const byKey = new Map(fresh.map((conv) => [describe(conv), conv]));
-      let currentRemoved = false;
-      for (const k of inWindow) {
-        const updated = byKey.get(k);
-        if (updated) {
-          window.updateMatching((conv) => describe(conv) === k, () => updated);
-        } else {
-          window.removeMatching((conv) => describe(conv) === k);
-          if (app.chatState.currentConvKey === k) currentRemoved = true;
-        }
-      }
-      if (currentRemoved && app.chatState.currentConvKey) {
-        void refreshUnreadBadge(app);
-        // 当前打开的会话被删除：关闭回空态（内部会重渲列表）。
-        closeStaleConversation(app, app.chatState.currentConvKey);
-        return;
-      }
-    }
-  }
-
+  app.chatState.conversationList = list;
+  app.registerDisposer(() => list.dispose());
+  void list.reset();
   void refreshUnreadBadge(app);
-  // 删除后窗口变短：renderConversationPage 末尾触界检测会按真实长度链式补页。
-  renderConversationPage(app);
+  return list;
+}
+
+interface RenderConversationListOptions {
+  readonly force?: boolean;
+  // 无条件重拉首页并滚回顶部：本端发送消息后让该会话「移动到顶部」，不点亮提示条。
+  readonly toTop?: boolean;
+  // force 背景刷新时受影响的会话 key（如 messages:received 的 conversationKeys）：
+  // 用户不在顶部时不重排，但对仍在数据窗口内的这些会话定向拉取并就地更新未读/预览。
+  readonly keys?: ReadonlyArray<string>;
 }
 
 export function renderConversationList(
   app: AppInstance,
   options: RenderConversationListOptions = {},
-) {
-  app.setNavBadge(
-    '.nav-item[data-view="chat"]',
-    app.chatState.conversationTotalUnreadCount > 0,
-  );
-  if (!app.chatState.conversationPageLoaded) {
-    void loadConversations(app, { mode: "reset" });
-    return;
-  }
-  // 本端发送：无论当前滚动位置都重拉首页（newest），让发出的会话（seq 最大）回到顶部并置顶视口。
-  // reset 重拉渲染后由 loadConversations 统一把滚动容器归零（覆盖锚点恢复），无需在此重复处理。
+): void {
+  const list = getConversationList(app);
+
   if (options.toTop) {
-    void loadConversations(app, { mode: "reset" });
+    // 本端发送：无论当前滚动位置都重拉首页（newest），让发出的会话回到顶部并置顶视口，
+    // 这是主动行为，不点亮提示条。
+    void list.reset({ pinEdge: true });
+    void refreshUnreadBadge(app);
     return;
   }
+
   if (options.force) {
-    const container = app.$("conversation-list");
-    if (container.scrollTop <= LIST_TOP_STICKY_PX) {
-      void loadConversations(app, { mode: "reset" });
-      return;
-    }
-    // 用户正在浏览列表中段：列表不重排，只点亮提示条。
-    app.chatState.conversationListStale = true;
     if (options.keys && options.keys.length > 0) {
       // 收到消息等事件携带受影响会话 key：对仍在数据窗口内的会话定向拉取并就地更新，
-      // 让未读角标和最新预览即时反映，而不必等用户滚回顶部重排（不在窗口的由其内部兜底刷新角标）。
+      // 让未读角标和最新预览即时反映，而不必等用户滚回顶部重排。
       void refreshConversations(app, [...options.keys]);
       return;
     }
+    // 贴顶直接追平重拉，否则只点亮「列表有更新」提示——决策全部收敛在 invalidate 内部。
+    list.invalidate();
     void refreshUnreadBadge(app);
+    return;
   }
-  renderConversationPage(app);
+
+  list.render();
+}
+
+// 轻通知后定向刷新：clearunread / delete / messages:received 等收到后，对仍在数据窗口内的会话
+// 定向拉取当前状态并就地更新窗口；拉取后不存在 = 已删除，从窗口移除、剩余条目往上补齐。
+// 当前打开的会话在受影响 key 之列时，额外确认它是否已被删除并在必要时关回空态。
+export async function refreshConversations(app: AppInstance, keys: string[]): Promise<void> {
+  const list = getConversationList(app);
+  list.invalidate({ identities: keys.map(sdkKeyToIdentity) });
+
+  const currentKey = app.chatState.currentConvKey;
+  if (currentKey && keys.includes(currentKey)) {
+    try {
+      const fresh = await app.client.getConversations({ targets: [keyToTarget(currentKey)] });
+      if (fresh.conversations.length === 0) closeStaleConversation(app, currentKey);
+    } catch (error) {
+      console.warn("refreshConversations failed:", error);
+    }
+  }
+  void refreshUnreadBadge(app);
 }
 
 function closeStaleConversation(app: AppInstance, expectedKey: string): void {
@@ -449,29 +337,16 @@ export async function openConversation(
   const conversation = openConversationShell(app, conv);
   const isPlaceholderGroup =
     conversation.kind === "group" && conv.lastSeq === 0 && !conv.lastMessage;
-  const messagePageRequestId = app.chatState.messagePageRequestId;
 
-  const target: ConversationTarget = conversation.target;
-  try {
-    const result = await app.client.getMessages({
-      target,
-      backward: true,
-      limit: APP_CONFIG.chat.messagePageSize,
-    });
-    if (
-      messagePageRequestId !== app.chatState.messagePageRequestId ||
-      app.chatState.currentConvKey !== conversation.key
-    )
-      return;
-    if (isPlaceholderGroup && result.messages.length === 0) {
-      closeStaleConversation(app, conversation.key);
-      return;
-    }
-    setInitialMessagePage(app, result);
-    app.views.chat?.renderMessages();
-    app.views.chat?.scrollToBottom();
-  } catch (_) {
-    app.showToast(app.t("chat.failedToLoadMessages"), "error");
+  // reset() 内部吞掉网络错误（失败态反映在 getState().failed，并经由消息列表的
+  // onError 回调统一提示，见 message-list.ts），这里只需要处理"占位群且首页为空"
+  // 这条业务分支，以及切换期间又切走的丢弃判断。
+  const messageList = getMessageList(app);
+  await messageList.reset({ query: {} });
+  if (app.chatState.currentConvKey !== conversation.key) return;
+  const state = messageList.getState();
+  if (isPlaceholderGroup && !state.failed && state.count === 0) {
+    closeStaleConversation(app, conversation.key);
   }
 }
 

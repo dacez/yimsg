@@ -2,9 +2,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { startApp } from '../../src/app/main-app';
 
 /**
- * startApp 的连接事件 / 有界列表 wiring 测试：不驱动真实 DOM（项目未引入 jsdom），
+ * startApp 的连接事件 wiring 测试：不驱动真实 DOM（项目未引入 jsdom），
  * 只验证 main-app.ts 里"绑定了什么、按什么条件调用了什么"这层胶水逻辑本身。
  * 各视图工厂（createChatView 等）整体 mock 成纯 vi.fn 桩，行为细节由各自模块的测试覆盖。
+ * 有界列表的注册现在由各个 BoundedList 实例在构造时通过 register 参数自行完成
+ * （见各 views/*.ts 的 createBoundedList 调用），不再是 main-app.ts 手写的三段
+ * registerBoundedList，因此这里不再测试"注册了哪些 id"，只保留连接事件本身的行为。
  */
 
 vi.mock('../../src/app/views/auth', () => ({
@@ -133,19 +136,6 @@ describe('startApp connection/bounded-list wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     client = createFakeClient({ currentUid: null, isSessionInitialized: false, isAuthenticated: false });
-  });
-
-  it('registers a bounded list controller per list, reusing the existing notification-style refresh actions', async () => {
-    const app = createFakeApp(client);
-    startApp(app);
-
-    app.invalidateBoundedLists();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(app.views.chat.renderConversationList).toHaveBeenCalledWith({ force: true });
-    expect(app.views.chat.refreshOpenConversation).toHaveBeenCalledOnce();
-    expect(app.views.contacts.loadContacts).toHaveBeenCalledWith({ background: true });
   });
 
   it('does not invalidate bounded lists on the very first connection (no prior disconnect)', () => {
