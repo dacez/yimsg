@@ -460,7 +460,12 @@ test.describe('Message Pagination', () => {
 
     const beforeMax = Math.max(...extractSeqNums(await getMessageTexts(page)));
     await expect(async () => {
-      // 上一轮加载的 loading 守卫可能尚未释放；每轮重试都重新触发底部翻页。
+      // 先在不触碰 scrollTop 的前提下判断新页是否已经落地：一旦落地就直接放行，
+      // 不再执行下面的重新贴底触发——否则会把 scrollTop 重新钉死在“当前（已增高）
+      // scrollHeight”上，导致后续 atBottom 判定永远自证为 true，掩盖锚点保持与否。
+      const afterNumsBefore = extractSeqNums(await getMessageTexts(page));
+      if (Math.max(...afterNumsBefore) > beforeMax) return;
+      // 尚未落地：上一轮加载的 loading 守卫可能尚未释放，重新触发一次底部翻页。
       await page.evaluate(() => {
         const list = document.getElementById('message-list');
         if (!list) return;
@@ -469,14 +474,15 @@ test.describe('Message Pagination', () => {
       });
       const afterNums = extractSeqNums(await getMessageTexts(page));
       expect(Math.max(...afterNums)).toBeGreaterThan(beforeMax);
-      const atBottom = await page.evaluate(() => {
-        const list = document.getElementById('message-list');
-        if (!list) return false;
-        return list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
-      });
-      expect(atBottom).toBe(false);
     }).toPass({ timeout: 20_000 });
     // 较新页可能已经把 latest 放回有界 DOM；视口仍未贴底才是锚点保持的判据。
+    // 上面拿到「已落地」结果后不再改动过 scrollTop，这里读到的才是锚点保持的真实状态。
+    const atBottom = await page.evaluate(() => {
+      const list = document.getElementById('message-list');
+      if (!list) return false;
+      return list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
+    });
+    expect(atBottom).toBe(false);
   });
 
   test('multiple pagination rounds maintain order with no duplicates', async ({ page }) => {
