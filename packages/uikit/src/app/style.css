@@ -144,7 +144,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-row+.message-row{margin-top:var(--space-xs)}
 .message-row.self+.message-row:not(.self),.message-row:not(.self)+.message-row.self{margin-top:var(--space-lg)}
 .message-sender{font-size:var(--font-size-caption);color:var(--text-secondary);margin-bottom:3px;margin-left:42px;font-weight:500}
-.message-bubble{max-width:72%;padding:9px 13px;border-radius:18px;font-size:var(--font-size-body);line-height:var(--line-height-body);word-break:break-word}
+.message-bubble{max-width:72%;padding:9px 13px;border-radius:18px;font-size:var(--font-size-body);line-height:22px;word-break:break-word}
 .message-row:not(.self) .message-bubble{background:var(--bubble-other);box-shadow:var(--shadow-bubble);border-bottom-left-radius:5px}
 .message-row.self .message-bubble{background:var(--bubble-self);box-shadow:var(--shadow-bubble);border-bottom-right-radius:5px}
 .message-time{font-size:11px;color:var(--text-placeholder);margin-top:2px;align-self:flex-end;flex-shrink:0}
@@ -182,7 +182,7 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .message-input-row{display:flex;gap:var(--space-sm);align-items:flex-end}
 .message-input-row .input{flex:1;min-width:0;width:auto;border-radius:22px;padding:0 18px;height:44px;background:var(--bg-hover);border-color:transparent}
 .message-input-row .input:focus{background:var(--bg-panel);border-color:var(--primary)}
-.message-input-row textarea.input{resize:none;min-height:44px;max-height:110px;padding:10px 18px;line-height:22px;overflow-y:hidden}
+.message-input-row textarea.input{resize:none;min-height:44px;max-height:110px;padding:10px 18px;line-height:20px;overflow-y:hidden}
 .message-input-row textarea.input::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .message-input-row .btn{border-radius:22px;height:44px;padding:0 22px}
 #msg-markdown-toggle{font-size:13px;font-weight:700;letter-spacing:-.5px;flex-shrink:0}
