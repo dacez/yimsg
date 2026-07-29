@@ -28,10 +28,51 @@ test.describe('Mobile layout & recall', () => {
     // 触屏设备下消息输入框字号必须 >= 16px，否则 iOS Safari 聚焦时会自动放大整页且不会自动缩回
     await expect(page1.locator('#msg-input')).toHaveCSS('font-size', '16px');
 
+    // 移动端只常驻“更多 + 输入框 + 发送”三个控件：低频表情和 Markdown 收进更多菜单，
+    // 发送按钮仅显示纸飞机图标，保留 44px 触控区，同时给输入框留出主要宽度。
+    await expect(page1.locator('#msg-emoji')).toBeHidden();
+    await expect(page1.locator('#msg-markdown-toggle')).toBeHidden();
+    await expect(page1.locator('#msg-send .msg-send-label')).toBeHidden();
+    await expect(page1.locator('#msg-send .msg-send-icon')).toBeVisible();
+    const inputBox = await page1.locator('#msg-input').boundingBox();
+    const sendBox = await page1.locator('#msg-send').boundingBox();
+    expect(inputBox).not.toBeNull();
+    expect(sendBox).not.toBeNull();
+    if (inputBox) expect(inputBox.width).toBeGreaterThan(200);
+    if (sendBox) {
+      expect(sendBox.width).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(sendBox.width - sendBox.height)).toBeLessThan(2);
+    }
+
+    await page1.click('#msg-attach');
+    const composerMenu = page1.locator('.attach-menu');
+    await expect(composerMenu.locator('[data-type="image"]')).toBeVisible();
+    await expect(composerMenu.locator('[data-type="file"]')).toBeVisible();
+    await expect(composerMenu.locator('[data-type="emoji"]')).toBeVisible();
+    await expect(composerMenu.locator('[data-type="markdown"]')).toBeVisible();
+    await composerMenu.locator('[data-type="markdown"]').click();
+    await expect(page1.locator('#msg-markdown-toggle')).toHaveClass(/active/);
+    await page1.click('#msg-attach');
+    await page1.locator('.attach-menu [data-type="markdown"]').click();
+    await expect(page1.locator('#msg-markdown-toggle')).not.toHaveClass(/active/);
+
+    // 单行不出现滚动条；输入框随内容增高，达到四行上限后才启用内部滚动。
+    const initialInputHeight = (await page1.locator('#msg-input').boundingBox())?.height ?? 0;
+    await expect(page1.locator('#msg-input')).toHaveCSS('overflow-y', 'hidden');
+    await page1.fill('#msg-input', '第一行\n第二行');
+    const twoLineHeight = (await page1.locator('#msg-input').boundingBox())?.height ?? 0;
+    expect(twoLineHeight).toBeGreaterThan(initialInputHeight);
+    await page1.fill('#msg-input', '1\n2\n3\n4\n5\n6');
+    const cappedHeight = (await page1.locator('#msg-input').boundingBox())?.height ?? 0;
+    expect(cappedHeight).toBeLessThanOrEqual(110);
+    await expect(page1.locator('#msg-input')).toHaveCSS('overflow-y', 'auto');
+
     // 发送一条消息
     await page1.fill('#msg-input', 'mobile hello');
+    await expect(page1.locator('#msg-input')).toHaveCSS('overflow-y', 'hidden');
     await page1.click('#msg-send');
     await expect(page1.locator('#message-list', { hasText: 'mobile hello' })).toBeVisible();
+    expect((await page1.locator('#msg-input').boundingBox())?.height).toBe(initialInputHeight);
 
     // 在触屏 viewport 下，动作触发按钮应直接可见（opacity:1）
     const trigger = page1.locator('.message-row.self .message-actions-trigger').last();

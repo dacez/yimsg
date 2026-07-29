@@ -472,7 +472,12 @@ export class AppInstance {
     const msgInput = this.dom.getElementById<HTMLTextAreaElement>('msg-input');
     if (msgInput) msgInput.placeholder = this.t(this.chatState.composerMarkdownMode ? 'chat.typeMarkdownMessage' : 'chat.typeMessage');
     const msgSend = this.dom.getElementById('msg-send');
-    if (msgSend) msgSend.textContent = this.t('chat.send');
+    if (msgSend) {
+      msgSend.title = this.t('chat.send');
+      msgSend.setAttribute('aria-label', this.t('chat.send'));
+      const msgSendLabel = msgSend.querySelector<HTMLElement>('.msg-send-label');
+      if (msgSendLabel) msgSendLabel.textContent = this.t('chat.send');
+    }
     const msgSelectionCancel = this.dom.getElementById('msg-selection-cancel');
     if (msgSelectionCancel) msgSelectionCancel.textContent = this.t('chat.multiSelectCancel');
     const msgSelectionForward = this.dom.getElementById('msg-selection-forward');

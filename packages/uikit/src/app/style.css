@@ -167,6 +167,9 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .attach-menu-item{display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm) var(--space-lg);cursor:pointer;font-size:var(--font-size-body);white-space:nowrap;background:none;border:none;width:100%;text-align:left;color:var(--text-primary)}
 .attach-menu-item:hover{background:var(--bg-hover)}
 .attach-menu-item svg{width:18px;height:18px;color:var(--text-secondary)}
+.attach-menu-item.active{background:var(--primary-light);color:var(--primary)}
+.attach-menu-item:disabled{color:var(--text-placeholder);cursor:not-allowed;background:none}
+.attach-menu-markdown-icon{width:18px;text-align:center;font-size:11px;font-weight:700;color:var(--text-secondary)}
 .plus-menu{top:100%;right:var(--space-sm);bottom:auto;left:auto;margin-bottom:0;margin-top:var(--space-sm)}
 .emoji-picker{position:absolute;bottom:100%;right:var(--space-lg);margin-bottom:var(--space-sm);width:300px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-md);overflow:hidden;z-index:100}
 .emoji-picker-tabs{display:flex;border-bottom:1px solid var(--border);padding:4px}
@@ -178,14 +181,15 @@ body[data-view-mode="contacts-only"] [data-action="chat"],.mc-app-shell[data-vie
 .emoji-picker-item:hover{background:var(--bg-hover)}
 .avatar-clickable{cursor:pointer;position:relative}
 .avatar-clickable:hover{opacity:.8}
-.message-input-row{display:flex;gap:var(--space-sm);align-items:center}
-.message-input-row .input{flex:1;border-radius:22px;padding:0 18px;height:44px;background:var(--bg-hover);border-color:transparent}
+.message-input-row{display:flex;gap:var(--space-sm);align-items:flex-end}
+.message-input-row .input{flex:1;min-width:0;width:auto;border-radius:22px;padding:0 18px;height:44px;background:var(--bg-hover);border-color:transparent}
 .message-input-row .input:focus{background:var(--bg-panel);border-color:var(--primary)}
-.message-input-row textarea.input{resize:none;padding:11px 18px;line-height:22px;overflow-y:auto}
+.message-input-row textarea.input{resize:none;min-height:44px;max-height:110px;padding:10px 18px;line-height:22px;overflow-y:hidden}
 .message-input-row textarea.input::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .message-input-row .btn{border-radius:22px;height:44px;padding:0 22px}
 #msg-markdown-toggle{font-size:13px;font-weight:700;letter-spacing:-.5px;flex-shrink:0}
 #msg-markdown-toggle.active{background:var(--primary-light);color:var(--primary)}
+.msg-send-icon,.mobile-composer-extra{display:none}
 #view-contacts{flex:1;overflow:hidden;background:var(--bg-panel);display:flex}
 .contacts-left{width:280px;min-width:220px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-panel)}
 .contacts-resizer{width:8px;flex-shrink:0;cursor:col-resize;position:relative;background:var(--bg-panel);touch-action:none}
@@ -415,6 +419,14 @@ body[data-layout="mobile"] .mobile-topbar{
 
 body[data-layout="mobile"] .icon-btn,body[data-layout="mobile"] .btn{min-height:44px;min-width:44px}
 body[data-layout="mobile"] .btn-sm{min-height:32px;min-width:32px}
+body[data-layout="mobile"] #message-input-area{padding:var(--space-sm) var(--space-md)}
+body[data-layout="mobile"] .message-input-row{gap:6px}
+body[data-layout="mobile"] #msg-emoji,body[data-layout="mobile"] #msg-markdown-toggle{display:none}
+body[data-layout="mobile"] #msg-attach,body[data-layout="mobile"] #msg-send{width:44px;min-width:44px;padding:0;border-radius:50%;flex:0 0 44px}
+body[data-layout="mobile"] .message-input-row textarea.input{padding-right:14px;padding-left:14px}
+body[data-layout="mobile"] .msg-send-label{display:none}
+body[data-layout="mobile"] .msg-send-icon{display:block}
+body[data-layout="mobile"] .mobile-composer-extra{display:flex}
 body[data-layout="mobile"] .conversation-item{height:72px}
 body[data-layout="mobile"] #view-contacts{flex-direction:column}
 body[data-layout="mobile"] .contacts-left{width:100%!important;flex:1;border-right:none}

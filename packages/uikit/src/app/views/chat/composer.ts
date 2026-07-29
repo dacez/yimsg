@@ -21,6 +21,24 @@ import { currentConversation, quotePreview } from './helpers';
 import { mediaUrl } from './message-list';
 import { appendLiveMessageToPage, removeMessageFromPage } from './message-page';
 
+const COMPOSER_MIN_HEIGHT_PX = 44;
+const COMPOSER_MAX_HEIGHT_PX = 110;
+
+/** 输入框随内容增高到四行；达到上限后才启用内部滚动。 */
+export function resizeComposerInput(input: HTMLTextAreaElement): void {
+  // 单元测试中的最小输入桩只覆盖发送流程，不具备浏览器布局属性。
+  if (!input.style) return;
+  input.style.height = 'auto';
+  const contentHeight = Math.max(input.scrollHeight, COMPOSER_MIN_HEIGHT_PX);
+  input.style.height = `${Math.min(contentHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
+  input.style.overflowY = contentHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+}
+
+function clearComposerInput(input: HTMLTextAreaElement): void {
+  input.value = '';
+  resizeComposerInput(input);
+}
+
 /** 提前把图片解码进浏览器缓存：占位消息换成真实消息时会整段重建 DOM（BoundedList
  * 全量渲染），新 <img> 若还没被浏览器缓存过就要重新拉取，视觉上会闪一下；预加载后再替换，
  * 新节点直接命中缓存，不闪。加载失败（或非浏览器环境，如单测）也放行，不能因为预热失败卡住发送流程。 */
@@ -183,7 +201,7 @@ export async function sendMessage(app: AppInstance) {
     const mentionedUids = app.chatState.composerQuote ? [] : pendingMentionedUids(app, content);
     const mentionAll = !app.chatState.composerQuote && pendingMentionAll(app, content);
     if (mentionedUids.length > 0 || mentionAll) {
-      input.value = '';
+      clearComposerInput(input);
       app.chatState.composerMentions = new Map();
       app.chatState.composerMentionAll = false;
       await sendOptimistically(
@@ -195,7 +213,7 @@ export async function sendMessage(app: AppInstance) {
     }
 
     if (app.chatState.composerMarkdownMode && !app.chatState.composerQuote) {
-      input.value = '';
+      clearComposerInput(input);
       app.chatState.composerMentions = new Map();
       app.chatState.composerMentionAll = false;
       await sendOptimistically(
@@ -207,7 +225,7 @@ export async function sendMessage(app: AppInstance) {
     }
 
     app.client.validateTextMessage(content);
-    input.value = '';
+    clearComposerInput(input);
     app.chatState.composerMentions = new Map();
     app.chatState.composerMentionAll = false;
 

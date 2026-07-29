@@ -136,7 +136,13 @@ export const APP_SHELL_HTML = `
               </button>
               <button class="icon-btn" id="msg-markdown-toggle" title="Markdown" aria-label="Markdown" aria-pressed="false">M↓</button>
               <textarea class="input" id="msg-input" rows="1" placeholder="输入消息..."></textarea>
-              <button class="btn btn-primary" id="msg-send">发送</button>
+              <button class="btn btn-primary" id="msg-send" aria-label="发送">
+                <span class="msg-send-label">发送</span>
+                <svg class="msg-send-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M22 2 11 13"/>
+                  <path d="m22 2-7 20-4-9-9-4Z"/>
+                </svg>
+              </button>
             </div>
             <input type="file" id="file-picker-image" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden">
             <input type="file" id="file-picker-file" accept="*/*" class="hidden">

@@ -161,7 +161,7 @@ graph LR
         C1b["#message-search-panel<br/>关键字输入 + 结果列表，默认 hidden"]
         C2["#chat-empty<br/>空占位"]
         C3["#message-list<br/>上滚加载更多"]
-        C4["#message-input-area<br/>输入框 + 表情按钮 + 附件按钮 + Markdown 模式切换按钮"]
+        C4["#message-input-area<br/>桌面：输入框 + 表情 + 附件 + Markdown + 发送<br/>手机：更多 + 输入框 + 图标发送"]
         C1 --- C1b --- C2 --- C3 --- C4
     end
 
@@ -565,6 +565,8 @@ sendMessage():
 ```
 
 `#msg-markdown-toggle` 点击切换 `composerMarkdownMode`，同步按钮 `active` 态与输入框 placeholder；开始引用（`setComposerQuote`）会强制关闭并禁用该按钮，引用结束（`clearComposerQuote`）后恢复可用——协议 `QuoteBody` 只有 `TextBody`，引用中不可发送 Markdown 正文。
+
+移动端输入区只常驻三个触控目标：`#msg-attach`（更多）、可自适应增高的 `#msg-input` 和使用纸飞机图标的 `#msg-send`。表情与 Markdown 入口收进更多菜单，避免多个 `44px` 触控目标把正文输入区域压缩；按钮图形保持约 `20px`，实际触控区仍不小于 `44×44px`。输入框从单行开始随内容增高，最多四行，达到上限后才启用内部纵向滚动，单行状态不显示滚动条。桌面端继续平铺附件、表情、Markdown 和文字发送按钮。
 
 占位消息只是本地临时状态，不参与 SDK 的 sync-only persistence（详见《sdk设计方案.md》维护边界）；`chatState.pendingMessageIds` 记录正处于"发送中"的消息 id，切换会话（`resetMessagePage`）时随窗口一并清空。
 

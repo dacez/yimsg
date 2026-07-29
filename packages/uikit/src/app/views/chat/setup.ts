@@ -1,5 +1,5 @@
 import type { AppInstance } from '../../app-instance';
-import { uploadAndSend, sendMessage, toggleComposerMarkdownMode, maybeTriggerMentionPicker } from './composer';
+import { uploadAndSend, sendMessage, toggleComposerMarkdownMode, maybeTriggerMentionPicker, resizeComposerInput } from './composer';
 import { showGroupDetail, showUserDetail } from './detail-panel';
 import { setupEmojiPicker } from './emoji-picker';
 import { forwardMessages } from './forward';
@@ -9,6 +9,9 @@ import { registerSelectionForwardHandler } from './selection';
 import { isMobileInteractionLayout } from '../../utils';
 
 export function setupChat(app: AppInstance) {
+  const messageInput = app.$('msg-input') as HTMLTextAreaElement;
+  resizeComposerInput(messageInput);
+
   app.$('msg-send').addEventListener('click', () => {
     void sendMessage(app);
   });
@@ -21,8 +24,9 @@ export function setupChat(app: AppInstance) {
   app.$('msg-markdown-toggle').addEventListener('click', () => {
     toggleComposerMarkdownMode(app);
   });
-  app.$('msg-input').addEventListener('input', () => {
-    void maybeTriggerMentionPicker(app, app.$('msg-input') as HTMLTextAreaElement);
+  messageInput.addEventListener('input', () => {
+    resizeComposerInput(messageInput);
+    void maybeTriggerMentionPicker(app, messageInput);
   });
 
   app.$('chat-back-btn').addEventListener('click', () => {
@@ -62,6 +66,14 @@ export function setupChat(app: AppInstance) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         ${app.t('chat.file')}
       </button>
+      <button class="attach-menu-item mobile-composer-extra" data-type="emoji">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        ${app.t('chat.emoji')}
+      </button>
+      <button class="attach-menu-item mobile-composer-extra${app.chatState.composerMarkdownMode ? ' active' : ''}" data-type="markdown" aria-pressed="${String(app.chatState.composerMarkdownMode)}" ${app.chatState.composerQuote ? 'disabled' : ''}>
+        <span class="attach-menu-markdown-icon">M↓</span>
+        ${app.t('chat.markdownMode')}
+      </button>
     `;
     app.$('message-input-area').appendChild(menu);
     attachMenuOpen = true;
@@ -73,6 +85,16 @@ export function setupChat(app: AppInstance) {
     });
     menu.querySelector('[data-type="file"]')?.addEventListener('click', () => {
       (app.$('file-picker-file') as HTMLInputElement).click();
+      menu.remove();
+      attachMenuOpen = false;
+    });
+    menu.querySelector('[data-type="emoji"]')?.addEventListener('click', () => {
+      menu.remove();
+      attachMenuOpen = false;
+      app.$('msg-emoji').click();
+    });
+    menu.querySelector('[data-type="markdown"]')?.addEventListener('click', () => {
+      toggleComposerMarkdownMode(app);
       menu.remove();
       attachMenuOpen = false;
     });

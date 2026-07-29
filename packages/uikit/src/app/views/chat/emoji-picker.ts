@@ -1,4 +1,5 @@
 import type { AppInstance } from '../../app-instance';
+import { resizeComposerInput } from './composer';
 import { EMOJI_CATEGORIES } from './emoji-data';
 
 function insertEmojiAtCursor(input: HTMLTextAreaElement, emoji: string) {
@@ -9,6 +10,7 @@ function insertEmojiAtCursor(input: HTMLTextAreaElement, emoji: string) {
   const cursor = start + emoji.length;
   input.focus();
   input.setSelectionRange(cursor, cursor);
+  resizeComposerInput(input);
 }
 
 export function setupEmojiPicker(app: AppInstance) {
