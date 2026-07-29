@@ -11,6 +11,9 @@
 // 其余渲染语义（先读后改、锚点保持、边界提示、指针按下期间推迟协调）与旧版一致，
 // 原理与宿主约束见 packages/uikit/docs/boundedlist/生产集成.md。
 
+import { frameScheduler } from './frame';
+import { valuesEquivalent } from './deep-equal';
+
 export const DEFAULT_REACH_PX = 160;
 
 export interface BoundedStreamWindowOptions {
@@ -68,83 +71,9 @@ export const ANCHOR_KEY_ATTR = 'data-bsw-key';
 export const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
 const FOCUS_CLASS = 'bsw-row-focused';
 
-function valuesEquivalent(left: unknown, right: unknown, seen = new WeakMap<object, object>()): boolean {
-  if (Object.is(left, right)) return true;
-  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false;
-  if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right)) return false;
-  const remembered = seen.get(left);
-  if (remembered) return remembered === right;
-  seen.set(left, right);
-
-  if (left instanceof Date && right instanceof Date) return left.getTime() === right.getTime();
-  if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
-    if (left.byteLength !== right.byteLength) return false;
-    const leftBytes = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
-    const rightBytes = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
-    return leftBytes.every((value, index) => value === rightBytes[index]);
-  }
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return left.length === right.length
-      && left.every((value, index) => valuesEquivalent(value, right[index], seen));
-  }
-  const prototype = Object.getPrototypeOf(left);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) =>
-      Object.prototype.hasOwnProperty.call(right, key)
-      && valuesEquivalent(
-        (left as Record<string, unknown>)[key],
-        (right as Record<string, unknown>)[key],
-        seen,
-      ));
-}
-
 function nodesEquivalent(left: readonly HTMLElement[], right: readonly HTMLElement[]): boolean {
   return left.length === right.length
     && left.every((node, index) => node.isEqualNode?.(right[index]) ?? false);
-}
-
-export function createFrameScheduler(callback: () => void): (() => void) & { cancel: () => void } {
-  let scheduled = false;
-  // token 而非直接 cancelAnimationFrame：一旦 cancel 递增 token，即使已经排队的
-  // rAF 回调后续真的触发，run() 发现 token 已经不匹配也会安全地跳过，不依赖
-  // 环境是否真正支持取消（fake DOM 测试环境里 rAF 只是把回调塞进数组，并不
-  // 响应 cancelAnimationFrame）。
-  let token = 0;
-  const schedule = () => {
-    if (scheduled) return;
-    scheduled = true;
-    const myToken = ++token;
-    const run = () => {
-      if (myToken !== token) return;
-      scheduled = false;
-      callback();
-    };
-    if (typeof globalThis.requestAnimationFrame === 'function') {
-      globalThis.requestAnimationFrame(() => run());
-      return;
-    }
-    run();
-  };
-  schedule.cancel = () => {
-    scheduled = false;
-    token += 1;
-  };
-  return schedule;
-}
-
-/**
- * 「背景有更新 + 贴边缘追平」的统一契约（设计方案 §5.3 路径①）。
- */
-export function catchUpAtEdge(
-  hasPendingUpdate: () => boolean,
-  isAtEdge: () => boolean,
-  catchUp: () => void | Promise<void>,
-): void {
-  if (hasPendingUpdate() && isAtEdge()) void catchUp();
 }
 
 function createBoundaryHint(ownerDocument: Document, text: string, kind: 'top' | 'bottom'): HTMLElement {
@@ -198,7 +127,7 @@ export class BoundedStreamWindow<T> {
   private readonly windowRef: (Window & typeof globalThis) | undefined;
 
   constructor(private readonly options: BoundedStreamWindowOptions) {
-    this.onScrollFrame = createFrameScheduler(() => {
+    this.onScrollFrame = frameScheduler(() => {
       if (this.disposed) return;
       this.options.onScroll?.();
       this.checkReach();
@@ -208,7 +137,7 @@ export class BoundedStreamWindow<T> {
     // 指针按下期间不重建 DOM：整列表 innerHTML 重建会销毁鼠标按下的那一行节点，
     // 使 mouseup 落到新节点上，浏览器因「按下与抬起不在同一节点」而不再派发 click，
     // 点击被「吃掉」。这里把按下期间请求的重渲染积压下来，待指针抬起后的下一帧再应用。
-    this.flushPending = createFrameScheduler(() => {
+    this.flushPending = frameScheduler(() => {
       if (this.disposed || !this.pendingRender || !this.lastState) return;
       this.applyRender(this.lastState);
     });

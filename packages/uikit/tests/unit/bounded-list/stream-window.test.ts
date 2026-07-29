@@ -1,14 +1,11 @@
 // BoundedStreamWindow（渲染引擎）单测。
 // 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.6：
 //   A 全量渲染 / B 状态与边界提示 / C 触界检测 / D 锚点 / F 贴边判定
-//   G 指针期间推迟重建 / H 事件委托 / I 键盘导航 / J 内容 load / K 释放 / L 辅助导出。
+//   G 指针期间推迟重建 / H 事件委托 / I 键盘导航 / J 内容 load / K 释放 / L 帧调度。
 
 import { describe, expect, it, vi } from 'vitest';
-import {
-  BoundedStreamWindow,
-  catchUpAtEdge,
-  createFrameScheduler,
-} from '../../../src/app/bounded-list/stream-window';
+import { BoundedStreamWindow } from '../../../src/app/bounded-list/stream-window';
+import { frameScheduler } from '../../../src/app/bounded-list/frame';
 import {
   FakeDocument,
   asElement,
@@ -1102,41 +1099,11 @@ describe('BoundedStreamWindow / K dispose：内存泄漏回归', () => {
 
 // ───────────────────────── L 辅助导出 ─────────────────────────
 
-describe('catchUpAtEdge（列表贴顶/贴底追平的统一契约）', () => {
-  it('L1 有待追平的更新且已贴边缘时才追平', () => {
-    const catchUp = vi.fn();
-    catchUpAtEdge(() => true, () => true, catchUp);
-    expect(catchUp).toHaveBeenCalledTimes(1);
-  });
-
-  it('L2 没有待追平的更新时短路，连贴边判定都不执行', () => {
-    const catchUp = vi.fn();
-    const isAtEdge = vi.fn(() => true);
-    catchUpAtEdge(() => false, isAtEdge, catchUp);
-    expect(catchUp).not.toHaveBeenCalled();
-    expect(isAtEdge).not.toHaveBeenCalled();
-  });
-
-  it('L3 有待追平的更新但不在边缘时不追平', () => {
-    const catchUp = vi.fn();
-    catchUpAtEdge(() => true, () => false, catchUp);
-    expect(catchUp).not.toHaveBeenCalled();
-  });
-
-  it('L4 catchUp 返回 Promise 时按 fire-and-forget 处理', async () => {
-    let settled = false;
-    catchUpAtEdge(() => true, () => true, () => new Promise<void>((resolve) => setTimeout(() => { settled = true; resolve(); }, 0)));
-    expect(settled).toBe(false);
-    await new Promise((resolve) => setTimeout(resolve, 1));
-    expect(settled).toBe(true);
-  });
-});
-
-describe('createFrameScheduler', () => {
+describe('frameScheduler', () => {
   it('L5 同一帧内合并多次调用', () => {
     withFrames((frames) => {
       const fn = vi.fn();
-      const schedule = createFrameScheduler(fn);
+      const schedule = frameScheduler(fn);
       schedule();
       schedule();
       schedule();
@@ -1149,7 +1116,7 @@ describe('createFrameScheduler', () => {
   it('L6 上一帧执行完之后再次调用会重新排队', () => {
     withFrames((frames) => {
       const fn = vi.fn();
-      const schedule = createFrameScheduler(fn);
+      const schedule = frameScheduler(fn);
       schedule();
       frames.run();
       schedule();
@@ -1161,7 +1128,7 @@ describe('createFrameScheduler', () => {
   it('L7 cancel 后已排队的调用不再执行', () => {
     withFrames((frames) => {
       const fn = vi.fn();
-      const schedule = createFrameScheduler(fn);
+      const schedule = frameScheduler(fn);
       schedule();
       schedule.cancel();
       frames.run();
@@ -1172,7 +1139,7 @@ describe('createFrameScheduler', () => {
   it('L8 cancel 之后仍可以重新调度（token 递增而非永久失效）', () => {
     withFrames((frames) => {
       const fn = vi.fn();
-      const schedule = createFrameScheduler(fn);
+      const schedule = frameScheduler(fn);
       schedule();
       schedule.cancel();
       schedule();
@@ -1184,7 +1151,7 @@ describe('createFrameScheduler', () => {
   it('L9 未调度时 cancel 是空操作', () => {
     withFrames((frames) => {
       const fn = vi.fn();
-      const schedule = createFrameScheduler(fn);
+      const schedule = frameScheduler(fn);
       schedule.cancel();
       frames.run();
       expect(fn).not.toHaveBeenCalled();
@@ -1193,7 +1160,7 @@ describe('createFrameScheduler', () => {
 
   it('L10 环境没有 requestAnimationFrame 时同步执行（node 单测环境的默认路径）', () => {
     const fn = vi.fn();
-    const schedule = createFrameScheduler(fn);
+    const schedule = frameScheduler(fn);
     schedule();
     expect(fn).toHaveBeenCalledTimes(1);
     schedule();

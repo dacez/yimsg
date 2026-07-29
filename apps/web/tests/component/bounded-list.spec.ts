@@ -1610,7 +1610,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     ).toContain('refresh-during-reconcile');
   });
 
-  test('pageSize=2/maxPages=1 裁剪后：remove B 的最终语义保留，重复 upsert C 只留最后一次值', async ({ page }) => {
+  test('pageSize=2/maxPages=1 裁剪后重复 upsert C 只留最后一次值，且始终不突破硬上限', async ({ page }) => {
     const key = await mount(page, {
       items: [
         { id: 'A', label: 'A', order: 0 },
@@ -1636,21 +1636,20 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect(root(page, key).locator('[data-id="C"]')).toHaveCount(1);
     await expect(root(page, key).locator('[data-id="C"] .bl-row-label')).toContainText('C-v3');
 
-    // 先滚离新鲜端：本端 upsert 在权威请求在飞时会点亮提示条，贴边时提示条会自动
-    // 追平并再发一次请求。这里只验证权威响应本身的落地结果，所以让提示条停在
-    // 「等待用户点击」状态，避免断言撞上第二次请求。
-    await call(page, 'setScrollTop', key, 0);
-    await dispatchScroll(page, key);
     await call(page, 'resolvePage', key);
     await expect.poll(() => call<ListState>(page, 'state', key)).toMatchObject({
       loading: false,
       failed: false,
     });
 
-    // remove 重放到权威窗口：B 不得复活。C 以服务端为准。
-    await expect(root(page, key).locator('[data-id="B"]')).toHaveCount(0);
-    expect((await call<string[]>(page, 'rowIds', key)).filter((id) => id === 'C')).toHaveLength(0);
+    // 权威响应以服务端内容为准，硬上限在整个过程中始终成立。
+    // 「overlay 里的 remove 必须挡住权威页带回的同一身份」是确定性契约，由单元用例
+    // G3m 覆盖：本用例窗口只有 2 条、内容比视口短，因而恒判定为贴在新鲜端，提示条
+    // 会自动再追平一次，服务端仍持有的条目本就应当合法回来，不适合在这里断言。
     expect((await call<ListState>(page, 'state', key)).count).toBeLessThanOrEqual(2);
+    expect(await call<string[]>(page, 'rowIds', key)).toHaveLength(
+      (await call<ListState>(page, 'state', key)).count,
+    );
   });
 
   test('tail reset(pinEdge=false) 形成远离尾部的真实几何后，无 scroll 事件的 upsert 不自动追平或贴底', async ({ page }) => {

@@ -2266,6 +2266,39 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
+  it('G3m reconcile 在飞时的 removeLocal 在权威响应后仍然生效，被删身份不复活', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const initial = list.reset();
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+      frames.run();
+
+      // 撑破硬预算触发裁剪与 staged reconcile。
+      list.upsertLocal({ id: 2, label: 'C-v1' });
+      frames.run();
+      expect(pending).toHaveLength(2);
+
+      // reconcile 在飞期间删掉 id=1，并重复并入同一身份。
+      expect(list.removeLocal('1')).toBe(true);
+      list.upsertLocal({ id: 2, label: 'C-v2' });
+      list.upsertLocal({ id: 2, label: 'C-v3' });
+
+      // 权威页会重新带回 id=1；overlay 里的 remove 必须把它挡住。
+      pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
+      await flushAsync();
+      expect(renderedRows(host)).toEqual(['row-0']);
+      list.dispose();
+    });
+  });
+
   it('G4 upsertLocal 经 normalize 处理（可去重 + 排序）', async () => {
     const items = makeTestItems(3);
     const host = createHost();
