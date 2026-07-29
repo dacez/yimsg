@@ -101,8 +101,6 @@ export class BoundedList<T, Q = void> {
   private firstLoadDone = false;
   private resetError: unknown;
   private hasResetError = false;
-  private loadingBefore = false;
-  private loadingAfter = false;
   private stale = false;
   private pendingCount = 0;
   private requestId = 0;
@@ -111,15 +109,18 @@ export class BoundedList<T, Q = void> {
   /** 加载前缓存的贴边状态：图片异步增高后不能现算（内容已变高，必然误判成不贴边）。 */
   private stickToFreshEdge = true;
   /**
-   * 触界检测驱动的自动续翻在该方向上是否被暂停。
-   * 某方向请求失败后置真，防止「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环；
-   * 用户把该端滚离触界范围、显式调用 loadMore、或 reset 之后解除。
+   * 按方向索引的续翻状态，取代原先 `xxxBefore`/`xxxAfter` 四对散装字段：
+   * - `loading`：该方向的普通分页是否在飞。
+   * - `autoBlocked`：触界检测驱动的自动续翻在该方向上是否被暂停——某方向请求
+   *   失败后置真，防止「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环；
+   *   用户把该端滚离触界范围、显式调用 loadMore、或 reset 之后解除。
+   * - `cursorInvalid`：live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。
+   * 用 `this.dir[dir].xxx` 按方向读写，消除一大批 `dir === 'backward' ? … : …` 三元式。
    */
-  private autoLoadBlockedBefore = false;
-  private autoLoadBlockedAfter = false;
-  /** live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。 */
-  private cursorInvalidBefore = false;
-  private cursorInvalidAfter = false;
+  private readonly dir: Record<Direction, { loading: boolean; autoBlocked: boolean; cursorInvalid: boolean }> = {
+    backward: { loading: false, autoBlocked: false, cursorInvalid: false },
+    forward: { loading: false, autoBlocked: false, cursorInvalid: false },
+  };
 
   private pendingInvalidate = false;
   private pendingIdentities = new Set<string>();
@@ -200,96 +201,32 @@ export class BoundedList<T, Q = void> {
     this.capacityReconciling = false;
     this.capacityReconcilePromise = null;
     // reset 代表全新的查询世代（首次加载 / setQuery）：上一世代未追平的本地写入
-    // 不再适用于新世代的窗口，在这里整体丢弃；同一世代内失败重试见 catch 分支，
-    // 那里刻意不清空，好让失败期间的本地写入等到下次成功时被重放。
+    // 不再适用于新世代的窗口，在这里整体丢弃；同一世代内失败重试见共享辅助方法的
+    // catch 分支，那里刻意不清空，好让失败期间的本地写入等到下次成功时被重放。
     this.pendingMutations.clear();
     this.pendingInvalidate = false;
     this.pendingIdentities.clear();
     this.pendingInvalidateCount = 0;
     if (optsIn && Object.prototype.hasOwnProperty.call(optsIn, 'query')) this.query = optsIn.query as Q;
-    const pinEdge = optsIn?.pinEdge ?? true;
-    const myRequestId = ++this.requestId;
-    this.resetInFlightRequestId = myRequestId;
-    this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
-
-    this.window.reset();
-    this.firstLoadDone = false;
-    this.clearResetError();
-    this.loadingBefore = false;
-    this.loadingAfter = false;
-    this.autoLoadBlockedBefore = false;
-    this.autoLoadBlockedAfter = false;
-    this.cursorInvalidBefore = false;
-    this.cursorInvalidAfter = false;
-    this.refreshTokenByIdentity.clear();
-    this.stale = false;
-    this.pendingCount = 0;
-    this.emitStaleChange();
-    this.emitLoadState();
-    this.render(false);
-
-    const request: FetchPageRequest<Q> = {
-      cursor: undefined,
-      backward: false,
-      limit: this.opts.pageSize,
-      query: this.query,
-    };
-
-    try {
-      const page = await this.opts.source.fetch(request);
-      if (myRequestId !== this.requestId || this.disposed) return;
-      const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
-
-      this.window = nextWindow;
-      this.resetInFlightRequestId = null;
-      this.firstLoadDone = true;
-      this.applyAuthoritativeOverlayState(overlayEvicted);
-      this.emitItemsChanged();
-      if (overlayEvicted > 0) this.emitStaleChange();
-      this.render(false);
-      if (pinEdge) {
-        this.pinToFreshEdge();
-      } else {
-        this.stickToFreshEdge = this.atFreshEdge();
-      }
-      this.emitLoadState();
-      this.flushDeferredInvalidate();
-    } catch (err) {
-      if (myRequestId !== this.requestId || this.disposed) return;
-      this.resetInFlightRequestId = null;
-      // 不清空 pendingMutations：本次失败期间发生的本地写入仍要等下一次成功的
-      // reset/reconcile 把窗口带到新鲜端时被重放，不能因为这次失败就丢掉。
-      this.firstLoadDone = true;
-      this.resetError = err;
-      this.hasResetError = true;
-      if (this.window.count > 0) {
-        this.stale = true;
-        this.pendingCount = Math.max(1, this.pendingCount);
-        this.emitStaleChange();
-      }
-      this.reportError(err, 'reset');
-      this.render(false);
-      this.emitLoadState();
-      this.flushDeferredInvalidate();
-    }
+    await this.loadAuthoritativePage({ clearWindow: true, pinEdge: optsIn?.pinEdge ?? true });
   }
 
   async loadMore(dir: Direction): Promise<void> {
     if (this.disposed) return;
     // 显式调用视为「用户主动重试」，解除该方向的自动续翻暂停。
-    if (dir === 'backward') this.autoLoadBlockedBefore = false; else this.autoLoadBlockedAfter = false;
+    this.dir[dir].autoBlocked = false;
     await this.loadMoreInternal(dir);
   }
 
   // 两个调用点都已经挡住了 disposed：公开的 loadMore 自带守卫，autoLoadMore 只在
   // render 里被渲染引擎回调，而 render 在 dispose 之后是空操作。
   private async loadMoreInternal(dir: Direction): Promise<void> {
-    if (dir === 'backward' ? this.cursorInvalidBefore : this.cursorInvalidAfter) {
+    if (this.dir[dir].cursorInvalid) {
       await this.reconcileCapacity();
       return;
     }
     const hasMore = dir === 'backward' ? this.window.hasMoreBefore : this.window.hasMoreAfter;
-    const alreadyLoading = dir === 'backward' ? this.loadingBefore : this.loadingAfter;
+    const alreadyLoading = this.dir[dir].loading;
     if (!hasMore || alreadyLoading) return;
 
     const cursor = dir === 'backward' ? this.window.backwardCursor : this.window.forwardCursor;
@@ -297,7 +234,7 @@ export class BoundedList<T, Q = void> {
     // 空串不是 reset 语义，发出去只会让服务端按未定义行为处理，这里直接放弃。
     if (cursor === '') return;
 
-    if (dir === 'backward') this.loadingBefore = true; else this.loadingAfter = true;
+    this.dir[dir].loading = true;
     this.emitLoadState();
     this.render(false);
 
@@ -313,17 +250,14 @@ export class BoundedList<T, Q = void> {
       let acceptedCount: number;
       if (dir === 'backward') {
         acceptedCount = this.window.prependBackward(page);
-        this.loadingBefore = false;
-        this.autoLoadBlockedBefore = false;
       } else {
         acceptedCount = this.window.appendForward(page);
-        this.loadingAfter = false;
-        this.autoLoadBlockedAfter = false;
       }
+      this.dir[dir].loading = false;
+      this.dir[dir].autoBlocked = false;
       const overlayEvicted = this.replayPendingMutations(this.window);
       if (overlayEvicted > 0) {
-        if (this.freshEdgeValue === 'tail') this.cursorInvalidBefore = true;
-        else this.cursorInvalidAfter = true;
+        this.dir[this.nonFreshDirection()].cursorInvalid = true;
         this.cancelOrdinaryPageLoads();
         this.stale = true;
         this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
@@ -338,13 +272,8 @@ export class BoundedList<T, Q = void> {
       this.flushDeferredInvalidate();
     } catch (err) {
       if (myRequestId !== this.requestId || this.disposed) return;
-      if (dir === 'backward') {
-        this.loadingBefore = false;
-        this.autoLoadBlockedBefore = true;
-      } else {
-        this.loadingAfter = false;
-        this.autoLoadBlockedAfter = true;
-      }
+      this.dir[dir].loading = false;
+      this.dir[dir].autoBlocked = true;
       this.reportError(err, dir);
       this.emitLoadState();
       this.render(false);
@@ -399,8 +328,7 @@ export class BoundedList<T, Q = void> {
     }
     const evicted = this.window.mergeLive(item, this.freshEdgeValue);
     if (evicted > 0) {
-      if (this.freshEdgeValue === 'tail') this.cursorInvalidBefore = true;
-      else this.cursorInvalidAfter = true;
+      this.dir[this.nonFreshDirection()].cursorInvalid = true;
       this.cancelOrdinaryPageLoads();
       if (!rememberBeforeMerge) {
         this.rememberPendingMutation({ kind: 'upsert', item });
@@ -489,10 +417,10 @@ export class BoundedList<T, Q = void> {
     this.stream.render({
       items,
       loaded: this.firstLoadDone,
-      hasMoreBefore: this.window.hasMoreBefore && !this.cursorInvalidBefore,
-      hasMoreAfter: this.window.hasMoreAfter && !this.cursorInvalidAfter,
-      loadingBefore: this.loadingBefore,
-      loadingAfter: this.loadingAfter,
+      hasMoreBefore: this.window.hasMoreBefore && !this.dir.backward.cursorInvalid,
+      hasMoreAfter: this.window.hasMoreAfter && !this.dir.forward.cursorInvalid,
+      loadingBefore: this.dir.backward.loading,
+      loadingAfter: this.dir.forward.loading,
       emptyText,
       errorText,
       loadingText: text.loading?.(),
@@ -545,11 +473,11 @@ export class BoundedList<T, Q = void> {
   getState(): BoundedListState {
     return {
       loaded: this.firstLoadDone,
-      loading: this.loadingBefore || this.loadingAfter || this.capacityReconciling,
-      loadingBefore: this.loadingBefore,
-      loadingAfter: this.loadingAfter,
-      hasMoreBefore: this.window.hasMoreBefore && !this.cursorInvalidBefore,
-      hasMoreAfter: this.window.hasMoreAfter && !this.cursorInvalidAfter,
+      loading: this.dir.backward.loading || this.dir.forward.loading || this.capacityReconciling,
+      loadingBefore: this.dir.backward.loading,
+      loadingAfter: this.dir.forward.loading,
+      hasMoreBefore: this.window.hasMoreBefore && !this.dir.backward.cursorInvalid,
+      hasMoreAfter: this.window.hasMoreAfter && !this.dir.forward.cursorInvalid,
       count: this.window.count,
       total: this.window.total,
       stale: this.stale,
@@ -585,6 +513,10 @@ export class BoundedList<T, Q = void> {
 
   private freshDirection(): Direction {
     return this.freshEdgeValue === 'head' ? 'backward' : 'forward';
+  }
+
+  private nonFreshDirection(): Direction {
+    return this.freshEdgeValue === 'head' ? 'forward' : 'backward';
   }
 
   private atFreshEdge(): boolean {
@@ -627,7 +559,7 @@ export class BoundedList<T, Q = void> {
   }
 
   private autoLoadMore(dir: Direction): void {
-    if (dir === 'backward' ? this.autoLoadBlockedBefore : this.autoLoadBlockedAfter) return;
+    if (this.dir[dir].autoBlocked) return;
     void this.loadMoreInternal(dir);
   }
 
@@ -638,7 +570,7 @@ export class BoundedList<T, Q = void> {
   }
 
   private hasInvalidCapacityCursor(): boolean {
-    return this.cursorInvalidBefore || this.cursorInvalidAfter;
+    return this.dir.backward.cursorInvalid || this.dir.forward.cursorInvalid;
   }
 
   private onScrollFrame(): void {
@@ -646,13 +578,13 @@ export class BoundedList<T, Q = void> {
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该方向的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
-    if (el.scrollTop > this.reachPx) this.autoLoadBlockedBefore = false;
-    if (maxScrollTop - el.scrollTop > this.reachPx) this.autoLoadBlockedAfter = false;
+    if (el.scrollTop > this.reachPx) this.dir.backward.autoBlocked = false;
+    if (maxScrollTop - el.scrollTop > this.reachPx) this.dir.forward.autoBlocked = false;
     this.stickToFreshEdge = this.atFreshEdge();
 
     // 提示条自动消失路径①：用户自己滚回新鲜端时自动追平（设计文档 §13.2）。
     catchUpAtEdge(
-      () => this.stale && !this.loadingBefore && !this.loadingAfter,
+      () => this.stale && !this.dir.backward.loading && !this.dir.forward.loading,
       () => this.atFreshEdge(),
       () => this.catchUp(),
     );
@@ -685,7 +617,10 @@ export class BoundedList<T, Q = void> {
     // 开始接管本轮 reconcile，就取消旧帧，避免首个请求很快完成后旧帧再发一次 reset。
     this.scheduleCapacityReconcile.cancel();
     if (this.capacityReconcilePromise) return this.capacityReconcilePromise;
-    const running = this.runCapacityReconcile();
+    // pinEdge 恒为 false：容量 reconcile 不清空窗口，是否贴边完全交给共享辅助方法
+    // 在响应落地那一刻实时读 `stickToFreshEdge`（可能在请求期间被滚动事件改写），
+    // 而不是像 reset 那样在调用时就固定调用方意图。
+    const running = this.loadAuthoritativePage({ clearWindow: false, pinEdge: false });
     this.capacityReconcilePromise = running;
     void running.then(
       () => {
@@ -698,16 +633,39 @@ export class BoundedList<T, Q = void> {
     return running;
   }
 
-  private async runCapacityReconcile(): Promise<void> {
+  /**
+   * `reset` 与容量 reconcile 共用的权威首页拉取逻辑：两者唯一的区别是是否清空当前
+   * 窗口（`clearWindow`）——reset 清空重建，reconcile 保留 capped DOM 直到响应落地
+   * 才原子替换。`pinEdge` 只在 `clearWindow` 时生效，体现调用方在 reset 那一刻的
+   * 贴边意图；reconcile 场景固定传 `false`，改为在响应落地时检查实时的
+   * `stickToFreshEdge`（见下方 `else if`）。
+   */
+  private async loadAuthoritativePage(opts: { clearWindow: boolean; pinEdge: boolean }): Promise<void> {
+    const { clearWindow, pinEdge } = opts;
     const myRequestId = ++this.requestId;
-    this.resetInFlightRequestId = null;
+    if (clearWindow) {
+      this.resetInFlightRequestId = myRequestId;
+      this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
+      this.window.reset();
+      this.firstLoadDone = false;
+      this.dir.backward.autoBlocked = false;
+      this.dir.forward.autoBlocked = false;
+      this.dir.backward.cursorInvalid = false;
+      this.dir.forward.cursorInvalid = false;
+      this.stale = false;
+      this.pendingCount = 0;
+      this.emitStaleChange();
+    } else {
+      this.resetInFlightRequestId = null;
+      this.capacityReconciling = true;
+    }
+    this.dir.backward.loading = false;
+    this.dir.forward.loading = false;
     this.refreshTokenByIdentity.clear();
-    this.capacityReconciling = true;
-    this.loadingBefore = false;
-    this.loadingAfter = false;
     this.clearResetError();
     this.emitLoadState();
-    // 保留当前有界窗口，只更新 loading / pill；权威请求成功前不清空 DOM。
+    // clearWindow=false（容量 reconcile）时保留当前有界窗口，只更新 loading / pill；
+    // 权威响应落地前不清空 DOM。
     this.render(false);
 
     const request: FetchPageRequest<Q> = {
@@ -719,30 +677,43 @@ export class BoundedList<T, Q = void> {
 
     try {
       const page = await this.opts.source.fetch(request);
-      if (this.disposed || myRequestId !== this.requestId) return;
+      if (myRequestId !== this.requestId || this.disposed) return;
       const { window: nextWindow, evicted: overlayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
-      this.scheduleCapacityReconcile.cancel();
+      this.resetInFlightRequestId = null;
       this.capacityReconciling = false;
+      this.scheduleCapacityReconcile.cancel();
       this.firstLoadDone = true;
-      this.clearResetError();
       this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
-      this.emitStaleChange();
+      if (overlayEvicted > 0 || !clearWindow) this.emitStaleChange();
       this.render(false);
-      if (this.stickToFreshEdge) this.pinToFreshEdge();
+      if (pinEdge) {
+        this.pinToFreshEdge();
+      } else if (clearWindow) {
+        this.stickToFreshEdge = this.atFreshEdge();
+      } else if (this.stickToFreshEdge) {
+        this.pinToFreshEdge();
+      }
       this.emitLoadState();
       this.flushDeferredInvalidate();
     } catch (err) {
-      if (this.disposed || myRequestId !== this.requestId) return;
-      this.scheduleCapacityReconcile.cancel();
+      if (myRequestId !== this.requestId || this.disposed) return;
+      this.resetInFlightRequestId = null;
       this.capacityReconciling = false;
+      this.scheduleCapacityReconcile.cancel();
+      // 不清空 pendingMutations：本次失败期间发生的本地写入仍要等下一次成功的
+      // reset/reconcile 把窗口带到新鲜端时被重放，不能因为这次失败就丢掉。
+      this.firstLoadDone = true;
       this.resetError = err;
       this.hasResetError = true;
-      this.stale = true;
+      if (this.window.count > 0) {
+        this.stale = true;
+        this.pendingCount = Math.max(1, this.pendingCount);
+        this.emitStaleChange();
+      }
       this.reportError(err, 'reset');
-      this.emitStaleChange();
       this.render(false);
       this.emitLoadState();
       this.flushDeferredInvalidate();
@@ -795,8 +766,8 @@ export class BoundedList<T, Q = void> {
 
   private applyAuthoritativeOverlayState(overlayEvicted: number): void {
     const hasDeferredInvalidate = this.pendingInvalidate;
-    this.cursorInvalidBefore = overlayEvicted > 0 && this.freshEdgeValue === 'tail';
-    this.cursorInvalidAfter = overlayEvicted > 0 && this.freshEdgeValue === 'head';
+    this.dir[this.nonFreshDirection()].cursorInvalid = overlayEvicted > 0;
+    this.dir[this.freshDirection()].cursorInvalid = false;
     this.stale = overlayEvicted > 0 || hasDeferredInvalidate;
     if (overlayEvicted > 0) {
       this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
@@ -810,15 +781,15 @@ export class BoundedList<T, Q = void> {
   }
 
   private hasDataRequestInFlight(): boolean {
-    return this.isAuthoritativeRequestInFlight() || this.loadingBefore || this.loadingAfter;
+    return this.isAuthoritativeRequestInFlight() || this.dir.backward.loading || this.dir.forward.loading;
   }
 
   private cancelOrdinaryPageLoads(): void {
-    if (this.isAuthoritativeRequestInFlight() || (!this.loadingBefore && !this.loadingAfter)) return;
+    if (this.isAuthoritativeRequestInFlight() || (!this.dir.backward.loading && !this.dir.forward.loading)) return;
     // live 裁剪后，所有基于旧窗口边界发出的普通分页响应都已失去上下文。
     this.requestId += 1;
-    this.loadingBefore = false;
-    this.loadingAfter = false;
+    this.dir.backward.loading = false;
+    this.dir.forward.loading = false;
     this.refreshTokenByIdentity.clear();
   }
 
@@ -927,7 +898,7 @@ export class BoundedList<T, Q = void> {
         const fetchedMap = new Map(fetched.map((item) => [this.opts.identityOf(item), item] as const));
         // refresh 可能先于一个更早快照的普通分页返回。此时刚接受的远端最终态也要
         // 暂存进 overlay，让晚到分页在并入后重放；否则新值会回退，删除项会复活。
-        const pageRequestInFlight = this.loadingBefore || this.loadingAfter;
+        const pageRequestInFlight = this.dir.backward.loading || this.dir.forward.loading;
         let changed = false;
         for (const id of hits) {
           if (this.refreshTokenByIdentity.get(id) !== refreshTokens.get(id)) continue;
