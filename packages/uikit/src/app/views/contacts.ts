@@ -5,7 +5,7 @@ import { describeError } from '../error-i18n';
 import type { Contact, ContactPage, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
-import { createBoundedList, serverPageSource, type BoundedList, type PageLoadResult, type RenderItemContext } from '../bounded-list';
+import { createBoundedList, serverPageSource, standaloneList, type BoundedList, type PageLoadResult, type RenderItemContext } from '../bounded-list';
 import { contactIdentity } from '../list-identity';
 import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_TRASH } from './panel-action-btn';
 import { openOrgAdmin } from './org-admin';
@@ -772,6 +772,8 @@ export function createContactsView(app: AppInstance) {
     const memberList = createBoundedList<Contact>({
       id: 'contacts.createGroupMembers',
       scrollElement: listEl,
+      // 建群弹窗内的一次性候选列表，随弹窗销毁，不接入宿主广播。
+      register: standaloneList,
       pillHost: false,
       pageSize: FRIEND_PAGE_SIZE,
       maxPages: APP_CONFIG.list.maxPages,

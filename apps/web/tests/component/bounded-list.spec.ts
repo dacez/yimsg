@@ -251,17 +251,12 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
     const eventTypes = await call<string[]>(page, 'eventTypes', key);
     expect(eventTypes).toEqual([
-      'onStaleChange',
       'onLoadStateChange',
       'onItemsChanged',
       'onLoadStateChange',
     ]);
     const eventLog = await events(page, key);
-    expect(eventLog[0]).toEqual({
-      type: 'onStaleChange',
-      payload: { stale: false, pendingCount: 0 },
-    });
-    expect(eventLog[1]).toMatchObject({
+    expect(eventLog[0]).toMatchObject({
       type: 'onLoadStateChange',
       payload: {
         loaded: false,
@@ -272,14 +267,14 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         pendingCount: 0,
       },
     });
-    expect(eventLog[2]).toEqual({
+    expect(eventLog[1]).toEqual({
       type: 'onItemsChanged',
       payload: [
         { id: '0', label: 'item-0', order: 0 },
         { id: '1', label: 'item-1', order: 1 },
       ],
     });
-    expect(eventLog[3]).toMatchObject({
+    expect(eventLog[2]).toMatchObject({
       type: 'onLoadStateChange',
       payload: {
         loaded: true,
@@ -612,33 +607,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(Math.abs(after - before)).toBeLessThanOrEqual(1);
   });
 
-  test('scrollToIdentity 支持 nearest/center、pinnedItems 与未命中返回值', async ({ page }) => {
-    const pinned: TestItem = { id: 'pinned', label: 'pinned', order: -1 };
-    const key = await mount(page, {
-      itemCount: 20,
-      pageSize: 20,
-      maxPages: 1,
-      pinnedItems: [pinned],
-      reachPx: -1,
-    });
-
-    expect(await call(page, 'scrollToIdentity', key, 'pinned', 'nearest')).toBe(true);
-    expect(await call(page, 'scrollToIdentity', key, 'missing', 'center')).toBe(false);
-    expect(await call(page, 'scrollToIdentity', key, '10', 'center')).toBe(true);
-    const centerDelta = await root(page, key).locator('[data-id="10"]').evaluate((row) => {
-      const scroller = row.closest('.bl-scroller')!;
-      const rowRect = row.getBoundingClientRect();
-      const scrollerRect = scroller.getBoundingClientRect();
-      return Math.abs(
-        (rowRect.top + rowRect.bottom) / 2
-          - (scrollerRect.top + scrollerRect.bottom) / 2,
-      );
-    });
-    expect(centerDelta).toBeLessThanOrEqual(1);
-    expect((await call<ListState>(page, 'state', key)).count).toBe(20);
-    await expect(rows(page, key)).toHaveCount(21);
-  });
-
   test('setQuery 默认 300ms 防抖、覆盖旧查询，0ms 立即 reset', async ({ page }) => {
     await page.clock.install();
     const key = await mount(page, {
@@ -705,9 +673,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pendingCount: 5,
     });
     const firstRefreshEvents = await events(page, key);
-    expect(firstRefreshEvents.filter((event) => event.type === 'onStaleChange')).toEqual([
-      { type: 'onStaleChange', payload: { stale: true, pendingCount: 5 } },
-    ]);
     expect(firstRefreshEvents.filter((event) => event.type === 'fetchByIdentity')).toEqual([
       { type: 'fetchByIdentity', payload: ['1', '2'] },
     ]);
@@ -846,7 +811,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
   });
 
-  test('新鲜端空页触发 onEmptyPage，并同时清 stale/pendingCount', async ({ page }) => {
+  test('新鲜端翻到空页时收敛 hasMore，并同时清 stale/pendingCount', async ({ page }) => {
     const key = await mount(page, {
       freshEdge: 'tail',
       stickyPx: 0,
@@ -872,13 +837,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       order,
     })));
     await call(page, 'loadMore', key, 'forward');
-    expect((await events(page, key)).filter((event) => event.type === 'onEmptyPage')).toEqual([
-      { type: 'onEmptyPage', payload: 'forward' },
-    ]);
-    expect((await events(page, key)).filter((event) => event.type === 'onStaleChange')).toEqual([
-      { type: 'onStaleChange', payload: { stale: true, pendingCount: 7 } },
-      { type: 'onStaleChange', payload: { stale: false, pendingCount: 0 } },
-    ]);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
       pendingCount: 0,
@@ -1372,7 +1330,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     expect(await call(page, 'patchLabel', key, '1', 'ignored')).toBe(false);
     expect(await call(page, 'removeLocal', key, '1')).toBe(false);
-    expect(await call(page, 'scrollToIdentity', key, '1')).toBe(false);
   });
 
   test('BL-BUG-001：localPageSource 并发 reset 的旧 loadAll 会污染新查询续翻缓存', async ({ page }) => {

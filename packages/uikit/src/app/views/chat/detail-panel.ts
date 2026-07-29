@@ -7,7 +7,7 @@ import {
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { describeError } from '../../error-i18n';
-import { createBoundedList, localPageSource, serverPageSource, type BoundedList } from '../../bounded-list';
+import { createBoundedList, localPageSource, serverPageSource, standaloneList, type BoundedList } from '../../bounded-list';
 import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
 import { contactFriendUid } from '../contacts';
 
@@ -323,6 +323,8 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
     const list = createBoundedList<AddMemberEntry, { keyword: string }>({
       id: 'detail.addMember',
       scrollElement: app.$('add-member-list'),
+      // 加群成员弹窗内的一次性候选列表，随弹窗销毁，不接入宿主广播。
+      register: standaloneList,
       pillHost: false,
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,

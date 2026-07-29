@@ -2,13 +2,12 @@
 // 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.7：
 //   A 构造与默认值 / B reset 首屏 / C loadMore 双向续翻 / D setQuery 防抖
 //   E invalidate 决策树 / F 提示条三条消失路径 / G 本端增删改 / H 渲染与文案
-//   I 交互与选中态 / J scrollToIdentity / K 错误处理 / L 释放 / M 只读状态 / N 防御性守卫。
+//   I 交互与选中态 / K 错误处理 / L 释放 / M 只读状态 / N 防御性守卫。
 
 import { describe, expect, it, vi } from 'vitest';
 import { createBoundedList } from '../../../src/app/bounded-list/bounded-list';
 import { localPageSource } from '../../../src/app/bounded-list/page-source';
 import { SelectionStore } from '../../../src/app/bounded-list/selection';
-import { registeredBoundedListIds } from '../../../src/app/bounded-list/registry';
 import type { BoundedListOptions, RenderItemContext } from '../../../src/app/bounded-list/types';
 import { FakeDocument, asElement, row, viewOf, type FakeElement } from './fake-dom';
 import {
@@ -22,6 +21,24 @@ import {
   pageOf,
   type TestItem,
 } from './test-sources';
+
+/**
+ * 测试自持的注册表。组件的 `register` 是必填参数、注册表实体由宿主持有，
+ * 所以注册 / 注销的生命周期断言对这一份做，而不是对一个进程级全局做。
+ * 每个用例结束时 dispose 会把自己摘掉，用例之间天然不串。
+ */
+const testRegistry = new Map<string, { readonly id: string; invalidate(): void | Promise<void> }>();
+
+function testRegister(instance: { readonly id: string; invalidate(): void | Promise<void> }): () => void {
+  testRegistry.set(instance.id, instance);
+  return () => {
+    if (testRegistry.get(instance.id) === instance) testRegistry.delete(instance.id);
+  };
+}
+
+function registeredIds(): string[] {
+  return [...testRegistry.keys()];
+}
 
 function createHost(options: { withParent?: boolean } = {}) {
   const doc = new FakeDocument();
@@ -53,6 +70,7 @@ function baseOptions(
   return {
     id: 'test-list',
     scrollElement: asElement(host.scroller),
+    register: testRegister,
     pageSize: 3,
     maxPages: 2,
     source,
@@ -187,13 +205,13 @@ describe('BoundedList / A 构造与默认值', () => {
     list.dispose();
   });
 
-  it('A7 构造即注册到注册表，id 可读', () => {
+  it('A7 构造即注册到宿主注册表，dispose 后摘除，id 可读', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => []), { id: 'ctor.registered' }));
     expect(list.id).toBe('ctor.registered');
-    expect(registeredBoundedListIds()).toContain('ctor.registered');
+    expect(registeredIds()).toContain('ctor.registered');
     list.dispose();
-    expect(registeredBoundedListIds()).not.toContain('ctor.registered');
+    expect(registeredIds()).not.toContain('ctor.registered');
   });
 
   it('A9 pageSize / maxPages 非法时构造直接抛错，不静默退化', () => {
@@ -269,7 +287,7 @@ describe('BoundedList / A 构造与默认值', () => {
     expect(host.scroller.getAttribute('aria-multiselectable')).toBe('false');
   });
 
-  it('A13 register 提供时登记到宿主注册表而非模块级注册表（多实例隔离）', async () => {
+  it('A13 登记到 register 指定的那份宿主注册表，不会串到别的宿主（多实例隔离）', async () => {
     const items = makeTestItems(2);
     const host = createHost();
     const hostRegistry = new Map<string, { id: string; invalidate(): void | Promise<void> }>();
@@ -281,7 +299,7 @@ describe('BoundedList / A 构造与默认值', () => {
       },
     }));
     expect(hostRegistry.has('host-owned')).toBe(true);
-    expect(registeredBoundedListIds()).not.toContain('host-owned');
+    expect(registeredIds()).not.toContain('host-owned');
 
     // 宿主注册表广播得到的就是组件实例本身，invalidate 走的是组件的决策树。
     await list.reset();
@@ -299,9 +317,12 @@ describe('BoundedList / A 构造与默认值', () => {
     const entry = await import('../../../src/app/bounded-list');
     expect(Object.keys(entry)).toEqual(expect.arrayContaining([
       'createBoundedList', 'BoundedList', 'serverPageSource', 'localPageSource',
-      'SelectionStore', 'invalidateAllBoundedLists', 'registeredBoundedListIds',
+      'SelectionStore', 'standaloneList',
     ]));
     expect(typeof entry.createBoundedList).toBe('function');
+    // 进程级注册表连同它的广播函数已经删除：register 必填，注册表实体只属于宿主。
+    expect(Object.keys(entry)).not.toContain('invalidateAllBoundedLists');
+    expect(Object.keys(entry)).not.toContain('registeredBoundedListIds');
   });
 
   it('A8 selection 不传 store 时按 max 自建一个内部 store', async () => {
@@ -869,28 +890,24 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     list.dispose();
   });
 
-  it('C9 loadMore 拿到空页时回调 onEmptyPage 并收敛该端 hasMore', async () => {
+  it('C9 loadMore 拿到空页时强制收敛该端 hasMore（服务端乐观报还有更多也不认）', async () => {
     const all = makeTestItems(3);
     const host = createHost();
-    const onEmptyPage = vi.fn();
-    const list = createBoundedList(baseOptions(host, createOptimisticSource(() => all), { onEmptyPage }));
+    const list = createBoundedList(baseOptions(host, createOptimisticSource(() => all)));
     await list.reset({ pinEdge: false });
     expect(list.getState().hasMoreAfter).toBe(true); // 满页 → 乐观认为还有
     await list.loadMore('forward');
-    expect(onEmptyPage).toHaveBeenCalledWith('forward');
     expect(list.getState().hasMoreAfter).toBe(false);
     list.dispose();
   });
 
-  it('C9b normalize 后为空按 accepted count 回调，但下一次续翻使用已前进的新游标', async () => {
+  it('C9b normalize 后为空时下一次续翻使用已前进的新游标，不重复请求旧游标', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
-    const onEmptyPage = vi.fn();
     const list = createBoundedList(baseOptions(host, source, {
       pageSize: 1,
       maxPages: 3,
       normalize: (items) => items.filter((item) => item.id !== 1),
-      onEmptyPage,
     }));
     const initial = list.reset({ pinEdge: false });
     pending[0].resolve(pageOf([{ id: 0, label: 'item-0' }], 's0', 'e0', false, true));
@@ -899,7 +916,6 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const filtered = list.loadMore('forward');
     pending[1].resolve(pageOf([{ id: 1, label: 'filtered' }], 's1', 'e1', true, true));
     await filtered;
-    expect(onEmptyPage).toHaveBeenCalledWith('forward');
     expect(list.getState().hasMoreAfter).toBe(true);
 
     const next = list.loadMore('forward');
@@ -1114,6 +1130,7 @@ describe('BoundedList / D setQuery 与防抖', () => {
     const list = createBoundedList<TestItem, { keyword: string }>({
       id: 'mention-picker',
       scrollElement: asElement(host.scroller),
+      register: testRegister,
       pageSize: 40,
       maxPages: 5,
       source,
@@ -1652,19 +1669,6 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     list.dispose();
   });
 
-  it('E17 onStaleChange 在 stale 变化时被调用，携带当前 pendingCount', async () => {
-    const items = makeTestItems(10);
-    const onStaleChange = vi.fn();
-    const { host, list } = setupInvalidateList(items, { onStaleChange });
-    await list.reset();
-    onStaleChange.mockClear();
-    host.scroller.scrollTop = 100;
-    list.invalidate({ count: 4 });
-    expect(onStaleChange).toHaveBeenLastCalledWith(true, 4);
-    await list.reset();
-    expect(onStaleChange).toHaveBeenLastCalledWith(false, 0);
-    list.dispose();
-  });
 });
 
 // ───────────────────────── F 提示条三条消失路径 ─────────────────────────
@@ -2922,59 +2926,6 @@ describe('BoundedList / I 交互与选中态', () => {
   });
 });
 
-// ───────────────────────── J scrollToIdentity ─────────────────────────
-
-describe('BoundedList / J scrollToIdentity', () => {
-  it('J1 命中窗口内条目时滚动并返回 true；未命中返回 false', async () => {
-    const items = makeTestItems(5);
-    const host = createHost();
-    host.scroller.rect = { top: 0, bottom: 100 };
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
-    await list.reset();
-    host.scroller.children[2].rect = { top: 500, bottom: 520 };
-    expect(list.scrollToIdentity('2')).toBe(true);
-    expect(host.scroller.scrollTop).toBeGreaterThan(0);
-    expect(list.scrollToIdentity('not-in-window')).toBe(false);
-    list.dispose();
-  });
-
-  it('J2 命中 pinnedItems 的身份同样可以滚动', async () => {
-    const items = makeTestItems(3);
-    const host = createHost();
-    host.scroller.rect = { top: 0, bottom: 100 };
-    const pinned: TestItem = { id: -1, label: '所有人' };
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { pinnedItems: () => [pinned] }));
-    await list.reset();
-    host.scroller.children[0].rect = { top: 400, bottom: 450 };
-    expect(list.scrollToIdentity('-1')).toBe(true);
-    list.dispose();
-  });
-
-  it('J3 block=center 走居中算法', async () => {
-    const items = makeTestItems(3);
-    const host = createHost();
-    host.scroller.rect = { top: 0, bottom: 100 };
-    host.scroller.clientHeight = 100;
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
-    await list.reset();
-    host.scroller.children[1].rect = { top: 40, bottom: 60 };
-    expect(list.scrollToIdentity('1', { block: 'center' })).toBe(true);
-    expect(host.scroller.scrollTop).toBe(0);
-    list.dispose();
-  });
-
-  it('J4 身份在窗口内但尚未渲染出对应节点时返回 false（渲染层找不到）', async () => {
-    const items = makeTestItems(3);
-    const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
-      renderItem: () => [], // 不产生任何节点
-    }));
-    await list.reset();
-    expect(list.scrollToIdentity('1')).toBe(false);
-    list.dispose();
-  });
-});
-
 // ───────────────────────── K 错误处理 ─────────────────────────
 
 describe('BoundedList / K 错误处理', () => {
@@ -3123,11 +3074,11 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { id: 'dispose-leak-check' }));
     await list.reset();
-    expect(registeredBoundedListIds()).toContain('dispose-leak-check');
+    expect(registeredIds()).toContain('dispose-leak-check');
     expect(host.scroller.listenerCount('scroll')).toBeGreaterThan(0);
 
     list.dispose();
-    expect(registeredBoundedListIds()).not.toContain('dispose-leak-check');
+    expect(registeredIds()).not.toContain('dispose-leak-check');
     for (const type of ['scroll', 'pointerdown', 'pointerup', 'pointercancel', 'keydown', 'click', 'load']) {
       expect(host.scroller.listenerCount(type)).toBe(0);
     }
@@ -3169,7 +3120,6 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     expect(list.patch('0', (i) => i)).toBe(false);
     expect(list.removeLocal('0')).toBe(false);
     expect(() => list.render()).not.toThrow();
-    expect(list.scrollToIdentity('0')).toBe(false);
     expect(() => list.dispose()).not.toThrow(); // 幂等
   });
 
@@ -3238,7 +3188,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
   });
 
   it('L8 批量创建并 dispose 大量实例后不残留任何监听或注册项（内存泄漏压力测试）', async () => {
-    const before = registeredBoundedListIds().length;
+    const before = registeredIds().length;
     for (let i = 0; i < 50; i++) {
       const items = makeTestItems(5);
       const host = createHost();
@@ -3249,7 +3199,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
       expect(viewOf(host.doc).listenerCount('pointerup')).toBe(0);
       expect(host.parent.children).toHaveLength(1);
     }
-    expect(registeredBoundedListIds().length).toBe(before);
+    expect(registeredIds().length).toBe(before);
   });
 
   it('L9 共享 SelectionStore 时 dispose 会取消订阅，之后另一实例的选中变化不再触发已 dispose 实例的重渲', async () => {
@@ -3279,7 +3229,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     oldList.dispose();
     const newList = createBoundedList(baseOptions(hostNew, createInstantSource(() => items), { id: 'group-detail' }));
     await newList.reset();
-    expect(registeredBoundedListIds().filter((id) => id === 'group-detail')).toHaveLength(1);
+    expect(registeredIds().filter((id) => id === 'group-detail')).toHaveLength(1);
     newList.dispose();
   });
 });

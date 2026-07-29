@@ -93,10 +93,13 @@ export interface BoundedListOptions<T, Q = void> {
   readonly pillHost?: HTMLElement | false;
   readonly isActive?: () => boolean;
   /**
-   * 把自己登记到宿主的注册表（多 AppInstance 共存时必须传，否则不同实例的同名列表会互相干扰）。
-   * 不提供时退化为登记到 bounded-list/registry.ts 的模块级注册表。
+   * 把自己登记到宿主的注册表，返回注销函数。
+   *
+   * 必填：同一页面可以并存多个 AppInstance（嵌入式 UIKit 的多格子场景），它们的列表 id
+   * 完全相同。曾经允许省略并退化到一份进程级注册表，结果是同名列表互相覆盖，且省略者
+   * 永远收不到宿主的重连广播。改为必填后「注册到哪个宿主」在编译期就是确定的。
    */
-  readonly register?: RegisterBoundedList;
+  readonly register: RegisterBoundedList;
 
   readonly pageSize: number;
   readonly maxPages: number;
@@ -122,8 +125,6 @@ export interface BoundedListOptions<T, Q = void> {
   readonly onActivate?: (item: T, ev: Event) => void;
   readonly onSelectionChange?: (snapshot: SelectionSnapshot<T>) => void;
   readonly onLoadStateChange?: (state: BoundedListState) => void;
-  readonly onStaleChange?: (stale: boolean, pendingCount: number) => void;
   readonly onItemsChanged?: (items: readonly T[]) => void;
   readonly onError?: (error: unknown, phase: ErrorPhase) => void;
-  readonly onEmptyPage?: (dir: Direction) => void;
 }

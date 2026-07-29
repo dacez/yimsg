@@ -1,14 +1,11 @@
 import {
   SelectionStore,
   createBoundedList,
-  invalidateAllBoundedLists,
   localPageSource,
-  registeredBoundedListIds,
   serverPageSource,
   type BoundedList,
   type BoundedListOptions,
   type BoundedListState,
-  type Direction,
   type ErrorPhase,
   type FetchPageRequest,
   type PageLoadResult,
@@ -144,6 +141,16 @@ interface HarnessEntry {
 const entries = new Map<string, HarnessEntry>();
 const rememberedRows = new Map<string, Map<string, HTMLElement>>();
 const sharedStores = new Map<string, SelectionStore>();
+/**
+ * harness 自持的默认注册表。组件不再有进程级注册表（register 必填、注册表实体属于
+ * 宿主），`register: 'global'` 的语义因此变成「登记到 harness 这个默认宿主」，
+ * `register: 'custom'` 仍然是「登记到另一个独立宿主」，用来验证多宿主隔离。
+ */
+const defaultRegistry = new Map<
+  string,
+  { readonly id: string; invalidate(): void | Promise<void> }
+>();
+
 const customRegistry = new Map<
   string,
   { readonly id: string; invalidate(): void | Promise<void> }
@@ -493,18 +500,18 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     ...(config.separateContent ? { contentElement: host.content } : {}),
     ...(pillHost === undefined ? {} : { pillHost }),
     ...(configInput.active === undefined ? {} : { isActive: () => entryShell.active }),
-    ...(config.register === 'custom'
-      ? {
-        register: (instance: { readonly id: string; invalidate(): void | Promise<void> }) => {
-          customRegistry.set(instance.id, instance);
-          pushEvent(entryShell, 'register', instance.id);
-          return () => {
-            if (customRegistry.get(instance.id) === instance) customRegistry.delete(instance.id);
-            pushEvent(entryShell, 'unregister', instance.id);
-          };
-        },
-      }
-      : {}),
+    register: (instance: { readonly id: string; invalidate(): void | Promise<void> }) => {
+      const custom = config.register === 'custom';
+      const registry = custom ? customRegistry : defaultRegistry;
+      registry.set(instance.id, instance);
+      // 只有显式选了自定义宿主的用例才把注册动作记进事件流：默认宿主是每个列表都会走的
+      // 公共路径，记进去会污染所有断言事件序列的用例。
+      if (custom) pushEvent(entryShell, 'register', instance.id);
+      return () => {
+        if (registry.get(instance.id) === instance) registry.delete(instance.id);
+        if (custom) pushEvent(entryShell, 'unregister', instance.id);
+      };
+    },
     pageSize: config.pageSize,
     maxPages: config.maxPages,
     source,
@@ -578,14 +585,10 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           pushEvent(entryShell, 'onSelectionChange', snapshot),
         onLoadStateChange: (state: BoundedListState) =>
           pushEvent(entryShell, 'onLoadStateChange', state),
-        onStaleChange: (stale: boolean, pendingCount: number) =>
-          pushEvent(entryShell, 'onStaleChange', { stale, pendingCount }),
         onItemsChanged: (changedItems: readonly TestItem[]) =>
           pushEvent(entryShell, 'onItemsChanged', changedItems),
         onError: (error: unknown, phase: ErrorPhase) =>
           pushEvent(entryShell, 'onError', { error, phase }),
-        onEmptyPage: (direction: Direction) =>
-          pushEvent(entryShell, 'onEmptyPage', direction),
       }
       : {}),
   };
@@ -668,7 +671,10 @@ const api = {
     for (const options of batches) entry.list.invalidate(options);
   },
   invalidateAll(): void {
-    invalidateAllBoundedLists();
+    // 宿主侧广播：等价于重连成功后对本宿主全部有界列表各发一次「有新数据」。
+    for (const instance of [...defaultRegistry.values()]) {
+      void Promise.resolve(instance.invalidate()).catch(() => undefined);
+    }
   },
   upsertLocal(key: string, item: TestItem): void {
     getEntry(key).list.upsertLocal(cloneItem(item));
@@ -682,13 +688,6 @@ const api = {
   render(key: string): void {
     getEntry(key).list.render();
   },
-  scrollToIdentity(
-    key: string,
-    id: string,
-    block?: 'center' | 'nearest',
-  ): boolean {
-    return getEntry(key).list.scrollToIdentity(id, block ? { block } : undefined);
-  },
   state(key: string) {
     return getEntry(key).list.getState();
   },
@@ -696,7 +695,7 @@ const api = {
     return getEntry(key).list.id;
   },
   registryIds(): string[] {
-    return registeredBoundedListIds();
+    return [...defaultRegistry.keys()];
   },
   customRegistryIds(): string[] {
     return [...customRegistry.keys()];

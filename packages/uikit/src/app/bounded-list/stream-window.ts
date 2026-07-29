@@ -378,27 +378,6 @@ export class BoundedStreamWindow<T> {
     }
   }
 
-  /** 把某个身份的行滚进视口；返回是否找到该行。 */
-  scrollToKey(key: string, block: 'center' | 'nearest' = 'nearest'): boolean {
-    const content = this.contentElement();
-    const scroller = this.options.scrollElement;
-    for (const child of Array.from(content.children) as HTMLElement[]) {
-      if (child.getAttribute?.(ANCHOR_KEY_ATTR) !== key) continue;
-      if (typeof child.getBoundingClientRect !== 'function') return true;
-      const rowRect = child.getBoundingClientRect();
-      const scrollerRect = scroller.getBoundingClientRect();
-      if (block === 'center') {
-        scroller.scrollTop += (rowRect.top - scrollerRect.top) - (scroller.clientHeight / 2 - (rowRect.bottom - rowRect.top) / 2);
-      } else if (rowRect.top < scrollerRect.top) {
-        scroller.scrollTop -= scrollerRect.top - rowRect.top;
-      } else if (rowRect.bottom > scrollerRect.bottom) {
-        scroller.scrollTop += rowRect.bottom - scrollerRect.bottom;
-      }
-      return true;
-    }
-    return false;
-  }
-
   /** 用户是否贴在 edge 一端（stickyPx 阈值内）。 */
   isAtEdge(edge: 'head' | 'tail', stickyPx: number): boolean {
     const el = this.options.scrollElement;

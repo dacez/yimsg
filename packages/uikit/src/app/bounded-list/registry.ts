@@ -1,12 +1,16 @@
-// BoundedList 注册表：组件构造时自动注册、dispose 时自动注销。
+// 有界列表的宿主注册契约。
 //
-// 用途单一：重连成功等「广播一次 invalidate」的场景，调用方不需要感知具体
-// 有哪些列表实例，只管调 invalidateAllBoundedLists()。
+// 这里只有类型：注册表实体由宿主自己持有（见 app-instance.ts 的 registerBoundedList /
+// invalidateBoundedLists），组件通过必填的 BoundedListOptions.register 接进去。
 //
-// 注意多实例隔离：本模块是**进程级**注册表，同一页面里并存多个 AppInstance
-// （嵌入式 UIKit 的多格子场景）时，各实例应当通过 BoundedListOptions.register
-// 把列表登记到自己的注册表，而不是共用这一份，否则同名列表会互相覆盖。
+// 曾经这里还有一份进程级 Map 和 invalidateAllBoundedLists() 广播函数，作为不传 register
+// 时的退化路径。它有两个问题：同一页面并存多个 AppInstance 时同名列表会互相覆盖（模块
+// 自己的注释就在警告不要用它），而广播函数在生产代码里从未被调用——落进那份 Map 的实例
+// 只进不出也收不到任何通知。整体删除，register 改为必填。
 
+import type { RegisterBoundedList } from './types';
+
+/** 宿主侧可被「有新数据」通知唤醒的对象。 */
 export interface Invalidatable {
   readonly id: string;
   invalidate(): void | Promise<void>;
@@ -21,31 +25,11 @@ export interface Invalidatable {
  */
 export type BoundedListController = Invalidatable;
 
-const registry = new Map<string, Invalidatable>();
-
-/** 同 id 重复注册会覆盖旧实例（旧实例应当已经 dispose）。 */
-export function registerBoundedList(instance: Invalidatable): void {
-  registry.set(instance.id, instance);
-}
-
-export function unregisterBoundedList(instance: Invalidatable): void {
-  if (registry.get(instance.id) === instance) registry.delete(instance.id);
-}
-
-/** 广播给全部已注册列表各一次 invalidate()，等价于重连后「有新数据」通知。 */
-export function invalidateAllBoundedLists(): void {
-  for (const instance of [...registry.values()]) {
-    // 同步调用（宿主依赖「广播即触发」的时序），但同步抛错与异步拒绝都在这里兜住，
-    // 绝不产生未处理的 Promise 拒绝，也不让一个实例的失败中断整轮广播。
-    try {
-      const result = instance.invalidate();
-      if (result) void result.catch((error) => console.warn(`[BoundedList:${instance.id}] invalidate 失败`, error));
-    } catch (error) {
-      console.warn(`[BoundedList:${instance.id}] invalidate 失败`, error);
-    }
-  }
-}
-
-export function registeredBoundedListIds(): string[] {
-  return [...registry.keys()];
-}
+/**
+ * 显式声明「本列表不接入宿主的重连广播」。
+ *
+ * 用于模态框内的一次性候选列表：它们随弹窗创建、随弹窗 dispose，生命周期比一次重连
+ * 还短，被广播追平没有意义。写成具名常量而不是省略 `register`，是为了让「不注册」
+ * 成为可 grep、可复核的显式决定，而不是漏写参数的副作用。
+ */
+export const standaloneList: RegisterBoundedList = () => () => {};

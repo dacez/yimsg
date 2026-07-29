@@ -12,7 +12,6 @@
 import { PageWindow } from './page-window';
 import { SelectionStore } from './selection';
 import { createUpdatePill, type UpdatePillHandle } from './update-pill';
-import { registerBoundedList, unregisterBoundedList } from './registry';
 import { BoundedStreamWindow, DEFAULT_REACH_PX, catchUpAtEdge, createFrameScheduler } from './stream-window';
 import type {
   BoundedListOptions,
@@ -180,13 +179,8 @@ export class BoundedList<T, Q = void> {
       if (!this.disposed) void this.reconcileCapacity();
     });
 
-    // 多 AppInstance 共存时必须登记到宿主自己的注册表，否则同名列表会互相覆盖。
-    if (opts.register) {
-      this.unregister = opts.register(this);
-    } else {
-      registerBoundedList(this);
-      this.unregister = () => unregisterBoundedList(this);
-    }
+    // 多 AppInstance 共存时同名列表必须各自登记到宿主的注册表，所以 register 是必填的。
+    this.unregister = opts.register(this);
   }
 
   get id(): string {
@@ -248,12 +242,8 @@ export class BoundedList<T, Q = void> {
         query: this.query,
       });
       if (myRequestId !== this.requestId || this.disposed) return;
-      let acceptedCount: number;
-      if (dir === 'backward') {
-        acceptedCount = this.window.prependBackward(page);
-      } else {
-        acceptedCount = this.window.appendForward(page);
-      }
+      if (dir === 'backward') this.window.prependBackward(page);
+      else this.window.appendForward(page);
       this.dir[dir].loading = false;
       this.dir[dir].autoBlocked = false;
       const overlayEvicted = this.replayPendingMutations(this.window);
@@ -262,11 +252,9 @@ export class BoundedList<T, Q = void> {
         this.cancelOrdinaryPageLoads();
         this.stale = true;
         this.pendingCount = Math.max(this.pendingCount, overlayEvicted);
-        this.emitStaleChange();
         if (this.atFreshEdge()) this.scheduleCapacityReconcile();
       }
       this.emitItemsChanged();
-      if (acceptedCount === 0) this.opts.onEmptyPage?.(dir);
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
       this.render(false);
@@ -440,14 +428,6 @@ export class BoundedList<T, Q = void> {
     this.syncPill();
   }
 
-  scrollToIdentity(id: string, opts?: { block?: 'center' | 'nearest' }): boolean {
-    if (this.disposed) return false;
-    const pinned = this.opts.pinnedItems?.() ?? [];
-    const inWindow = this.window.hasIdentity(id) || pinned.some((item) => this.opts.identityOf(item) === id);
-    if (!inWindow) return false;
-    return this.stream.scrollToKey(id, opts?.block ?? 'nearest');
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -612,7 +592,6 @@ export class BoundedList<T, Q = void> {
     if (stillHasMore || (!this.stale && this.pendingCount === 0)) return;
     this.stale = false;
     this.pendingCount = 0;
-    this.emitStaleChange();
   }
 
   private reconcileCapacity(): Promise<void> {
@@ -658,7 +637,6 @@ export class BoundedList<T, Q = void> {
       this.dir.forward.cursorInvalid = false;
       this.stale = false;
       this.pendingCount = 0;
-      this.emitStaleChange();
     } else {
       this.resetInFlight = false;
       this.capacityReconciling = true;
@@ -691,7 +669,6 @@ export class BoundedList<T, Q = void> {
       this.firstLoadDone = true;
       this.applyAuthoritativeOverlayState(overlayEvicted);
       this.emitItemsChanged();
-      if (overlayEvicted > 0 || !clearWindow) this.emitStaleChange();
       this.render(false);
       if (pinEdge) {
         this.pinToFreshEdge();
@@ -715,7 +692,6 @@ export class BoundedList<T, Q = void> {
       if (this.window.count > 0) {
         this.stale = true;
         this.pendingCount = Math.max(1, this.pendingCount);
-        this.emitStaleChange();
       }
       this.reportError(err, 'reset');
       this.render(false);
@@ -844,7 +820,6 @@ export class BoundedList<T, Q = void> {
       this.pendingInvalidateCount = 0;
       this.stale = true;
       this.pendingCount += deferredCount;
-      this.emitStaleChange();
       this.render(false);
       return;
     }
@@ -857,7 +832,6 @@ export class BoundedList<T, Q = void> {
     if (!(this.opts.isActive?.() ?? true)) {
       this.stale = true;
       this.pendingCount += count;
-      this.emitStaleChange();
       // 仍然重渲一次：宿主切回可见时提示条要已经是最新状态，不能等下一次 render。
       this.render(false);
       return;
@@ -869,7 +843,6 @@ export class BoundedList<T, Q = void> {
 
     this.stale = true;
     this.pendingCount += count;
-    this.emitStaleChange();
     // 先同步一次提示条再发定向请求：否则请求慢时提示条要等几百毫秒才亮。
     this.render(false);
 
@@ -1023,10 +996,6 @@ export class BoundedList<T, Q = void> {
     const text = this.opts.text.updatePill?.(this.pendingCount);
     // 没有提供文案就不该出现一个空白提示条。
     this.pill.setVisible(this.stale && text !== undefined, text);
-  }
-
-  private emitStaleChange(): void {
-    this.opts.onStaleChange?.(this.stale, this.pendingCount);
   }
 
   private emitLoadState(): void {

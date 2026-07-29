@@ -1,6 +1,6 @@
 // BoundedStreamWindow（渲染引擎）单测。
 // 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.6：
-//   A 全量渲染 / B 状态与边界提示 / C 触界检测 / D 锚点 / E scrollToKey / F 贴边判定
+//   A 全量渲染 / B 状态与边界提示 / C 触界检测 / D 锚点 / F 贴边判定
 //   G 指针期间推迟重建 / H 事件委托 / I 键盘导航 / J 内容 load / K 释放 / L 辅助导出。
 
 import { describe, expect, it, vi } from 'vitest';
@@ -547,73 +547,6 @@ describe('BoundedStreamWindow / D 锚点（内容双端变化画面不动）', (
   });
 });
 
-// ───────────────────────── E scrollToKey ─────────────────────────
-
-describe('BoundedStreamWindow / E scrollToKey', () => {
-  it('E1 目标行在视口下方时按 nearest 下滚并返回 true；未找到返回 false', () => {
-    const { scroller, view, doc } = makeView<number>();
-    scroller.rect = { top: 0, bottom: 100 };
-    scroller.clientHeight = 100;
-    view.render({ items: [1, 2, 3], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
-    scroller.children[2].rect = { top: 150, bottom: 200 };
-    expect(view.scrollToKey('3')).toBe(true);
-    expect(scroller.scrollTop).toBe(100); // bottom(200) - scrollerBottom(100)
-    expect(view.scrollToKey('does-not-exist')).toBe(false);
-  });
-
-  it('E2 目标行在视口上方时按 nearest 上滚', () => {
-    const { scroller, view, doc } = makeView<number>();
-    scroller.rect = { top: 100, bottom: 200 };
-    scroller.scrollTop = 500;
-    view.render({ items: [1], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
-    scroller.children[0].rect = { top: 40, bottom: 90 }; // 完全在视口顶之上
-    expect(view.scrollToKey('1')).toBe(true);
-    expect(scroller.scrollTop).toBe(440); // 500 - (100 - 40)
-  });
-
-  it('E3 目标行已经完整可见时 nearest 不动滚动位置', () => {
-    const { scroller, view, doc } = makeView<number>();
-    scroller.rect = { top: 0, bottom: 100 };
-    scroller.scrollTop = 77;
-    view.render({ items: [1], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
-    scroller.children[0].rect = { top: 20, bottom: 60 };
-    expect(view.scrollToKey('1')).toBe(true);
-    expect(scroller.scrollTop).toBe(77);
-  });
-
-  it('E4 block=center 时把目标行居中', () => {
-    const { scroller, view, doc } = makeView<number>();
-    scroller.rect = { top: 0, bottom: 100 };
-    scroller.clientHeight = 100;
-    view.render({ items: [1], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
-    scroller.children[0].rect = { top: 40, bottom: 60 };
-    view.scrollToKey('1', 'center');
-    // (40-0) - (100/2 - 10) = 0
-    expect(scroller.scrollTop).toBe(0);
-  });
-
-  it('E5 目标行没有 getBoundingClientRect 时仍返回 true（找到了，只是没法算位置）', () => {
-    const { scroller, view, doc } = makeView<number>();
-    view.render({ items: [1], keyOf: (n) => String(n), renderItem: () => [asElement(row(doc))] });
-    stripBoundingRect(scroller.children[0]);
-    scroller.scrollTop = 42;
-    expect(view.scrollToKey('1')).toBe(true);
-    expect(scroller.scrollTop).toBe(42);
-  });
-
-  it('E6 边界提示节点没有锚点键，不会被 scrollToKey 误当成目标', () => {
-    const { scroller, view, doc } = makeView<number>();
-    scroller.rect = { top: 0, bottom: 100 };
-    view.render({
-      items: [1], hasMoreBefore: false, hasMoreAfter: false,
-      topBoundaryText: '最早', bottomBoundaryText: '最新',
-      keyOf: () => 'only', renderItem: () => [asElement(row(doc))],
-    });
-    expect(view.scrollToKey('最早')).toBe(false);
-    expect(view.scrollToKey('only')).toBe(true);
-  });
-});
-
 // ───────────────────────── F 贴边判定 ─────────────────────────
 
 describe('BoundedStreamWindow / F isAtEdge', () => {
@@ -1105,14 +1038,6 @@ describe('BoundedStreamWindow / K dispose：内存泄漏回归', () => {
     view.dispose();
     expect(() => view.render({ items: ['a', 'b'], keyOf: (s) => s, renderItem: () => [asElement(row(doc, 'row-b'))] })).not.toThrow();
     expect(renderedClassNames(scroller)).toEqual(['row-a']);
-  });
-
-  it('K6 dispose 后 scrollToKey 仍能查询当前 DOM（纯查询，不依赖 lastState）', () => {
-    const { view, doc } = makeView<string>();
-    view.render({ items: ['a'], keyOf: (s) => s, renderItem: () => [asElement(row(doc))] });
-    view.dispose();
-    expect(view.scrollToKey('a')).toBe(true);
-    expect(view.scrollToKey('zzz')).toBe(false);
   });
 
   it('K7 dispose 幂等：多次调用不抛错、不重复移除', () => {

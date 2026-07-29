@@ -12,7 +12,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBoundedList } from '../../../src/app/bounded-list/bounded-list';
 import { localPageSource } from '../../../src/app/bounded-list/page-source';
 import { SelectionStore } from '../../../src/app/bounded-list/selection';
-import { registeredBoundedListIds } from '../../../src/app/bounded-list/registry';
 import type { BoundedListOptions } from '../../../src/app/bounded-list/types';
 import { FakeDocument, asElement, row, viewOf } from './fake-dom';
 import { createAnchoredSource, idOf, makeTestItems, type TestItem } from './test-sources';
@@ -29,6 +28,16 @@ function createHost() {
 }
 type Host = ReturnType<typeof createHost>;
 
+/** 压力用例自持的注册表：register 必填，注册表实体属于宿主，泄漏断言对这一份做。 */
+const testRegistry = new Map<string, { readonly id: string }>();
+
+function testRegister(instance: { readonly id: string; invalidate(): void | Promise<void> }): () => void {
+  testRegistry.set(instance.id, instance);
+  return () => {
+    if (testRegistry.get(instance.id) === instance) testRegistry.delete(instance.id);
+  };
+}
+
 function baseOptions(
   host: Host,
   source: BoundedListOptions<TestItem, void>['source'],
@@ -37,6 +46,7 @@ function baseOptions(
   return {
     id: 'stress',
     scrollElement: asElement(host.scroller),
+    register: testRegister,
     pageSize: 40,
     maxPages: 5,
     source,
@@ -281,7 +291,6 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
     }));
     await list.reset({ pinEdge: false });
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe(`${long}-0`);
-    expect(list.scrollToIdentity(`${long}-3`)).toBe(true);
     expect(list.patch(`${long}-3`, (item) => item)).toBe(true);
     list.dispose();
   });
@@ -338,7 +347,7 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
 
 describe('BoundedList 压力 / E 生命周期', () => {
   it('E1 200 次「打开面板 → 翻页 → 关闭面板」循环后不残留监听、DOM 与注册项', async () => {
-    const before = registeredBoundedListIds().length;
+    const before = testRegistry.size;
     const items = makeTestItems(500);
     for (let i = 0; i < 200; i++) {
       const host = createHost();
@@ -351,7 +360,7 @@ describe('BoundedList 压力 / E 生命周期', () => {
       expect(viewOf(host.doc).listenerCount('pointerup')).toBe(0);
       expect(host.parent.children).toHaveLength(1); // 提示条被摘除
     }
-    expect(registeredBoundedListIds().length).toBe(before);
+    expect(testRegistry.size).toBe(before);
   });
 
   it('E2 100 个实例同时存活并共享一个 SelectionStore：全部 dispose 后 store 不再有订阅者', async () => {

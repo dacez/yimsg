@@ -1,7 +1,7 @@
 import { displayUserName } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../app-config';
 import type { AppInstance } from '../app-instance';
-import { createBoundedList, localPageSource } from '../bounded-list';
+import { createBoundedList, localPageSource, standaloneList } from '../bounded-list';
 
 export type GroupMemberPickResult =
   | { kind: 'member'; uid: string }
@@ -104,6 +104,8 @@ export async function showGroupMemberPicker(
     const list = createBoundedList<PickerEntry, { keyword: string }>({
       id: 'group-member-picker',
       scrollElement: app.$('group-member-picker-list'),
+      // 弹窗内一次性候选列表，生命周期短于一次重连，不接入宿主广播。
+      register: standaloneList,
       pillHost: false,
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
