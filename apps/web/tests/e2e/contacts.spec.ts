@@ -446,12 +446,16 @@ test.describe('Contacts', () => {
       expect(count).toBeLessThanOrEqual(40);
     }).toPass({ timeout: 10_000 });
 
-    const boundedMetrics = await page.evaluate(() => {
-      const el = document.querySelector('#friends-tab') as HTMLElement | null;
-      return { scrollHeight: el?.scrollHeight ?? 0, clientHeight: el?.clientHeight ?? 0 };
-    });
-    expect(boundedMetrics.scrollHeight).toBeLessThan(10_000);
-    expect(boundedMetrics.scrollHeight).toBeGreaterThan(boundedMetrics.clientHeight);
+    // seed 数据用户在并行套件里是共享账号：其它用例对同一账号的后台通讯录刷新
+    // 可能与本次测量撞在同一帧，短暂裁剪掉几行。轮询到稳定态，而不是断言单次快照。
+    await expect(async () => {
+      const boundedMetrics = await page.evaluate(() => {
+        const el = document.querySelector('#friends-tab') as HTMLElement | null;
+        return { scrollHeight: el?.scrollHeight ?? 0, clientHeight: el?.clientHeight ?? 0 };
+      });
+      expect(boundedMetrics.scrollHeight).toBeLessThan(10_000);
+      expect(boundedMetrics.scrollHeight).toBeGreaterThan(boundedMetrics.clientHeight);
+    }).toPass({ timeout: 10_000 });
 
     const initialNames = await expectResolvedSortedContactNames(page);
     const initialNameSet = new Set(initialNames);
