@@ -24,10 +24,10 @@ describe('PageWindow / A 基础记账', () => {
     expect(window.items).toEqual([1, 2]);
     expect(window.count).toBe(2);
     expect(window.total).toBe(12);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e1');
-    expect(window.hasMoreBackward).toBe(false);
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e1');
+    expect(window.hasMoreHead).toBe(false);
+    expect(window.hasMoreTail).toBe(true);
   });
 
   it('A2 空页 setInitial 不标记已加载，total 未提供时为 -1，游标退化为空串', () => {
@@ -37,64 +37,64 @@ describe('PageWindow / A 基础记账', () => {
     expect(window.items).toEqual([]);
     expect(window.count).toBe(0);
     expect(window.total).toBe(-1);
-    expect(window.backwardCursor).toBe('');
-    expect(window.forwardCursor).toBe('');
+    expect(window.cursorFor('head')).toBe('');
+    expect(window.cursorFor('tail')).toBe('');
   });
 
   it('A3 空页 setInitial 仍然如实透传该页的 hasMore（服务端说还有就还有）', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([], 's', 'e', true, true));
     expect(window.loaded).toBe(false);
-    expect(window.hasMoreBackward).toBe(true);
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.hasMoreHead).toBe(true);
+    expect(window.hasMoreTail).toBe(true);
   });
 
   it('A4 setInitial 重复调用等价于整体重建（旧页与旧 total 一并丢弃）', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2], 's1', 'e1', true, true, 99));
-    window.appendForward(page([3, 4], 's2', 'e2', true, true));
+    window.appendTail(page([3, 4], 's2', 'e2', true, true));
     window.setInitial(page([7], 's7', 'e7', false, false));
     expect(window.items).toEqual([7]);
     expect(window.total).toBe(-1);
-    expect(window.backwardCursor).toBe('s7');
-    expect(window.forwardCursor).toBe('e7');
+    expect(window.cursorFor('head')).toBe('s7');
+    expect(window.cursorFor('tail')).toBe('e7');
   });
 
   it('A5 续翻页未带 total 时保留上一次已知的 total', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1], 's1', 'e1', false, true, 42));
-    window.appendForward(page([2], 's2', 'e2', false, true));
+    window.appendTail(page([2], 's2', 'e2', false, true));
     expect(window.total).toBe(42);
-    window.prependBackward(page([0], 's0', 'e0', false, true));
+    window.prependHead(page([0], 's0', 'e0', false, true));
     expect(window.total).toBe(42);
-    window.appendForward(page([3], 's3', 'e3', false, false, 7));
+    window.appendTail(page([3], 's3', 'e3', false, false, 7));
     expect(window.total).toBe(7);
   });
 
   it('A6 空页续翻不新增页，但 hasMore 按该页结果收敛，游标保持保留页边界', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2], 's1', 'e1', true, true));
-    window.appendForward(page([], 'sx', 'ex', true, false));
+    window.appendTail(page([], 'sx', 'ex', true, false));
     expect(window.items).toEqual([1, 2]);
-    expect(window.forwardCursor).toBe('e1');
-    expect(window.hasMoreForward).toBe(false);
-    window.prependBackward(page([], 'sy', 'ey', false, false));
+    expect(window.cursorFor('tail')).toBe('e1');
+    expect(window.hasMoreTail).toBe(false);
+    window.prependHead(page([], 'sy', 'ey', false, false));
     expect(window.items).toEqual([1, 2]);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.hasMoreBackward).toBe(false);
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.hasMoreHead).toBe(false);
   });
 
   it('A11 续翻拿到空页时强制收敛该端 hasMore（服务端违反契约也不会无限补页）', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2], 's1', 'e1', true, true));
     // 服务端违反契约：空页却仍然报「还有更多」。
-    window.appendForward(page([], 'sx', 'ex', true, true));
-    expect(window.hasMoreForward).toBe(false);
-    window.prependBackward(page([], 'sy', 'ey', true, true));
-    expect(window.hasMoreBackward).toBe(false);
+    window.appendTail(page([], 'sx', 'ex', true, true));
+    expect(window.hasMoreTail).toBe(false);
+    window.prependHead(page([], 'sy', 'ey', true, true));
+    expect(window.hasMoreHead).toBe(false);
     // 非空页仍然如实透传服务端给的 hasMore。
-    window.appendForward(page([3], 's2', 'e2', true, true));
-    expect(window.hasMoreForward).toBe(true);
+    window.appendTail(page([3], 's2', 'e2', true, true));
+    expect(window.hasMoreTail).toBe(true);
   });
 
   it('A12 空首页保留边界游标，窗口暂时为空时仍有可用的续翻锚点', () => {
@@ -102,21 +102,21 @@ describe('PageWindow / A 基础记账', () => {
     window.setInitial(page([], 'sEmpty', 'eEmpty', false, true));
     expect(window.loaded).toBe(false);
     expect(window.count).toBe(0);
-    expect(window.backwardCursor).toBe('sEmpty');
-    expect(window.forwardCursor).toBe('eEmpty');
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.cursorFor('head')).toBe('sEmpty');
+    expect(window.cursorFor('tail')).toBe('eEmpty');
+    expect(window.hasMoreTail).toBe(true);
     // 用这个锚点继续翻，拿到真实数据后锚点前进到新页的边界。
-    window.appendForward(page([1, 2], 's1', 'e1', false, false));
+    window.appendTail(page([1, 2], 's1', 'e1', false, false));
     expect(window.items).toEqual([1, 2]);
-    expect(window.forwardCursor).toBe('e1');
+    expect(window.cursorFor('tail')).toBe('e1');
   });
 
   it('A13 reset 同时清掉空首页留下的边界游标', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([], 'sEmpty', 'eEmpty', true, true));
     window.reset();
-    expect(window.backwardCursor).toBe('');
-    expect(window.forwardCursor).toBe('');
+    expect(window.cursorFor('head')).toBe('');
+    expect(window.cursorFor('tail')).toBe('');
   });
 
   it('A14 maxPages 小于 1 时被夹到 1，setInitial 与 mergeLive 的裁剪口径一致', () => {
@@ -125,30 +125,30 @@ describe('PageWindow / A 基础记账', () => {
     expect(zero.count).toBe(2);
     zero.mergeLive(3, 'tail');
     expect(zero.items).toEqual([1, 2, 3]); // 不会被整页裁光
-    expect(zero.hasMoreBackward).toBe(false);
+    expect(zero.hasMoreHead).toBe(false);
 
     const negative = new PageWindow<number>(-5);
     negative.setInitial(page([1], 's', 'e', false, true));
-    negative.appendForward(page([2], 's2', 'e2', false, false));
+    negative.appendTail(page([2], 's2', 'e2', false, false));
     expect(negative.items).toEqual([2]); // 仍按 1 页裁剪
-    expect(negative.hasMoreBackward).toBe(true);
+    expect(negative.hasMoreHead).toBe(true);
   });
 
-  it('A7 normalize 作用于每一页入窗前（setInitial / appendForward / prependBackward 都生效）', () => {
+  it('A7 normalize 作用于每一页入窗前（setInitial / appendTail / prependHead 都生效）', () => {
     const normalize = vi.fn((items: readonly number[]) => [...items].sort((a, b) => a - b));
     const window = new PageWindow<number>(3, normalize);
     window.setInitial(page([3, 1, 2], 's1', 'e1', true, true));
     expect(window.items).toEqual([1, 2, 3]);
-    window.appendForward(page([6, 4, 5], 's2', 'e2', true, true));
+    window.appendTail(page([6, 4, 5], 's2', 'e2', true, true));
     expect(window.items).toEqual([1, 2, 3, 4, 5, 6]);
-    window.prependBackward(page([0, -1], 's0', 'e0', false, true));
+    window.prependHead(page([0, -1], 's0', 'e0', false, true));
     expect(window.items).toEqual([-1, 0, 1, 2, 3, 4, 5, 6]);
     expect(normalize).toHaveBeenCalledTimes(3);
   });
 
-  it('A8 hasMoreBackward / hasMoreForward 只读，无公开 setter（消除外部直写）', () => {
-    expect(Object.getOwnPropertyDescriptor(PageWindow.prototype, 'hasMoreBackward')?.set).toBeUndefined();
-    expect(Object.getOwnPropertyDescriptor(PageWindow.prototype, 'hasMoreForward')?.set).toBeUndefined();
+  it('A8 hasMoreHead / hasMoreTail 只读，无公开 setter（消除外部直写）', () => {
+    expect(Object.getOwnPropertyDescriptor(PageWindow.prototype, 'hasMoreHead')?.set).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(PageWindow.prototype, 'hasMoreTail')?.set).toBeUndefined();
   });
 
   it('A9 reset 清空窗口、游标与 total', () => {
@@ -158,10 +158,10 @@ describe('PageWindow / A 基础记账', () => {
     expect(window.loaded).toBe(false);
     expect(window.items).toEqual([]);
     expect(window.count).toBe(0);
-    expect(window.backwardCursor).toBe('');
-    expect(window.forwardCursor).toBe('');
-    expect(window.hasMoreBackward).toBe(false);
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.cursorFor('head')).toBe('');
+    expect(window.cursorFor('tail')).toBe('');
+    expect(window.hasMoreHead).toBe(false);
+    expect(window.hasMoreTail).toBe(false);
     expect(window.total).toBe(-1);
   });
 
@@ -169,60 +169,60 @@ describe('PageWindow / A 基础记账', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', true, true, 5));
     window.reset();
-    window.appendForward(page([9], 's9', 'e9', false, false));
+    window.appendTail(page([9], 's9', 'e9', false, false));
     expect(window.items).toEqual([9]);
-    expect(window.backwardCursor).toBe('s9');
-    expect(window.forwardCursor).toBe('e9');
+    expect(window.cursorFor('head')).toBe('s9');
+    expect(window.cursorFor('tail')).toBe('e9');
   });
 });
 
 // ───────────────────────── B 整页裁剪 ─────────────────────────
 
 describe('PageWindow / B 整页裁剪', () => {
-  it('B1 appendForward 超过 maxPages 时整页裁首并标记 hasMoreBackward', () => {
+  it('B1 appendTail 超过 maxPages 时整页裁首并标记 hasMoreHead', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', true, true));
+    window.appendTail(page([3, 4], 's2', 'e2', true, true));
     expect(window.items).toEqual([1, 2, 3, 4]);
-    expect(window.forwardCursor).toBe('e2');
-    expect(window.hasMoreBackward).toBe(false);
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.cursorFor('tail')).toBe('e2');
+    expect(window.hasMoreHead).toBe(false);
+    expect(window.hasMoreTail).toBe(true);
 
-    window.appendForward(page([5, 6], 's3', 'e3', true, false));
+    window.appendTail(page([5, 6], 's3', 'e3', true, false));
     expect(window.items).toEqual([3, 4, 5, 6]);
-    expect(window.backwardCursor).toBe('s2');
-    expect(window.forwardCursor).toBe('e3');
-    expect(window.hasMoreBackward).toBe(true);
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.cursorFor('head')).toBe('s2');
+    expect(window.cursorFor('tail')).toBe('e3');
+    expect(window.hasMoreHead).toBe(true);
+    expect(window.hasMoreTail).toBe(false);
   });
 
-  it('B2 prependBackward 超过 maxPages 时整页裁尾并标记 hasMoreForward', () => {
+  it('B2 prependHead 超过 maxPages 时整页裁尾并标记 hasMoreTail', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([5, 6], 's5', 'e5', true, false));
-    window.prependBackward(page([3, 4], 's3', 'e3', true, true));
+    window.prependHead(page([3, 4], 's3', 'e3', true, true));
     expect(window.items).toEqual([3, 4, 5, 6]);
-    expect(window.backwardCursor).toBe('s3');
-    expect(window.hasMoreBackward).toBe(true);
+    expect(window.cursorFor('head')).toBe('s3');
+    expect(window.hasMoreHead).toBe(true);
 
-    window.prependBackward(page([1, 2], 's1', 'e1', false, true));
+    window.prependHead(page([1, 2], 's1', 'e1', false, true));
     expect(window.items).toEqual([1, 2, 3, 4]);
-    expect(window.forwardCursor).toBe('e3');
-    expect(window.hasMoreBackward).toBe(false);
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.cursorFor('tail')).toBe('e3');
+    expect(window.hasMoreHead).toBe(false);
+    expect(window.hasMoreTail).toBe(true);
   });
 
   it('B3 maxPages=1：每次续翻都整页替换，两端 hasMore 都被裁剪置真', () => {
     const window = new PageWindow<number>(1);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', false, true));
+    window.appendTail(page([3, 4], 's2', 'e2', false, true));
     expect(window.items).toEqual([3, 4]);
-    expect(window.hasMoreBackward).toBe(true);
-    expect(window.backwardCursor).toBe('s2');
+    expect(window.hasMoreHead).toBe(true);
+    expect(window.cursorFor('head')).toBe('s2');
 
-    window.prependBackward(page([1, 2], 's1', 'e1', false, false));
+    window.prependHead(page([1, 2], 's1', 'e1', false, false));
     expect(window.items).toEqual([1, 2]);
-    expect(window.hasMoreForward).toBe(true);
-    expect(window.forwardCursor).toBe('e1');
+    expect(window.hasMoreTail).toBe(true);
+    expect(window.cursorFor('tail')).toBe('e1');
   });
 
   it('B4 单次超额多页时 while 循环把多余页一次裁到位', () => {
@@ -230,9 +230,9 @@ describe('PageWindow / B 整页裁剪', () => {
     // 因此改用「连续 append 三页」验证裁剪按页逐次生效、条目数恒不越界。
     const window = new PageWindow<number>(2);
     window.setInitial(page([1], 's1', 'e1', false, true));
-    window.appendForward(page([2], 's2', 'e2', true, true));
-    window.appendForward(page([3], 's3', 'e3', true, true));
-    window.appendForward(page([4], 's4', 'e4', true, true));
+    window.appendTail(page([2], 's2', 'e2', true, true));
+    window.appendTail(page([3], 's3', 'e3', true, true));
+    window.appendTail(page([4], 's4', 'e4', true, true));
     expect(window.items).toEqual([3, 4]);
     expect(window.count).toBeLessThanOrEqual(2);
   });
@@ -244,7 +244,7 @@ describe('PageWindow / B 整页裁剪', () => {
     window.setInitial(page([1, 2, 3, 4], 's0', 'e0', false, true));
     for (let p = 1; p <= 10; p++) {
       const start = p * pageSize + 1;
-      window.appendForward(page([start, start + 1, start + 2, start + 3], `s${p}`, `e${p}`, true, true));
+      window.appendTail(page([start, start + 1, start + 2, start + 3], `s${p}`, `e${p}`, true, true));
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
     }
   });
@@ -260,46 +260,46 @@ describe('PageWindow / B 整页裁剪', () => {
 // ───────────────────────── C 跨页去重 ─────────────────────────
 
 describe('PageWindow / C 跨页去重（identityOf）', () => {
-  it('C1 appendForward 用新页覆盖旧页同身份条目：同一身份至多出现一次', () => {
+  it('C1 appendTail 用新页覆盖旧页同身份条目：同一身份至多出现一次', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2, 3], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4, 5], 's2', 'e2', false, false));
+    window.appendTail(page([3, 4, 5], 's2', 'e2', false, false));
     expect(window.items).toEqual([1, 2, 3, 4, 5]);
     const ids = window.items.map(String);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e2');
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e2');
   });
 
-  it('C2 prependBackward 用新页覆盖旧页同身份条目', () => {
+  it('C2 prependHead 用新页覆盖旧页同身份条目', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([3, 4, 5], 's2', 'e2', true, false));
-    window.prependBackward(page([5, 1, 2], 's1', 'e1', false, true));
+    window.prependHead(page([5, 1, 2], 's1', 'e1', false, true));
     expect(window.items).toEqual([5, 1, 2, 3, 4]);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e2');
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e2');
   });
 
   it('C3 旧页被清空仍保留有效边界游标，不影响续翻', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([1, 2, 3], 's2', 'e2', false, false));
+    window.appendTail(page([1, 2, 3], 's2', 'e2', false, false));
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e2');
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e2');
   });
 
   it('C4 「裁剪后回滚 + 并发重排」四步路径：同一身份绝不重复显示', () => {
     // §7.2 的四步路径：① 向后滚动裁掉头部页 → ② 某条目重排跳到活跃端 →
-    // ③ 用户滚回顶部 prependBackward 又带回它 → ④ 朴素拼接会重复。
+    // ③ 用户滚回顶部 prependHead 又带回它 → ④ 朴素拼接会重复。
     const window = new PageWindow<number>(2, undefined, asKey);
     window.setInitial(page([1, 2, 3], 'sA', 'eA', false, true));  // 页A
-    window.appendForward(page([4, 5, 6], 'sB', 'eB', true, true)); // 页B
-    window.appendForward(page([7, 8, 9], 'sC', 'eC', true, true)); // 页C，裁掉页A
+    window.appendTail(page([4, 5, 6], 'sB', 'eB', true, true)); // 页B
+    window.appendTail(page([7, 8, 9], 'sC', 'eC', true, true)); // 页C，裁掉页A
     expect(window.items).toEqual([4, 5, 6, 7, 8, 9]);
-    expect(window.hasMoreBackward).toBe(true);
+    expect(window.hasMoreHead).toBe(true);
     // 条目 5 重排跳到更活跃端，用户滚回顶部时新页里又出现了 5
-    window.prependBackward(page([5, 1, 2], 'sA2', 'eA2', true, true));
+    window.prependHead(page([5, 1, 2], 'sA2', 'eA2', true, true));
     const ids = window.items.map(String);
     expect(new Set(ids).size).toBe(ids.length);
     expect(window.items).toEqual([5, 1, 2, 4, 6]);
@@ -308,34 +308,34 @@ describe('PageWindow / C 跨页去重（identityOf）', () => {
   it('C5 整页被去重清空后立即回收页位，不再挤掉另一端的真实数据页', () => {
     const window = new PageWindow<number>(2, undefined, asKey);
     window.setInitial(page([1, 2], 'sA', 'eA', false, true));
-    window.appendForward(page([1, 2], 'sB', 'eB', true, true)); // 页A 被完全清空并回收
+    window.appendTail(page([1, 2], 'sB', 'eB', true, true)); // 页A 被完全清空并回收
     expect(window.items).toEqual([1, 2]);
     // 窗口的 backward 边界不因页被回收而改变：sA 之前（以及页A 自己的区间）仍未加载。
-    expect(window.backwardCursor).toBe('sA');
+    expect(window.cursorFor('head')).toBe('sA');
 
     // 关键回归：此时只占 1 个页位，再来一页不会触发 maxPages 淘汰，
     // 两页真实数据都留在窗口里。空页占位的旧实现在这里会裁掉一整页真实数据。
-    window.appendForward(page([3], 'sC', 'eC', true, false));
+    window.appendTail(page([3], 'sC', 'eC', true, false));
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.backwardCursor).toBe('sA');
-    expect(window.hasMoreBackward).toBe(false);
+    expect(window.cursorFor('head')).toBe('sA');
+    expect(window.hasMoreHead).toBe(false);
   });
 
   it('C6 未提供 identityOf 时不跨页去重（保持消息窗口的默认行为）', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2, 3], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4, 5], 's2', 'e2', false, false));
+    window.appendTail(page([3, 4, 5], 's2', 'e2', false, false));
     expect(window.items).toEqual([1, 2, 3, 3, 4, 5]);
   });
 
   it('C7 新页为空 / 窗口为空时去重是空操作，不抛错', () => {
     const empty = new PageWindow<number>(3, undefined, asKey);
-    empty.appendForward(page([1], 's', 'e', false, false)); // 窗口本来就没有页
+    empty.appendTail(page([1], 's', 'e', false, false)); // 窗口本来就没有页
     expect(empty.items).toEqual([1]);
 
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([], 's2', 'e2', false, true)); // 新页为空
+    window.appendTail(page([], 's2', 'e2', false, true)); // 新页为空
     expect(window.items).toEqual([1, 2]);
   });
 
@@ -359,7 +359,7 @@ describe('PageWindow / C 跨页去重（identityOf）', () => {
   it('C10 hasIdentity 跨多页查找，且条目被删除后立即返回 false', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', true, false));
+    window.appendTail(page([3, 4], 's2', 'e2', true, false));
     expect(window.hasIdentity('4')).toBe(true);
     window.removeMatching((n) => n === 4);
     expect(window.hasIdentity('4')).toBe(false);
@@ -372,11 +372,11 @@ describe('PageWindow / D 就地增删改', () => {
   it('D1 updateMatching 就地替换命中条目，页结构与边界游标不变', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', false, false));
+    window.appendTail(page([3, 4], 's2', 'e2', false, false));
     expect(window.updateMatching((n) => n === 2, () => 20)).toBe(true);
     expect(window.items).toEqual([1, 20, 3, 4]);
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e2');
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e2');
   });
 
   it('D2 updateMatching 未命中返回 false 且不改动任何条目', () => {
@@ -389,7 +389,7 @@ describe('PageWindow / D 就地增删改', () => {
   it('D3 updateMatching 跨页多命中时全部替换', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2, 1], 's1', 'e1', false, true));
-    window.appendForward(page([1, 3], 's2', 'e2', false, false));
+    window.appendTail(page([1, 3], 's2', 'e2', false, false));
     expect(window.updateMatching((n) => n === 1, () => 100)).toBe(true);
     expect(window.items).toEqual([100, 2, 100, 100, 3]);
   });
@@ -397,7 +397,7 @@ describe('PageWindow / D 就地增删改', () => {
   it('D4 removeMatching 就地删除命中条目，剩余条目自然补齐', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', false, false));
+    window.appendTail(page([3, 4], 's2', 'e2', false, false));
     expect(window.removeMatching((n) => n === 2 || n === 3)).toBe(true);
     expect(window.items).toEqual([1, 4]);
   });
@@ -412,11 +412,11 @@ describe('PageWindow / D 就地增删改', () => {
   it('D6 removeMatching 删空整页后游标仍有效，页数不变', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', true, false));
+    window.appendTail(page([3, 4], 's2', 'e2', true, false));
     expect(window.removeMatching((n) => n === 1 || n === 2)).toBe(true);
     expect(window.items).toEqual([3, 4]);
-    expect(window.backwardCursor).toBe('s1'); // 空页仍是首页
-    expect(window.forwardCursor).toBe('e2');
+    expect(window.cursorFor('head')).toBe('s1'); // 空页仍是首页
+    expect(window.cursorFor('tail')).toBe('e2');
   });
 
   it('D7 删光全部条目后空页被回收，但窗口边界仍然保留', () => {
@@ -427,45 +427,45 @@ describe('PageWindow / D 就地增删改', () => {
     expect(window.count).toBe(0);
     expect(window.loaded).toBe(false); // 空页不再占页位
     // 边界与 pages 解耦：页没了，续翻锚点还在，窗口仍能从原位置续翻。
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.forwardCursor).toBe('e1');
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.cursorFor('tail')).toBe('e1');
   });
   it('D8 中间页被 removeMatching 删空后回收，续翻不再淘汰另一端的真实数据页', () => {
     // BL-BUG-013 回归：空页留在数组里会挤占 maxPages 名额，随后的 prepend/append
     // 按 maxPages 淘汰时淘汰的是另一端的真实数据页——用户翻一页净损失一页内容。
     const window = new PageWindow<number>(3);
     window.setInitial(page([1, 2], 's1', 'e1', true, true));
-    window.appendForward(page([3], 's2', 'e2', true, true));   // 中间页，只有一条
-    window.appendForward(page([4, 5], 's3', 'e3', true, true));
+    window.appendTail(page([3], 's2', 'e2', true, true));   // 中间页，只有一条
+    window.appendTail(page([4, 5], 's3', 'e3', true, true));
     expect(window.items).toEqual([1, 2, 3, 4, 5]);
 
     window.removeMatching((item) => item === 3); // 中间页被删空
     expect(window.items).toEqual([1, 2, 4, 5]);
 
     // 只剩 2 个页位；再来一页正好填满 maxPages，两端真实数据都不该被淘汰。
-    window.appendForward(page([6, 7], 's4', 'e4', true, false));
+    window.appendTail(page([6, 7], 's4', 'e4', true, false));
     expect(window.items).toEqual([1, 2, 4, 5, 6, 7]);
-    expect(window.hasMoreBackward).toBe(true); // 保持 setInitial 的取值，没有因淘汰被改写
-    expect(window.backwardCursor).toBe('s1');
+    expect(window.hasMoreHead).toBe(true); // 保持 setInitial 的取值，没有因淘汰被改写
+    expect(window.cursorFor('head')).toBe('s1');
   });
 
   it('D9 首页被删空后回收，backward 边界仍停在原处，不会跳过未加载区间', () => {
     const window = new PageWindow<number>(3);
     window.setInitial(page([1], 's1', 'e1', true, true));
-    window.appendForward(page([2, 3], 's2', 'e2', true, false));
+    window.appendTail(page([2, 3], 's2', 'e2', true, false));
 
     window.removeMatching((item) => item === 1); // 首页被删空并回收
     expect(window.items).toEqual([2, 3]);
     // 锚点不跟着页走：s1 之前仍未加载，从 s1 续翻才不会跳过数据。
-    expect(window.backwardCursor).toBe('s1');
-    expect(window.hasMoreBackward).toBe(true);
+    expect(window.cursorFor('head')).toBe('s1');
+    expect(window.hasMoreHead).toBe(true);
   });
 });
 
 // ───────────────────────── E 实时并入 mergeLive ─────────────────────────
 
 describe('PageWindow / E 实时并入 mergeLive', () => {
-  it('E1 edge=tail 并入尾页；调用前新鲜端 hasMoreForward 已是 false，并入后保持不变', () => {
+  it('E1 edge=tail 并入尾页；调用前新鲜端 hasMoreTail 已是 false，并入后保持不变', () => {
     // mergeLive 的前置契约：只有窗口已经追平新鲜端（该端 hasMore 已为 false）才能调用，
     // 它自己不会替调用方把 hasMore 改成 false（BL-BUG：曾经无条件置 false，导致窗口
     // 未追平时误关真正的续翻，见 bounded-list.ts upsertLocal 的 reachesFreshEdge 守卫）。
@@ -473,7 +473,7 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     window.setInitial(page([1, 3], 's1', 'e1', false, false));
     window.mergeLive(2, 'tail');
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.hasMoreTail).toBe(false);
     window.mergeLive(2, 'tail'); // 重复 live 条目被 normalize 去重
     expect(window.items).toEqual([1, 2, 3]);
   });
@@ -483,15 +483,15 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     window.setInitial(page([1, 3], 's1', 'e1', false, true));
     window.mergeLive(2, 'tail');
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.hasMoreForward).toBe(true); // 窗口本就没追平，mergeLive 如实保留
+    expect(window.hasMoreTail).toBe(true); // 窗口本就没追平，mergeLive 如实保留
   });
 
-  it('E2 edge=head 并入首页；调用前新鲜端 hasMoreBackward 已是 false，并入后保持不变', () => {
+  it('E2 edge=head 并入首页；调用前新鲜端 hasMoreHead 已是 false，并入后保持不变', () => {
     const window = new PageWindow<number>(1);
     window.setInitial(page([2, 3], 's1', 'e1', false, false));
     window.mergeLive(1, 'head');
     expect(window.items).toEqual([1, 2, 3]);
-    expect(window.hasMoreBackward).toBe(false);
+    expect(window.hasMoreHead).toBe(false);
   });
 
   it('E3 窗口为空时自建一页并标记已加载；没有可用游标时两端 hasMore 一并置 false', () => {
@@ -500,10 +500,10 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.items).toEqual([1]);
     expect(window.loaded).toBe(true);
     // 从未加载过 → 没有任何边界游标，如实报告「两端都没有更多」，避免带着空游标去请求。
-    expect(window.backwardCursor).toBe('');
-    expect(window.forwardCursor).toBe('');
-    expect(window.hasMoreBackward).toBe(false);
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.cursorFor('head')).toBe('');
+    expect(window.cursorFor('tail')).toBe('');
+    expect(window.hasMoreHead).toBe(false);
+    expect(window.hasMoreTail).toBe(false);
   });
 
   it('E3b 空首页留下的 fallback 游标会被自建页继承，续翻锚点不丢', () => {
@@ -511,24 +511,24 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     window.setInitial(page([], 'sEmpty', 'eEmpty', true, false));
     window.mergeLive(1, 'tail');
     expect(window.items).toEqual([1]);
-    expect(window.backwardCursor).toBe('sEmpty');
-    expect(window.hasMoreBackward).toBe(true); // 有锚点就照常保留
-    expect(window.hasMoreForward).toBe(false); // 新鲜端已追平
+    expect(window.cursorFor('head')).toBe('sEmpty');
+    expect(window.hasMoreHead).toBe(true); // 有锚点就照常保留
+    expect(window.hasMoreTail).toBe(false); // 新鲜端已追平
   });
 
   it('E4 多页窗口下 mergeLive 只并入新鲜端那一页，页数不变、不触发裁剪', () => {
     const window = new PageWindow<number>(2);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    // hasMoreForward=false：窗口已经追到尾部真实新鲜端，满足 mergeLive('tail') 的前置契约。
-    window.appendForward(page([3, 4], 's2', 'e2', true, false));
+    // hasMoreTail=false：窗口已经追到尾部真实新鲜端，满足 mergeLive('tail') 的前置契约。
+    window.appendTail(page([3, 4], 's2', 'e2', true, false));
     window.mergeLive(5, 'tail');
     expect(window.items).toEqual([1, 2, 3, 4, 5]);
-    expect(window.hasMoreBackward).toBe(false); // 没有新增页，无需裁剪
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.hasMoreHead).toBe(false); // 没有新增页，无需裁剪
+    expect(window.hasMoreTail).toBe(false);
 
     window.mergeLive(0, 'head');
     expect(window.items).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(window.hasMoreBackward).toBe(false);
+    expect(window.hasMoreHead).toBe(false);
   });
 
   it('E5 mergeLive 经 normalize 处理整页（可用于排序 + 去重）', () => {
@@ -542,7 +542,7 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
   it('E6 mergeLive 同样做跨页去重：条目已在别的页时先摘掉旧的再并入', () => {
     const window = new PageWindow<number>(3, undefined, asKey);
     window.setInitial(page([1, 2], 's1', 'e1', false, true));
-    window.appendForward(page([3, 4], 's2', 'e2', true, false));
+    window.appendTail(page([3, 4], 's2', 'e2', true, false));
     window.mergeLive(1, 'tail'); // 1 已经在首页
     expect(window.items).toEqual([2, 3, 4, 1]);
   });
@@ -572,9 +572,9 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
     expect(window.count).toBe(20);
     expect(window.items).toEqual(Array.from({ length: 20 }, (_, index) => 481 + index));
     expect(evicted).toBe(481);
-    expect(window.hasMoreBackward).toBe(true);
-    expect(window.backwardCursor).toBe('s1'); // 上层看到 eviction 后会安排权威 reset 修复边界
-    expect(window.forwardCursor).toBe('e1');
+    expect(window.hasMoreHead).toBe(true);
+    expect(window.cursorFor('head')).toBe('s1'); // 上层看到 eviction 后会安排权威 reset 修复边界
+    expect(window.cursorFor('tail')).toBe('e1');
   });
 
   it('E8 source 或 normalize 产出超过 pageSize 时三条入窗路径都快速失败', () => {
@@ -584,34 +584,34 @@ describe('PageWindow / E 实时并入 mergeLive', () => {
 
     const forward = new PageWindow<number>(2, undefined, undefined, 3);
     forward.setInitial(page([1], 's0', 'e0', false, true));
-    expect(() => forward.appendForward(oversized)).toThrow(RangeError);
+    expect(() => forward.appendTail(oversized)).toThrow(RangeError);
     expect(forward.items).toEqual([1]);
 
     const backward = new PageWindow<number>(2, (items) => [...items, 99], undefined, 3);
     backward.setInitial(page([1], 's0', 'e0', true, false));
-    expect(() => backward.prependBackward(page([2, 3, 4], 's', 'e', false, true))).toThrow(RangeError);
+    expect(() => backward.prependHead(page([2, 3, 4], 's', 'e', false, true))).toThrow(RangeError);
     expect(backward.items).toEqual([1, 99]);
   });
 
   it('E9 非空 source 页被 normalize 为空时仍保留新游标，避免触界重复请求旧页', () => {
     const window = new PageWindow<number>(3, () => [], undefined, 2);
     window.setInitial(page([1], 's0', 'e0', false, true));
-    expect(window.forwardCursor).toBe('e0');
+    expect(window.cursorFor('tail')).toBe('e0');
 
-    expect(window.appendForward(page([2], 's1', 'e1', true, true))).toBe(0);
-    expect(window.forwardCursor).toBe('e1');
-    expect(window.hasMoreForward).toBe(true);
+    expect(window.appendTail(page([2], 's1', 'e1', true, true))).toBe(0);
+    expect(window.cursorFor('tail')).toBe('e1');
+    expect(window.hasMoreTail).toBe(true);
 
-    expect(window.appendForward(page([], 's2', 'e2', true, true))).toBe(0);
-    expect(window.forwardCursor).toBe('e1'); // 真空页不覆盖最后一个有效边界
-    expect(window.hasMoreForward).toBe(false);
+    expect(window.appendTail(page([], 's2', 'e2', true, true))).toBe(0);
+    expect(window.cursorFor('tail')).toBe('e1'); // 真空页不覆盖最后一个有效边界
+    expect(window.hasMoreTail).toBe(false);
   });
 });
 
 // ───────────────────────── F 大数据量与长序列 ─────────────────────────
 
 describe('PageWindow / F 大数据量与长序列', () => {
-  it('F1 连续 1000 次 appendForward：条目数恒不越界、身份始终唯一、游标始终来自保留页', () => {
+  it('F1 连续 1000 次 appendTail：条目数恒不越界、身份始终唯一、游标始终来自保留页', () => {
     const maxPages = 5;
     const pageSize = 40;
     const window = new PageWindow<number>(maxPages, undefined, asKey);
@@ -619,17 +619,17 @@ describe('PageWindow / F 大数据量与长序列', () => {
     for (let p = 1; p <= 1000; p++) {
       const base = p * pageSize;
       const items = Array.from({ length: pageSize }, (_, i) => base + i);
-      window.appendForward(page(items, `s${p}`, `e${p}`, true, true));
+      window.appendTail(page(items, `s${p}`, `e${p}`, true, true));
       if (p % 137 === 0) {
         expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
         const ids = window.items.map(String);
         expect(new Set(ids).size).toBe(ids.length);
-        expect(window.forwardCursor).toBe(`e${p}`);
-        expect(window.backwardCursor).toBe(`s${p - maxPages + 1}`);
+        expect(window.cursorFor('tail')).toBe(`e${p}`);
+        expect(window.cursorFor('head')).toBe(`s${p - maxPages + 1}`);
       }
     }
     expect(window.count).toBe(pageSize * maxPages);
-    expect(window.hasMoreBackward).toBe(true);
+    expect(window.hasMoreHead).toBe(true);
   });
 
   it('F2 交替 append / prepend 长序列（模拟用户来回滚动）后不变量仍成立', () => {
@@ -646,11 +646,11 @@ describe('PageWindow / F 大数据量与长序列', () => {
     for (let step = 0; step < 400; step++) {
       if (step % 3 === 2) {
         const from = Math.max(0, backwardStart - pageSize);
-        window.prependBackward(page(all.slice(from, backwardStart), `s${from}`, `e${backwardStart}`, from > 0, true));
+        window.prependHead(page(all.slice(from, backwardStart), `s${from}`, `e${backwardStart}`, from > 0, true));
         backwardStart = from;
       } else {
         const to = Math.min(total, forwardEnd + pageSize);
-        window.appendForward(page(all.slice(forwardEnd, to), `s${forwardEnd}`, `e${to}`, true, to < total));
+        window.appendTail(page(all.slice(forwardEnd, to), `s${forwardEnd}`, `e${to}`, true, to < total));
         forwardEnd = to;
       }
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
@@ -664,7 +664,7 @@ describe('PageWindow / F 大数据量与长序列', () => {
     window.setInitial(page([0, 1, 2, 3], 's0', 'e0', false, true));
     for (let p = 1; p <= 200; p++) {
       const base = p * 2;
-      window.appendForward(page([base, base + 1, base + 2, base + 3], `s${p}`, `e${p}`, true, true));
+      window.appendTail(page([base, base + 1, base + 2, base + 3], `s${p}`, `e${p}`, true, true));
       const ids = window.items.map(String);
       expect(new Set(ids).size).toBe(ids.length);
     }
@@ -676,7 +676,7 @@ describe('PageWindow / F 大数据量与长序列', () => {
     window.setInitial(page(Array.from({ length: 100 }, (_, i) => i), 's0', 'e0', false, true));
     for (let p = 1; p < 10; p++) {
       const base = p * 100;
-      window.appendForward(page(Array.from({ length: 100 }, (_, i) => base + i), `s${p}`, `e${p}`, true, true));
+      window.appendTail(page(Array.from({ length: 100 }, (_, i) => base + i), `s${p}`, `e${p}`, true, true));
     }
     expect(window.count).toBe(1000);
     expect(window.hasIdentity('999')).toBe(true);

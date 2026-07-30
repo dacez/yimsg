@@ -113,7 +113,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, direction: 'forward'): Promise<void>;
+          loadMore(key: string, edge: 'tail'): Promise<void>;
           state(key: string): { count: number };
           rowCount(key: string): number;
           rowIds(key: string): string[];
@@ -132,7 +132,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       let maxRows = 0;
       for (let pageIndex = 0; pageIndex < 250; pageIndex++) {
         const started = performance.now();
-        await api.loadMore(key, 'forward');
+        await api.loadMore(key, 'tail');
         document.body.offsetHeight;
         samples.push(performance.now() - started);
         maxCount = Math.max(maxCount, api.state(key).count);
@@ -175,7 +175,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, direction: 'forward'): Promise<void>;
+          loadMore(key: string, edge: 'tail'): Promise<void>;
           patchLabel(key: string, id: string, label: string): boolean;
           state(key: string): { count: number };
           rowCount(key: string): number;
@@ -188,7 +188,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         maxPages: 5,
         reachPx: -1,
       });
-      for (let index = 0; index < 4; index++) await api.loadMore(key, 'forward');
+      for (let index = 0; index < 4; index++) await api.loadMore(key, 'tail');
       const samples: number[] = [];
       for (let index = 0; index < 200; index++) {
         const id = String(index);
@@ -342,7 +342,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         logicalCount: 1_000_000,
         pageSize: 50,
         maxPages: 4,
-        freshEdge: 'tail',
+        order: 'asc',
         reachPx: -1,
       });
       const started = performance.now();

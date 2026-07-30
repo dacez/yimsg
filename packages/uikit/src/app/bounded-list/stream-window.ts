@@ -36,28 +36,28 @@ export interface BoundedStreamWindowOptions {
 export interface BoundedStreamWindowRenderState<T> {
   readonly items: ReadonlyArray<T>;
   readonly loaded?: boolean;
-  /** 该方向现在能不能续翻，驱动触界检测。 */
-  readonly hasMoreBackward?: boolean;
-  readonly hasMoreForward?: boolean;
+  /** 该端现在能不能续翻，驱动触界检测。 */
+  readonly hasMoreHead?: boolean;
+  readonly hasMoreTail?: boolean;
   /**
-   * 该方向是否**确认**已经到达数据尽头，驱动「没有更多了」边界提示。
+   * 该端是否**确认**已经到达数据尽头，驱动「没有更多了」边界提示。
    *
-   * 与 `hasMoreBackward` 分开是必须的：「不能续翻」有两种成因——真的没有数据了，
+   * 与 `hasMoreHead` 分开是必须的：「不能续翻」有两种成因——真的没有数据了，
    * 以及边界游标暂时不可信（live 硬裁剪之后）。后者不知道还有没有数据，既不能
-   * 自动续翻，也不能告诉用户「到底了」。不提供时退化为 `!hasMoreBackward`。
+   * 自动续翻，也不能告诉用户「到底了」。不提供时退化为 `!hasMoreHead`。
    */
-  readonly atBackwardEnd?: boolean;
-  readonly atForwardEnd?: boolean;
-  readonly loadingBackward?: boolean;
-  readonly loadingForward?: boolean;
+  readonly atHeadEnd?: boolean;
+  readonly atTailEnd?: boolean;
+  readonly loadingHead?: boolean;
+  readonly loadingTail?: boolean;
   readonly emptyText?: string;
   /** 首屏加载失败时代替空态显示；提供时优先于 emptyText。 */
   readonly errorText?: string;
   readonly loadingText?: string;
-  readonly backwardBoundaryText?: string;
-  readonly forwardBoundaryText?: string;
-  readonly loadBackward?: () => void;
-  readonly loadForward?: () => void;
+  readonly headBoundaryText?: string;
+  readonly tailBoundaryText?: string;
+  readonly loadHead?: () => void;
+  readonly loadTail?: () => void;
   readonly renderItem: (item: T, index: number) => ReadonlyArray<HTMLElement>;
   readonly keyOf: (item: T, index: number) => string;
   /** 内部数据更新可跳过未变化行的 renderItem；显式重绘时保持 false。 */
@@ -230,9 +230,9 @@ export class BoundedStreamWindow<T> {
 
     const desiredElements: HTMLElement[] = [];
     const nextRenderedRows = new Map<string, RenderedRow<T>>();
-    if ((state.atBackwardEnd ?? !state.hasMoreBackward) && state.backwardBoundaryText) {
-      desiredElements.push(createBoundaryHint(doc, state.backwardBoundaryText, 'top'));
-    } else if (state.loadingBackward && state.loadingText) {
+    if ((state.atHeadEnd ?? !state.hasMoreHead) && state.headBoundaryText) {
+      desiredElements.push(createBoundaryHint(doc, state.headBoundaryText, 'top'));
+    } else if (state.loadingHead && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'top'));
     }
 
@@ -273,9 +273,9 @@ export class BoundedStreamWindow<T> {
       nextRenderedRows.set(key, { item, elements, revision });
     }
 
-    if ((state.atForwardEnd ?? !state.hasMoreForward) && state.forwardBoundaryText) {
-      desiredElements.push(createBoundaryHint(doc, state.forwardBoundaryText, 'bottom'));
-    } else if (state.loadingForward && state.loadingText) {
+    if ((state.atTailEnd ?? !state.hasMoreTail) && state.tailBoundaryText) {
+      desiredElements.push(createBoundaryHint(doc, state.tailBoundaryText, 'bottom'));
+    } else if (state.loadingTail && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
     }
 
@@ -338,8 +338,8 @@ export class BoundedStreamWindow<T> {
     const el = this.options.scrollElement;
     const reachPx = this.options.reachPx ?? DEFAULT_REACH_PX;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (el.scrollTop <= reachPx && state.hasMoreBackward) state.loadBackward?.();
-    if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreForward) state.loadForward?.();
+    if (el.scrollTop <= reachPx && state.hasMoreHead) state.loadHead?.();
+    if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreTail) state.loadTail?.();
   }
 
   private onKeydown(ev: KeyboardEvent): void {
@@ -349,11 +349,11 @@ export class BoundedStreamWindow<T> {
       const dir = ev.key === 'ArrowDown' ? 1 : -1;
       const next = this.focusedIndex < 0 ? (dir > 0 ? 0 : state.items.length - 1) : this.focusedIndex + dir;
       if (next < 0) {
-        state.loadBackward?.();
+        state.loadHead?.();
         return;
       }
       if (next >= state.items.length) {
-        state.loadForward?.();
+        state.loadTail?.();
         return;
       }
       this.focusedIndex = next;

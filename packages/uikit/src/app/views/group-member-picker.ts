@@ -111,7 +111,7 @@ export async function showGroupMemberPicker(
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        freshEdge: 'head',
+        order: 'desc',
         loadAll: () => loadAllMemberEntries(app, groupId, excluded, (n) => {
           loadingCount = n;
         }),
@@ -121,7 +121,7 @@ export async function showGroupMemberPicker(
         compare: (a, b) => collator.compare(entryName(app, a), entryName(app, b)),
       }),
       identityOf: (entry) => entry.kind === 'all' ? ALL_MEMBERS_IDENTITY : entry.uid,
-      freshEdge: 'head',
+      order: 'desc',
       selection: { mode: 'single' },
       pinnedItems: () => options.includeMentionAll ? [{ kind: 'all' }] : [],
       renderItem: (entry) => {

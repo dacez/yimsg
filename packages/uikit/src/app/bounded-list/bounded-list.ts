@@ -18,10 +18,9 @@ import { valuesEquivalent } from './deep-equal';
 import type {
   BoundedListOptions,
   BoundedListState,
-  Direction,
+  Edge,
   ErrorPhase,
   FetchPageRequest,
-  FreshEdge,
   PageLoadResult,
   RenderItemContext,
 } from './types';
@@ -55,17 +54,19 @@ export class BoundedList<T, Q = void> {
   /**
    * 新鲜端派生出来的全部常量，构造期算一次。
    *
-   * 「新数据从哪一端进来」会派生出方向、贴边阈值、贴边校正帧数、贴边时 scrollTop
-   * 取 0 还是 scrollHeight 等一串取值。全部在这里定死，改新鲜端语义只改这一处；
-   * 别在方法里重新写 `edge.at === 'head' ? … : …`。
+   * 「新数据从哪一端进来」会派生出贴边阈值、贴边校正帧数、贴边时 scrollTop 取 0
+   * 还是 scrollHeight 等一串取值。全部在这里定死，改新鲜端语义只改这一处；别在
+   * 方法里重新写 `edge.at === 'head' ? … : …`。
+   *
+   * 没有单独的 `toward` 字段：Direction/FreshEdge 合并成 Edge 之前，`toward`（朝新鲜端
+   * 走的方向）和 `at`（新鲜端本身）是两个不同类型、需要互相换算的值；合并之后两者
+   * 恒相等，直接用 `at` 即可。
    */
   private readonly edge: {
-    /** 新鲜端本身；只有需要区分「哪一端」而非「哪个方向」时才用它。 */
-    readonly at: FreshEdge;
-    /** 朝新鲜端走的方向。 */
-    readonly toward: Direction;
-    /** 背离新鲜端的方向，即容量裁剪发生的那一端。 */
-    readonly away: Direction;
+    /** 新鲜端。 */
+    readonly at: Edge;
+    /** 非新鲜端，即容量裁剪发生的那一端。 */
+    readonly away: Edge;
     /** 距新鲜端多少像素以内算贴边。 */
     readonly stickyPx: number;
     /** 贴边时连续校正多少帧（tail 端内容会异步增高，需要多帧）。 */
@@ -83,7 +84,7 @@ export class BoundedList<T, Q = void> {
    * 'reset' 清空窗口重建，'reconcile' 保留 capped DOM 直到响应落地才原子替换；
    * `promise` 供重入合并使用（多个入口同时要求追平时共享同一次请求，两种 kind 一视同仁，
    * 见 `startAuthoritativePage`）。三个字段必须一起改，所以合成一个对象整体赋值。
-   * 普通分页的在飞状态另见 `dir[dir].loading`，两者不会互相顶替。
+   * 普通分页的在飞状态另见 `edges[edge].loading`，两者不会互相顶替。
    */
   private authoritative: { kind: 'reset' | 'reconcile'; promise: Promise<void> | null } | null = null;
 
@@ -124,19 +125,19 @@ export class BoundedList<T, Q = void> {
   /** 加载前缓存的贴边状态：图片异步增高后不能现算（内容已变高，必然误判成不贴边）。 */
   private stickToFreshEdge = true;
   /**
-   * 按方向索引的续翻状态。按方向索引（而不是 `xxxBackward` / `xxxForward` 两套字段）
-   * 是为了让 `this.dir[dir].xxx` 直接可用，消掉一大批 `dir === 'backward' ? … : …`：
-   * - `loading`：该方向的普通分页是否在飞。
-   * - `autoBlocked`：触界检测驱动的自动续翻在该方向上是否被暂停——某方向请求
-   *   失败后置真，防止「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环；
-   *   用户把该端滚离触界范围、显式调用 loadMore、或 reset 之后解除。
+   * 按端索引的续翻状态。按端索引（而不是 `xxxHead` / `xxxTail` 两套字段）是为了让
+   * `this.edges[edge].xxx` 直接可用，消掉一大批 `edge === 'head' ? … : …`：
+   * - `loading`：该端的普通分页是否在飞。
+   * - `autoBlocked`：触界检测驱动的自动续翻在该端上是否被暂停——该端请求失败后
+   *   置真，防止「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环；用户把该端
+   *   滚离触界范围、显式调用 loadMore、或 reset 之后解除。
    * - `cursorInvalid`：live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。它只封锁
    *   「能否续翻」，**不表示该端没有数据了**——边界提示另看 `PageWindow.hasMoreX`
    *   （`BL-BUG-015`）。
    */
-  private readonly dir: Record<Direction, { loading: boolean; autoBlocked: boolean; cursorInvalid: boolean }> = {
-    backward: { loading: false, autoBlocked: false, cursorInvalid: false },
-    forward: { loading: false, autoBlocked: false, cursorInvalid: false },
+  private readonly edges: Record<Edge, { loading: boolean; autoBlocked: boolean; cursorInvalid: boolean }> = {
+    head: { loading: false, autoBlocked: false, cursorInvalid: false },
+    tail: { loading: false, autoBlocked: false, cursorInvalid: false },
   };
 
   /**
@@ -173,12 +174,13 @@ export class BoundedList<T, Q = void> {
       throw new TypeError(`[BoundedList:${opts.id}] selection.store 与 selection.max 互斥：共享 store 的上限由该 store 自己决定`);
     }
 
-    const at = opts.freshEdge ?? 'head';
+    // order='desc'（默认，新→旧，如会话）→ 新鲜端在头部；order='asc'（旧→新，如消息）
+    // → 新鲜端在尾部。展示序与新鲜端是同一个比特的两种说法，这里只转换这一次。
+    const at: Edge = (opts.order ?? 'desc') === 'desc' ? 'head' : 'tail';
     const head = at === 'head';
     this.edge = {
       at,
-      toward: head ? 'backward' : 'forward',
-      away: head ? 'forward' : 'backward',
+      away: head ? 'tail' : 'head',
       stickyPx: opts.stickyPx ?? (head ? 4 : 50),
       settleFrames: opts.settleFrames ?? (head ? 1 : 4),
     };
@@ -242,59 +244,61 @@ export class BoundedList<T, Q = void> {
     await this.startAuthoritativePage({ clearWindow: true, pinEdge: optsIn?.pinEdge ?? true });
   }
 
-  async loadMore(dir: Direction): Promise<void> {
+  async loadMore(edge: Edge): Promise<void> {
     if (this.disposed) return;
-    // 显式调用视为「用户主动重试」，解除该方向的自动续翻暂停。
-    this.dir[dir].autoBlocked = false;
-    await this.loadMoreInternal(dir);
+    // 显式调用视为「用户主动重试」，解除该端的自动续翻暂停。
+    this.edges[edge].autoBlocked = false;
+    await this.loadMoreInternal(edge);
   }
 
   // 两个调用点都已经挡住了 disposed：公开的 loadMore 自带守卫，autoLoadMore 只在
   // render 里被渲染引擎回调，而 render 在 dispose 之后是空操作。
-  private async loadMoreInternal(dir: Direction): Promise<void> {
-    if (this.dir[dir].cursorInvalid) {
+  private async loadMoreInternal(edge: Edge): Promise<void> {
+    if (this.edges[edge].cursorInvalid) {
       await this.reconcileCapacity();
       return;
     }
-    const hasMore = dir === 'backward' ? this.window.hasMoreBackward : this.window.hasMoreForward;
-    const alreadyLoading = this.dir[dir].loading;
+    const hasMore = edge === 'head' ? this.window.hasMoreHead : this.window.hasMoreTail;
+    const alreadyLoading = this.edges[edge].loading;
     if (!hasMore || alreadyLoading) return;
 
-    const cursor = dir === 'backward' ? this.window.backwardCursor : this.window.forwardCursor;
+    const cursor = this.window.cursorFor(edge);
     // 空游标意味着窗口里没有任何可用的续翻锚点（例如只有本端并入的条目）。
     // 空串不是 reset 语义，发出去只会让服务端按未定义行为处理，这里直接放弃。
     if (cursor === '') return;
 
-    this.dir[dir].loading = true;
+    this.edges[edge].loading = true;
     this.emitLoadState();
     this.repaint();
 
     const myGeneration = this.windowGeneration;
     try {
+      // backward 是 wire 协议自己的方向词汇（见 FetchPageRequest），与本组件内部
+      // 统一使用的 Edge 只在这一处转换：head 端续翻恒等于 backward 请求。
       const page = await this.opts.source.fetch({
         cursor,
-        backward: dir === 'backward',
+        backward: edge === 'head',
         limit: this.opts.pageSize,
         query: this.query,
       });
       if (this.isObsolete(myGeneration)) return;
-      if (dir === 'backward') this.window.prependBackward(page);
-      else this.window.appendForward(page);
-      this.dir[dir].loading = false;
-      this.dir[dir].autoBlocked = false;
+      if (edge === 'head') this.window.prependHead(page);
+      else this.window.appendTail(page);
+      this.edges[edge].loading = false;
+      this.edges[edge].autoBlocked = false;
       // 只重放与位置无关的最终态：它们不会让窗口变大，因此不需要在这里处理硬预算
       // 裁剪、游标失效或额外追平。
       this.replayOverlay(this.window, false);
       this.emitItemsChanged();
-      this.settleFreshEdgeBoundary(dir);
+      this.settleFreshEdgeBoundary(edge);
       this.emitLoadState();
       this.repaint();
       this.flushDeferredInvalidate();
     } catch (err) {
       if (this.isObsolete(myGeneration)) return;
-      this.dir[dir].loading = false;
-      this.dir[dir].autoBlocked = true;
-      this.reportError(err, dir);
+      this.edges[edge].loading = false;
+      this.edges[edge].autoBlocked = true;
+      this.reportError(err, edge);
       this.emitLoadState();
       this.repaint();
       this.flushDeferredInvalidate();
@@ -347,7 +351,7 @@ export class BoundedList<T, Q = void> {
     // 追平了新鲜端就无条件并入：本端发送要立即可见，这是乐观显示的全部意义。
     const evicted = this.window.mergeLive(item, this.edge.at);
     if (evicted > 0) {
-      this.dir[this.edge.away].cursorInvalid = true;
+      this.edges[this.edge.away].cursorInvalid = true;
       this.cancelOrdinaryPageLoads();
     }
     // 这一刻起会有一次权威请求整体替换窗口（已经在飞，或者下面因 eviction 排一次），
@@ -439,22 +443,22 @@ export class BoundedList<T, Q = void> {
     this.stream.render({
       items,
       loaded: state.loaded,
-      hasMoreBackward: state.hasMoreBackward,
-      hasMoreForward: state.hasMoreForward,
+      hasMoreHead: state.hasMoreHead,
+      hasMoreTail: state.hasMoreTail,
       // 边界提示只看窗口自己的账。`state.hasMoreX` 还叠加了「游标是否失效」，
       // 拿它判边界会在 live 硬裁剪后（游标不可信但数据确实还有）错报「没有更多了」，
       // 而且那之后 reconcile 一旦失败就再也没有东西把它改回来。
-      atBackwardEnd: !this.window.hasMoreBackward,
-      atForwardEnd: !this.window.hasMoreForward,
-      loadingBackward: state.loadingBackward,
-      loadingForward: state.loadingForward,
+      atHeadEnd: !this.window.hasMoreHead,
+      atTailEnd: !this.window.hasMoreTail,
+      loadingHead: state.loadingHead,
+      loadingTail: state.loadingTail,
       emptyText,
       errorText,
       loadingText: text.loading?.(),
-      backwardBoundaryText: text.backwardBoundary?.(),
-      forwardBoundaryText: text.forwardBoundary?.(),
-      loadBackward: () => this.autoLoadMore('backward'),
-      loadForward: () => this.autoLoadMore('forward'),
+      headBoundaryText: text.headBoundary?.(),
+      tailBoundaryText: text.tailBoundary?.(),
+      loadHead: () => this.autoLoadMore('head'),
+      loadTail: () => this.autoLoadMore('tail'),
       renderItem: (item, index) => this.renderItemWithContext(item, index, items),
       keyOf: (item) => this.opts.identityOf(item),
       reuseUnchangedRows: !rebuildRows,
@@ -498,11 +502,11 @@ export class BoundedList<T, Q = void> {
   private buildState(atFreshEdge: boolean): BoundedListState {
     return {
       loaded: this.firstLoadDone,
-      loading: this.dir.backward.loading || this.dir.forward.loading || this.authoritative?.kind === 'reconcile',
-      loadingBackward: this.dir.backward.loading,
-      loadingForward: this.dir.forward.loading,
-      hasMoreBackward: this.window.hasMoreBackward && !this.dir.backward.cursorInvalid,
-      hasMoreForward: this.window.hasMoreForward && !this.dir.forward.cursorInvalid,
+      loading: this.edges.head.loading || this.edges.tail.loading || this.authoritative?.kind === 'reconcile',
+      loadingHead: this.edges.head.loading,
+      loadingTail: this.edges.tail.loading,
+      hasMoreHead: this.window.hasMoreHead && !this.edges.head.cursorInvalid,
+      hasMoreTail: this.window.hasMoreTail && !this.edges.tail.cursorInvalid,
       count: this.window.count,
       total: this.window.total,
       stale: this.pillState.stale,
@@ -570,7 +574,7 @@ export class BoundedList<T, Q = void> {
 
   /** 窗口内容（而非滚动位置）是否已经追到新鲜端尽头：该端 hasMore 已收敛为 false。 */
   private reachesFreshEdge(): boolean {
-    return this.edge.toward === 'forward' ? !this.window.hasMoreForward : !this.window.hasMoreBackward;
+    return this.edge.at === 'tail' ? !this.window.hasMoreTail : !this.window.hasMoreHead;
   }
 
   private isQueryActive(): boolean {
@@ -595,9 +599,9 @@ export class BoundedList<T, Q = void> {
     settle();
   }
 
-  private autoLoadMore(dir: Direction): void {
-    if (this.dir[dir].autoBlocked) return;
-    void this.loadMoreInternal(dir);
+  private autoLoadMore(edge: Edge): void {
+    if (this.edges[edge].autoBlocked) return;
+    void this.loadMoreInternal(edge);
   }
 
   private catchUp(): Promise<void> {
@@ -607,7 +611,7 @@ export class BoundedList<T, Q = void> {
   }
 
   private hasInvalidCapacityCursor(): boolean {
-    return this.dir.backward.cursorInvalid || this.dir.forward.cursorInvalid;
+    return this.edges.head.cursorInvalid || this.edges.tail.cursorInvalid;
   }
 
   private onScrollFrame(): void {
@@ -620,14 +624,14 @@ export class BoundedList<T, Q = void> {
       ? scrollTop <= this.edge.stickyPx
       : maxScrollTop - scrollTop <= this.edge.stickyPx;
 
-    // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该方向的自动续翻暂停，
+    // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该端的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
-    if (scrollTop > this.reachPx) this.dir.backward.autoBlocked = false;
-    if (maxScrollTop - scrollTop > this.reachPx) this.dir.forward.autoBlocked = false;
+    if (scrollTop > this.reachPx) this.edges.head.autoBlocked = false;
+    if (maxScrollTop - scrollTop > this.reachPx) this.edges.tail.autoBlocked = false;
     this.stickToFreshEdge = atFreshEdge;
 
     // 提示条自动消失路径①：用户自己滚回新鲜端时自动追平（设计文档 §13.2）。
-    const canCatchUp = this.pillState.stale && !this.dir.backward.loading && !this.dir.forward.loading;
+    const canCatchUp = this.pillState.stale && !this.edges.head.loading && !this.edges.tail.loading;
     if (canCatchUp && atFreshEdge) void this.catchUp();
   }
 
@@ -643,9 +647,9 @@ export class BoundedList<T, Q = void> {
    * 新鲜端之后再无未加载数据，提示条必须一起消失。两个字段必须一起清零，
    * 否则残留计数会带到下一次提示条亮起。
    */
-  private settleFreshEdgeBoundary(dir: Direction): void {
-    if (dir !== this.edge.toward) return;
-    const stillHasMore = dir === 'backward' ? this.window.hasMoreBackward : this.window.hasMoreForward;
+  private settleFreshEdgeBoundary(edge: Edge): void {
+    if (edge !== this.edge.at) return;
+    const stillHasMore = edge === 'head' ? this.window.hasMoreHead : this.window.hasMoreTail;
     if (stillHasMore || !this.pillState.stale) return;
     this.pillState.clear();
   }
@@ -699,16 +703,16 @@ export class BoundedList<T, Q = void> {
       this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
       this.window.reset();
       this.firstLoadDone = false;
-      this.dir.backward.autoBlocked = false;
-      this.dir.forward.autoBlocked = false;
-      this.dir.backward.cursorInvalid = false;
-      this.dir.forward.cursorInvalid = false;
+      this.edges.head.autoBlocked = false;
+      this.edges.tail.autoBlocked = false;
+      this.edges.head.cursorInvalid = false;
+      this.edges.tail.cursorInvalid = false;
       this.pillState.clear();
     } else {
       this.authoritative = { kind: 'reconcile', promise: null };
     }
-    this.dir.backward.loading = false;
-    this.dir.forward.loading = false;
+    this.edges.head.loading = false;
+    this.edges.tail.loading = false;
     this.refreshTokenByIdentity.clear();
     this.clearResetError();
     this.emitLoadState();
@@ -812,11 +816,11 @@ export class BoundedList<T, Q = void> {
 
   /** 权威页落地后的提示条与游标状态。 */
   private applyAuthoritativeState(replayEvicted: number): void {
-    this.dir.backward.cursorInvalid = false;
-    this.dir.forward.cursorInvalid = false;
+    this.edges.head.cursorInvalid = false;
+    this.edges.tail.cursorInvalid = false;
     if (replayEvicted > 0) {
       // 重放本端条目又撑破了硬预算：被裁那一端的服务端边界不再可信，等下一次追平。
-      this.dir[this.edge.away].cursorInvalid = true;
+      this.edges[this.edge.away].cursorInvalid = true;
       this.pillState.mark();
       return;
     }
@@ -842,7 +846,7 @@ export class BoundedList<T, Q = void> {
   }
 
   private hasDataRequestInFlight(): boolean {
-    return this.isAuthoritativeRequestInFlight() || this.dir.backward.loading || this.dir.forward.loading;
+    return this.isAuthoritativeRequestInFlight() || this.edges.head.loading || this.edges.tail.loading;
   }
 
   /**
@@ -855,11 +859,11 @@ export class BoundedList<T, Q = void> {
   }
 
   private cancelOrdinaryPageLoads(): void {
-    if (this.isAuthoritativeRequestInFlight() || (!this.dir.backward.loading && !this.dir.forward.loading)) return;
+    if (this.isAuthoritativeRequestInFlight() || (!this.edges.head.loading && !this.edges.tail.loading)) return;
     // live 裁剪后，所有基于旧窗口边界发出的普通分页响应都已失去上下文。
     this.discardInFlightResponses();
-    this.dir.backward.loading = false;
-    this.dir.forward.loading = false;
+    this.edges.head.loading = false;
+    this.edges.tail.loading = false;
     this.refreshTokenByIdentity.clear();
   }
 
@@ -951,7 +955,7 @@ export class BoundedList<T, Q = void> {
         const fetchedMap = new Map(fetched.map((item) => [this.opts.identityOf(item), item] as const));
         // refresh 可能先于一个更早快照的普通分页返回。此时刚接受的远端最终态也要
         // 暂存进 overlay，让晚到分页在并入后重放；否则新值会回退，删除项会复活。
-        const pageRequestInFlight = this.dir.backward.loading || this.dir.forward.loading;
+        const pageRequestInFlight = this.edges.head.loading || this.edges.tail.loading;
         let changed = false;
         for (const id of hits) {
           if (this.refreshTokenByIdentity.get(id) !== refreshTokens.get(id)) continue;

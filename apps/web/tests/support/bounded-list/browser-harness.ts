@@ -26,8 +26,8 @@ type TextKey =
   | 'loading'
   | 'empty'
   | 'emptyFiltered'
-  | 'backwardBoundary'
-  | 'forwardBoundary'
+  | 'headBoundary'
+  | 'tailBoundary'
   | 'updatePill'
   | 'error'
   | 'retry';
@@ -42,7 +42,7 @@ interface MountConfig {
   readonly initialStart?: number;
   readonly initialQuery?: TestQuery;
   readonly sourceKind?: 'server' | 'local';
-  readonly freshEdge?: 'head' | 'tail';
+  readonly order?: 'asc' | 'desc';
   readonly stickyPx?: number;
   readonly reachPx?: number;
   readonly settleFrames?: number;
@@ -103,7 +103,7 @@ interface HarnessEntry {
       | 'maxPages'
       | 'initialStart'
       | 'sourceKind'
-      | 'freshEdge'
+      | 'order'
       | 'active'
       | 'separateContent'
       | 'detachedScroller'
@@ -188,7 +188,7 @@ function cloneItem(item: TestItem): TestItem {
 
 function phaseOf(req: FetchPageRequest<TestQuery>): ErrorPhase {
   if (req.cursor === undefined) return 'reset';
-  return req.backward ? 'backward' : 'forward';
+  return req.backward ? 'head' : 'tail';
 }
 
 function generatedItem(index: number): TestItem {
@@ -283,8 +283,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     loading: '正在加载',
     empty: '列表为空',
     emptyFiltered: '没有匹配项',
-    backwardBoundary: '已到开头',
-    forwardBoundary: '已到结尾',
+    headBoundary: '已到开头',
+    tailBoundary: '已到结尾',
     updatePill: '有更新',
     error: '加载失败：{message}',
     retry: '重新加载',
@@ -296,8 +296,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
   const loading = value('loading');
   const empty = value('empty');
   const emptyFiltered = value('emptyFiltered');
-  const backwardBoundary = value('backwardBoundary');
-  const forwardBoundary = value('forwardBoundary');
+  const headBoundary = value('headBoundary');
+  const tailBoundary = value('tailBoundary');
   const updatePill = value('updatePill');
   const error = value('error');
   const retry = value('retry');
@@ -305,8 +305,8 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     ...(loading === false ? {} : { loading: () => loading }),
     ...(empty === false ? {} : { empty: () => empty }),
     ...(emptyFiltered === false ? {} : { emptyFiltered: () => emptyFiltered }),
-    ...(backwardBoundary === false ? {} : { backwardBoundary: () => backwardBoundary }),
-    ...(forwardBoundary === false ? {} : { forwardBoundary: () => forwardBoundary }),
+    ...(headBoundary === false ? {} : { headBoundary: () => headBoundary }),
+    ...(tailBoundary === false ? {} : { tailBoundary: () => tailBoundary }),
     ...(updatePill === false
       ? {}
       : { updatePill: () => updatePill }),
@@ -399,7 +399,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     maxPages: configInput.maxPages ?? 3,
     initialStart: configInput.initialStart ?? 0,
     sourceKind: configInput.sourceKind ?? 'server',
-    freshEdge: configInput.freshEdge ?? 'head',
+    order: configInput.order ?? 'desc',
     active: configInput.active ?? true,
     separateContent: configInput.separateContent ?? false,
     detachedScroller: configInput.detachedScroller ?? false,
@@ -532,7 +532,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
       : {}),
     ...(normalize ? { normalize } : {}),
     identityOf: (item) => item.id,
-    ...(configInput.freshEdge === undefined ? {} : { freshEdge: config.freshEdge }),
+    ...(configInput.order === undefined ? {} : { order: config.order }),
     ...(config.stickyPx === undefined ? {} : { stickyPx: config.stickyPx }),
     ...(config.reachPx === undefined ? {} : { reachPx: config.reachPx }),
     ...(config.settleFrames === undefined ? {} : { settleFrames: config.settleFrames }),
@@ -644,12 +644,12 @@ const api = {
     const entry = getEntry(key);
     start(entry, () => entry.list.reset(options));
   },
-  loadMore(key: string, direction: 'forward' | 'backward'): Promise<void> {
-    return getEntry(key).list.loadMore(direction);
+  loadMore(key: string, edge: 'head' | 'tail'): Promise<void> {
+    return getEntry(key).list.loadMore(edge);
   },
-  startLoadMore(key: string, direction: 'forward' | 'backward'): void {
+  startLoadMore(key: string, edge: 'head' | 'tail'): void {
     const entry = getEntry(key);
-    start(entry, () => entry.list.loadMore(direction));
+    start(entry, () => entry.list.loadMore(edge));
   },
   setQuery(key: string, query: TestQuery, debounceMs?: number): void {
     getEntry(key).list.setQuery(

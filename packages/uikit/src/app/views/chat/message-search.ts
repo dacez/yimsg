@@ -133,7 +133,7 @@ export function setupMessageSearch(app: AppInstance): void {
       }),
     ),
     identityOf: messageKey,
-    freshEdge: 'head',
+    order: 'desc',
     renderItem: (msg) => [renderSearchResultRow(app, msg)],
     text: {
       emptyFiltered: () => app.t('chat.searchNoResults'),

@@ -2,7 +2,7 @@
 //
 // 判定口径：一个名字只有在 `packages/uikit/src/app/views/`（生产）或
 // `packages/uikit/tests/` / `apps/web/tests/`（测试与 harness）真的被引用时才出现在这里。
-// 只被本目录内部使用的类型（BoundedListText、Direction、FreshEdge、SelectionConfig、
+// 只被本目录内部使用的类型（BoundedListText、Edge、DisplayOrder、SelectionConfig、
 // RegisterBoundedList、LocalPageSourceOptions、ToggleResult）不再导出：它们是
 // BoundedListOptions 等已导出类型的组成部分，结构类型下调用方无需单独 import 也能用。
 //
