@@ -29,17 +29,16 @@ import type {
 const A11Y_ATTRS = ['tabindex', 'role', 'aria-multiselectable'] as const;
 
 /**
- * 尚未被权威页确认的本地最终态，按 identity 索引。
+ * 尚未被权威页确认的本地最终态，按 identity 索引。三个 kind 各有唯一来源：
  *
- * - 'replace' / 'remove' 与位置无关：幂等、与重放顺序无关、命中不到就是空操作，
- *   可以重放到任何窗口上（分页并入后也重放）。
- * - 'upsert' 是本端新增，依赖「自己和已加载内容的相邻关系」，**只重放进权威窗口**。
- *   权威首页按构造就是新鲜端那一页（该端 `hasMore` 必为 `false`），相邻关系在那里
- *   天然确定，因此不需要逐条判定目标窗口有没有追平新鲜端——早前那条判定连同
- *   「不满足就留在 overlay 里等下一次」的重试机制一起删除了。
- *
- * 记 'upsert' 的唯一目的，是让本端并入活过一次**权威窗口替换**：并入本身在
- * `upsertLocal` 里已经同步做完、立刻可见，overlay 只负责它不要在权威响应落地时消失。
+ * - 'upsert'（来自 `upsertLocal`）是本端新增，依赖「自己和已加载内容的相邻关系」，
+ *   **只重放进权威窗口**：权威首页按构造就是新鲜端那一页（该端 `hasMore` 必为
+ *   `false`），相邻关系在那里天然确定。记它的唯一目的是让本端并入活过一次权威窗口
+ *   替换——并入本身在 `upsertLocal` 里已经同步做完、立刻可见，overlay 只负责它不要
+ *   在权威响应落地时消失。
+ * - 'replace'（来自 `patch`，以及 `fetchByIdentity` 落地时仍有旧分页在飞）与 'remove'
+ *   （来自 `removeLocal`，以及 refresh 判定该身份已不存在）与位置无关：幂等、与重放
+ *   顺序无关、命中不到就是空操作，可以重放到任何窗口上（分页并入后也重放）。
  */
 type LocalMutation<T> =
   | { readonly kind: 'upsert'; readonly item: T }
@@ -344,7 +343,9 @@ export class BoundedList<T, Q = void> {
     // 这条并入会被一起替换掉。记入 overlay，由那次响应在新窗口上重放，用户看不到闪动。
     // 判定放在 mergeLive 之后：eviction 刚把被裁端游标置为失效，也要算进来。
     if (this.shouldDeferToOverlay()) {
-      this.rememberPendingMutation(identity, { kind: 'upsert', item }, true);
+      // 重放顺序必须跟着 mergeLive 走到最后，否则 C→D→再 upsert C 会被重放成 C→D。
+      this.pendingMutations.delete(identity);
+      this.rememberPendingMutation(identity, { kind: 'upsert', item });
     }
     this.emitItemsChanged();
     this.emitLoadState();
@@ -789,15 +790,12 @@ export class BoundedList<T, Q = void> {
   }
 
   /**
-   * 记一条待重放的本地最终态。同一身份后写覆盖先写。
-   *
-   * @param reorder 这次写入是否在时间线上「重新发生」了，需要把重放顺序一起移到最后。
-   *   只有 `upsertLocal` 传 `true`：`mergeLive` 会把该身份移动到新鲜端，重放必须跟着走，
-   *   否则 C→D→再 upsert C 会被重放成 C→D。`patch` 改的是值不是位置，传 `false`
-   *   （`Map.set` 对已存在的键保持原插入位置），`remove` 与位置无关，传什么都一样。
+   * 记一条待重放的本地最终态。同一身份后写覆盖先写，`Map.set` 对已存在的键保持原插入
+   * 位置——也就是保持原重放顺序。需要「这次写入在时间线上重新发生、重放顺序也要跟着
+   * 移到最后」的调用方（只有 `upsertLocal`，因为 `mergeLive` 会把该身份移到新鲜端）
+   * 自己先把旧记录 delete 掉，不再通过参数表达这个差异。
    */
-  private rememberPendingMutation(identity: string, mutation: LocalMutation<T>, reorder = false): void {
-    if (reorder) this.pendingMutations.delete(identity);
+  private rememberPendingMutation(identity: string, mutation: LocalMutation<T>): void {
     this.pendingMutations.set(identity, mutation);
     // 硬预算兜底：这个数量级需要在一次请求的在飞窗口内发生 pageSize×maxPages 个不同
     // identity 的本地写入，现实中不会发生。到这里就静默丢最旧的一条，用一次可忽略的

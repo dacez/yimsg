@@ -25,10 +25,10 @@ export interface BoundedStreamWindowOptions {
   /** 每个滚动帧（触界检测之前）执行的回调。 */
   readonly onScroll?: () => void;
   /**
-   * 用户「激活」某一行：点击（事件委托）或键盘 Enter/Space。
-   * identity 由 keyOf 提供；viaKeyboard 区分来源，供上层判断是否需要 preventDefault 之外的行为。
+   * 用户「激活」某一行：点击（事件委托）或键盘 Enter/Space，identity 由 keyOf 提供。
+   * 不区分来源：键盘路径的 preventDefault 在本层已经做完，上层对两种来源的处理完全相同。
    */
-  readonly onInteract?: (identity: string, ev: Event, viaKeyboard: boolean) => void;
+  readonly onInteract?: (identity: string, ev: Event) => void;
   /** contentElement 内部任意元素 load 事件（捕获阶段），用于图片异步增高时的贴底判断。 */
   readonly onContentLoad?: () => void;
 }
@@ -67,8 +67,10 @@ interface RenderedRow<T> {
   readonly revision: unknown;
 }
 
-export const ANCHOR_KEY_ATTR = 'data-bsw-key';
-export const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
+// 两个属性名只在本模块内写入 DOM，不对外导出：调用方（含测试）通过属性选择器
+// `[data-bsw-key]` 定位节点，从不 import 常量本身。
+const ANCHOR_KEY_ATTR = 'data-bsw-key';
+const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
 const FOCUS_CLASS = 'bsw-row-focused';
 
 function nodesEquivalent(left: readonly HTMLElement[], right: readonly HTMLElement[]): boolean {
@@ -119,7 +121,7 @@ export class BoundedStreamWindow<T> {
   private readonly handleClick = (ev: Event) => {
     const content = this.contentElement();
     const key = findKeyFromTarget(ev.target, content);
-    if (key) this.options.onInteract?.(key, ev, false);
+    if (key) this.options.onInteract?.(key, ev);
   };
   private readonly handleKeydown = (ev: KeyboardEvent) => this.onKeydown(ev);
   private readonly handleContentLoad = () => this.options.onContentLoad?.();
@@ -350,7 +352,7 @@ export class BoundedStreamWindow<T> {
       ev.preventDefault?.();
       const key = this.focusedKey
         ?? state.keyOf(state.items[this.focusedIndex], this.focusedIndex);
-      this.options.onInteract?.(key, ev, true);
+      this.options.onInteract?.(key, ev);
     }
   }
 

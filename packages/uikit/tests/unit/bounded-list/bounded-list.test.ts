@@ -315,11 +315,13 @@ describe('BoundedList / A 构造与默认值', () => {
     // 历史上 src/app/ 下同时有 bounded-list.ts（旧 BoundedListController 接口）与
     // bounded-list/ 目录，.ts 文件优先导致公开入口只能写 './bounded-list/index'。
     const entry = await import('../../../src/app/bounded-list');
-    expect(Object.keys(entry)).toEqual(expect.arrayContaining([
-      'createBoundedList', 'BoundedList', 'serverPageSource', 'localPageSource',
-      'SelectionStore', 'standaloneList',
-    ]));
+    // 运行时导出面刻意保持最小：一个工厂 + 两个数据源 + 选中集 + register 空实现。
+    expect(Object.keys(entry).sort()).toEqual([
+      'SelectionStore', 'createBoundedList', 'localPageSource', 'serverPageSource', 'standaloneList',
+    ]);
     expect(typeof entry.createBoundedList).toBe('function');
+    // BoundedList 只按类型导出（调用方从不 new，实例统一来自 createBoundedList）。
+    expect(Object.keys(entry)).not.toContain('BoundedList');
     // 进程级注册表连同它的广播函数已经删除：register 必填，注册表实体只属于宿主。
     expect(Object.keys(entry)).not.toContain('invalidateAllBoundedLists');
     expect(Object.keys(entry)).not.toContain('registeredBoundedListIds');
