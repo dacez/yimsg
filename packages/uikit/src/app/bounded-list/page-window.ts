@@ -5,10 +5,10 @@
 // packages/uikit/docs/boundedlist/生产集成.md。
 //
 // 三条防御性约束（对应已修复缺陷，改动前请先看它们的成因）：
-// - maxPages 至少为 1：否则 setInitial 放进来的页会被随后任意一次 mergeLive 整页裁光（BL-BUG-17）；
-// - 续翻锚点（headCursor / tailCursor）与 pages 解耦维护，见下方字段注释（BL-BUG-13/14）；
+// - maxPages 至少为 1：否则 setInitial 放进来的页会被随后任意一次 mergeLive 整页裁光（BL-UNIT-BUG-017）；
+// - 续翻锚点（headCursor / tailCursor）与 pages 解耦维护，见下方字段注释（BL-BUG-013 / BL-BUG-014）；
 // - 续翻拿到空页时强制把该端 hasMore 收敛为 false：服务端违反契约（空页却报还有更多）时
-//   不会让触界检测无限补页（BL-BUG-01）。
+//   不会让触界检测无限补页（BL-UNIT-BUG-001）。
 
 import type { PageLoadResult } from './types';
 

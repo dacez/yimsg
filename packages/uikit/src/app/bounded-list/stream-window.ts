@@ -1,15 +1,15 @@
 // BoundedList 的渲染引擎：有界窗口内真实 DOM + 有键协调（设计方案 §2.4、§7.3）。
+// 渲染语义（先读后改、锚点保持、边界提示、指针按下期间推迟协调）的原理与宿主约束见
+// packages/uikit/docs/boundedlist/生产集成.md。
 //
-// 相比旧版 packages/uikit/src/app/bounded-stream-window.ts，本版补齐了设计方案 §4.6 / §4.3
-// 要求、但旧版完全缺失的能力：
-// - dispose()：注销全部监听（含 window 级 pointerup/pointercancel 兜底），修掉 §3.4 ①
-//   「弹窗每开一次泄漏两个 window 级监听」的内存泄漏；
-// - 事件委托 click 与 keydown 键盘导航（↑/↓ 移动焦点、Enter/Space 激活、到达窗口边缘触发翻页），
-//   统一走 onInteract 回调，业务语义（onActivate / onSelectionChange 的判定）由上层 BoundedList 决定；
-// - contentElement 上的 load 捕获监听（图片等异步增高内容加载完成的回调），由上层决定要不要贴底。
+// 本层自持三类 DOM 事件，调用方不要再自己挂：
+// - scroll / pointerdown / pointerup / pointercancel / keydown 在 scrollElement 上；
+// - click（事件委托）与 load（捕获，图片等异步增高内容）在 contentElement 上。
+// 交互统一走 onInteract 回调，业务语义（onActivate / onSelectionChange 的判定）由上层
+// BoundedList 决定。
 //
-// 其余渲染语义（先读后改、锚点保持、边界提示、指针按下期间推迟协调）与旧版一致，
-// 原理与宿主约束见 packages/uikit/docs/boundedlist/生产集成.md。
+// `dispose()` 必须注销**全部**监听，尤其是 window 级的 pointerup / pointercancel 兜底
+// （指针可能在列表之外抬起）：漏掉它们会让每开一次弹窗就永久泄漏两个监听。
 
 import { frameScheduler } from './frame';
 import { valuesEquivalent } from './deep-equal';
@@ -281,8 +281,13 @@ export class BoundedStreamWindow<T> {
 
     this.reconcileNodes(content, desiredElements);
     this.renderedRows = nextRenderedRows;
-    if (scroller.scrollTop !== scrollOffset) scroller.scrollTop = scrollOffset;
+    // 滚动位置只由一套机制负责，两者是「精确」与「兜底」的关系，不叠加：
+    // - 有锚点：按锚点行的真实位移校正。头部插页时这是唯一正确的做法，恢复渲染前的
+    //   绝对 scrollTop 反而会让内容整体跳动。
+    // - 没有锚点（空列表、首屏、宿主 DOM 不支持 getBoundingClientRect）：退回绝对值，
+    //   把 DOM 协调过程中被浏览器夹回 0 的 scrollTop 还原。
     if (anchor) this.restoreAnchor(content, anchor);
+    else if (scroller.scrollTop !== scrollOffset) scroller.scrollTop = scrollOffset;
     this.checkReach();
   }
 

@@ -56,8 +56,8 @@ export class BoundedList<T, Q = void> {
    * 新鲜端派生出来的全部常量，构造期算一次。
    *
    * 「新数据从哪一端进来」会派生出方向、贴边阈值、贴边校正帧数、贴边时 scrollTop
-   * 取 0 还是 scrollHeight 等一串取值。它们原本以 `freshEdgeValue === 'head' ? … : …`
-   * 的形式散落在构造函数和七个方法里，改新鲜端语义要同时改七处。
+   * 取 0 还是 scrollHeight 等一串取值。全部在这里定死，改新鲜端语义只改这一处；
+   * 别在方法里重新写 `edge.at === 'head' ? … : …`。
    */
   private readonly edge: {
     /** 新鲜端本身；只有需要区分「哪一端」而非「哪个方向」时才用它。 */
@@ -81,9 +81,8 @@ export class BoundedList<T, Q = void> {
    * 当前在飞的权威首页请求（cursor=undefined 的那一类）。
    *
    * 'reset' 清空窗口重建，'reconcile' 保留 capped DOM 直到响应落地才原子替换；
-   * `promise` 供 reconcile 的重入合并使用（多个入口同时要求追平时共享同一次请求）。
-   * 三者原本是 resetInFlight / capacityReconciling / capacityReconcilePromise 三个
-   * 互相约束的散装字段，在六个位置分别赋值，漏改一处就是竞态。
+   * `promise` 供重入合并使用（多个入口同时要求追平时共享同一次请求，两种 kind 一视同仁，
+   * 见 `startAuthoritativePage`）。三个字段必须一起改，所以合成一个对象整体赋值。
    * 普通分页的在飞状态另见 `dir[dir].loading`，两者不会互相顶替。
    */
   private authoritative: { kind: 'reset' | 'reconcile'; promise: Promise<void> | null } | null = null;
@@ -93,12 +92,13 @@ export class BoundedList<T, Q = void> {
   private resetError: unknown;
   private hasResetError = false;
   /**
-   * 「背景有更新」提示条的全部状态。合成一个对象是为了让「何时点亮、何时清零」只有
-   * 三个入口（add / clear / restoreAfterFailure），而不是在八处分别用 `=`、`+=`、
-   * `Math.max(a,b)`、`Math.max(1,a)` 四种写法各改一半——那正是提示条不消失、
-   * 计数残留到下一次点亮这类缺陷的来源。
+   * 「背景有更新」提示条的全部状态（`stale` 决定亮不亮，`count` 决定显示几条）。
+   *
+   * 两个字段只准通过下面四个方法改，不准在别处直接赋值：它们必须同时变，分开写就会
+   * 出现「提示条熄灭了但计数残留到下一次点亮」这类缺陷。四个方法的差别只在计数怎么
+   * 合并（累加 / 清零 / 至少 1 / 取较大者），各自的理由见方法注释。
    */
-  private readonly pending = {
+  private readonly pillState = {
     stale: false,
     count: 0,
     /** 收到 n 条待处理更新：点亮提示条并累加计数。 */
@@ -125,28 +125,55 @@ export class BoundedList<T, Q = void> {
       this.count = Math.max(this.count, n);
     },
   };
-  private requestId = 0;
+  /**
+   * 窗口世代。**所有**在飞响应（权威首页、普通分页、定向刷新）都在发出时捕获它，
+   * 落地时比对；不相等就整体丢弃，不触发任何回调。
+   *
+   * 只有一个操作会推进它：`discardInFlightResponses()`。「开始一次权威首页请求」和
+   * 「live 裁剪后作废所有基于旧边界的分页」表面上是两件事，实质都是「此前发出的响应
+   * 从现在起都不再适用于当前窗口」，所以共用同一个推进入口，而不是各写一次 `+= 1`。
+   */
+  private windowGeneration = 0;
   private disposed = false;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   /** 加载前缓存的贴边状态：图片异步增高后不能现算（内容已变高，必然误判成不贴边）。 */
   private stickToFreshEdge = true;
   /**
-   * 按方向索引的续翻状态，取代原先 `xxxBefore`/`xxxAfter` 四对散装字段：
+   * 按方向索引的续翻状态。按方向索引（而不是 `xxxBackward` / `xxxForward` 两套字段）
+   * 是为了让 `this.dir[dir].xxx` 直接可用，消掉一大批 `dir === 'backward' ? … : …`：
    * - `loading`：该方向的普通分页是否在飞。
    * - `autoBlocked`：触界检测驱动的自动续翻在该方向上是否被暂停——某方向请求
    *   失败后置真，防止「失败 → 重渲 → 触界 → 立刻重试」在微任务里死循环；
    *   用户把该端滚离触界范围、显式调用 loadMore、或 reset 之后解除。
-   * - `cursorInvalid`：live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。
-   * 用 `this.dir[dir].xxx` 按方向读写，消除一大批 `dir === 'backward' ? … : …` 三元式。
+   * - `cursorInvalid`：live 硬裁剪发生后，被裁一端的服务端边界游标已不再可信。它只封锁
+   *   「能否续翻」，**不表示该端没有数据了**——边界提示另看 `PageWindow.hasMoreX`
+   *   （`BL-BUG-015`）。
    */
   private readonly dir: Record<Direction, { loading: boolean; autoBlocked: boolean; cursorInvalid: boolean }> = {
     backward: { loading: false, autoBlocked: false, cursorInvalid: false },
     forward: { loading: false, autoBlocked: false, cursorInvalid: false },
   };
 
-  private pendingInvalidate = false;
-  private pendingIdentities = new Set<string>();
-  private pendingInvalidateCount = 0;
+  /**
+   * `invalidate()` 的同帧合并缓冲：本帧收到的通知先攒在这里，`flushInvalidate` 跑一次决策。
+   *
+   * 与 `pillState` 是两件不同的事，不要混：这里是**输入缓冲**（还没做决策的通知），
+   * `pillState` 是**输出状态**（提示条该不该亮、显示几条）。
+   */
+  private readonly invalidateBuffer = {
+    /** 本帧是否收到过 invalidate（决策尚未跑）。 */
+    armed: false,
+    /** 本帧累计的「有几条待处理更新」。 */
+    count: 0,
+    /** 本帧累计的、需要定向刷新的身份。 */
+    identities: new Set<string>(),
+    /** 决策跑完 / reset / dispose 后清空。 */
+    clear(): void {
+      this.armed = false;
+      this.count = 0;
+      this.identities.clear();
+    },
+  };
   /** 只保存当前实际在飞的定向刷新 token；成功、失败或本地更新后立即释放。 */
   private readonly refreshTokenByIdentity = new Map<string, symbol>();
 
@@ -228,9 +255,7 @@ export class BoundedList<T, Q = void> {
     // 不再适用于新世代的窗口，在这里整体丢弃；同一世代内失败重试见共享辅助方法的
     // catch 分支，那里刻意不清空，好让失败期间的本地写入等到下次成功时被重放。
     this.pendingMutations.clear();
-    this.pendingInvalidate = false;
-    this.pendingIdentities.clear();
-    this.pendingInvalidateCount = 0;
+    this.invalidateBuffer.clear();
     if (optsIn && Object.prototype.hasOwnProperty.call(optsIn, 'query')) this.query = optsIn.query as Q;
     await this.startAuthoritativePage({ clearWindow: true, pinEdge: optsIn?.pinEdge ?? true });
   }
@@ -262,7 +287,7 @@ export class BoundedList<T, Q = void> {
     this.emitLoadState();
     this.repaint();
 
-    const myRequestId = this.requestId;
+    const myGeneration = this.windowGeneration;
     try {
       const page = await this.opts.source.fetch({
         cursor,
@@ -270,21 +295,21 @@ export class BoundedList<T, Q = void> {
         limit: this.opts.pageSize,
         query: this.query,
       });
-      if (myRequestId !== this.requestId || this.disposed) return;
+      if (this.isObsolete(myGeneration)) return;
       if (dir === 'backward') this.window.prependBackward(page);
       else this.window.appendForward(page);
       this.dir[dir].loading = false;
       this.dir[dir].autoBlocked = false;
       // 只重放与位置无关的最终态：它们不会让窗口变大，因此不需要在这里处理硬预算
       // 裁剪、游标失效或额外追平。
-      this.replayFinalStates(this.window);
+      this.replayOverlay(this.window, false);
       this.emitItemsChanged();
       this.settleFreshEdgeBoundary(dir);
       this.emitLoadState();
       this.repaint();
       this.flushDeferredInvalidate();
     } catch (err) {
-      if (myRequestId !== this.requestId || this.disposed) return;
+      if (this.isObsolete(myGeneration)) return;
       this.dir[dir].loading = false;
       this.dir[dir].autoBlocked = true;
       this.reportError(err, dir);
@@ -314,9 +339,9 @@ export class BoundedList<T, Q = void> {
   /** 轻通知唯一入口；同一帧内多次调用只跑一次决策（设计文档 §13.1）。 */
   invalidate(opts?: { identities?: readonly string[]; count?: number }): void {
     if (this.disposed) return;
-    this.pendingInvalidate = true;
-    this.pendingInvalidateCount += opts?.count ?? 0;
-    for (const id of opts?.identities ?? []) this.pendingIdentities.add(id);
+    this.invalidateBuffer.armed = true;
+    this.invalidateBuffer.count += opts?.count ?? 0;
+    for (const id of opts?.identities ?? []) this.invalidateBuffer.identities.add(id);
     this.scheduleInvalidateFlush();
   }
 
@@ -422,7 +447,8 @@ export class BoundedList<T, Q = void> {
       : undefined;
     // loaded/hasMoreBackward/hasMoreForward/loadingBackward/loadingForward 与 getState() 是同一份口径，
     // 复用而不是各写一遍，避免以后改判定条件时漏改其中一处。
-    const state = this.getState();
+    // 贴边几何在这里只读一次：紧接着的 stream.render 会写 DOM，读写交替会强制同步重排。
+    const state = this.buildState(this.atFreshEdge());
 
     this.stream.render({
       items,
@@ -459,9 +485,7 @@ export class BoundedList<T, Q = void> {
     this.authoritative = null;
     this.pendingMutations.clear();
     this.refreshTokenByIdentity.clear();
-    this.pendingInvalidate = false;
-    this.pendingIdentities.clear();
-    this.pendingInvalidateCount = 0;
+    this.invalidateBuffer.clear();
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -476,6 +500,16 @@ export class BoundedList<T, Q = void> {
   // ---- 只读状态（设计文档 §6） ----
 
   getState(): BoundedListState {
+    return this.buildState(this.atFreshEdge());
+  }
+
+  /**
+   * `getState()` 的实现。`atFreshEdge` 由调用方传入而不是在这里现算，是因为它要**读 DOM**
+   * （`scrollTop` / `scrollHeight` / `clientHeight`），而 `paint()` 紧接着就要写 DOM——
+   * 在一次「读 → 写」之间再插一次读会强制浏览器同步重排。`paint()` 因此自己读一次几何、
+   * 把结果同时用于状态和后续判断，公开的 `getState()` 才现算。
+   */
+  private buildState(atFreshEdge: boolean): BoundedListState {
     return {
       loaded: this.firstLoadDone,
       loading: this.dir.backward.loading || this.dir.forward.loading || this.authoritative?.kind === 'reconcile',
@@ -485,9 +519,9 @@ export class BoundedList<T, Q = void> {
       hasMoreForward: this.window.hasMoreForward && !this.dir.forward.cursorInvalid,
       count: this.window.count,
       total: this.window.total,
-      stale: this.pending.stale,
-      pendingCount: this.pending.count,
-      atFreshEdge: this.atFreshEdge(),
+      stale: this.pillState.stale,
+      pendingCount: this.pillState.count,
+      atFreshEdge,
       failed: this.hasResetError,
     };
   }
@@ -592,17 +626,24 @@ export class BoundedList<T, Q = void> {
   }
 
   private onScrollFrame(): void {
+    // 滚动几何在本帧只读一次：下面三处判断都用这一份快照。逐处现算会重复触发布局，
+    // 而且 `atFreshEdge()` 在同一帧里被问两次本来就该给同一个答案。
     const el = this.opts.scrollElement;
+    const scrollTop = el.scrollTop;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const atFreshEdge = this.edge.at === 'head'
+      ? scrollTop <= this.edge.stickyPx
+      : maxScrollTop - scrollTop <= this.edge.stickyPx;
+
     // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该方向的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
-    if (el.scrollTop > this.reachPx) this.dir.backward.autoBlocked = false;
-    if (maxScrollTop - el.scrollTop > this.reachPx) this.dir.forward.autoBlocked = false;
-    this.stickToFreshEdge = this.atFreshEdge();
+    if (scrollTop > this.reachPx) this.dir.backward.autoBlocked = false;
+    if (maxScrollTop - scrollTop > this.reachPx) this.dir.forward.autoBlocked = false;
+    this.stickToFreshEdge = atFreshEdge;
 
     // 提示条自动消失路径①：用户自己滚回新鲜端时自动追平（设计文档 §13.2）。
-    const canCatchUp = this.pending.stale && !this.dir.backward.loading && !this.dir.forward.loading;
-    if (canCatchUp && this.atFreshEdge()) void this.catchUp();
+    const canCatchUp = this.pillState.stale && !this.dir.backward.loading && !this.dir.forward.loading;
+    if (canCatchUp && atFreshEdge) void this.catchUp();
   }
 
   /** 图片等异步增高内容加载完成：此前贴在尾部新鲜端的话重新贴回底部。 */
@@ -620,8 +661,8 @@ export class BoundedList<T, Q = void> {
   private settleFreshEdgeBoundary(dir: Direction): void {
     if (dir !== this.edge.toward) return;
     const stillHasMore = dir === 'backward' ? this.window.hasMoreBackward : this.window.hasMoreForward;
-    if (stillHasMore || (!this.pending.stale && this.pending.count === 0)) return;
-    this.pending.clear();
+    if (stillHasMore || (!this.pillState.stale && this.pillState.count === 0)) return;
+    this.pillState.clear();
   }
 
   private reconcileCapacity(): Promise<void> {
@@ -643,7 +684,7 @@ export class BoundedList<T, Q = void> {
    *
    * 早前只有 reconcile 分支回填 promise，reset 的那一份恒为 `null`。后果是 reset
    * 在飞期间的一次容量追平（在飞时的 live 裁剪、排队的自动帧任务）会认为「没有请求
-   * 在飞」，于是 `++requestId` 把正在飞的 reset 打掉再发一个——既多打一次请求，也
+   * 在飞」，于是推进世代把正在飞的 reset 打掉再发一个——既多打一次请求，也
    * 违反了「权威请求已在飞时的 live eviction 由当前请求重放、不额外安排第二次追平」
    * 这条既有约定（见缺陷列表 BL-BUG-010 第 8 条）。
    */
@@ -667,7 +708,7 @@ export class BoundedList<T, Q = void> {
    */
   private async loadAuthoritativePage(opts: { clearWindow: boolean; pinEdge: boolean }): Promise<void> {
     const { clearWindow, pinEdge } = opts;
-    const myRequestId = ++this.requestId;
+    const myGeneration = this.discardInFlightResponses();
     if (clearWindow) {
       this.authoritative = { kind: 'reset', promise: null };
       this.stickToFreshEdge = pinEdge ? true : this.atFreshEdge();
@@ -677,7 +718,7 @@ export class BoundedList<T, Q = void> {
       this.dir.forward.autoBlocked = false;
       this.dir.backward.cursorInvalid = false;
       this.dir.forward.cursorInvalid = false;
-      this.pending.clear();
+      this.pillState.clear();
     } else {
       this.authoritative = { kind: 'reconcile', promise: null };
     }
@@ -699,7 +740,7 @@ export class BoundedList<T, Q = void> {
 
     try {
       const page = await this.opts.source.fetch(request);
-      if (myRequestId !== this.requestId || this.disposed) return;
+      if (this.isObsolete(myGeneration)) return;
       const { window: nextWindow, evicted: replayEvicted } = this.buildAuthoritativeWindow(page);
 
       this.window = nextWindow;
@@ -719,7 +760,7 @@ export class BoundedList<T, Q = void> {
       this.emitLoadState();
       this.flushDeferredInvalidate();
     } catch (err) {
-      if (myRequestId !== this.requestId || this.disposed) return;
+      if (this.isObsolete(myGeneration)) return;
       this.authoritative = null;
       this.scheduleCapacityReconcile.cancel();
       // 不清空 pendingMutations：本次失败期间发生的本地写入仍要等下一次成功的
@@ -728,7 +769,7 @@ export class BoundedList<T, Q = void> {
       this.resetError = err;
       this.hasResetError = true;
       if (this.window.count > 0) {
-        this.pending.markFailure();
+        this.pillState.markFailure();
       }
       this.reportError(err, 'reset');
       this.repaint();
@@ -746,51 +787,42 @@ export class BoundedList<T, Q = void> {
       this.opts.pageSize,
     );
     nextWindow.setInitial(page);
-    return { window: nextWindow, evicted: this.replayIntoAuthoritativeWindow(nextWindow) };
-  }
-
-  private applyMutation(target: PageWindow<T>, identity: string, mutation: LocalMutation<T>): number {
-    const matches = (item: T): boolean => this.opts.identityOf(item) === identity;
-    if (mutation.kind === 'upsert') return target.mergeLive(mutation.item, this.edge.at);
-    if (mutation.kind === 'replace') target.updateMatching(matches, () => mutation.item);
-    else target.removeMatching(matches);
-    return 0;
+    return { window: nextWindow, evicted: this.replayOverlay(nextWindow, true) };
   }
 
   /**
-   * 权威窗口重放：三类最终态全部应用，然后整体清空 overlay。
+   * 把 overlay 重放到某个窗口上，应用成功的逐条摘除。返回重放本身撑破硬预算而裁掉的
+   * 条目数（只有真正并入新鲜端的 `upsert` 会触发）。
    *
-   * `upsert` 的相邻关系在这里是确定的——权威首页按构造就是新鲜端那一页（该端
-   * `hasMore` 必为 `false`），所以不需要逐条判定目标窗口有没有追平新鲜端。
-   * 返回重放本身撑破硬预算而裁掉的条目数（`upsert` 才可能触发）。
+   * 两个调用场景只差一件事，就是这个参数：**目标窗口的新鲜端是否确定**。
+   *
+   * - `freshEdgeSettled=true`（权威首页）：首页按构造就是新鲜端那一页（该端 `hasMore`
+   *   必为 `false`），相邻关系天然确定，所以 `upsert` 可以真的并入，overlay 整体清空。
+   * - `freshEdgeSettled=false`（普通分页并入后）：新鲜端不确定，`upsert` 只在窗口里
+   *   **已经有这个身份**时才应用——那等价于一次 `replace`，位置由窗口自己决定，不存在
+   *   相邻关系问题；典型场景是返回页带回同一身份的旧值，必须被本地最终态盖住
+   *   （`BL-BUG-012`）。窗口里没有这个身份时留在 overlay 里等权威响应。
+   *
+   * `replace` / `remove` 与位置无关，两种场景下都直接应用。
    */
-  private replayIntoAuthoritativeWindow(target: PageWindow<T>): number {
+  private replayOverlay(target: PageWindow<T>, freshEdgeSettled: boolean): number {
     let evicted = 0;
-    for (const [identity, mutation] of this.pendingMutations) {
-      evicted += this.applyMutation(target, identity, mutation);
-    }
-    this.pendingMutations.clear();
-    return evicted;
-  }
-
-  /**
-   * 分页并入后重放，应用完就地摘除。
-   *
-   * `replace` / `remove` 与位置无关，直接应用。`upsert` 只在目标窗口里**已经有这个
-   * 身份**时才应用——那等价于一次 replace，位置由窗口自己决定，不存在相邻关系问题；
-   * 典型场景是返回页带回同一身份的旧值，必须被本地最终态盖住（BL-BUG-012）。
-   * 窗口里没有这个身份时留在 overlay 里，等权威响应——只有那里才有确定的新鲜端可以并入。
-   */
-  private replayFinalStates(target: PageWindow<T>): void {
     for (const [identity, mutation] of [...this.pendingMutations]) {
-      if (mutation.kind === 'upsert') {
-        if (!target.hasIdentity(identity)) continue;
-        target.updateMatching((item) => this.opts.identityOf(item) === identity, () => mutation.item);
+      const matches = (item: T): boolean => this.opts.identityOf(item) === identity;
+      if (mutation.kind === 'remove') {
+        target.removeMatching(matches);
+      } else if (mutation.kind === 'replace') {
+        target.updateMatching(matches, () => mutation.item);
+      } else if (freshEdgeSettled) {
+        evicted += target.mergeLive(mutation.item, this.edge.at);
+      } else if (target.hasIdentity(identity)) {
+        target.updateMatching(matches, () => mutation.item);
       } else {
-        this.applyMutation(target, identity, mutation);
+        continue; // 新鲜端未确定且窗口里没有这个身份：留在 overlay 等权威响应
       }
       this.pendingMutations.delete(identity);
     }
+    return evicted;
   }
 
   /** 权威页落地后的提示条与游标状态。 */
@@ -800,11 +832,24 @@ export class BoundedList<T, Q = void> {
     if (replayEvicted > 0) {
       // 重放本端条目又撑破了硬预算：被裁那一端的服务端边界不再可信，等下一次追平。
       this.dir[this.edge.away].cursorInvalid = true;
-      this.pending.markEvicted(replayEvicted);
+      this.pillState.markEvicted(replayEvicted);
       return;
     }
-    if (this.pendingInvalidate) this.pending.stale = true;
-    else this.pending.clear();
+    if (this.invalidateBuffer.armed) this.pillState.stale = true;
+    else this.pillState.clear();
+  }
+
+  /**
+   * 推进窗口世代，使此前发出的所有在飞响应作废，并返回新世代供本次请求捕获。
+   * 这是「让旧响应失效」的唯一机制——不要在别处直接改 `windowGeneration`。
+   */
+  private discardInFlightResponses(): number {
+    return ++this.windowGeneration;
+  }
+
+  /** 某次请求的结果是否已经不适用于当前窗口（世代已推进，或组件已销毁）。 */
+  private isObsolete(generation: number): boolean {
+    return this.disposed || generation !== this.windowGeneration;
   }
 
   private isAuthoritativeRequestInFlight(): boolean {
@@ -827,14 +872,14 @@ export class BoundedList<T, Q = void> {
   private cancelOrdinaryPageLoads(): void {
     if (this.isAuthoritativeRequestInFlight() || (!this.dir.backward.loading && !this.dir.forward.loading)) return;
     // live 裁剪后，所有基于旧窗口边界发出的普通分页响应都已失去上下文。
-    this.requestId += 1;
+    this.discardInFlightResponses();
     this.dir.backward.loading = false;
     this.dir.forward.loading = false;
     this.refreshTokenByIdentity.clear();
   }
 
   private flushDeferredInvalidate(): void {
-    if (!this.disposed && this.pendingInvalidate && !this.hasDataRequestInFlight()) {
+    if (!this.disposed && this.invalidateBuffer.armed && !this.hasDataRequestInFlight()) {
       this.scheduleInvalidateFlush();
     }
   }
@@ -857,24 +902,22 @@ export class BoundedList<T, Q = void> {
   }
 
   private flushInvalidate(): void {
-    if (this.disposed || !this.pendingInvalidate) return;
+    if (this.disposed || !this.invalidateBuffer.armed) return;
     if (this.hasDataRequestInFlight()) {
       // reset / staged reconcile 的响应会整体替换窗口。期间到达的 identity 通知不能在旧
       // 窗口上执行后被覆盖，也不能拿旧结果修改新窗口；保留 identity，权威请求落定后重发。
-      const deferredCount = this.pendingInvalidateCount;
-      this.pendingInvalidateCount = 0;
-      this.pending.add(deferredCount);
+      const deferredCount = this.invalidateBuffer.count;
+      this.invalidateBuffer.count = 0;
+      this.pillState.add(deferredCount);
       this.repaint();
       return;
     }
-    const identities = [...this.pendingIdentities];
-    const count = this.pendingInvalidateCount;
-    this.pendingInvalidate = false;
-    this.pendingIdentities.clear();
-    this.pendingInvalidateCount = 0;
+    const identities = [...this.invalidateBuffer.identities];
+    const count = this.invalidateBuffer.count;
+    this.invalidateBuffer.clear();
 
     if (!(this.opts.isActive?.() ?? true)) {
-      this.pending.add(count);
+      this.pillState.add(count);
       // 仍然重渲一次：宿主切回可见时提示条要已经是最新状态，不能等下一次 render。
       this.repaint();
       return;
@@ -884,7 +927,7 @@ export class BoundedList<T, Q = void> {
       return;
     }
 
-    this.pending.add(count);
+    this.pillState.add(count);
     // 先同步一次提示条再发定向请求：否则请求慢时提示条要等几百毫秒才亮。
     this.repaint();
 
@@ -894,7 +937,7 @@ export class BoundedList<T, Q = void> {
 
     const refreshTokens = new Map(hits.map((id) => [id, Symbol(id)] as const));
     for (const [id, token] of refreshTokens) this.refreshTokenByIdentity.set(id, token);
-    const myRequestId = this.requestId;
+    const myGeneration = this.windowGeneration;
     const clearRefreshTokens = (): void => {
       for (const [id, token] of refreshTokens) {
         if (this.refreshTokenByIdentity.get(id) === token) {
@@ -911,7 +954,7 @@ export class BoundedList<T, Q = void> {
       const hasCurrentIdentity = hits.some(
         (id) => this.refreshTokenByIdentity.get(id) === refreshTokens.get(id),
       );
-      if (!this.disposed && myRequestId === this.requestId && hasCurrentIdentity) {
+      if (!this.isObsolete(myGeneration) && hasCurrentIdentity) {
         this.reportError(err, 'refresh');
         this.repaint();
       }
@@ -922,7 +965,7 @@ export class BoundedList<T, Q = void> {
       .then((fetched) => {
         // 与 reset / loadMore 同样的丢弃守卫：期间发生过 reset 的话，
         // 这份结果描述的是已经作废的窗口，套到新窗口上会误删条目。
-        if (this.disposed || myRequestId !== this.requestId) return;
+        if (this.isObsolete(myGeneration)) return;
         const fetchedMap = new Map(fetched.map((item) => [this.opts.identityOf(item), item] as const));
         // refresh 可能先于一个更早快照的普通分页返回。此时刚接受的远端最终态也要
         // 暂存进 overlay，让晚到分页在并入后重放；否则新值会回退，删除项会复活。
@@ -955,7 +998,7 @@ export class BoundedList<T, Q = void> {
         this.repaint();
       })
       .catch((err) => {
-        if (this.disposed || myRequestId !== this.requestId) return;
+        if (this.isObsolete(myGeneration)) return;
         const hasCurrentIdentity = hits.some(
           (id) => this.refreshTokenByIdentity.get(id) === refreshTokens.get(id),
         );
@@ -1032,9 +1075,9 @@ export class BoundedList<T, Q = void> {
       this.pill.setVisible(retryText !== undefined, retryText);
       return;
     }
-    const text = this.opts.text.updatePill?.(this.pending.count);
+    const text = this.opts.text.updatePill?.(this.pillState.count);
     // 没有提供文案就不该出现一个空白提示条。
-    this.pill.setVisible(this.pending.stale && text !== undefined, text);
+    this.pill.setVisible(this.pillState.stale && text !== undefined, text);
   }
 
   private emitLoadState(): void {
