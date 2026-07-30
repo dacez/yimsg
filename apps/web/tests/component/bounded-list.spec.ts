@@ -21,7 +21,6 @@ interface ListState {
   readonly count: number;
   readonly total: number;
   readonly stale: boolean;
-  readonly pendingCount: number;
   readonly atFreshEdge: boolean;
   readonly failed: boolean;
 }
@@ -111,7 +110,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       count: 0,
       total: -1,
       stale: false,
-      pendingCount: 0,
       atFreshEdge: true,
       failed: false,
     });
@@ -264,7 +262,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         count: 0,
         total: -1,
         stale: false,
-        pendingCount: 0,
       },
     });
     expect(eventLog[1]).toEqual({
@@ -365,9 +362,9 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'setScrollTop', separate, 100);
     await call(page, 'setScrollTop', noPill, 100);
     // detached scroller 没有真实布局，改用 inactive 分支只验证不创建默认 pill。
-    await call(page, 'invalidate', separate, { count: 2 });
-    await call(page, 'invalidate', noPill, { count: 2 });
-    await call(page, 'invalidate', detached, { count: 2 });
+    await call(page, 'invalidate', separate, {});
+    await call(page, 'invalidate', noPill, {});
+    await call(page, 'invalidate', detached, {});
     await call(page, 'frames', 2);
 
     await expect(root(page, separate).locator('.bl-content [data-bsw-key]')).toHaveCount(10);
@@ -663,14 +660,13 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'clearEvents', key);
 
     await call(page, 'invalidateMany', key, [
-      { identities: ['1', '2'], count: 2 },
-      { identities: ['2', '99'], count: 3 },
+      { identities: ['1', '2'] },
+      { identities: ['2', '99'] },
     ]);
     await call(page, 'frames', 2);
 
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
-      pendingCount: 5,
     });
     const firstRefreshEvents = await events(page, key);
     expect(firstRefreshEvents.filter((event) => event.type === 'fetchByIdentity')).toEqual([
@@ -701,14 +697,13 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call(page, 'pillInfo', key)).toMatchObject({
       exists: true,
       visible: true,
-      text: '有 5 条更新',
+      text: '有更新',
     });
 
     await call(page, 'clickPill', key);
     await call(page, 'waitForIdle', key);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
-      pendingCount: 0,
       atFreshEdge: true,
     });
     expect(await call(page, 'pillInfo', key)).toMatchObject({ visible: false });
@@ -791,27 +786,25 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       reachPx: -1,
     });
     await call(page, 'clearFetchCalls', key);
-    await call(page, 'invalidate', key, { count: 4 });
+    await call(page, 'invalidate', key, {});
     await call(page, 'frames', 2);
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(0);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
-      pendingCount: 4,
     });
 
     await call(page, 'setActive', key, true);
     await call(page, 'setScrollTop', key, 0);
-    await call(page, 'invalidate', key, { count: 1 });
+    await call(page, 'invalidate', key, {});
     await call(page, 'frames', 2);
     await call(page, 'waitForIdle', key);
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
-      pendingCount: 0,
     });
   });
 
-  test('新鲜端翻到空页时收敛 hasMore，并同时清 stale/pendingCount', async ({ page }) => {
+  test('新鲜端翻到空页时收敛 hasMore，并同时熄灭 stale', async ({ page }) => {
     const key = await mount(page, {
       freshEdge: 'tail',
       stickyPx: 0,
@@ -823,11 +816,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'frames', 5);
     await call(page, 'clearEvents', key);
     await call(page, 'setScrollTop', key, 0);
-    await call(page, 'invalidate', key, { count: 7 });
+    await call(page, 'invalidate', key, {});
     await call(page, 'frames', 2);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
-      pendingCount: 7,
       hasMoreForward: true,
     });
 
@@ -839,7 +831,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'loadMore', key, 'forward');
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
-      pendingCount: 0,
       hasMoreForward: false,
     });
   });
@@ -1260,7 +1251,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     ]);
     await call(page, 'pauseNextPage', key);
 
-    await call(page, 'invalidate', key, { count: 1 });
+    await call(page, 'invalidate', key, {});
     await call(page, 'frames', 2);
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
     expect(await call<string[]>(page, 'rowIds', key)).toEqual(['0', '1', '2']);
@@ -1461,7 +1452,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       reachPx: -1,
     });
     await call(page, 'setScrollTop', key, 100);
-    await call(page, 'invalidate', key, { count: 1 });
+    await call(page, 'invalidate', key, {});
     await call(page, 'frames', 2);
 
     expect(await call(page, 'pillInfo', key)).toMatchObject({
@@ -1700,7 +1691,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: false,
       stale: true,
-      pendingCount: 1,
       atFreshEdge: false,
       count: 20,
     });
@@ -1727,7 +1717,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toEqual([]);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
-      pendingCount: 1,
     });
 
     await call(page, 'pauseNextPage', key);
@@ -1780,7 +1769,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       label: 'live-during-reconcile',
       order: 101,
     });
-    expect(await call<ListState>(page, 'state', key)).toMatchObject({ count: 20 });
+    expect(await call<ListState>(page, 'state', key)).toMatchObject({});
     expect(await call<string[]>(page, 'rowIds', key)).toContain('live-during-reconcile');
 
     await call(page, 'resolvePage', key);

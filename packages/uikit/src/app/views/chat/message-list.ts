@@ -107,7 +107,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       loading: () => app.t('common.loading'),
       backwardBoundary: () => app.t('chat.reachedEarliest'),
       forwardBoundary: () => app.t('chat.reachedLatest'),
-      updatePill: (count) => count > 0 ? app.t('chat.newMessagesCount', { n: count }) : app.t('chat.jumpToLatest'),
+      updatePill: () => app.t('chat.jumpToLatest'),
       retry: () => app.t('common.retry'),
     },
     onItemsChanged: (items) => {
@@ -397,11 +397,11 @@ export function removeMessage(app: AppInstance, messageId: string): void {
 
 // refreshOpenConversation 收到 messages:received 重绘信号时刷新打开中的会话。
 // 不消费通知 payload：BoundedList 的 invalidate 决策树统一处理"贴底直接追平"还是
-// "点亮提示条 + 累加计数"，替代原来手写的贴边判断与 pendingNewMessageCount 记账。
+// "点亮提示条"，替代原来手写的贴边判断与 pendingNewMessageCount 记账。
 export async function refreshOpenConversation(app: AppInstance): Promise<void> {
   if (!app.chatState.currentConvKey) return;
   if (app.$('view-chat').classList.contains('hidden')) return;
-  app.chatState.messageList?.invalidate({ count: 1 });
+  app.chatState.messageList?.invalidate();
 
   if (canAutoClearUnreadCurrentConversation(app) && isNearBottom(app.$('message-list'))) {
     const target = currentConversation(app)?.target;

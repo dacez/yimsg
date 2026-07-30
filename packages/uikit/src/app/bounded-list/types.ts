@@ -44,7 +44,8 @@ export interface BoundedListText {
   readonly emptyFiltered?: () => string;
   readonly backwardBoundary?: () => string;
   readonly forwardBoundary?: () => string;
-  readonly updatePill?: (count: number) => string;
+  /** 「背景有更新」提示条文案。刻意不带数量：见 BoundedListState.stale 的说明。 */
+  readonly updatePill?: () => string;
   /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
   readonly error?: (error: unknown) => string;
   /** 首屏加载失败时提示条上的重试文案；不提供则失败后不显示重试入口。 */
@@ -60,8 +61,15 @@ export interface BoundedListState {
   readonly hasMoreForward: boolean;
   readonly count: number;
   readonly total: number;
+  /**
+   * 有未追平的变化，提示条该亮起。
+   *
+   * 刻意是**布尔而不是计数**：「有几条待处理更新」「首屏刷新失败了」「被硬预算裁掉了
+   * 几条看不见的」是三件不同的事，用一个数字表达它们必须约定各自怎么合并（累加 /
+   * 至少 1 / 取较大者），得到的数字对用户既不准也没意义。用户需要知道的只是
+   * 「下面还有没看到的东西」，那是一个布尔。需要精确条数的调用方自己数最准。
+   */
   readonly stale: boolean;
-  readonly pendingCount: number;
   readonly atFreshEdge: boolean;
   /** 首屏是否加载失败（成功一次即回到 false）。 */
   readonly failed: boolean;

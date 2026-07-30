@@ -92,37 +92,22 @@ export class BoundedList<T, Q = void> {
   private resetError: unknown;
   private hasResetError = false;
   /**
-   * 「背景有更新」提示条的全部状态（`stale` 决定亮不亮，`count` 决定显示几条）。
+   * 「背景有更新」提示条的状态：就是一个布尔。
    *
-   * 两个字段只准通过下面四个方法改，不准在别处直接赋值：它们必须同时变，分开写就会
-   * 出现「提示条熄灭了但计数残留到下一次点亮」这类缺陷。四个方法的差别只在计数怎么
-   * 合并（累加 / 清零 / 至少 1 / 取较大者），各自的理由见方法注释。
+   * 三种成因——收到未追平的变化通知、首屏刷新失败但窗口里还有旧数据、本端条目被硬预算
+   * 裁掉——对用户是同一件事：「下面有你没看到的东西，点一下追平」。曾经用计数表达它们，
+   * 于是必须为每种成因约定一套合并规则（累加 / 至少 1 / 取较大者），三种语义混在一个
+   * 数字里，报给用户的条数既不准也没意义。需要精确条数的调用方自己数最准。
    */
   private readonly pillState = {
     stale: false,
-    count: 0,
-    /** 收到 n 条待处理更新：点亮提示条并累加计数。 */
-    add(n: number): void {
+    /** 有未追平的变化：点亮提示条。 */
+    mark(): void {
       this.stale = true;
-      this.count += n;
     },
-    /** 已经追平：熄灭提示条并清零。两个字段必须一起清，否则残留会带到下一次点亮。 */
+    /** 已经追平：熄灭提示条。 */
     clear(): void {
       this.stale = false;
-      this.count = 0;
-    },
-    /** 首屏刷新失败但窗口里还有旧数据：至少点亮一次，已有计数不被压低。 */
-    markFailure(): void {
-      this.stale = true;
-      this.count = Math.max(1, this.count);
-    },
-    /**
-     * 本端条目被硬预算裁掉 n 条：点亮提示条。用 max 而不是累加——「被裁掉几条看不见」
-     * 和「收到几条待处理更新」是同一块窗口的两种说法，叠加会把计数报大。
-     */
-    markEvicted(n: number): void {
-      this.stale = true;
-      this.count = Math.max(this.count, n);
     },
   };
   /**
@@ -158,19 +143,16 @@ export class BoundedList<T, Q = void> {
    * `invalidate()` 的同帧合并缓冲：本帧收到的通知先攒在这里，`flushInvalidate` 跑一次决策。
    *
    * 与 `pillState` 是两件不同的事，不要混：这里是**输入缓冲**（还没做决策的通知），
-   * `pillState` 是**输出状态**（提示条该不该亮、显示几条）。
+   * `pillState` 是**输出状态**（提示条该不该亮）。
    */
   private readonly invalidateBuffer = {
     /** 本帧是否收到过 invalidate（决策尚未跑）。 */
     armed: false,
-    /** 本帧累计的「有几条待处理更新」。 */
-    count: 0,
     /** 本帧累计的、需要定向刷新的身份。 */
     identities: new Set<string>(),
     /** 决策跑完 / reset / dispose 后清空。 */
     clear(): void {
       this.armed = false;
-      this.count = 0;
       this.identities.clear();
     },
   };
@@ -336,11 +318,15 @@ export class BoundedList<T, Q = void> {
     }, debounceMs);
   }
 
-  /** 轻通知唯一入口；同一帧内多次调用只跑一次决策（设计文档 §13.1）。 */
-  invalidate(opts?: { identities?: readonly string[]; count?: number }): void {
+  /**
+   * 轻通知唯一入口；同一帧内多次调用只跑一次决策（设计文档 §13.1）。
+   *
+   * 不接受数量：提示条只表达「有 / 没有」，见 `BoundedListState.stale`。给出
+   * `identities` 时，落在当前窗口里的那些会走 `fetchByIdentity` 定向刷新。
+   */
+  invalidate(opts?: { identities?: readonly string[] }): void {
     if (this.disposed) return;
     this.invalidateBuffer.armed = true;
-    this.invalidateBuffer.count += opts?.count ?? 0;
     for (const id of opts?.identities ?? []) this.invalidateBuffer.identities.add(id);
     this.scheduleInvalidateFlush();
   }
@@ -353,7 +339,7 @@ export class BoundedList<T, Q = void> {
       // 窗口内容还没追平新鲜端：这条本端新增和已加载内容之间的真实相邻关系无法确定，
       // 硬并入只会把它错误地拼在一段旧历史后面，还会顺带关掉真正的续翻。不猜位置，
       // 点亮一次提示条，由用户 / 贴边追平从服务端拿回真实顺序。
-      this.invalidate({ count: 1 });
+      this.invalidate();
       return;
     }
     const wasAtFreshEdge = this.atFreshEdge();
@@ -379,7 +365,7 @@ export class BoundedList<T, Q = void> {
       // live 条目没有可重建的服务端游标：先同步裁剪保证硬有界，再按用户原贴边状态
       // 选择权威 reset 或提示稍后追平，避免用失真的旧边界继续分页。
       if (wasAtFreshEdge) this.scheduleCapacityReconcile();
-      else this.invalidate({ count: evicted });
+      else this.invalidate();
     }
   }
 
@@ -520,7 +506,6 @@ export class BoundedList<T, Q = void> {
       count: this.window.count,
       total: this.window.total,
       stale: this.pillState.stale,
-      pendingCount: this.pillState.count,
       atFreshEdge,
       failed: this.hasResetError,
     };
@@ -661,7 +646,7 @@ export class BoundedList<T, Q = void> {
   private settleFreshEdgeBoundary(dir: Direction): void {
     if (dir !== this.edge.toward) return;
     const stillHasMore = dir === 'backward' ? this.window.hasMoreBackward : this.window.hasMoreForward;
-    if (stillHasMore || (!this.pillState.stale && this.pillState.count === 0)) return;
+    if (stillHasMore || !this.pillState.stale) return;
     this.pillState.clear();
   }
 
@@ -769,7 +754,7 @@ export class BoundedList<T, Q = void> {
       this.resetError = err;
       this.hasResetError = true;
       if (this.window.count > 0) {
-        this.pillState.markFailure();
+        this.pillState.mark();
       }
       this.reportError(err, 'reset');
       this.repaint();
@@ -832,10 +817,10 @@ export class BoundedList<T, Q = void> {
     if (replayEvicted > 0) {
       // 重放本端条目又撑破了硬预算：被裁那一端的服务端边界不再可信，等下一次追平。
       this.dir[this.edge.away].cursorInvalid = true;
-      this.pillState.markEvicted(replayEvicted);
+      this.pillState.mark();
       return;
     }
-    if (this.invalidateBuffer.armed) this.pillState.stale = true;
+    if (this.invalidateBuffer.armed) this.pillState.mark();
     else this.pillState.clear();
   }
 
@@ -906,18 +891,15 @@ export class BoundedList<T, Q = void> {
     if (this.hasDataRequestInFlight()) {
       // reset / staged reconcile 的响应会整体替换窗口。期间到达的 identity 通知不能在旧
       // 窗口上执行后被覆盖，也不能拿旧结果修改新窗口；保留 identity，权威请求落定后重发。
-      const deferredCount = this.invalidateBuffer.count;
-      this.invalidateBuffer.count = 0;
-      this.pillState.add(deferredCount);
+      this.pillState.mark();
       this.repaint();
       return;
     }
     const identities = [...this.invalidateBuffer.identities];
-    const count = this.invalidateBuffer.count;
     this.invalidateBuffer.clear();
 
     if (!(this.opts.isActive?.() ?? true)) {
-      this.pillState.add(count);
+      this.pillState.mark();
       // 仍然重渲一次：宿主切回可见时提示条要已经是最新状态，不能等下一次 render。
       this.repaint();
       return;
@@ -927,7 +909,7 @@ export class BoundedList<T, Q = void> {
       return;
     }
 
-    this.pillState.add(count);
+    this.pillState.mark();
     // 先同步一次提示条再发定向请求：否则请求慢时提示条要等几百毫秒才亮。
     this.repaint();
 
@@ -1075,7 +1057,7 @@ export class BoundedList<T, Q = void> {
       this.pill.setVisible(retryText !== undefined, retryText);
       return;
     }
-    const text = this.opts.text.updatePill?.(this.pillState.count);
+    const text = this.opts.text.updatePill?.();
     // 没有提供文案就不该出现一个空白提示条。
     this.pill.setVisible(this.pillState.stale && text !== undefined, text);
   }

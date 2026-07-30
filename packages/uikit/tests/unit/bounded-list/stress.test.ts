@@ -52,7 +52,7 @@ function baseOptions(
     source,
     identityOf: idOf,
     renderItem: (item: TestItem) => [asElement(row(host.doc, `row-${item.id}`))],
-    text: { loading: () => '加载中', empty: () => '暂无数据', updatePill: (n: number) => `有更新(${n})` },
+    text: { loading: () => '加载中', empty: () => '暂无数据', updatePill: () => '有更新' },
     ...overrides,
   };
 }
@@ -196,7 +196,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
 // ───────────────────────── C 高频事件 ─────────────────────────
 
 describe('BoundedList 压力 / C 高频事件', () => {
-  it('C1 同一帧内 1000 次 invalidate 只跑一次决策，计数完整累加', () => {
+  it('C1 同一帧内 1000 次 invalidate 只跑一次决策', () => {
     const queue: Array<() => void> = [];
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { queue.push(() => cb(0)); return queue.length; });
     try {
@@ -205,10 +205,10 @@ describe('BoundedList 压力 / C 高频事件', () => {
       const fetchByIdentity = vi.fn(async () => []);
       const list = createBoundedList(baseOptions(host, createAnchoredSource(() => items, 0), { fetchByIdentity }));
       host.scroller.scrollTop = 100;
-      for (let i = 0; i < 1000; i++) list.invalidate({ count: 1, identities: [`id-${i % 7}`] });
+      for (let i = 0; i < 1000; i++) list.invalidate({ identities: [`id-${i % 7}`] });
       expect(queue).toHaveLength(1);
       queue.splice(0).forEach((cb) => cb());
-      expect(list.getState().pendingCount).toBe(1000);
+      expect(list.getState().stale).toBe(true);
       expect(fetchByIdentity).not.toHaveBeenCalled(); // 这些身份都不在窗口内
       list.dispose();
     } finally {

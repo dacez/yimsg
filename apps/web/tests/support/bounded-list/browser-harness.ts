@@ -285,7 +285,7 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     emptyFiltered: '没有匹配项',
     backwardBoundary: '已到开头',
     forwardBoundary: '已到结尾',
-    updatePill: '有 {count} 条更新',
+    updatePill: '有更新',
     error: '加载失败：{message}',
     retry: '重新加载',
   };
@@ -309,7 +309,7 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
     ...(forwardBoundary === false ? {} : { forwardBoundary: () => forwardBoundary }),
     ...(updatePill === false
       ? {}
-      : { updatePill: (count: number) => updatePill.replace('{count}', String(count)) }),
+      : { updatePill: () => updatePill }),
     ...(error === false
       ? {}
       : {
@@ -659,13 +659,13 @@ const api = {
   },
   invalidate(
     key: string,
-    options?: { identities?: readonly string[]; count?: number },
+    options?: { identities?: readonly string[] },
   ): void {
     getEntry(key).list.invalidate(options);
   },
   invalidateMany(
     key: string,
-    batches: readonly { identities?: readonly string[]; count?: number }[],
+    batches: readonly { identities?: readonly string[] }[],
   ): void {
     const entry = getEntry(key);
     for (const options of batches) entry.list.invalidate(options);

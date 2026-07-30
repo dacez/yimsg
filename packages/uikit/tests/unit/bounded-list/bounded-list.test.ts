@@ -83,7 +83,7 @@ function baseOptions(
       loading: () => '加载中',
       empty: () => '暂无数据',
       emptyFiltered: () => '无搜索结果',
-      updatePill: (n: number) => `有更新(${n})`,
+      updatePill: () => '有更新',
     },
     ...overrides,
   };
@@ -143,7 +143,7 @@ describe('BoundedList / A 构造与默认值', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
     await list.reset();
     host.scroller.scrollTop = 100;
-    expect(() => list.invalidate({ count: 1 })).not.toThrow();
+    expect(() => list.invalidate()).not.toThrow();
     expect(list.getState().stale).toBe(true);
     expect(host.parent.children).toHaveLength(0);
     list.dispose();
@@ -156,7 +156,7 @@ describe('BoundedList / A 构造与默认值', () => {
     await list.reset();
     expect(host.parent.children).toHaveLength(1); // 只有 scroller
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 1 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
     list.dispose();
   });
@@ -1179,9 +1179,9 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, { isActive: () => false });
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 3 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
-    expect(list.getState().pendingCount).toBe(3);
+    expect(list.getState().stale).toBe(true);
     expect(list.getState().count).toBe(3); // 窗口没有被重拉
     list.dispose();
   });
@@ -1191,9 +1191,9 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, { isActive: () => false });
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 3 });
+    list.invalidate();
     expect(pillOf(host).classList.contains('hidden')).toBe(false);
-    expect(pillOf(host).textContent).toBe('有更新(3)');
+    expect(pillOf(host).textContent).toBe('有更新');
     list.dispose();
   });
 
@@ -1203,7 +1203,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await list.reset();
     host.scroller.scrollTop = 0;
     items.unshift({ id: -1, label: 'new' });
-    list.invalidate({ count: 1 });
+    list.invalidate();
     await flushAsync();
     expect(list.getState().stale).toBe(true);
     expect(rendered(host)[0]).toBe('row-0'); // 内容没变
@@ -1216,7 +1216,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await list.reset();
     host.scroller.scrollTop = 0;
     items.unshift({ id: -1, label: 'new' });
-    list.invalidate({ count: 1 });
+    list.invalidate();
     await flushAsync();
     expect(list.getState().stale).toBe(false);
     expect(rendered(host)[0]).toBe('row--1');
@@ -1229,26 +1229,26 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await list.reset();
     host.scroller.scrollTop = 100;
     const before = rendered(host);
-    list.invalidate({ count: 2 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
-    expect(list.getState().pendingCount).toBe(2);
+    expect(list.getState().stale).toBe(true);
     expect(rendered(host)).toEqual(before);
     expect(pillOf(host).classList.contains('hidden')).toBe(false);
-    expect(pillOf(host).textContent).toBe('有更新(2)');
+    expect(pillOf(host).textContent).toBe('有更新');
     list.dispose();
   });
 
-  it('E5 pendingCount 在多次 invalidate 间累加，追平后归零', async () => {
+  it('E5 多次 invalidate 只点亮一次提示条，追平后熄灭', async () => {
     const items = makeTestItems(10);
     const { host, list } = setupInvalidateList(items);
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 2 });
-    list.invalidate({ count: 3 });
     list.invalidate();
-    expect(list.getState().pendingCount).toBe(5);
+    list.invalidate();
+    list.invalidate();
+    expect(list.getState().stale).toBe(true);
     await list.reset();
-    expect(list.getState().pendingCount).toBe(0);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -1296,7 +1296,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, { fetchByIdentity });
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ identities: ['999'], count: 1 });
+    list.invalidate({ identities: ['999'] });
     await flushAsync();
     expect(fetchByIdentity).not.toHaveBeenCalled();
     expect(list.getState().stale).toBe(true);
@@ -1316,18 +1316,17 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     list.dispose();
   });
 
-  it('E10 同一帧内多次 invalidate 只跑一次决策，identities 与 count 都被合并', () => {
+  it('E10 同一帧内多次 invalidate 只跑一次决策，identities 被合并', () => {
     withFrames((frames) => {
       const items = makeTestItems(10);
       const fetchByIdentity = vi.fn(async () => []);
       const { host, list } = setupInvalidateList(items, { fetchByIdentity });
       host.scroller.scrollTop = 100;
-      list.invalidate({ count: 1, identities: ['1'] });
-      list.invalidate({ count: 2, identities: ['2'] });
-      list.invalidate({ count: 3 });
+      list.invalidate({ identities: ['1'] });
+      list.invalidate({ identities: ['2'] });
+      list.invalidate();
       expect(frames.size()).toBe(1);
       frames.run();
-      expect(list.getState().pendingCount).toBe(6); // 1+2+3 累加
       list.dispose();
     });
   });
@@ -1351,10 +1350,10 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity });
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ identities: ['1'], count: 2 });
+    list.invalidate({ identities: ['1'] });
     await flushAsync();
     expect(pillOf(host).classList.contains('hidden')).toBe(false);
-    expect(pillOf(host).textContent).toBe('有更新(2)');
+    expect(pillOf(host).textContent).toBe('有更新');
     fetcher.settle(0, [{ id: 1, label: 'patched' }]);
     await flushAsync();
     expect(pillOf(host).classList.contains('hidden')).toBe(false);
@@ -1626,7 +1625,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, { fetchByIdentity: fetcher.fetchByIdentity, onError });
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ identities: ['1'], count: 1 });
+    list.invalidate({ identities: ['1'] });
     fetcher.fail(0, new Error('定向拉取失败'));
     await flushAsync();
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'refresh');
@@ -1670,7 +1669,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     host.scroller.scrollTop = 100;
     list.invalidate();
     expect(list.getState().stale).toBe(true);
-    expect(list.getState().pendingCount).toBe(0);
+    expect(pillOf(host).classList.contains('hidden')).toBe(false);
     list.dispose();
   });
 
@@ -1678,7 +1677,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const items = makeTestItems(10);
     const { host, list } = setupInvalidateList(items);
     host.scroller.scrollTop = 0;
-    list.invalidate({ count: 1 });
+    list.invalidate();
     await flushAsync();
     expect(list.getState().loaded).toBe(true);
     expect(list.getState().count).toBe(3);
@@ -1690,20 +1689,19 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
 // ───────────────────────── F 提示条三条消失路径 ─────────────────────────
 
 describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => {
-  it('F1 路径①：用户自己滚回新鲜端时自动追平，stale 与 pendingCount 一并清零', async () => {
+  it('F1 路径①：用户自己滚回新鲜端时自动追平，stale 随之熄灭', async () => {
     const items = makeTestItems(10);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 5 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     host.scroller.scrollTop = 0;
     host.scroller.dispatch('scroll');
     await flushAsync();
     expect(list.getState().stale).toBe(false);
-    expect(list.getState().pendingCount).toBe(0);
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
     list.dispose();
   });
@@ -1716,7 +1714,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     pending[0].resolve(pageOf(makeTestItems(3), 's0', 'e0', true, true));
     await p;
     host.scroller.scrollTop = 500;
-    list.invalidate({ count: 1 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     void list.loadMore('backward'); // 制造 loadingBackward=true
@@ -1729,14 +1727,14 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     list.dispose();
   });
 
-  it('F3 路径②：触界续翻到新鲜端尽头（拿到空页）时清零 stale 与 pendingCount', async () => {
+  it('F3 路径②：触界续翻到新鲜端尽头（拿到空页）时熄灭 stale', async () => {
     const items = makeTestItems(6);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createOptimisticSource(() => items), { freshEdge: 'tail' }));
     await list.reset();
     host.scroller.scrollTop = 999;
     host.scroller.scrollHeight = 2000;
-    list.invalidate({ count: 4 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     await list.loadMore('forward'); // [3,4,5]，满页仍乐观报告 hasMoreForward=true
@@ -1745,7 +1743,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     await list.loadMore('forward'); // 真正拿到空页 → 命中新鲜端方向
     expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(false);
-    expect(list.getState().pendingCount).toBe(0);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -1769,20 +1767,20 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     const list = createBoundedList(baseOptions(host, optimisticBothEnds, { freshEdge: 'head' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
-    list.invalidate({ count: 7 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     // 非新鲜端方向（forward）拿到空页：不清提示条。
     await list.loadMore('forward'); // [6,7,8]
     await list.loadMore('forward'); // 空页
     expect(list.getState().stale).toBe(true);
-    expect(list.getState().pendingCount).toBe(7);
+    expect(list.getState().stale).toBe(true);
 
     // 新鲜端方向（backward）拿到空页：清提示条。
     await list.loadMore('backward'); // [0,1,2]
     await list.loadMore('backward'); // 空页
     expect(list.getState().stale).toBe(false);
-    expect(list.getState().pendingCount).toBe(0);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -1792,11 +1790,11 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 1 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
     await list.reset();
     expect(list.getState().stale).toBe(false);
-    expect(list.getState().pendingCount).toBe(0);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -1807,7 +1805,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     await list.reset();
     host.scroller.scrollTop = 100;
     items.unshift({ id: -1, label: 'new' });
-    list.invalidate({ count: 1 });
+    list.invalidate();
     expect(pillOf(host).classList.contains('hidden')).toBe(false);
 
     pillOf(host).dispatch('click');
@@ -1828,26 +1826,13 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     await list.reset();
     host.scroller.scrollTop = 100;
     items.push({ id: 10, label: 'new-tail' });
-    list.invalidate({ count: 1 });
+    list.invalidate();
 
     pillOf(host).dispatch('click');
     await flushAsync();
     expect(list.getState().stale).toBe(false);
     expect(list.getState().atFreshEdge).toBe(true);
     expect(host.scroller.scrollTop).toBe(host.scroller.scrollHeight);
-    list.dispose();
-  });
-
-  it('F7 提示条文案随 pendingCount 变化', async () => {
-    const items = makeTestItems(10);
-    const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
-    await list.reset();
-    host.scroller.scrollTop = 100;
-    list.invalidate({ count: 1 });
-    expect(pillOf(host).textContent).toBe('有更新(1)');
-    list.invalidate({ count: 9 });
-    expect(pillOf(host).textContent).toBe('有更新(10)');
     list.dispose();
   });
 
@@ -1859,7 +1844,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     }));
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 3 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true); // 状态照常记账
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
     list.dispose();
@@ -1871,13 +1856,12 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
-    list.invalidate({ count: 4 });
+    list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     await list.loadMore('forward');
     expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(false);
-    expect(list.getState().pendingCount).toBe(0);
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
     list.dispose();
   });
@@ -1888,11 +1872,10 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'head' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
-    list.invalidate({ count: 4 });
+    list.invalidate();
     await list.loadMore('forward'); // forward 不是 head 的新鲜方向
     expect(list.getState().hasMoreForward).toBe(false);
     expect(list.getState().stale).toBe(true);
-    expect(list.getState().pendingCount).toBe(4);
     list.dispose();
   });
 
@@ -2034,7 +2017,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
         onError,
         text: {
           empty: () => '暂无数据',
-          updatePill: (count) => `有更新(${count})`,
+          updatePill: () => '有更新',
           error: () => '加载失败',
           retry: () => '重新加载',
         },
@@ -2175,10 +2158,10 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       host.scroller.scrollTop = 0;
       host.scroller.dispatch('scroll');
       frames.run();
-      list.invalidate({ identities: ['1'], count: 3 });
+      list.invalidate({ identities: ['1'] });
       frames.run();
       expect(fetcher.calls).toHaveLength(0);
-      expect(list.getState().pendingCount).toBe(3);
+      expect(list.getState().stale).toBe(true);
 
       pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
       await flushAsync();
@@ -2187,7 +2170,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
       await flushAsync();
       expect(latest.find((item) => item.id === 1)?.label).toBe('fresh-1');
-      expect(list.getState().pendingCount).toBe(3);
+      expect(list.getState().stale).toBe(true);
       list.dispose();
     });
   });
@@ -2281,7 +2264,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
         settleFrames: 1,
         text: {
           empty: () => '暂无数据',
-          updatePill: (n: number) => `有更新(${n})`,
+          updatePill: () => '有更新',
           error: () => '加载失败',
           retry: () => '重新加载',
           backwardBoundary: () => '已到最早',
@@ -3319,7 +3302,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     await expect(list.loadMore('forward')).resolves.toBeUndefined();
     await expect(list.loadMore('backward')).resolves.toBeUndefined();
     expect(() => list.setQuery(undefined)).not.toThrow();
-    expect(() => list.invalidate({ count: 1 })).not.toThrow();
+    expect(() => list.invalidate()).not.toThrow();
     expect(() => list.upsertLocal(items[0])).not.toThrow();
     expect(list.patch('0', (i) => i)).toBe(false);
     expect(list.removeLocal('0')).toBe(false);
@@ -3447,7 +3430,7 @@ describe('BoundedList / M 只读状态 getState', () => {
     expect(list.getState()).toEqual({
       loaded: false, loading: false, loadingBackward: false, loadingForward: false,
       hasMoreBackward: false, hasMoreForward: false, count: 0, total: -1,
-      stale: false, pendingCount: 0, atFreshEdge: false, failed: false,
+      stale: false, atFreshEdge: false, failed: false,
     });
     list.dispose();
   });
@@ -3614,7 +3597,7 @@ describe('BoundedList / N 防御性守卫（白盒，公开 API 走不到的分�
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { fetchByIdentity }));
     await list.reset();
     host.scroller.scrollTop = 100;
-    list.invalidate({ count: 1 });
+    list.invalidate();
     list.dispose();
     // flushInvalidate 是私有方法，正常路径下 dispose 已取消它的调度；
     // 这里直接调用以验证守卫本身（防止将来调度实现变化后漏保护）。

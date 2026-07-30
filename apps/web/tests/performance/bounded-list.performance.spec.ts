@@ -245,7 +245,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       });
       api.clearFetchCalls(key);
       const started = performance.now();
-      for (let index = 0; index < 10_000; index++) api.invalidate(key, { count: 1 });
+      for (let index = 0; index < 10_000; index++) api.invalidate(key, {});
       const enqueueDurationMs = performance.now() - started;
       await api.frames(2);
       await api.waitForIdle(key);
