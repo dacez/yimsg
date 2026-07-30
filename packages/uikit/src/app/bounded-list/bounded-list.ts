@@ -232,7 +232,7 @@ export class BoundedList<T, Q = void> {
     this.pendingIdentities.clear();
     this.pendingInvalidateCount = 0;
     if (optsIn && Object.prototype.hasOwnProperty.call(optsIn, 'query')) this.query = optsIn.query as Q;
-    await this.loadAuthoritativePage({ clearWindow: true, pinEdge: optsIn?.pinEdge ?? true });
+    await this.startAuthoritativePage({ clearWindow: true, pinEdge: optsIn?.pinEdge ?? true });
   }
 
   async loadMore(dir: Direction): Promise<void> {
@@ -413,9 +413,7 @@ export class BoundedList<T, Q = void> {
 
   private paint(rebuildRows: boolean): void {
     if (this.disposed) return;
-    const pinned = this.opts.pinnedItems?.() ?? [];
-    const windowItems = this.window.items;
-    const items = pinned.length ? [...pinned, ...windowItems] : windowItems;
+    const items = this.visibleItems();
     const text = this.opts.text;
     const filtered = this.isQueryActive();
     const errorText = items.length === 0 && this.hasResetError ? text.error?.(this.resetError) : undefined;
@@ -431,6 +429,11 @@ export class BoundedList<T, Q = void> {
       loaded: state.loaded,
       hasMoreBackward: state.hasMoreBackward,
       hasMoreForward: state.hasMoreForward,
+      // 边界提示只看窗口自己的账。`state.hasMoreX` 还叠加了「游标是否失效」，
+      // 拿它判边界会在 live 硬裁剪后（游标不可信但数据确实还有）错报「没有更多了」，
+      // 而且那之后 reconcile 一旦失败就再也没有东西把它改回来。
+      atBackwardEnd: !this.window.hasMoreBackward,
+      atForwardEnd: !this.window.hasMoreForward,
       loadingBackward: state.loadingBackward,
       loadingForward: state.loadingForward,
       emptyText,
@@ -511,6 +514,35 @@ export class BoundedList<T, Q = void> {
       if (value === null) el.removeAttribute?.(name);
       else el.setAttribute?.(name, value);
     }
+  }
+
+  /**
+   * 当前该渲染出来的条目序列：`pinnedItems` 在前、窗口条目在后，且**按身份去重**。
+   *
+   * 去重必须在组件里做。渲染引擎按身份键协调 DOM，同一个身份出现两次会让
+   * `renderedRows` 只记住后一条、而 desired 列表里同一个节点出现两次，`insertBefore`
+   * 把它搬走之后行数静默少一行，缓存与真实 DOM 从此失配。曾经这件事外包给每个调用方
+   * （会话列表因此自己写了一段 O(n×m) 过滤），漏做一次就是上面那个后果。
+   *
+   * 窗口是权威：pinned 里凡是窗口已有的身份一律让位（例如占位会话在真实条目落库后
+   * 就不该继续钉在头部）。pinned 自身重复也在这里挡掉。
+   *
+   * 渲染、`findItem`、`onSelectionChange` 三处共用它，保证「看到的」「点到的」
+   * 「报出去的」是同一份序列和同一个顺序。
+   */
+  private visibleItems(): readonly T[] {
+    const windowItems = this.window.items;
+    const pinned = this.opts.pinnedItems?.() ?? [];
+    if (pinned.length === 0) return windowItems;
+    const seen = new Set(windowItems.map((item) => this.opts.identityOf(item)));
+    const uniquePinned: T[] = [];
+    for (const item of pinned) {
+      const identity = this.opts.identityOf(item);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      uniquePinned.push(item);
+    }
+    return uniquePinned.length === 0 ? windowItems : [...uniquePinned, ...windowItems];
   }
 
   private atFreshEdge(): boolean {
@@ -602,8 +634,26 @@ export class BoundedList<T, Q = void> {
     // pinEdge 恒为 false：容量 reconcile 不清空窗口，是否贴边完全交给共享辅助方法
     // 在响应落地那一刻实时读 `stickToFreshEdge`（可能在请求期间被滚动事件改写），
     // 而不是像 reset 那样在调用时就固定调用方意图。
-    const started = this.loadAuthoritativePage({ clearWindow: false, pinEdge: false });
-    // loadAuthoritativePage 已经同步把 authoritative 置成 reconcile；补上 promise 供重入合并。
+    return this.startAuthoritativePage({ clearWindow: false, pinEdge: false });
+  }
+
+  /**
+   * 权威首页请求的唯一入口：发起之后立刻把 promise 登记进 `authoritative`，
+   * 好让 `reconcileCapacity` 的重入合并对 reset 和 reconcile 一视同仁。
+   *
+   * 早前只有 reconcile 分支回填 promise，reset 的那一份恒为 `null`。后果是 reset
+   * 在飞期间的一次容量追平（在飞时的 live 裁剪、排队的自动帧任务）会认为「没有请求
+   * 在飞」，于是 `++requestId` 把正在飞的 reset 打掉再发一个——既多打一次请求，也
+   * 违反了「权威请求已在飞时的 live eviction 由当前请求重放、不额外安排第二次追平」
+   * 这条既有约定（见缺陷列表 BL-BUG-010 第 8 条）。
+   */
+  private startAuthoritativePage(opts: { clearWindow: boolean; pinEdge: boolean }): Promise<void> {
+    const started = this.loadAuthoritativePage(opts);
+    // loadAuthoritativePage 的同步段已经把 authoritative 置好，这里补 promise。
+    // 同步段内不会有人读到还是 null 的 promise：唯一的重入路径是
+    // repaint → checkReach → 触界 → cursorInvalid → reconcileCapacity，而那一刻
+    // 该端「能否续翻」必为 false（reset 刚清空窗口，reconcile 的失效游标本就不允许
+    // 续翻），触界检测不会触发。
     if (this.authoritative) this.authoritative.promise = started;
     return started;
   }
@@ -937,9 +987,10 @@ export class BoundedList<T, Q = void> {
   }
 
   private findItem(identity: string): T | undefined {
-    const pinned = this.opts.pinnedItems?.() ?? [];
-    for (const item of pinned) if (this.opts.identityOf(item) === identity) return item;
-    for (const item of this.window.items) if (this.opts.identityOf(item) === identity) return item;
+    // 走 visibleItems：点击命中的一定是当前真的渲染出来的那一条。
+    for (const item of this.visibleItems()) {
+      if (this.opts.identityOf(item) === identity) return item;
+    }
     return undefined;
   }
 
@@ -997,9 +1048,8 @@ export class BoundedList<T, Q = void> {
   private emitSelectionChange(): void {
     if (!this.selection || !this.opts.onSelectionChange) return;
     const ids = this.selection.snapshotIds();
-    const pinned = this.opts.pinnedItems?.() ?? [];
-    // 顺序与渲染保持一致：pinnedItems 在前，窗口条目在后。
-    const items = [...pinned, ...this.window.items].filter((item) => ids.has(this.opts.identityOf(item)));
+    // 顺序与去重都与渲染保持一致：同一份 visibleItems 序列。
+    const items = this.visibleItems().filter((item) => ids.has(this.opts.identityOf(item)));
     this.opts.onSelectionChange({ ids, count: ids.size, items });
   }
 

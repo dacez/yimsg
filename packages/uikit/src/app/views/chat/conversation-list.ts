@@ -179,13 +179,9 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     identityOf: conversationIdentity,
     freshEdge: "head",
     // 占位会话一旦真实存在（发出的消息落库后重拉首页能拉到同身份的真实条目），
-    // 就不再钉在头部——组件本身不去重 pinnedItems 与窗口条目，需要调用方自己避免
-    // 同一身份同时出现在两处而渲染出两个重复 DOM 节点。
-    pinnedItems: () => {
-      const pinned = pinnedConversations(app);
-      if (pinned.length === 0) return pinned;
-      return pinned.filter((p) => !windowItems.some((w) => conversationIdentity(w) === conversationIdentity(p)));
-    },
+    // 就不再钉在头部：组件按身份去重 pinnedItems 与窗口条目，窗口是权威，这里直接
+    // 把占位会话全交出去即可。
+    pinnedItems: () => pinnedConversations(app),
     renderItem: (conv, ctx) => {
       if (ctx.index === 0) {
         displayMaps = collectDisplayMaps(app, [...pinnedConversations(app), ...windowItems]);

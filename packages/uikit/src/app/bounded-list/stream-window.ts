@@ -36,8 +36,18 @@ export interface BoundedStreamWindowOptions {
 export interface BoundedStreamWindowRenderState<T> {
   readonly items: ReadonlyArray<T>;
   readonly loaded?: boolean;
+  /** 该方向现在能不能续翻，驱动触界检测。 */
   readonly hasMoreBackward?: boolean;
   readonly hasMoreForward?: boolean;
+  /**
+   * 该方向是否**确认**已经到达数据尽头，驱动「没有更多了」边界提示。
+   *
+   * 与 `hasMoreBackward` 分开是必须的：「不能续翻」有两种成因——真的没有数据了，
+   * 以及边界游标暂时不可信（live 硬裁剪之后）。后者不知道还有没有数据，既不能
+   * 自动续翻，也不能告诉用户「到底了」。不提供时退化为 `!hasMoreBackward`。
+   */
+  readonly atBackwardEnd?: boolean;
+  readonly atForwardEnd?: boolean;
   readonly loadingBackward?: boolean;
   readonly loadingForward?: boolean;
   readonly emptyText?: string;
@@ -220,7 +230,7 @@ export class BoundedStreamWindow<T> {
 
     const desiredElements: HTMLElement[] = [];
     const nextRenderedRows = new Map<string, RenderedRow<T>>();
-    if (!state.hasMoreBackward && state.backwardBoundaryText) {
+    if ((state.atBackwardEnd ?? !state.hasMoreBackward) && state.backwardBoundaryText) {
       desiredElements.push(createBoundaryHint(doc, state.backwardBoundaryText, 'top'));
     } else if (state.loadingBackward && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'top'));
@@ -263,7 +273,7 @@ export class BoundedStreamWindow<T> {
       nextRenderedRows.set(key, { item, elements, revision });
     }
 
-    if (!state.hasMoreForward && state.forwardBoundaryText) {
+    if ((state.atForwardEnd ?? !state.hasMoreForward) && state.forwardBoundaryText) {
       desiredElements.push(createBoundaryHint(doc, state.forwardBoundaryText, 'bottom'));
     } else if (state.loadingForward && state.loadingText) {
       desiredElements.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
