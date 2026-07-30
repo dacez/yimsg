@@ -65,18 +65,6 @@ export class SelectionStore {
     this.notify();
   }
 
-  /** 只保留仍然存在的身份（列表窗口内容变化后修剪已滚出窗口但仍标记选中的 id）。 */
-  retainOnly(existing: ReadonlySet<string>): void {
-    let changed = false;
-    for (const id of Array.from(this.ids)) {
-      if (!existing.has(id)) {
-        this.ids.delete(id);
-        changed = true;
-      }
-    }
-    if (changed) this.notify();
-  }
-
   // 先快照再遍历：订阅者在回调里增删订阅时，本轮通知的对象集合是确定的
   // （新增的不会被本轮通知到，注销的仍会收到本轮通知），避免顺序相关的隐式契约。
   private notify(): void {

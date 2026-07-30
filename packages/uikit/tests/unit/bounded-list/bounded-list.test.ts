@@ -315,11 +315,13 @@ describe('BoundedList / A 构造与默认值', () => {
     // 历史上 src/app/ 下同时有 bounded-list.ts（旧 BoundedListController 接口）与
     // bounded-list/ 目录，.ts 文件优先导致公开入口只能写 './bounded-list/index'。
     const entry = await import('../../../src/app/bounded-list');
-    expect(Object.keys(entry)).toEqual(expect.arrayContaining([
-      'createBoundedList', 'BoundedList', 'serverPageSource', 'localPageSource',
-      'SelectionStore', 'standaloneList',
-    ]));
+    // 运行时导出面刻意保持最小：一个工厂 + 两个数据源 + 选中集 + register 空实现。
+    expect(Object.keys(entry).sort()).toEqual([
+      'SelectionStore', 'createBoundedList', 'localPageSource', 'serverPageSource', 'standaloneList',
+    ]);
     expect(typeof entry.createBoundedList).toBe('function');
+    // BoundedList 只按类型导出（调用方从不 new，实例统一来自 createBoundedList）。
+    expect(Object.keys(entry)).not.toContain('BoundedList');
     // 进程级注册表连同它的广播函数已经删除：register 必填，注册表实体只属于宿主。
     expect(Object.keys(entry)).not.toContain('invalidateAllBoundedLists');
     expect(Object.keys(entry)).not.toContain('registeredBoundedListIds');
@@ -2268,6 +2270,87 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     });
   });
 
+  it('G3o 游标失效期间不显示「没有更多了」：不能续翻不等于数据到底了', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+        text: {
+          empty: () => '暂无数据',
+          updatePill: (n: number) => `有更新(${n})`,
+          error: () => '加载失败',
+          retry: () => '重新加载',
+          backwardBoundary: () => '已到最早',
+          forwardBoundary: () => '已到最新',
+        },
+      }));
+      const boundaryTexts = (): string[] => host.scroller.children
+        .filter((child) => child.className.includes('list-boundary-hint'))
+        .map((child) => child.textContent);
+
+      const initial = list.reset();
+      // 两端都已翻到尽头：此刻两条边界提示都名副其实。
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await initial;
+      expect(boundaryTexts()).toEqual(['已到最早', '已到最新']);
+
+      // 本端并入撑破 pageSize×maxPages=2 的硬预算，从 backward 端裁掉一条：
+      // 那一端现在**确实还有数据**，只是它的服务端游标已经不可信。
+      list.upsertLocal({ id: 2, label: 'local-2' });
+      expect(list.getState().hasMoreBackward).toBe(false); // 对外封锁续翻，符合预期
+      // 关键断言：封锁续翻 ≠ 到底了，不得再显示「已到最早」骗用户。
+      expect(boundaryTexts()).toEqual(['已到最新']);
+
+      // 追平失败后游标仍然不可信，边界提示也仍然不能出现——否则这条错误提示
+      // 从此再没有任何东西会把它改回来。
+      frames.run();
+      expect(pending).toHaveLength(2);
+      pending[1].reject(new Error('reconcile failed'));
+      await flushAsync();
+      expect(list.getState()).toMatchObject({ failed: true, hasMoreBackward: false });
+      expect(boundaryTexts()).toEqual(['已到最新']);
+      expect(pillOf(host).textContent).toBe('重新加载');
+      list.dispose();
+    });
+  });
+
+  it('G3p reset 在飞期间的容量追平合并到该 reset，不再打掉它另发一次请求', async () => {
+    await withFramesAsync(async (frames) => {
+      const { source, pending } = createControllableSource<TestItem, void>();
+      const host = createHost();
+      host.scroller.scrollHeight = 0; // 贴新鲜端：裁剪后走自动容量追平这条路
+      const list = createBoundedList(baseOptions(host, source, {
+        freshEdge: 'tail',
+        pageSize: 2,
+        maxPages: 1,
+        settleFrames: 1,
+      }));
+      const resetting = list.reset({ pinEdge: false });
+      expect(pending).toHaveLength(1);
+
+      // reset 在飞期间并入 3 条，撑破硬预算并触发裁剪 → 排一次容量追平。
+      list.upsertLocal({ id: 10, label: 'a' });
+      list.upsertLocal({ id: 11, label: 'b' });
+      list.upsertLocal({ id: 12, label: 'c' });
+      frames.run();
+      await flushAsync();
+      // 权威首页已经在飞，这次追平必须合并到它：既不多发一次请求，也不能
+      // ++requestId 把在飞的 reset 作废（BL-BUG-010 第 8 条）。
+      expect(pending).toHaveLength(1);
+
+      pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, false));
+      await resetting;
+      // 那一次 reset 的响应仍然有效落地，没有被自己排的追平顶掉。
+      expect(list.getState()).toMatchObject({ loaded: true, failed: false });
+      expect(renderedRows(host)).toHaveLength(2);
+      list.dispose();
+    });
+  });
+
   it('G3m reconcile 在飞时的 removeLocal 与 upsert 最终态在权威响应后同时成立', async () => {
     await withFramesAsync(async (frames) => {
       const { source, pending } = createControllableSource<TestItem, void>();
@@ -2518,6 +2601,50 @@ describe('BoundedList / H 渲染与文案', () => {
     await list.reset();
     expect(rendered(host)).toEqual(['row--1', 'row-0', 'row-1', 'row-2']);
     expect(list.getState().count).toBe(3);
+    list.dispose();
+  });
+
+  it('H1b pinnedItems 与窗口条目同身份时只渲染一行，窗口条目胜出', async () => {
+    // 生产场景：占位会话在真实条目落库后被首页拉回来，两处同时持有同一身份。
+    // 组件必须自己去重——同一 key 渲染两次会让渲染引擎的行缓存与真实 DOM 失配。
+    const items = makeTestItems(3);
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      // 第一条与窗口里的 id=1 同身份，第二条是真正独有的；另外故意让 pinned 自身重复。
+      pinnedItems: () => [
+        { id: 1, label: '占位-1' },
+        { id: -1, label: '所有人' },
+        { id: -1, label: '所有人（重复）' },
+      ],
+      renderItem: (item) => [asElement(row(host.doc, `row-${item.id}-${item.label}`))],
+    }));
+    await list.reset();
+
+    // id=1 只出现一次，且用的是窗口那份权威值；重复的 pinned 也只保留第一条。
+    expect(rendered(host)).toEqual(['row--1-所有人', 'row-0-item-0', 'row-1-item-1', 'row-2-item-2']);
+    expect(list.getState().count).toBe(3);
+    list.dispose();
+  });
+
+  it('H1c 同身份的 pinnedItems 让位后，onSelectionChange 与点击命中同一份序列', async () => {
+    const items = makeTestItems(2);
+    const host = createHost();
+    const activated: TestItem[] = [];
+    const snapshots: TestItem[][] = [];
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
+      pinnedItems: () => [{ id: 1, label: '占位-1' }],
+      // 单选模式同时走 findItem→onActivate 和 emitSelectionChange 两条消费路径。
+      selection: { mode: 'single' },
+      onActivate: (item) => activated.push(item),
+      onSelectionChange: (snapshot) => snapshots.push([...snapshot.items]),
+    }));
+    await list.reset();
+
+    // 同身份的 pinned 已经完全让位，所以渲染序列就是窗口的 [id 0, id 1]。
+    host.scroller.dispatch('click', { target: host.scroller.children[1] });
+    // 命中的是窗口那份，而不是已经让位的 pinned 副本。
+    expect(activated).toEqual([{ id: 1, label: 'item-1' }]);
+    expect(snapshots.at(-1)).toEqual([{ id: 1, label: 'item-1' }]);
     list.dispose();
   });
 

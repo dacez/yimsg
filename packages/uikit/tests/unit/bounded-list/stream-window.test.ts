@@ -23,7 +23,7 @@ function renderedClassNames(content: FakeElement): string[] {
 function makeView<T>(overrides: Partial<{
   contentElement: FakeElement;
   onScroll: () => void;
-  onInteract: (id: string, ev: any, viaKeyboard: boolean) => void;
+  onInteract: (id: string, ev: any) => void;
   onContentLoad: () => void;
   reachPx: number;
   doc: FakeDocument;
@@ -79,7 +79,7 @@ describe('BoundedStreamWindow / A 有键 DOM 协调', () => {
     expect(scroller.children[1].getAttribute('data-bsw-key')).toBeNull();
     expect(scroller.children.map((child) => child.getAttribute('data-bsw-interact-key'))).toEqual(['a', 'a']);
     scroller.dispatch('click', { target: scroller.children[1] });
-    expect(onInteract).toHaveBeenCalledWith('a', expect.anything(), false);
+    expect(onInteract).toHaveBeenCalledWith('a', expect.anything());
   });
 
   it('A3 renderItem 返回空数组时该条目不产生任何节点，也不打锚点', () => {
@@ -714,7 +714,7 @@ describe('BoundedStreamWindow / H 点击事件委托', () => {
     };
     view.render({ items: ['a', 'b'], keyOf: (s) => `k-${s}`, renderItem });
     scroller.dispatch('click', { target: scroller.children[1].children[0] });
-    expect(onInteract).toHaveBeenCalledWith('k-b', expect.anything(), false);
+    expect(onInteract).toHaveBeenCalledWith('k-b', expect.anything());
   });
 
   it('H2 深层嵌套（5 层）同样能上溯到行', () => {
@@ -730,7 +730,7 @@ describe('BoundedStreamWindow / H 点击事件委托', () => {
     };
     view.render({ items: ['a'], keyOf: (s) => `k-${s}`, renderItem });
     scroller.dispatch('click', { target: deepest });
-    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything(), false);
+    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything());
   });
 
   it('H3 contentElement 与 scrollElement 分离时事件委托挂在 contentElement 上', () => {
@@ -741,7 +741,7 @@ describe('BoundedStreamWindow / H 点击事件委托', () => {
     const view = new BoundedStreamWindow<string>({ scrollElement: asElement(scroller), contentElement: asElement(content), onInteract });
     view.render({ items: ['a'], keyOf: (s) => `k-${s}`, renderItem: () => [asElement(row(doc, 'row-a'))] });
     content.dispatch('click', { target: content.children[0] });
-    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything(), false);
+    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything());
     scroller.dispatch('click', { target: content.children[0] }); // scroller 上没有委托
     expect(onInteract).toHaveBeenCalledTimes(1);
     view.dispose();
@@ -782,7 +782,7 @@ describe('BoundedStreamWindow / H 点击事件委托', () => {
     view.render({ items: ['a'], keyOf: (s) => `k-${s}`, renderItem: () => [asElement(row(doc, 'row-a'))] });
     const textLike = { parentElement: scroller.children[0] }; // 没有 getAttribute
     scroller.dispatch('click', { target: textLike });
-    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything(), false);
+    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything());
   });
 
   it('H8 未提供 onInteract 时点击是空操作', () => {
@@ -831,11 +831,11 @@ describe('BoundedStreamWindow / I 键盘导航', () => {
     expect(preventDefault).toHaveBeenCalledTimes(1);
   });
 
-  it('I4 Enter/Space 激活当前聚焦行，并标记 viaKeyboard=true', () => {
+  it('I4 Enter/Space 激活当前聚焦行，回调只带 identity 与事件', () => {
     const { scroller, onInteract } = setup();
     scroller.dispatch('keydown', { key: 'ArrowDown' });
     scroller.dispatch('keydown', { key: 'Enter' });
-    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything(), true);
+    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything());
     scroller.dispatch('keydown', { key: ' ' });
     expect(onInteract).toHaveBeenCalledTimes(2);
   });

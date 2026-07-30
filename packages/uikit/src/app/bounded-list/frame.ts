@@ -1,7 +1,7 @@
-// 帧调度：把「本帧内合并多次请求，且能被 dispose 安全取消」这件事收敛成一处。
+// 帧调度：「本帧内合并多次请求，且能被 dispose 安全取消」的唯一实现。
 //
-// 这里曾经有三份几乎一样的实现（渲染引擎一份、组件外壳两份），token / cancel 语义
-// 各写一遍，差异只有「环境没有 requestAnimationFrame 时怎么兜底」一个选择。
+// 组件里有三个调用方（渲染引擎的滚动帧与积压重渲、外壳的 invalidate 决策与容量追平），
+// 它们只在「环境没有 requestAnimationFrame 时怎么兜底」上有区别，见 FrameFallback。
 
 /** 可重复调用、同帧内只跑一次、可取消的调度器。 */
 export type FrameScheduler = (() => void) & { cancel: () => void };

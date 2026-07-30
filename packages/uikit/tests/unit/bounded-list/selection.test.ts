@@ -63,22 +63,6 @@ describe('SelectionStore / A 基础语义', () => {
     expect(store.size).toBe(0);
   });
 
-  it('A6 retainOnly 只保留仍存在的身份，未发生实际删除时不通知', () => {
-    const store = new SelectionStore();
-    store.toggle('a');
-    store.toggle('b');
-    store.toggle('c');
-    const listener = vi.fn();
-    store.subscribe(listener);
-    store.retainOnly(new Set(['a', 'c']));
-    expect(store.snapshotIds()).toEqual(new Set(['a', 'c']));
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    listener.mockClear();
-    store.retainOnly(new Set(['a', 'c', 'd']));
-    expect(listener).not.toHaveBeenCalled();
-  });
-
   it('A8 delete 精确摘掉一个身份，只在确实删掉时通知；未命中返回 false', () => {
     const store = new SelectionStore();
     store.toggle('a');
@@ -101,14 +85,6 @@ describe('SelectionStore / A 基础语义', () => {
     for (const id of ['u:1', 'u:2', 'g:9']) store.toggle(id);
     store.delete('u:2');
     expect(store.snapshotIds()).toEqual(new Set(['u:1', 'g:9']));
-  });
-
-  it('A7 retainOnly 传空集合等价于清空', () => {
-    const store = new SelectionStore();
-    store.toggle('a');
-    store.toggle('b');
-    store.retainOnly(new Set());
-    expect(store.size).toBe(0);
   });
 });
 
@@ -151,12 +127,12 @@ describe('SelectionStore / B 上限 max', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('B5 达上限后 retainOnly 腾出名额，新 id 又可以选中', () => {
+  it('B5 达上限后 delete 腾出名额，新 id 又可以选中', () => {
     const store = new SelectionStore(2);
     store.toggle('a');
     store.toggle('b');
     expect(store.toggle('c')).toBe('rejected');
-    store.retainOnly(new Set(['a']));
+    store.delete('b');
     expect(store.toggle('c')).toBe('added');
   });
 });
@@ -263,13 +239,13 @@ describe('SelectionStore / D 边界与大规模', () => {
     expect(store.isExceeded('u:499:0:0')).toBe(false);
   });
 
-  it('D3 50000 个身份的 retainOnly 只保留其中 1 个，且只通知一次', () => {
+  it('D3 50000 个身份的 clear 一次清空，且只通知一次', () => {
     const store = new SelectionStore();
     for (let i = 0; i < 50000; i++) store.toggle(`id-${i}`);
     const listener = vi.fn();
     store.subscribe(listener);
-    store.retainOnly(new Set(['id-777']));
-    expect(store.snapshotIds()).toEqual(new Set(['id-777']));
+    store.clear();
+    expect(store.size).toBe(0);
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
