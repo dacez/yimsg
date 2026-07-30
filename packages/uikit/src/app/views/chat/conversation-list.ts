@@ -177,7 +177,7 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     fetchByIdentity: (ids) =>
       app.client.getConversations({ targets: ids.map(identityToTarget) }).then((p) => p.conversations),
     identityOf: conversationIdentity,
-    freshEdge: "head",
+    order: "desc",
     // 占位会话一旦真实存在（发出的消息落库后重拉首页能拉到同身份的真实条目），
     // 就不再钉在头部：组件按身份去重 pinnedItems 与窗口条目，窗口是权威，这里直接
     // 把占位会话全交出去即可。
@@ -191,7 +191,7 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     text: {
       empty: () => app.t("chat.noConversations"),
       loading: () => app.t("common.loading"),
-      forwardBoundary: () => app.t("chat.noMoreConversations"),
+      tailBoundary: () => app.t("chat.noMoreConversations"),
       updatePill: () => app.t("chat.listUpdated"),
       retry: () => app.t("common.retry"),
     },

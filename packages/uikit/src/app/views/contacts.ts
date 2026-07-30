@@ -145,14 +145,14 @@ export function createContactsView(app: AppInstance) {
       ),
       fetchByIdentity: (ids) => fetchContactsByIdentity(app, ids),
       identityOf: contactKey,
-      freshEdge: 'head',
+      order: 'desc',
       renderItem: (contact, ctx) => renderContactRow(contact, ctx),
       onActivate: (contact) => { void showContactDetail(contact); },
       text: {
         empty: () => app.t('contacts.noFriends'),
         emptyFiltered: () => app.t('contacts.noSearchResults'),
         loading: () => app.t('common.loading'),
-        forwardBoundary: () => app.t('contacts.noMoreContacts'),
+        tailBoundary: () => app.t('contacts.noMoreContacts'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -204,12 +204,12 @@ export function createContactsView(app: AppInstance) {
       ),
       fetchByIdentity: (ids) => fetchContactsByIdentity(app, ids),
       identityOf: contactKey,
-      freshEdge: 'head',
+      order: 'desc',
       renderItem: (contact) => renderRequestRow(contact),
       text: {
         empty: () => app.t('contacts.noPendingRequests'),
         loading: () => app.t('common.loading'),
-        forwardBoundary: () => app.t('contacts.noMoreRequests'),
+        tailBoundary: () => app.t('contacts.noMoreRequests'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -253,7 +253,7 @@ export function createContactsView(app: AppInstance) {
         (page) => contactPageLoad(page),
       ),
       identityOf: contactKey,
-      freshEdge: 'head',
+      order: 'desc',
       renderItem: (contact) => renderOutgoingRow(contact),
       text: {
         loading: () => app.t('common.loading'),
@@ -782,7 +782,7 @@ export function createContactsView(app: AppInstance) {
         (page) => contactPageLoad(page, page.contacts.filter((contact) => contactFriendUid(contact) !== '0')),
       ),
       identityOf: (contact) => contactFriendUid(contact),
-      freshEdge: 'head',
+      order: 'desc',
       selection: { mode: 'multi', max: MEMBER_SELECT_MAX_SELECTED, onExceed: () => {
         app.showToast(app.t('group.selectedLimit', { n: MEMBER_SELECT_MAX_SELECTED }), 'error');
       } },
@@ -802,7 +802,7 @@ export function createContactsView(app: AppInstance) {
       text: {
         empty: () => app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
-        forwardBoundary: () => app.t('contacts.noMoreContacts'),
+        tailBoundary: () => app.t('contacts.noMoreContacts'),
         retry: () => app.t('common.retry'),
       },
       onSelectionChange: (snapshot) => {

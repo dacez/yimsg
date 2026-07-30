@@ -1,11 +1,24 @@
 // BoundedList 组件的公共类型定义。
 // 接口口径单一事实源：packages/uikit/docs/boundedlist/组件设计.md。
 
-/** 续翻方向：forward = 更靠后/更新，backward = 更靠前/更旧。 */
-export type Direction = 'forward' | 'backward';
+/**
+ * 展示序：列表按什么方向排列，与协议文档「展示序」用词一致（同步机制方案.md）。
+ * 'asc' = 旧→新（如消息），'desc' = 新→旧（如会话/联系人/群成员）。
+ *
+ * 只影响哪一端是新鲜端：'asc' 时新数据出现在尾部，'desc' 时出现在头部。组件内部
+ * 只关心「哪一端」，一律用 Edge 表达，`order` 仅在构造时转换成一次 Edge 取值。
+ */
+export type DisplayOrder = 'asc' | 'desc';
 
-/** 列表的「新鲜端」：新数据从哪一端进来（设计方案 §2.7）。 */
-export type FreshEdge = 'head' | 'tail';
+/**
+ * 列表的一端：数组 / DOM 的头部还是尾部。
+ *
+ * 早前这里并存两套词汇——`Direction`（forward/backward，描述续翻请求朝哪边）和
+ * `FreshEdge`（head/tail，描述哪端新鲜）。但 backward 恒等于 head、forward 恒等于
+ * tail，两者从未有过例外（`PageWindow.prependBackward` 就是往数组头部插，
+ * `appendForward` 就是往尾部推），是同一根轴的两个名字，只留一套。
+ */
+export type Edge = 'head' | 'tail';
 
 /** 分页请求参数：cursor 未提供表示 reset（拉首页）。 */
 export interface FetchPageRequest<Q> {
@@ -42,8 +55,8 @@ export interface BoundedListText {
   readonly loading?: () => string;
   readonly empty?: () => string;
   readonly emptyFiltered?: () => string;
-  readonly backwardBoundary?: () => string;
-  readonly forwardBoundary?: () => string;
+  readonly headBoundary?: () => string;
+  readonly tailBoundary?: () => string;
   /** 「背景有更新」提示条文案。刻意不带数量：见 BoundedListState.stale 的说明。 */
   readonly updatePill?: () => string;
   /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
@@ -55,10 +68,10 @@ export interface BoundedListText {
 export interface BoundedListState {
   readonly loaded: boolean;
   readonly loading: boolean;
-  readonly loadingBackward: boolean;
-  readonly loadingForward: boolean;
-  readonly hasMoreBackward: boolean;
-  readonly hasMoreForward: boolean;
+  readonly loadingHead: boolean;
+  readonly loadingTail: boolean;
+  readonly hasMoreHead: boolean;
+  readonly hasMoreTail: boolean;
   readonly count: number;
   readonly total: number;
   /**
@@ -81,7 +94,7 @@ export interface SelectionSnapshot<T> {
   readonly items: readonly T[];
 }
 
-export type ErrorPhase = 'reset' | 'forward' | 'backward' | 'refresh';
+export type ErrorPhase = 'reset' | 'head' | 'tail' | 'refresh';
 
 export interface SelectionConfig {
   readonly mode: 'single' | 'multi';
@@ -117,7 +130,8 @@ export interface BoundedListOptions<T, Q = void> {
 
   readonly identityOf: (item: T) => string;
 
-  readonly freshEdge?: FreshEdge;
+  /** 展示序，默认 'desc'（新鲜端在头部，如会话/联系人）。见 DisplayOrder 的说明。 */
+  readonly order?: DisplayOrder;
   readonly stickyPx?: number;
   readonly reachPx?: number;
   readonly settleFrames?: number;

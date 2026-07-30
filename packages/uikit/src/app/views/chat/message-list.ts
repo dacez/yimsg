@@ -72,7 +72,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
           return app.client.getMessages({ target, around: query.aroundMsgId, limit });
         }
         // reset() 固定以 cursor=undefined、backward=false 发起首页请求；但本列表
-        // freshEdge='tail'，无游标时必须取"最新一页"，对应 getMessages 的
+        // order='asc'（新鲜端在尾部），无游标时必须取"最新一页"，对应 getMessages 的
         // backward=true（从尾部往前取 limit 条），而不是字面透传的 backward=false
         // （那会从最早消息开始，取到最旧一页）。
         if (cursor === undefined) {
@@ -90,7 +90,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     ),
     normalize: sortUniqueBySeq,
     identityOf: messageKey,
-    freshEdge: 'tail',
+    order: 'asc',
     renderItem: (msg, ctx) => {
       if (ctx.index === 0) {
         const myUid = app.client.getSessionSnapshot().currentUid;
@@ -105,8 +105,8 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     },
     text: {
       loading: () => app.t('common.loading'),
-      backwardBoundary: () => app.t('chat.reachedEarliest'),
-      forwardBoundary: () => app.t('chat.reachedLatest'),
+      headBoundary: () => app.t('chat.reachedEarliest'),
+      tailBoundary: () => app.t('chat.reachedLatest'),
       updatePill: () => app.t('chat.jumpToLatest'),
       retry: () => app.t('common.retry'),
     },
@@ -377,7 +377,7 @@ export function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Me
 }
 
 // 内容（特别是图片）可能在渲染后的若干帧内才完成排版，多帧重设 scrollTop 才能真正到底；
-// BoundedList 自身在 freshEdge='tail' 且贴底时会在图片等异步增高内容 load 完成后自动摁回底部
+// BoundedList 自身在 order='asc'（新鲜端在尾部）且贴底时会在图片等异步增高内容 load 完成后自动摁回底部
 // （§4.6），这里只需要在"本端发送 / 转发成功"这类不经过 reset 的场景显式滚一次。
 export function scrollToBottom(app: AppInstance) {
   const list = app.$('message-list');

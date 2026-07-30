@@ -10,7 +10,7 @@
 // - 续翻拿到空页时强制把该端 hasMore 收敛为 false：服务端违反契约（空页却报还有更多）时
 //   不会让触界检测无限补页（BL-UNIT-BUG-001）。
 
-import type { PageLoadResult } from './types';
+import type { Edge, PageLoadResult } from './types';
 
 interface WindowPage<T> {
   items: T[];
@@ -20,8 +20,8 @@ interface WindowPage<T> {
 
 export class PageWindow<T> {
   private pages: WindowPage<T>[] = [];
-  private moreBackward = false;
-  private moreForward = false;
+  private moreHead = false;
+  private moreTail = false;
   private totalCount = -1;
   /**
    * 窗口两端的续翻锚点，显式维护而不是从 `pages[0]` / `pages[last]` 现算。
@@ -51,12 +51,12 @@ export class PageWindow<T> {
     this.hardBudget = pageSize * this.maxPages;
   }
 
-  get hasMoreBackward(): boolean {
-    return this.moreBackward;
+  get hasMoreHead(): boolean {
+    return this.moreHead;
   }
 
-  get hasMoreForward(): boolean {
-    return this.moreForward;
+  get hasMoreTail(): boolean {
+    return this.moreTail;
   }
 
   /** 窗口里还有没有页。空页会被立即回收，所以它等价于 `count > 0`。 */
@@ -80,12 +80,9 @@ export class PageWindow<T> {
     return total;
   }
 
-  get backwardCursor(): string {
-    return this.headCursor;
-  }
-
-  get forwardCursor(): string {
-    return this.tailCursor;
+  /** 该端下一次续翻要用的游标。 */
+  cursorFor(edge: Edge): string {
+    return edge === 'head' ? this.headCursor : this.tailCursor;
   }
 
   /** 给定身份键是否命中窗口内某条目（invalidate 的交集判定用）。 */
@@ -134,7 +131,7 @@ export class PageWindow<T> {
    * 遵守 pageSize×maxPages 硬预算。超出时从非新鲜端逐条裁剪，并由上层安排权威 reset
    * 修复被裁边界的游标。
    */
-  private trimToHardBudget(edge: 'head' | 'tail'): number {
+  private trimToHardBudget(edge: Edge): number {
     if (!Number.isFinite(this.hardBudget)) return 0;
     let remaining = Math.max(0, this.count - this.hardBudget);
     const evicted = remaining;
@@ -148,16 +145,16 @@ export class PageWindow<T> {
       if (page.items.length === 0) this.pages.splice(pageIndex, 1);
     }
     if (evicted > 0) {
-      if (edge === 'tail') this.moreBackward = true;
-      else this.moreForward = true;
+      if (edge === 'tail') this.moreHead = true;
+      else this.moreTail = true;
     }
     return evicted;
   }
 
   reset(): void {
     this.pages = [];
-    this.moreBackward = false;
-    this.moreForward = false;
+    this.moreHead = false;
+    this.moreTail = false;
     this.totalCount = -1;
     this.headCursor = '';
     this.tailCursor = '';
@@ -170,12 +167,13 @@ export class PageWindow<T> {
     // 窗口暂时没有条目但边界是确定的。
     this.headCursor = page.startCursor;
     this.tailCursor = page.endCursor;
-    this.moreBackward = page.hasMoreBackward;
-    this.moreForward = page.hasMoreForward;
+    this.moreHead = page.hasMoreBackward;
+    this.moreTail = page.hasMoreForward;
     this.totalCount = page.total ?? -1;
   }
 
-  appendForward(page: PageLoadResult<T>): number {
+  /** 往尾部续翻并入一页（wire 上的 forward 分页，恒等于本窗口的 tail 端）。 */
+  appendTail(page: PageLoadResult<T>): number {
     const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
     // 窗口一个锚点都没有（reset 之后直接续翻式重建）：这一页同时确立两端边界。
@@ -192,17 +190,18 @@ export class PageWindow<T> {
     }
     if (page.items.length > 0) this.tailCursor = page.endCursor;
     // 空页 = 该方向已经没有数据，无论服务端怎么说都收敛为 false。
-    this.moreForward = page.items.length === 0 ? false : page.hasMoreForward;
+    this.moreTail = page.items.length === 0 ? false : page.hasMoreForward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.shift();
-      this.moreBackward = true;
+      this.moreHead = true;
       this.headCursor = this.pages[0].startCursor;
     }
     return items.length;
   }
 
-  prependBackward(page: PageLoadResult<T>): number {
+  /** 往头部续翻并入一页（wire 上的 backward 分页，恒等于本窗口的 head 端）。 */
+  prependHead(page: PageLoadResult<T>): number {
     const items = this.normalizeSourcePage(page.items);
     this.dropIdsFromExistingPages(items);
     // 窗口一个锚点都没有（reset 之后直接续翻式重建）：这一页同时确立两端边界。
@@ -214,11 +213,11 @@ export class PageWindow<T> {
       this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
     }
     if (page.items.length > 0) this.headCursor = page.startCursor;
-    this.moreBackward = page.items.length === 0 ? false : page.hasMoreBackward;
+    this.moreHead = page.items.length === 0 ? false : page.hasMoreBackward;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.pop();
-      this.moreForward = true;
+      this.moreTail = true;
       this.tailCursor = this.pages[this.pages.length - 1].endCursor;
     }
     return items.length;
@@ -258,7 +257,7 @@ export class PageWindow<T> {
    * 新条目错误地拼接在一段旧历史后面，还会顺带关掉真正的续翻——那才是数据丢失
    * 的成因，早前版本在这里无条件置 `false` 正是触发点。
    */
-  mergeLive(item: T, edge: 'head' | 'tail'): number {
+  mergeLive(item: T, edge: Edge): number {
     this.dropIdsFromExistingPages([item]);
     if (this.pages.length === 0) {
       // 窗口里一页都没有：自建页沿用当前窗口边界；连边界都没有（从未加载过）时
@@ -268,8 +267,8 @@ export class PageWindow<T> {
         startCursor: this.headCursor,
         endCursor: this.tailCursor,
       });
-      if (!this.headCursor) this.moreBackward = false;
-      if (!this.tailCursor) this.moreForward = false;
+      if (!this.headCursor) this.moreHead = false;
+      if (!this.tailCursor) this.moreTail = false;
     } else if (edge === 'tail') {
       const tail = this.pages[this.pages.length - 1];
       tail.items = this.normalize([...tail.items, item]);

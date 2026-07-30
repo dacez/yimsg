@@ -75,12 +75,12 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         }),
       ),
       identityOf: (member) => member.userId || '0',
-      freshEdge: 'head',
+      order: 'desc',
       renderItem: (member) => renderGroupMemberRow(app, member, groupId, () => isOwner, () => void showGroupDetail(app, groupId)),
       text: {
         empty: () => app.t('detail.noMembers'),
         loading: () => app.t('common.loading'),
-        forwardBoundary: () => app.t('detail.noMoreMembers'),
+        tailBoundary: () => app.t('detail.noMoreMembers'),
         retry: () => app.t('common.retry'),
       },
       onItemsChanged: (items) => {
@@ -330,13 +330,13 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        freshEdge: 'head',
+        order: 'desc',
         loadAll: () => loadAddMemberCandidates(app, groupId, controller.signal),
         filter: (entry, query) => !query.keyword || entry.name.toLowerCase().includes(query.keyword.toLowerCase()),
         compare: (a, b) => collator.compare(a.name, b.name),
       }),
       identityOf: (entry) => entry.uid,
-      freshEdge: 'head',
+      order: 'desc',
       renderItem: (entry) => {
         // entry.name 是 loadAll 时的一次性快照（localPageSource 排序/过滤只在
         // reset 时算一遍，见设计方案已知限制）；名字可能当时还没入缓存，展示侧

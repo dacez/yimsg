@@ -14,10 +14,10 @@ interface HarnessEvent {
 interface ListState {
   readonly loaded: boolean;
   readonly loading: boolean;
-  readonly loadingBackward: boolean;
-  readonly loadingForward: boolean;
-  readonly hasMoreBackward: boolean;
-  readonly hasMoreForward: boolean;
+  readonly loadingHead: boolean;
+  readonly loadingTail: boolean;
+  readonly hasMoreHead: boolean;
+  readonly hasMoreTail: boolean;
   readonly count: number;
   readonly total: number;
   readonly stale: boolean;
@@ -60,21 +60,21 @@ async function mountFullTailWindow(
   // 拿到最新一页，upsertLocal 才满足 mergeLive 的前置契约（该端 hasMore 已为
   // false，见 bounded-list.ts 的 reachesFreshEdge 守卫）。随后一次 backward
   // loadMore 补一页较旧历史，凑满 maxPages 触发头部整页裁剪，同时保持已在真正
-  // 新鲜端尽头（hasMoreForward=false）。
+  // 新鲜端尽头（hasMoreTail=false）。
   const key = await mount(page, {
     itemCount: 100,
     pageSize: 10,
     maxPages: 2,
-    freshEdge: 'tail',
+    order: 'asc',
     initialStart: 90,
     settleFrames: 1,
     reachPx: -1,
   });
-  await call(page, 'loadMore', key, 'backward');
+  await call(page, 'loadMore', key, 'head');
   expect(await call<ListState>(page, 'state', key)).toMatchObject({
     count: 20,
-    hasMoreBackward: true,
-    hasMoreForward: false,
+    hasMoreHead: true,
+    hasMoreTail: false,
   });
   await call(page, 'setScrollTop', key, position === 'fresh-edge' ? 1_000_000 : 0);
   await dispatchScroll(page, key);
@@ -103,10 +103,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toEqual({
       loaded: false,
       loading: false,
-      loadingBackward: false,
-      loadingForward: false,
-      hasMoreBackward: false,
-      hasMoreForward: false,
+      loadingHead: false,
+      loadingTail: false,
+      hasMoreHead: false,
+      hasMoreTail: false,
       count: 0,
       total: -1,
       stale: false,
@@ -243,8 +243,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       loaded: true,
       count: 2,
       total: 3,
-      hasMoreBackward: false,
-      hasMoreForward: true,
+      hasMoreHead: false,
+      hasMoreTail: true,
     });
 
     const eventTypes = await call<string[]>(page, 'eventTypes', key);
@@ -278,8 +278,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         loading: false,
         count: 2,
         total: 3,
-        hasMoreBackward: false,
-        hasMoreForward: true,
+        hasMoreHead: false,
+        hasMoreTail: true,
       },
     });
   });
@@ -295,8 +295,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
         loading: 'L',
         empty: 'E',
         emptyFiltered: 'F',
-        backwardBoundary: 'H',
-        forwardBoundary: 'T',
+        headBoundary: 'H',
+        tailBoundary: 'T',
       },
     });
 
@@ -326,20 +326,20 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const pagePlusOne = await mount(page, { itemCount: 6, pageSize: 5, reachPx: -1 });
     expect(await call<ListState>(page, 'state', single)).toMatchObject({
       count: 1,
-      hasMoreForward: false,
+      hasMoreTail: false,
     });
     expect(await events(page, single)).toEqual([]);
     expect(await call<ListState>(page, 'state', pageMinusOne)).toMatchObject({
       count: 4,
-      hasMoreForward: false,
+      hasMoreTail: false,
     });
     expect(await call<ListState>(page, 'state', exactPage)).toMatchObject({
       count: 5,
-      hasMoreForward: false,
+      hasMoreTail: false,
     });
     expect(await call<ListState>(page, 'state', pagePlusOne)).toMatchObject({
       count: 5,
-      hasMoreForward: true,
+      hasMoreTail: true,
     });
   });
 
@@ -387,28 +387,28 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
 
     expect(await call<string[]>(page, 'rowIds', key)).toEqual(['4', '3', '2', '1', '0']);
-    await call(page, 'loadMore', key, 'forward');
-    await call(page, 'loadMore', key, 'forward');
+    await call(page, 'loadMore', key, 'tail');
+    await call(page, 'loadMore', key, 'tail');
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       count: 10,
-      hasMoreBackward: true,
-      hasMoreForward: true,
+      hasMoreHead: true,
+      hasMoreTail: true,
     });
     expect(await call<string[]>(page, 'rowIds', key)).toEqual([
       '9', '8', '7', '6', '5',
       '14', '13', '12', '11', '10',
     ]);
 
-    await call(page, 'loadMore', key, 'backward');
+    await call(page, 'loadMore', key, 'head');
     expect(await call<string[]>(page, 'rowIds', key)).toEqual([
       '4', '3', '2', '1', '0',
       '9', '8', '7', '6', '5',
     ]);
     expect(await call(page, 'fetchCalls', key)).toEqual([
       { backward: false, limit: 5, query: { keyword: '' }, phase: 'reset' },
-      { cursor: '5', backward: false, limit: 5, query: { keyword: '' }, phase: 'forward' },
-      { cursor: '10', backward: false, limit: 5, query: { keyword: '' }, phase: 'forward' },
-      { cursor: '5', backward: true, limit: 5, query: { keyword: '' }, phase: 'backward' },
+      { cursor: '5', backward: false, limit: 5, query: { keyword: '' }, phase: 'tail' },
+      { cursor: '10', backward: false, limit: 5, query: { keyword: '' }, phase: 'tail' },
+      { cursor: '5', backward: true, limit: 5, query: { keyword: '' }, phase: 'head' },
     ]);
 
     const normalized = await mount(page, {
@@ -436,13 +436,13 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
     await call(page, 'clearFetchCalls', key);
     await call(page, 'pauseNextPage', key);
-    await call(page, 'startLoadMore', key, 'forward');
-    await call(page, 'startLoadMore', key, 'forward');
+    await call(page, 'startLoadMore', key, 'tail');
+    await call(page, 'startLoadMore', key, 'tail');
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
-      loadingForward: true,
-      loadingBackward: false,
+      loadingTail: true,
+      loadingHead: false,
     });
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     await call(page, 'resolvePage', key);
@@ -451,13 +451,13 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'clearFetchCalls', key);
     await call(page, 'pauseNextPage', key);
     await call(page, 'pauseNextPage', key);
-    await call(page, 'startLoadMore', key, 'backward');
-    await call(page, 'startLoadMore', key, 'forward');
+    await call(page, 'startLoadMore', key, 'head');
+    await call(page, 'startLoadMore', key, 'tail');
     await expect.poll(() => call<number>(page, 'pageGateCount', key)).toBe(2);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
-      loadingBackward: true,
-      loadingForward: true,
+      loadingHead: true,
+      loadingTail: true,
     });
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(2);
     await call(page, 'resolvePage', key);
@@ -465,8 +465,8 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'waitForIdle', key);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: false,
-      loadingBackward: false,
-      loadingForward: false,
+      loadingHead: false,
+      loadingTail: false,
     });
   });
 
@@ -479,7 +479,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
     await call(page, 'clearFetchCalls', key);
     await call(page, 'pauseNextPage', key);
-    await call(page, 'startLoadMore', key, 'forward');
+    await call(page, 'startLoadMore', key, 'tail');
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
 
     await call(page, 'upsertLocal', key, {
@@ -495,7 +495,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'waitForIdle', key);
 
     expect(await call(page, 'fetchCalls', key)).toEqual([
-      { cursor: '10', backward: false, limit: 10, query: { keyword: '' }, phase: 'forward' },
+      { cursor: '10', backward: false, limit: 10, query: { keyword: '' }, phase: 'tail' },
     ]);
     await expect(root(page, key).locator('[data-id="10"]')).toHaveCount(1);
     await expect(root(page, key).locator('[data-id="10"] .bl-row-label')).toContainText('local-final');
@@ -508,7 +508,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       itemCount: 6,
       pageSize: 3,
       maxPages: 2,
-      freshEdge: 'tail',
+      order: 'asc',
       fetchByIdentity: true,
       rowHeight: 100,
       settleFrames: 1,
@@ -540,7 +540,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       { id: '3', label: 'item-3', order: 3 },
     ]);
     await call(page, 'pauseNextPage', key);
-    await call(page, 'startLoadMore', key, 'forward');
+    await call(page, 'startLoadMore', key, 'tail');
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
 
     await call(page, 'resolveIdentity', key);
@@ -577,7 +577,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await dispatchScroll(page, key);
     await expect.poll(() => call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toEqual([
-      { cursor: '10', backward: false, limit: 10, query: { keyword: '' }, phase: 'forward' },
+      { cursor: '10', backward: false, limit: 10, query: { keyword: '' }, phase: 'tail' },
     ]);
   });
 
@@ -596,7 +596,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       return row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     });
 
-    await call(page, 'loadMore', key, 'backward');
+    await call(page, 'loadMore', key, 'head');
     const after = await root(page, key).locator('[data-id="12"]').evaluate((row) => {
       const scroller = row.closest('.bl-scroller')!;
       return row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
@@ -806,7 +806,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
   test('新鲜端翻到空页时收敛 hasMore，并同时熄灭 stale', async ({ page }) => {
     const key = await mount(page, {
-      freshEdge: 'tail',
+      order: 'asc',
       stickyPx: 0,
       itemCount: 11,
       pageSize: 10,
@@ -820,7 +820,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'frames', 2);
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: true,
-      hasMoreForward: true,
+      hasMoreTail: true,
     });
 
     await call(page, 'setItems', key, Array.from({ length: 10 }, (_, order) => ({
@@ -828,10 +828,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       label: `item-${order}`,
       order,
     })));
-    await call(page, 'loadMore', key, 'forward');
+    await call(page, 'loadMore', key, 'tail');
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       stale: false,
-      hasMoreForward: false,
+      hasMoreTail: false,
     });
   });
 
@@ -976,7 +976,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await scroller.press('ArrowUp');
     await expect.poll(() => call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
     expect(await call<unknown[]>(page, 'fetchCalls', key)).toEqual([
-      { cursor: '5', backward: true, limit: 5, query: { keyword: '' }, phase: 'backward' },
+      { cursor: '5', backward: true, limit: 5, query: { keyword: '' }, phase: 'head' },
     ]);
   });
 
@@ -1012,10 +1012,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       fetchByIdentity: true,
       reachPx: -1,
     });
-    await call(page, 'failNext', pageKey, 'forward');
-    await call(page, 'loadMore', pageKey, 'forward');
-    await call(page, 'failNext', pageKey, 'backward');
-    await call(page, 'loadMore', pageKey, 'backward');
+    await call(page, 'failNext', pageKey, 'tail');
+    await call(page, 'loadMore', pageKey, 'tail');
+    await call(page, 'failNext', pageKey, 'head');
+    await call(page, 'loadMore', pageKey, 'head');
     await call(page, 'setScrollTop', pageKey, 100);
     await call(page, 'failNext', pageKey, 'refresh');
     await call(page, 'invalidate', pageKey, { identities: ['10'] });
@@ -1025,11 +1025,11 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       (await events(page, pageKey))
         .filter((event) => event.type === 'onError')
         .map((event) => (event.payload as { phase: string }).phase),
-    ).toEqual(['forward', 'backward', 'refresh']);
+    ).toEqual(['tail', 'head', 'refresh']);
     expect(await call<ListState>(page, 'state', pageKey)).toMatchObject({
       loading: false,
-      loadingBackward: false,
-      loadingForward: false,
+      loadingHead: false,
+      loadingTail: false,
     });
     expect(pageErrors).toEqual([]);
   });
@@ -1095,7 +1095,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       reachPx: -1,
     });
     for (let index = 0; index < 8; index++) {
-      await call(page, 'loadMore', key, 'forward');
+      await call(page, 'loadMore', key, 'tail');
     }
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       count: 200,
@@ -1176,7 +1176,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 4,
       pageSize: 4,
-      freshEdge: 'tail',
+      order: 'asc',
       pinnedItems: [],
       reachPx: -1,
     });
@@ -1213,7 +1213,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 3,
       pageSize: 5,
-      freshEdge: 'tail',
+      order: 'asc',
       reachPx: -1,
     });
     await call(page, 'rememberRows', key);
@@ -1239,7 +1239,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 3,
       pageSize: 5,
-      freshEdge: 'tail',
+      order: 'asc',
       reachPx: -1,
     });
     await call(page, 'rememberRows', key);
@@ -1339,7 +1339,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await call(page, 'reset', key, { query: { keyword: 'item-2' } });
     await call(page, 'resolvePage', key);
     await call(page, 'waitForIdle', key);
-    await call(page, 'loadMore', key, 'forward');
+    await call(page, 'loadMore', key, 'tail');
     const labels = await rows(page, key).allTextContents();
 
     expect(labels.every((label) => label.includes('item-2'))).toBe(true);
@@ -1440,7 +1440,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await scroller.press('ArrowDown');
     await scroller.press('ArrowDown');
     expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['6']);
-    await call(page, 'loadMore', key, 'backward');
+    await call(page, 'loadMore', key, 'head');
 
     expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['6']);
   });
@@ -1522,7 +1522,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 20,
       pageSize: 20,
-      freshEdge: 'tail',
+      order: 'asc',
       settleFrames: 1,
       reachPx: -1,
     });
@@ -1539,7 +1539,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 20,
       pageSize: 20,
-      freshEdge: 'tail',
+      order: 'asc',
       settleFrames: 1,
       reachPx: -1,
     });
@@ -1564,12 +1564,12 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       items: baseItems,
       pageSize: 10,
       maxPages: 2,
-      freshEdge: 'tail',
+      order: 'asc',
       settleFrames: 1,
       fetchByIdentity: true,
       reachPx: -1,
     });
-    await call(page, 'loadMore', key, 'forward');
+    await call(page, 'loadMore', key, 'tail');
     await call(page, 'setScrollTop', key, 1_000_000);
     await dispatchScroll(page, key);
     await call(page, 'pauseNextPage', key);
@@ -1624,7 +1624,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       ],
       pageSize: 2,
       maxPages: 1,
-      freshEdge: 'tail',
+      order: 'asc',
       settleFrames: 1,
       reachPx: -1,
     });
@@ -1661,7 +1661,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       itemCount: 100,
       pageSize: 20,
       maxPages: 1,
-      freshEdge: 'tail',
+      order: 'asc',
       // initialStart 指向真正的尾页（100-20）：reset 直接追平新鲜端，upsertLocal
       // 才会走立即并入分支（否则只记入 overlay，行不会出现在 DOM 里）。
       initialStart: 80,
@@ -1706,7 +1706,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       count: 20,
-      hasMoreBackward: false,
+      hasMoreHead: false,
     });
     expect(await call<string[]>(page, 'rowIds', key)).toContain('live-old-edge');
 
@@ -1720,7 +1720,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
 
     await call(page, 'pauseNextPage', key);
-    await call(page, 'startLoadMore', key, 'backward');
+    await call(page, 'startLoadMore', key, 'head');
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
     expect(await call(page, 'fetchCalls', key)).toEqual([
       {
@@ -1733,7 +1733,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<ListState>(page, 'state', key)).toMatchObject({
       loading: true,
       count: 20,
-      hasMoreBackward: false,
+      hasMoreHead: false,
     });
 
     await call(page, 'resolvePage', key);
@@ -1834,7 +1834,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       itemCount: 3,
       pageSize: 3,
       maxPages: 2,
-      freshEdge: 'tail',
+      order: 'asc',
       reachPx: -1,
     });
     await call(page, 'upsertLocal', key, { id: '1', label: 'new-item-1', order: 100 });
@@ -1854,7 +1854,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     const key = await mount(page, {
       itemCount: 20,
       pageSize: 20,
-      freshEdge: 'tail',
+      order: 'asc',
       settleFrames: 4,
       reachPx: -1,
       autoReset: false,

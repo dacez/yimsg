@@ -79,14 +79,14 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 0)));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreForward) {
-      await list.loadMore('forward');
+    while (list.getState().hasMoreTail) {
+      await list.loadMore('tail');
       assertBounded(host, list, 200);
       steps++;
       expect(steps).toBeLessThan(500); // 防跑飞
     }
     expect(steps).toBe(Math.ceil(10000 / 40) - 1);
-    expect(list.getState().hasMoreBackward).toBe(true);
+    expect(list.getState().hasMoreHead).toBe(true);
     list.dispose();
   });
 
@@ -96,7 +96,7 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 2000), { pageSize: 20, maxPages: 4 }));
     await list.reset({ pinEdge: false });
     for (let i = 0; i < 60; i++) {
-      await list.loadMore(i % 2 === 0 ? 'backward' : 'forward');
+      await list.loadMore(i % 2 === 0 ? 'head' : 'tail');
       assertBounded(host, list, 80);
     }
     list.dispose();
@@ -108,7 +108,7 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 0), { pageSize: 10, maxPages: 1 }));
     await list.reset({ pinEdge: false });
     for (let i = 0; i < 50; i++) {
-      await list.loadMore('forward');
+      await list.loadMore('tail');
       assertBounded(host, list, 10);
     }
     list.dispose();
@@ -132,12 +132,12 @@ describe('BoundedList 压力 / A 有界性不变量', () => {
     const list = createBoundedList(baseOptions(host, source, { pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     let steps = 0;
-    while (list.getState().hasMoreForward && steps < 2000) {
-      await list.loadMore('forward');
+    while (list.getState().hasMoreTail && steps < 2000) {
+      await list.loadMore('tail');
       steps++;
       if (steps % 200 === 0) assertBounded(host, list, 200);
     }
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
     expect(loadAll).toHaveBeenCalledTimes(1);
     assertBounded(host, list, 200);
     list.dispose();
@@ -166,7 +166,7 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
       host.scroller.dispatch('scroll');
       await new Promise((resolve) => setTimeout(resolve, 0));
       // 贴顶那一轮必然一路拉到最前，贴底那一轮必然一路拉到最后。
-      expect(i % 2 === 0 ? list.getState().hasMoreBackward : list.getState().hasMoreForward).toBe(false);
+      expect(i % 2 === 0 ? list.getState().hasMoreHead : list.getState().hasMoreTail).toBe(false);
       if (i % 20 === 0) assertBounded(host, list, pageSize * 4);
     }
     assertBounded(host, list, pageSize * 4);
@@ -180,14 +180,14 @@ describe('BoundedList 压力 / B 长序列滚动', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 0), { pageSize: 25, maxPages: 3 }));
     await list.reset({ pinEdge: false });
-    for (let i = 0; i < 40; i++) await list.loadMore('forward');
+    for (let i = 0; i < 40; i++) await list.loadMore('tail');
     const forwardEndId = list.getState().count;
     expect(forwardEndId).toBeGreaterThan(0);
     const topAfterForward = rowNodes(host)[0].getAttribute('data-bsw-key');
 
-    for (let i = 0; i < 40; i++) await list.loadMore('backward');
+    for (let i = 0; i < 40; i++) await list.loadMore('head');
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe('0');
-    expect(list.getState().hasMoreBackward).toBe(false);
+    expect(list.getState().hasMoreHead).toBe(false);
     expect(Number(topAfterForward)).toBeGreaterThan(0);
     list.dispose();
   });
@@ -218,13 +218,13 @@ describe('BoundedList 压力 / C 高频事件', () => {
 
   it('C2 连续 2000 次 upsertLocal：窗口与 DOM 始终受 pageSize×maxPages 硬预算约束', async () => {
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(40), 0), { freshEdge: 'tail', pageSize: 40, maxPages: 5 }));
+    const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(40), 0), { order: 'asc', pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     for (let i = 0; i < 2000; i++) list.upsertLocal({ id: 10000 + i, label: `local-${i}` });
     const state = list.getState();
     expect(state.count).toBe(40 * 5);
     expect(rowNodes(host)).toHaveLength(state.count);
-    expect(state.hasMoreForward).toBe(false);
+    expect(state.hasMoreTail).toBe(false);
     expect(rowNodes(host).at(-1)?.className).toContain('row-11999');
     list.dispose();
   });
@@ -305,7 +305,7 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
     }));
     await list.reset({ pinEdge: false });
     expect(list.getState().count).toBe(10); // 页内重复不由去重负责
-    await list.loadMore('forward');
+    await list.loadMore('tail');
     // 新页把旧页里的同身份条目全删掉，只剩新页那 10 条。
     expect(list.getState().count).toBe(10);
     expect(rowNodes(host)).toHaveLength(10);
@@ -321,7 +321,7 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
       renderItem: (item) => Array.from({ length: 5 }, (_, i) => asElement(row(host.doc, `row-${item.id}-${i}`))),
     }));
     await list.reset({ pinEdge: false });
-    for (let i = 0; i < 20; i++) await list.loadMore('forward');
+    for (let i = 0; i < 20; i++) await list.loadMore('tail');
     expect(list.getState().count).toBe(200);
     expect(host.scroller.children).toHaveLength(200 * 5);
     list.dispose();
@@ -336,7 +336,7 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
       normalize: (input) => (input.length ? [input[0]] : []),
     }));
     await list.reset({ pinEdge: false });
-    for (let i = 0; i < 5; i++) await list.loadMore('forward');
+    for (let i = 0; i < 5; i++) await list.loadMore('tail');
     expect(list.getState().count).toBe(3); // 3 页 × 每页 1 条
     expect(rowNodes(host)).toHaveLength(3);
     list.dispose();
@@ -353,7 +353,7 @@ describe('BoundedList 压力 / E 生命周期', () => {
       const host = createHost();
       const list = createBoundedList(baseOptions(host, createAnchoredSource(() => items, 0), { id: `panel-${i}`, pageSize: 20, maxPages: 3 }));
       await list.reset({ pinEdge: false });
-      await list.loadMore('forward');
+      await list.loadMore('tail');
       list.dispose();
       expect(host.scroller.listenerCount('scroll')).toBe(0);
       expect(host.scroller.listenerCount('click')).toBe(0);

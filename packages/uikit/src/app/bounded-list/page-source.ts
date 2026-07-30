@@ -4,7 +4,7 @@
 //   仅用于「刻意选择在客户端过滤/排序」的场景（提及群成员、添加群成员候选），
 //   本地游标不外传给服务端，不违反「游标对客户端不透明」的项目不变量。
 
-import type { FetchPageRequest, PageLoadResult, PageSource } from './types';
+import type { DisplayOrder, FetchPageRequest, PageLoadResult, PageSource } from './types';
 
 /** 服务端分页：fetch 原样透传请求，map 把 SDK 响应整理成窗口要的结构。 */
 export function serverPageSource<R, T, Q>(
@@ -21,12 +21,12 @@ export interface LocalPageSourceOptions<T, Q> {
   readonly filter?: (item: T, query: Q) => boolean;
   readonly compare?: (a: T, b: T) => number;
   /**
-   * 列表的新鲜端，必须与 BoundedList 的 `freshEdge` 一致。
-   * reset（cursor 未提供）要取的是新鲜端那一页：'head' 取 entries 最前面一页，
-   * 'tail' 取最后一页。早前这里写死取最前面一页，与 `freshEdge: 'tail'` 搭配会
-   * 静默取错端，而且只在注释里声明约束——现在由参数显式表达。
+   * 展示序，必须与所属 BoundedList 的 `order` 一致，默认 'desc'。
+   * reset（cursor 未提供）要取的是新鲜端那一页：'desc' 新鲜端在头部，取 entries
+   * 最前面一页；'asc' 新鲜端在尾部，取最后一页。早前这里写死取最前面一页，与
+   * 新鲜端在尾部的列表搭配会静默取错端，而且只在注释里声明约束——现在由参数显式表达。
    */
-  readonly freshEdge?: 'head' | 'tail';
+  readonly order?: DisplayOrder;
 }
 
 /**
@@ -38,11 +38,9 @@ export interface LocalPageSourceOptions<T, Q> {
  * [start, end) 半开区间端点。这套编码完全是 localPageSource 内部实现细节，
  * 与服务端不透明游标不共享、不混用。非法游标（无法解析成有限数）按 0 处理，
  * 绝不产出 "NaN" 这种此后永远翻不动的游标。
- *
- * `freshEdge` 必须与所属 BoundedList 的 `freshEdge` 一致，默认 'head'。
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
-  const freshEdge = options.freshEdge ?? 'head';
+  const freshEdge = (options.order ?? 'desc') === 'desc' ? 'head' : 'tail';
   let entries: T[] = [];
   let reloadGeneration = 0;
 

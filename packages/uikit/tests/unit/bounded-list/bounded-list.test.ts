@@ -76,8 +76,8 @@ function baseOptions(
     source,
     identityOf: idOf,
     renderItem: (item: TestItem) => [asElement(row(host.doc, `row-${item.id}`))],
-    // 默认不提供 backwardBoundary/forwardBoundary：大多数用例只关心「行」本身，提供边界文案会
-    // 在 !hasMoreBackward（reset 后头部天然如此）时插入一个提示条节点，让「children 数组
+    // 默认不提供 headBoundary/tailBoundary：大多数用例只关心「行」本身，提供边界文案会
+    // 在 !hasMoreHead（reset 后头部天然如此）时插入一个提示条节点，让「children 数组
     // 与条目一一对应」的假设失效。需要专门验证边界提示的用例自行在 overrides 里传入。
     text: {
       loading: () => '加载中',
@@ -129,7 +129,7 @@ async function withFramesAsync(fn: (frames: FrameQueue) => Promise<void>): Promi
 // ───────────────────────── A 构造与默认值 ─────────────────────────
 
 describe('BoundedList / A 构造与默认值', () => {
-  it('A1 默认 freshEdge=head，提示条挂到 scrollElement.parentElement 下', () => {
+  it('A1 默认 order=desc（默认），提示条挂到 scrollElement.parentElement 下', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => [])));
     expect(host.parent.children).toHaveLength(2);
@@ -170,7 +170,7 @@ describe('BoundedList / A 构造与默认值', () => {
     list.dispose();
   });
 
-  it('A5 freshEdge 决定 stickyPx / settleFrames 默认值：head=4/1，tail=50/4', async () => {
+  it('A5 order 决定 stickyPx / settleFrames 默认值：head=4/1，tail=50/4', async () => {
     const items = makeTestItems(5);
     // head：scrollTop=4 判定贴边、scrollTop=5 不贴边
     const headHost = createHost();
@@ -184,7 +184,7 @@ describe('BoundedList / A 构造与默认值', () => {
 
     // tail：距底 50 判定贴边、51 不贴边
     const tailHost = createHost();
-    const tail = createBoundedList(baseOptions(tailHost, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const tail = createBoundedList(baseOptions(tailHost, createInstantSource(() => items), { order: 'asc' }));
     await tail.reset({ pinEdge: false });
     tailHost.scroller.scrollHeight = 1000;
     tailHost.scroller.clientHeight = 100;
@@ -353,8 +353,8 @@ describe('BoundedList / B reset 首屏', () => {
     await list.reset();
     expect(list.getState().loaded).toBe(true);
     expect(list.getState().count).toBe(3);
-    expect(list.getState().hasMoreBackward).toBe(false);
-    expect(list.getState().hasMoreForward).toBe(true);
+    expect(list.getState().hasMoreHead).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(true);
     expect(rendered(host)).toEqual(['row-0', 'row-1', 'row-2']);
     list.dispose();
   });
@@ -393,7 +393,7 @@ describe('BoundedList / B reset 首屏', () => {
 
     const tailHost = createHost();
     tailHost.scroller.scrollHeight = 7777;
-    const tail = createBoundedList(baseOptions(tailHost, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const tail = createBoundedList(baseOptions(tailHost, createInstantSource(() => items), { order: 'asc' }));
     await tail.reset();
     expect(tailHost.scroller.scrollTop).toBe(7777);
     tail.dispose();
@@ -413,7 +413,7 @@ describe('BoundedList / B reset 首屏', () => {
     await withFramesAsync(async (frames) => {
       const items = makeTestItems(3);
       const host = createHost();
-      const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', settleFrames: 3 }));
+      const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc', settleFrames: 3 }));
       host.scroller.scrollHeight = 1000;
       await list.reset();
       expect(host.scroller.scrollTop).toBe(1000); // 第 1 帧（同步）
@@ -491,7 +491,7 @@ describe('BoundedList / B reset 首屏', () => {
     for (let i = 0; i < 9; i++) pending[i].resolve(pageOf(makeTestItems(1, i), '0', '1', false, true));
     await Promise.all(promises);
     expect(rendered(host)).toEqual(['row-900']);
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
     list.dispose();
   });
 
@@ -521,7 +521,7 @@ describe('BoundedList / B reset 首屏', () => {
     const host = createHost();
     let latest: readonly TestItem[] = [];
     const list = createBoundedList(baseOptions(host, source, {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 3,
       maxPages: 2,
       onItemsChanged: (items) => { latest = items; },
@@ -548,7 +548,7 @@ describe('BoundedList / B reset 首屏', () => {
     const host = createHost();
     const onError = vi.fn();
     const list = createBoundedList(baseOptions(host, source, {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 2,
       maxPages: 1,
       onError,
@@ -584,9 +584,9 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => all)));
     await list.reset();
     host.scroller.scrollTop = 500; // 挪开滚动位置，避免 checkReach 干扰手动翻页
-    for (let i = 0; i < 5; i++) await list.loadMore('forward');
+    for (let i = 0; i < 5; i++) await list.loadMore('tail');
     expect(list.getState().count).toBeLessThanOrEqual(3 * 2);
-    expect(list.getState().hasMoreBackward).toBe(true);
+    expect(list.getState().hasMoreHead).toBe(true);
     list.dispose();
   });
 
@@ -596,24 +596,24 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 15)));
     await list.reset({ pinEdge: false });
     expect(rendered(host)).toEqual(['row-15', 'row-16', 'row-17']);
-    expect(list.getState().hasMoreBackward).toBe(true);
+    expect(list.getState().hasMoreHead).toBe(true);
 
-    await list.loadMore('backward');
+    await list.loadMore('head');
     expect(rendered(host)).toEqual(['row-12', 'row-13', 'row-14', 'row-15', 'row-16', 'row-17']);
-    await list.loadMore('backward'); // 超过 maxPages=2 → 裁掉尾页
+    await list.loadMore('head'); // 超过 maxPages=2 → 裁掉尾页
     expect(rendered(host)).toEqual(['row-9', 'row-10', 'row-11', 'row-12', 'row-13', 'row-14']);
-    expect(list.getState().hasMoreForward).toBe(true);
+    expect(list.getState().hasMoreTail).toBe(true);
     expect(list.getState().count).toBe(6);
     list.dispose();
   });
 
-  it('C3 backward 续翻到头时 hasMoreBackward 收敛为 false', async () => {
+  it('C3 head 续翻到头时 hasMoreHead 收敛为 false', async () => {
     const all = makeTestItems(6);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => all, 3)));
     await list.reset({ pinEdge: false });
-    await list.loadMore('backward');
-    expect(list.getState().hasMoreBackward).toBe(false);
+    await list.loadMore('head');
+    expect(list.getState().hasMoreHead).toBe(false);
     expect(rendered(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-3', 'row-4', 'row-5']);
     list.dispose();
   });
@@ -625,10 +625,10 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }));
     await list.reset();
     fetchSpy.mockClear();
-    expect(list.getState().hasMoreForward).toBe(false);
-    expect(list.getState().hasMoreBackward).toBe(false);
-    await list.loadMore('forward');
-    await list.loadMore('backward');
+    expect(list.getState().hasMoreTail).toBe(false);
+    expect(list.getState().hasMoreHead).toBe(false);
+    await list.loadMore('tail');
+    await list.loadMore('head');
     expect(fetchSpy).not.toHaveBeenCalled();
     list.dispose();
   });
@@ -642,12 +642,12 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await resetPromise;
     host.scroller.scrollTop = 500; // 远离两端，避免触界检测插进来发额外请求
 
-    const f1 = list.loadMore('forward');
-    const f2 = list.loadMore('forward'); // 同方向已在加载 → 直接返回
-    const b1 = list.loadMore('backward'); // 反方向 → 真的发请求
+    const f1 = list.loadMore('tail');
+    const f2 = list.loadMore('tail'); // 同方向已在加载 → 直接返回
+    const b1 = list.loadMore('head'); // 反方向 → 真的发请求
     expect(pending).toHaveLength(3);
-    expect(list.getState().loadingBackward).toBe(true);
-    expect(list.getState().loadingForward).toBe(true);
+    expect(list.getState().loadingHead).toBe(true);
+    expect(list.getState().loadingTail).toBe(true);
     expect(list.getState().loading).toBe(true);
 
     pending[1].resolve(pageOf(makeTestItems(3, 13), '13', '16', true, false));
@@ -667,17 +667,17 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await p;
     host.scroller.scrollTop = 500;
 
-    const f1 = list.loadMore('forward');
+    const f1 = list.loadMore('tail');
     expect(pending[1].req.cursor).toBe('eA');
     pending[1].resolve(pageOf(makeTestItems(3, 3), 'sB', 'eB', true, true));
     await f1;
 
-    const f2 = list.loadMore('forward');
+    const f2 = list.loadMore('tail');
     expect(pending[2].req.cursor).toBe('eB');
     pending[2].resolve(pageOf(makeTestItems(3, 6), 'sC', 'eC', true, true)); // 裁掉页 A
     await f2;
 
-    const b1 = list.loadMore('backward');
+    const b1 = list.loadMore('head');
     expect(pending[3].req.cursor).toBe('sB'); // 首页已变成 B
     expect(pending[3].req.backward).toBe(true);
     pending[3].resolve(pageOf(makeTestItems(3, 0), 'sA', 'eA', false, true));
@@ -715,7 +715,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const list = createBoundedList(baseOptions(host, { fetch: fetchSpy }, { maxPages: 10 }));
     await list.reset({ pinEdge: false });
     await flushAsync();
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
     expect(list.getState().count).toBe(9);
     // 3 页数据 + 1 页空结果 = 4 次请求，链条必然终止。
     expect(fetchSpy).toHaveBeenCalledTimes(4);
@@ -740,7 +740,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await flushAsync();
     expect(calls).toBe(2); // 首页 + 一次失败的自动续翻，然后停下
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(list.getState().loadingForward).toBe(false);
+    expect(list.getState().loadingTail).toBe(false);
     list.dispose();
   });
 
@@ -773,7 +773,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
 
     // 显式调用视为用户主动重试（成功后会照常继续链式补页，所以只断言「确实又发了请求」）。
     failing = false;
-    await list.loadMore('forward');
+    await list.loadMore('tail');
     await flushAsync();
     expect(calls).toBeGreaterThan(afterFailure);
     expect(list.getState().count).toBeGreaterThan(3);
@@ -829,7 +829,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await list.reset({ pinEdge: false });
     await flushAsync();
     expect(calls).toBe(2);
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
     list.dispose();
   });
 
@@ -856,13 +856,13 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
   it('C18 服务端说还有更多但没给出可用游标时不发空游标请求', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, source, { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, source, { order: 'asc' }));
     const p = list.reset({ pinEdge: false });
     // 首页为空且边界游标也是空串：服务端说前面还有，但客户端没有任何锚点可用。
     pending[0].resolve(pageOf([], '', '', true, false));
     await p;
-    expect(list.getState().hasMoreBackward).toBe(true);
-    await list.loadMore('backward');
+    expect(list.getState().hasMoreHead).toBe(true);
+    await list.loadMore('head');
     expect(pending).toHaveLength(1); // 没有发出第二个请求
     list.dispose();
   });
@@ -870,15 +870,15 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
   it('C19 只有本端并入条目的窗口如实报告「两端都没有更多」，不会带空游标续翻', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, source, { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, source, { order: 'asc' }));
     const p = list.reset({ pinEdge: false });
     pending[0].resolve(pageOf([], '', '', true, false));
     await p;
     list.upsertLocal({ id: 1, label: 'local' });
-    expect(list.getState().hasMoreBackward).toBe(false);
-    expect(list.getState().hasMoreForward).toBe(false);
-    await list.loadMore('backward');
-    await list.loadMore('forward');
+    expect(list.getState().hasMoreHead).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
+    await list.loadMore('head');
+    await list.loadMore('tail');
     expect(pending).toHaveLength(1);
     list.dispose();
   });
@@ -890,7 +890,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const p = list.reset({ pinEdge: false });
     pending[0].resolve(pageOf([], 'sEmpty', 'eEmpty', true, false));
     await p;
-    const lp = list.loadMore('backward');
+    const lp = list.loadMore('head');
     expect(pending).toHaveLength(2);
     expect(pending[1].req.cursor).toBe('sEmpty');
     pending[1].resolve(pageOf(makeTestItems(2), 's1', 'e1', false, false));
@@ -904,9 +904,9 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createOptimisticSource(() => all)));
     await list.reset({ pinEdge: false });
-    expect(list.getState().hasMoreForward).toBe(true); // 满页 → 乐观认为还有
-    await list.loadMore('forward');
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(true); // 满页 → 乐观认为还有
+    await list.loadMore('tail');
+    expect(list.getState().hasMoreTail).toBe(false);
     list.dispose();
   });
 
@@ -922,12 +922,12 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     pending[0].resolve(pageOf([{ id: 0, label: 'item-0' }], 's0', 'e0', false, true));
     await initial;
 
-    const filtered = list.loadMore('forward');
+    const filtered = list.loadMore('tail');
     pending[1].resolve(pageOf([{ id: 1, label: 'filtered' }], 's1', 'e1', true, true));
     await filtered;
-    expect(list.getState().hasMoreForward).toBe(true);
+    expect(list.getState().hasMoreTail).toBe(true);
 
-    const next = list.loadMore('forward');
+    const next = list.loadMore('tail');
     expect(pending[2].req.cursor).toBe('e1');
     pending[2].resolve(pageOf([{ id: 2, label: 'item-2' }], 's2', 'e2', true, false));
     await next;
@@ -945,10 +945,10 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     await p;
     host.scroller.scrollTop = 500;
 
-    const loadP = list.loadMore('forward');
-    expect(list.getState().loadingForward).toBe(true);
+    const loadP = list.loadMore('tail');
+    expect(list.getState().loadingTail).toBe(true);
     const resetP = list.reset({ pinEdge: false });
-    expect(list.getState().loadingForward).toBe(false); // reset 立刻归零两端 loading
+    expect(list.getState().loadingTail).toBe(false); // reset 立刻归零两端 loading
     expect(pending).toHaveLength(3);
 
     pending[1].resolve(pageOf(makeTestItems(3, 3), 's1', 'e1', true, true)); // 陈旧的 loadMore 结果
@@ -968,7 +968,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     pending[0].resolve(pageOf(makeTestItems(3, 0), 's0', 'e0', false, true));
     await p;
     host.scroller.scrollTop = 500;
-    const f = list.loadMore('forward');
+    const f = list.loadMore('tail');
     pending[1].resolve(pageOf([{ id: 2, label: 'moved' }, { id: 3, label: 'i3' }], 's1', 'e1', true, false));
     await f;
     expect(rendered(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-3']);
@@ -991,7 +991,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     const host = createHost();
     let latest: readonly TestItem[] = [];
     const list = createBoundedList(baseOptions(host, source, {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 2,
       maxPages: 2,
       onItemsChanged: (items) => { latest = items; },
@@ -1000,7 +1000,7 @@ describe('BoundedList / C loadMore 双向续翻与整页裁剪', () => {
     pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, true));
     await initial;
 
-    const loading = list.loadMore('forward');
+    const loading = list.loadMore('tail');
     // 分页在飞期间对「该页将带回来的身份」做本地最终态：patch 改值、remove 删除。
     // 两者都与位置无关，会在页并入后重放；旧值不得回退，删除项不得复活。
     expect(list.patch('1', (item) => ({ ...item, label: 'local-1-v2' }))).toBe(true);
@@ -1283,7 +1283,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     fetcher.settle(0, [{ id: 1, label: 'patched' }]);
     await flushAsync();
 
-    const f = list.loadMore('forward');
+    const f = list.loadMore('tail');
     expect(pending[1].req.cursor).toBe('eA'); // 游标未受定向刷新影响
     pending[1].resolve(pageOf(makeTestItems(3, 3), 'sB', 'eB', true, false));
     await f;
@@ -1427,9 +1427,9 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const { host, list } = setupInvalidateList(items, {
       fetchByIdentity: fetcher.fetchByIdentity,
       onItemsChanged: (changed) => latest.push([...changed]),
-      freshEdge: 'tail',
+      order: 'asc',
       // pageSize 覆盖全部条目：createInstantSource 的 reset 恒从头切片，只有一次
-      // 拿全才能让 hasMoreForward 归零，满足 upsertLocal 对「已追平新鲜端」的前置要求。
+      // 拿全才能让 hasMoreTail 归零，满足 upsertLocal 对「已追平新鲜端」的前置要求。
       pageSize: items.length,
     });
     await list.reset({ pinEdge: false });
@@ -1509,7 +1509,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     host.scroller.scrollTop = 0;
     let latest: readonly TestItem[] = [];
     const list = createBoundedList(baseOptions(host, createInstantSource(() => sourceItems), {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 2,
       maxPages: 1,
       fetchByIdentity: fetcher.fetchByIdentity,
@@ -1533,7 +1533,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     expect(mutations.has('2')).toBe(false);
 
     sourceItems = [{ id: 1, label: 'row-1' }, { id: 2, label: 'authority-v2' }];
-    await list.loadMore('backward');
+    await list.loadMore('head');
     expect(latest.find((item) => item.id === 2)?.label).toBe('authority-v2');
     list.dispose();
   });
@@ -1543,7 +1543,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const fetcher = createControllableFetcher<TestItem>();
     const host = createHost();
     const list = createBoundedList(baseOptions(host, source, {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 2,
       maxPages: 2,
       fetchByIdentity: fetcher.fetchByIdentity,
@@ -1552,7 +1552,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     const initial = list.reset({ pinEdge: false });
     pending[0].resolve(pageOf(makeTestItems(2), 's0', 'e0', false, true));
     await initial;
-    const fill = list.loadMore('forward');
+    const fill = list.loadMore('tail');
     pending[1].resolve(pageOf(makeTestItems(2, 2), 's1', 'e1', true, true));
     await fill;
 
@@ -1563,9 +1563,9 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     await flushAsync();
     expect(tokens.size).toBe(1);
 
-    // 窗口的 hasMoreForward 仍是 true（还没追平新鲜端），upsertLocal 走 overlay 记录分支，
+    // 窗口的 hasMoreTail 仍是 true（还没追平新鲜端），upsertLocal 走 overlay 记录分支，
     // 不直接改动窗口，因此不触发 cancelOrdinaryPageLoads，并发 refresh token 原样保留。
-    const stalePage = list.loadMore('forward');
+    const stalePage = list.loadMore('tail');
     list.upsertLocal({ id: 4, label: 'local-4' });
     expect(tokens.size).toBe(1);
     pending[2].resolve(pageOf(makeTestItems(2, 4), 's2', 'e2', true, false));
@@ -1586,7 +1586,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     host.scroller.scrollTop = 0;
     let latest: readonly TestItem[] = [];
     const list = createBoundedList(baseOptions(host, source, {
-      freshEdge: 'tail',
+      order: 'asc',
       pageSize: 3,
       maxPages: 2,
       fetchByIdentity: fetcher.fetchByIdentity,
@@ -1599,7 +1599,7 @@ describe('BoundedList / E invalidate 决策树（§5.1）', () => {
     list.invalidate({ identities: ['1', '2'] });
     await flushAsync();
     expect(fetcher.calls).toEqual([['1', '2']]);
-    const stalePage = list.loadMore('forward');
+    const stalePage = list.loadMore('tail');
 
     fetcher.settle(0, [{ id: 1, label: 'fresh-1' }]);
     await flushAsync();
@@ -1717,7 +1717,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     list.invalidate();
     expect(list.getState().stale).toBe(true);
 
-    void list.loadMore('backward'); // 制造 loadingBackward=true
+    void list.loadMore('head'); // 制造 loadingHead=true
     const requestsBefore = pending.length;
     host.scroller.scrollTop = 0;
     host.scroller.dispatch('scroll');
@@ -1730,24 +1730,24 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
   it('F3 路径②：触界续翻到新鲜端尽头（拿到空页）时熄灭 stale', async () => {
     const items = makeTestItems(6);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createOptimisticSource(() => items), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createOptimisticSource(() => items), { order: 'asc' }));
     await list.reset();
     host.scroller.scrollTop = 999;
     host.scroller.scrollHeight = 2000;
     list.invalidate();
     expect(list.getState().stale).toBe(true);
 
-    await list.loadMore('forward'); // [3,4,5]，满页仍乐观报告 hasMoreForward=true
-    expect(list.getState().hasMoreForward).toBe(true);
+    await list.loadMore('tail'); // [3,4,5]，满页仍乐观报告 hasMoreTail=true
+    expect(list.getState().hasMoreTail).toBe(true);
     expect(list.getState().stale).toBe(true);
-    await list.loadMore('forward'); // 真正拿到空页 → 命中新鲜端方向
-    expect(list.getState().hasMoreForward).toBe(false);
+    await list.loadMore('tail'); // 真正拿到空页 → 命中新鲜端方向
+    expect(list.getState().hasMoreTail).toBe(false);
     expect(list.getState().stale).toBe(false);
     expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
-  it('F4 路径②只认新鲜端方向：freshEdge=head 时空的 backward 页才清提示条', async () => {
+  it('F4 路径②只认新鲜端方向：order=desc 时空的 head 页才清提示条', async () => {
     const all = makeTestItems(9);
     const host = createHost();
     // 两端都「乐观」：满页时先认为可能还有更多，只有真的拿到空页才收敛。
@@ -1764,21 +1764,21 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
         return { items: page, startCursor: String(cursor), endCursor: String(end), hasMoreBackward: true, hasMoreForward: page.length === req.limit };
       },
     };
-    const list = createBoundedList(baseOptions(host, optimisticBothEnds, { freshEdge: 'head' }));
+    const list = createBoundedList(baseOptions(host, optimisticBothEnds, { order: 'desc' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
     list.invalidate();
     expect(list.getState().stale).toBe(true);
 
     // 非新鲜端方向（forward）拿到空页：不清提示条。
-    await list.loadMore('forward'); // [6,7,8]
-    await list.loadMore('forward'); // 空页
+    await list.loadMore('tail'); // [6,7,8]
+    await list.loadMore('tail'); // 空页
     expect(list.getState().stale).toBe(true);
     expect(list.getState().stale).toBe(true);
 
     // 新鲜端方向（backward）拿到空页：清提示条。
-    await list.loadMore('backward'); // [0,1,2]
-    await list.loadMore('backward'); // 空页
+    await list.loadMore('head'); // [0,1,2]
+    await list.loadMore('head'); // 空页
     expect(list.getState().stale).toBe(false);
     expect(list.getState().stale).toBe(false);
     list.dispose();
@@ -1821,7 +1821,7 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
     const items = makeTestItems(10);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
-      freshEdge: 'tail',
+      order: 'asc',
     }));
     await list.reset();
     host.scroller.scrollTop = 100;
@@ -1853,14 +1853,14 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
   it('F10 非空的最后一页把 hasMore 收敛为 false 时提示条一并消失', async () => {
     const items = makeTestItems(4); // pageSize=3 → 第二页只有 1 条（非空）
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
     list.invalidate();
     expect(list.getState().stale).toBe(true);
 
-    await list.loadMore('forward');
-    expect(list.getState().hasMoreForward).toBe(false);
+    await list.loadMore('tail');
+    expect(list.getState().hasMoreTail).toBe(false);
     expect(list.getState().stale).toBe(false);
     expect(pillOf(host).classList.contains('hidden')).toBe(true);
     list.dispose();
@@ -1869,12 +1869,12 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
   it('F11 非新鲜端方向翻到尽头不清提示条', async () => {
     const items = makeTestItems(4);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'head' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'desc' }));
     await list.reset({ pinEdge: false });
     host.scroller.scrollTop = 500;
     list.invalidate();
-    await list.loadMore('forward'); // forward 不是 head 的新鲜方向
-    expect(list.getState().hasMoreForward).toBe(false);
+    await list.loadMore('tail'); // forward 不是 head 的新鲜方向
+    expect(list.getState().hasMoreTail).toBe(false);
     expect(list.getState().stale).toBe(true);
     list.dispose();
   });
@@ -1896,42 +1896,42 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
 // ───────────────────────── G 本端增删改 ─────────────────────────
 
 describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLocal）', () => {
-  it('G1 freshEdge=tail 时并入尾页；新鲜端方向的 hasMoreForward 置 false', async () => {
-    // pageSize 覆盖全部条目，reset 后 hasMoreForward 天然为 false（真正追平新鲜端），
+  it('G1 order=asc 时并入尾页；新鲜端方向的 hasMoreTail 置 false', async () => {
+    // pageSize 覆盖全部条目，reset 后 hasMoreTail 天然为 false（真正追平新鲜端），
     // upsertLocal 才会走立即并入分支。
     const items = makeTestItems(3);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', maxPages: 1, pageSize: 3 }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc', maxPages: 1, pageSize: 3 }));
     await list.reset();
     list.upsertLocal({ id: 100, label: 'local' });
     expect(rendered(host)[rendered(host).length - 1]).toBe('row-100');
-    expect(list.getState().hasMoreForward).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(false);
     list.dispose();
   });
 
-  it('G2 freshEdge=head 时并入首页；hasMoreBackward 置 false', async () => {
+  it('G2 order=desc 时并入首页；hasMoreHead 置 false', async () => {
     const items = makeTestItems(4);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'head' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'desc' }));
     await list.reset();
     list.upsertLocal({ id: -1, label: 'local' });
     expect(rendered(host)[0]).toBe('row--1');
-    expect(list.getState().hasMoreBackward).toBe(false);
+    expect(list.getState().hasMoreHead).toBe(false);
     list.dispose();
   });
 
   it('G3 mergeLive 到达硬预算后从非新鲜端裁剪，并保留新条目', async () => {
-    // 总量正好等于 hardBudget（3×2=6）：reset + 一次 forward 续翻后 hasMoreForward 归零，
+    // 总量正好等于 hardBudget（3×2=6）：reset + 一次 forward 续翻后 hasMoreTail 归零，
     // 窗口真正追平新鲜端，upsertLocal 才会走立即并入分支（而不是记入 overlay 待重放）。
     const items = makeTestItems(6);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', maxPages: 2, pageSize: 3 }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc', maxPages: 2, pageSize: 3 }));
     await list.reset({ pinEdge: false });
-    await list.loadMore('forward');
+    await list.loadMore('tail');
     expect(list.getState().count).toBe(6);
     list.upsertLocal({ id: 100, label: 'local' });
     expect(list.getState().count).toBe(6);
-    expect(list.getState().hasMoreBackward).toBe(false); // 旧游标失效，权威追平前禁止继续分页
+    expect(list.getState().hasMoreHead).toBe(false); // 旧游标失效，权威追平前禁止继续分页
     expect(rendered(host)).toContain('row-100');
     list.dispose();
   });
@@ -1941,7 +1941,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -1954,12 +1954,12 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       host.scroller.dispatch('scroll');
       frames.run();
       list.upsertLocal({ id: 2, label: 'local-2' });
-      expect(list.getState().hasMoreBackward).toBe(false);
+      expect(list.getState().hasMoreHead).toBe(false);
       expect(pending).toHaveLength(1); // render 不得用 old-start 自动翻页
       frames.run(); // away-edge invalidate 只置 stale
       expect(pending).toHaveLength(1);
 
-      const reconcile = list.loadMore('backward');
+      const reconcile = list.loadMore('head');
       expect(pending).toHaveLength(2);
       expect(pending[1].req.cursor).toBeUndefined();
       expect(renderedRows(host)).toEqual(['row-1', 'row-2']);
@@ -1976,7 +1976,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2010,7 +2010,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const host = createHost();
       const onError = vi.fn();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2046,7 +2046,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2056,7 +2056,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       await initial;
 
       list.upsertLocal({ id: 2, label: 'local-2' }); // 排队自动 reconcile
-      const explicit = list.loadMore('backward'); // 同帧由显式入口先接管
+      const explicit = list.loadMore('head'); // 同帧由显式入口先接管
       expect(pending).toHaveLength(2);
       pending[1].resolve(pageOf(makeTestItems(2, 10), 's1', 'e1', false, false));
       await explicit;
@@ -2074,7 +2074,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const host = createHost();
       let latest: readonly TestItem[] = [];
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2114,7 +2114,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       host.scroller.scrollHeight = 1_000;
       host.scroller.scrollTop = 0;
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2138,7 +2138,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const host = createHost();
       let latest: readonly TestItem[] = [];
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2180,7 +2180,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2214,7 +2214,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2258,7 +2258,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2267,8 +2267,8 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
           updatePill: () => '有更新',
           error: () => '加载失败',
           retry: () => '重新加载',
-          backwardBoundary: () => '已到最早',
-          forwardBoundary: () => '已到最新',
+          headBoundary: () => '已到最早',
+          tailBoundary: () => '已到最新',
         },
       }));
       const boundaryTexts = (): string[] => host.scroller.children
@@ -2284,7 +2284,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       // 本端并入撑破 pageSize×maxPages=2 的硬预算，从 backward 端裁掉一条：
       // 那一端现在**确实还有数据**，只是它的服务端游标已经不可信。
       list.upsertLocal({ id: 2, label: 'local-2' });
-      expect(list.getState().hasMoreBackward).toBe(false); // 对外封锁续翻，符合预期
+      expect(list.getState().hasMoreHead).toBe(false); // 对外封锁续翻，符合预期
       // 关键断言：封锁续翻 ≠ 到底了，不得再显示「已到最早」骗用户。
       expect(boundaryTexts()).toEqual(['已到最新']);
 
@@ -2294,7 +2294,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       expect(pending).toHaveLength(2);
       pending[1].reject(new Error('reconcile failed'));
       await flushAsync();
-      expect(list.getState()).toMatchObject({ failed: true, hasMoreBackward: false });
+      expect(list.getState()).toMatchObject({ failed: true, hasMoreHead: false });
       expect(boundaryTexts()).toEqual(['已到最新']);
       expect(pillOf(host).textContent).toBe('重新加载');
       list.dispose();
@@ -2307,7 +2307,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const host = createHost();
       host.scroller.scrollHeight = 0; // 贴新鲜端：裁剪后走自动容量追平这条路
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2339,7 +2339,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const { source, pending } = createControllableSource<TestItem, void>();
       const host = createHost();
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2374,7 +2374,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
       const host = createHost();
       const seen: boolean[] = [];
       const list = createBoundedList(baseOptions(host, source, {
-        freshEdge: 'tail',
+        order: 'asc',
         pageSize: 2,
         maxPages: 1,
         settleFrames: 1,
@@ -2411,7 +2411,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
     const items = makeTestItems(3);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items), {
-      freshEdge: 'tail',
+      order: 'asc',
       normalize: (input) => {
         const seen = new Map<number, TestItem>();
         for (const item of input) seen.set(item.id, item);
@@ -2529,7 +2529,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
   it('G11 重复 upsertLocal 同一条目是幂等的，不会渲染两遍', async () => {
     const items = makeTestItems(3);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc' }));
     await list.reset({ pinEdge: false });
     list.upsertLocal({ id: 100, label: 'local' });
     list.upsertLocal({ id: 100, label: 'local-retry' });
@@ -2541,7 +2541,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
   it('G12 upsertLocal 一条已在窗口里的条目时先摘旧再并入新鲜端', async () => {
     const items = makeTestItems(3);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc' }));
     await list.reset({ pinEdge: false });
     list.upsertLocal({ id: 0, label: 'moved-to-tail' });
     expect(renderedRows(host)).toEqual(['row-1', 'row-2', 'row-0']);
@@ -2563,7 +2563,7 @@ describe('BoundedList / G 本端产生的条目（upsertLocal / patch / removeLo
 
   it('G10 空窗口上 upsertLocal 自建一页（本端先发消息、服务端还没有数据）', async () => {
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => []), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => []), { order: 'asc' }));
     await list.reset();
     expect(list.getState().count).toBe(0);
     list.upsertLocal({ id: 1, label: 'first' });
@@ -2814,7 +2814,7 @@ describe('BoundedList / H 渲染与文案', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, source, {
       onError: () => {},
-      freshEdge: 'tail',
+      order: 'asc',
       text: { loading: () => '加载中', empty: () => '暂无数据', error: () => '加载失败' },
     }));
     const p = list.reset({ pinEdge: false });
@@ -2832,8 +2832,8 @@ describe('BoundedList / H 渲染与文案', () => {
       text: {
         loading: () => '加载中',
         empty: () => '暂无数据',
-        backwardBoundary: () => '已到最早',
-        forwardBoundary: () => '已到最新',
+        headBoundary: () => '已到最早',
+        tailBoundary: () => '已到最新',
       },
     }));
     await list.reset();
@@ -3147,7 +3147,7 @@ describe('BoundedList / K 错误处理', () => {
     list.dispose();
   });
 
-  it('K3 loadMore(forward) 失败：onError 带 forward 阶段，loading 标志恢复', async () => {
+  it('K3 loadMore(tail) 失败：onError 带 tail 阶段，loading 标志恢复', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     const onError = vi.fn();
@@ -3157,17 +3157,17 @@ describe('BoundedList / K 错误处理', () => {
     await resetP;
     host.scroller.scrollTop = 500;
 
-    const loadP = list.loadMore('forward');
-    expect(list.getState().loadingForward).toBe(true);
+    const loadP = list.loadMore('tail');
+    expect(list.getState().loadingTail).toBe(true);
     pending[1].reject(new Error('network'));
     await loadP;
-    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'forward');
-    expect(list.getState().loadingForward).toBe(false);
-    expect(list.getState().hasMoreForward).toBe(true); // 失败不改变边界状态
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'tail');
+    expect(list.getState().loadingTail).toBe(false);
+    expect(list.getState().hasMoreTail).toBe(true); // 失败不改变边界状态
     list.dispose();
   });
 
-  it('K4 loadMore(backward) 失败：onError 带 backward 阶段，loadingBackward 恢复', async () => {
+  it('K4 loadMore(head) 失败：onError 带 head 阶段，loadingHead 恢复', async () => {
     const { source, pending } = createControllableSource<TestItem, void>();
     const host = createHost();
     const onError = vi.fn();
@@ -3177,12 +3177,12 @@ describe('BoundedList / K 错误处理', () => {
     await resetP;
     host.scroller.scrollTop = 500;
 
-    const loadP = list.loadMore('backward');
-    expect(list.getState().loadingBackward).toBe(true);
+    const loadP = list.loadMore('head');
+    expect(list.getState().loadingHead).toBe(true);
     pending[1].reject(new Error('network'));
     await loadP;
-    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'backward');
-    expect(list.getState().loadingBackward).toBe(false);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'head');
+    expect(list.getState().loadingHead).toBe(false);
     list.dispose();
   });
 
@@ -3196,7 +3196,7 @@ describe('BoundedList / K 错误处理', () => {
     await resetP;
     host.scroller.scrollTop = 500;
 
-    const loadP = list.loadMore('forward');
+    const loadP = list.loadMore('tail');
     const secondReset = list.reset({ pinEdge: false });
     pending[1].reject(new Error('过期的翻页失败'));
     await loadP;
@@ -3283,7 +3283,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     await withFramesAsync(async (frames) => {
       const items = makeTestItems(3);
       const host = createHost();
-      const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail', settleFrames: 4 }));
+      const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc', settleFrames: 4 }));
       await list.reset({ pinEdge: true });
       list.dispose();
       host.scroller.scrollTop = 12345; // 宿主在 dispose 之后自己设置的滚动位置
@@ -3299,8 +3299,8 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     await list.reset();
     list.dispose();
     await expect(list.reset()).resolves.toBeUndefined();
-    await expect(list.loadMore('forward')).resolves.toBeUndefined();
-    await expect(list.loadMore('backward')).resolves.toBeUndefined();
+    await expect(list.loadMore('tail')).resolves.toBeUndefined();
+    await expect(list.loadMore('head')).resolves.toBeUndefined();
     expect(() => list.setQuery(undefined)).not.toThrow();
     expect(() => list.invalidate()).not.toThrow();
     expect(() => list.upsertLocal(items[0])).not.toThrow();
@@ -3351,7 +3351,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     pending[0].resolve(pageOf(makeTestItems(3), '0', '3', false, true));
     await p;
     host.scroller.scrollTop = 500;
-    const loadP = list.loadMore('forward');
+    const loadP = list.loadMore('tail');
     list.dispose();
     pending[1].resolve(pageOf(makeTestItems(3, 3), '3', '6', true, false));
     await loadP;
@@ -3367,7 +3367,7 @@ describe('BoundedList / L dispose：全部监听注销、注册表注销、幂�
     pending[0].resolve(pageOf(makeTestItems(3), '0', '3', false, true));
     await p;
     host.scroller.scrollTop = 500;
-    const loadP = list.loadMore('forward');
+    const loadP = list.loadMore('tail');
     list.dispose();
     pending[1].reject(new Error('已经不关心了'));
     await loadP;
@@ -3428,8 +3428,8 @@ describe('BoundedList / M 只读状态 getState', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => [])));
     expect(list.getState()).toEqual({
-      loaded: false, loading: false, loadingBackward: false, loadingForward: false,
-      hasMoreBackward: false, hasMoreForward: false, count: 0, total: -1,
+      loaded: false, loading: false, loadingHead: false, loadingTail: false,
+      hasMoreHead: false, hasMoreTail: false, count: 0, total: -1,
       stale: false, atFreshEdge: false, failed: false,
     });
     list.dispose();
@@ -3463,14 +3463,14 @@ describe('BoundedList / M 只读状态 getState', () => {
     await p;
     host.scroller.scrollTop = 500;
 
-    void list.loadMore('backward');
-    expect(list.getState()).toMatchObject({ loading: true, loadingBackward: true, loadingForward: false });
-    void list.loadMore('forward');
-    expect(list.getState()).toMatchObject({ loading: true, loadingBackward: true, loadingForward: true });
+    void list.loadMore('head');
+    expect(list.getState()).toMatchObject({ loading: true, loadingHead: true, loadingTail: false });
+    void list.loadMore('tail');
+    expect(list.getState()).toMatchObject({ loading: true, loadingHead: true, loadingTail: true });
     pending[1].resolve(pageOf(makeTestItems(3, 7), '7', '10', true, true));
     pending[2].resolve(pageOf(makeTestItems(3, 13), '13', '16', true, true));
     await flushAsync();
-    expect(list.getState()).toMatchObject({ loading: false, loadingBackward: false, loadingForward: false });
+    expect(list.getState()).toMatchObject({ loading: false, loadingHead: false, loadingTail: false });
     list.dispose();
   });
 
@@ -3498,10 +3498,10 @@ describe('BoundedList / M 只读状态 getState', () => {
     list.dispose();
   });
 
-  it('M8 freshEdge=tail 时图片等异步增高内容加载完会重新贴底；此前不贴底则不动', async () => {
+  it('M8 order=asc 时图片等异步增高内容加载完会重新贴底；此前不贴底则不动', async () => {
     const items = makeTestItems(3);
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { freshEdge: 'tail' }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => items), { order: 'asc' }));
     host.scroller.scrollHeight = 1000;
     host.scroller.clientHeight = 100;
     await list.reset(); // pinEdge → 贴底，缓存的贴边状态为真
@@ -3518,7 +3518,7 @@ describe('BoundedList / M 只读状态 getState', () => {
     list.dispose();
   });
 
-  it('M9 freshEdge=head 的列表不因内容异步增高改动滚动位置', async () => {
+  it('M9 order=desc 的列表不因内容异步增高改动滚动位置', async () => {
     const items = makeTestItems(3);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => items)));
