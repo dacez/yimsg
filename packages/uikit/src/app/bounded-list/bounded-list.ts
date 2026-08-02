@@ -92,14 +92,7 @@ export class BoundedList<T, Q = void> {
   private firstLoadDone = false;
   private resetError: unknown;
   private hasResetError = false;
-  /**
-   * 「背景有更新」提示条的状态：就是一个布尔。
-   *
-   * 三种成因——收到未追平的变化通知、首屏刷新失败但窗口里还有旧数据、本端条目被硬预算
-   * 裁掉——对用户是同一件事：「下面有你没看到的东西，点一下追平」。曾经用计数表达它们，
-   * 于是必须为每种成因约定一套合并规则（累加 / 至少 1 / 取较大者），三种语义混在一个
-   * 数字里，报给用户的条数既不准也没意义。需要精确条数的调用方自己数最准。
-   */
+  /** 「背景有更新」提示条的状态：一个布尔，语义见 `BoundedListState.stale`。 */
   private readonly pillState = {
     stale: false,
     /** 有未追平的变化：点亮提示条。 */
@@ -544,8 +537,7 @@ export class BoundedList<T, Q = void> {
    *
    * 去重必须在组件里做。渲染引擎按身份键协调 DOM，同一个身份出现两次会让
    * `renderedRows` 只记住后一条、而 desired 列表里同一个节点出现两次，`insertBefore`
-   * 把它搬走之后行数静默少一行，缓存与真实 DOM 从此失配。曾经这件事外包给每个调用方
-   * （会话列表因此自己写了一段 O(n×m) 过滤），漏做一次就是上面那个后果。
+   * 把它搬走之后行数静默少一行，缓存与真实 DOM 从此失配。
    *
    * 窗口是权威：pinned 里凡是窗口已有的身份一律让位（例如占位会话在真实条目落库后
    * 就不该继续钉在头部）。pinned 自身重复也在这里挡掉。
@@ -671,11 +663,11 @@ export class BoundedList<T, Q = void> {
    * 权威首页请求的唯一入口：发起之后立刻把 promise 登记进 `authoritative`，
    * 好让 `reconcileCapacity` 的重入合并对 reset 和 reconcile 一视同仁。
    *
-   * 早前只有 reconcile 分支回填 promise，reset 的那一份恒为 `null`。后果是 reset
-   * 在飞期间的一次容量追平（在飞时的 live 裁剪、排队的自动帧任务）会认为「没有请求
-   * 在飞」，于是推进世代把正在飞的 reset 打掉再发一个——既多打一次请求，也
-   * 违反了「权威请求已在飞时的 live eviction 由当前请求重放、不额外安排第二次追平」
-   * 这条既有约定（见缺陷列表 BL-BUG-010 第 8 条）。
+   * `reset` 与 reconcile 的 promise 必须都登记：漏登记 reset 会让在飞期间的一次容量
+   * 追平（在飞时的 live 裁剪、排队的自动帧任务）误判「没有请求在飞」，推进世代把
+   * 正在飞的 reset 打掉再发一个——既多打一次请求，也违反「权威请求已在飞时的 live
+   * eviction 由当前请求重放、不额外安排第二次追平」这条约定（见缺陷列表 BL-BUG-010
+   * 第 8 条）。
    */
   private startAuthoritativePage(opts: { clearWindow: boolean; pinEdge: boolean }): Promise<void> {
     const started = this.loadAuthoritativePage(opts);

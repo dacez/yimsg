@@ -1,7 +1,7 @@
 # 文档归档目录
 
 > 主要对照：`docs/archive/` 实际文件树与 [`../README.md`](../README.md) 的历史内容处理规则。
-> 最后复核：2026-07-29。
+> 最后复核：2026-07-30。
 > 触发更新：归档文档增删、归档边界或反向规则变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文只说明归档目录用途和收纳边界，不作为当前设计事实源。
 
@@ -26,3 +26,4 @@
 | 文档 | 内容 |
 |---|---|
 | [`文档治理历史.md`](文档治理历史.md) | 历史文档合并、删除、迁移记录与阶段性评价 |
+| [`BoundedList缺陷列表.md`](BoundedList缺陷列表.md) | BoundedList 已关闭缺陷（`BL-BUG-NNN` / `BL-UNIT-BUG-NNN` / `BL-TEST-BUG-NNN`）的复现条件、根因、修复摘要与关闭证据；当前状态与登记规则见 [`../../packages/uikit/docs/boundedlist/缺陷列表.md`](../../packages/uikit/docs/boundedlist/缺陷列表.md) |

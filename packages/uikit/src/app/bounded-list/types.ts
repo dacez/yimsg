@@ -13,10 +13,9 @@ export type DisplayOrder = 'asc' | 'desc';
 /**
  * 列表的一端：数组 / DOM 的头部还是尾部。
  *
- * 早前这里并存两套词汇——`Direction`（forward/backward，描述续翻请求朝哪边）和
- * `FreshEdge`（head/tail，描述哪端新鲜）。但 backward 恒等于 head、forward 恒等于
- * tail，两者从未有过例外（`PageWindow.prependBackward` 就是往数组头部插，
- * `appendForward` 就是往尾部推），是同一根轴的两个名字，只留一套。
+ * wire 协议的 `backward`/`forward`（续翻请求朝哪边）与组件内部的 head/tail（哪端新鲜）
+ * 是同一根轴：backward 恒等于 head、forward 恒等于 tail，没有例外。组件内部只用 Edge
+ * 一套词汇，只在发出 `FetchPageRequest` 时转换成 `backward` 一次（见 `loadMoreInternal`）。
  */
 export type Edge = 'head' | 'tail';
 
@@ -117,8 +116,8 @@ export interface BoundedListOptions<T, Q = void> {
    * 把自己登记到宿主的注册表，返回注销函数。
    *
    * 必填：同一页面可以并存多个 AppInstance（嵌入式 UIKit 的多格子场景），它们的列表 id
-   * 完全相同。曾经允许省略并退化到一份进程级注册表，结果是同名列表互相覆盖，且省略者
-   * 永远收不到宿主的重连广播。改为必填后「注册到哪个宿主」在编译期就是确定的。
+   * 完全相同。若省略并退化到一份进程级注册表，同名列表会互相覆盖，且拿不到宿主的重连
+   * 广播。必填后「注册到哪个宿主」在编译期就是确定的。
    */
   readonly register: RegisterBoundedList;
 
