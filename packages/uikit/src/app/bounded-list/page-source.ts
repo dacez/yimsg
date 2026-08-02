@@ -23,8 +23,8 @@ export interface LocalPageSourceOptions<T, Q> {
   /**
    * 展示序，必须与所属 BoundedList 的 `order` 一致，默认 'desc'。
    * reset（cursor 未提供）要取的是新鲜端那一页：'desc' 新鲜端在头部，取 entries
-   * 最前面一页；'asc' 新鲜端在尾部，取最后一页。早前这里写死取最前面一页，与
-   * 新鲜端在尾部的列表搭配会静默取错端，而且只在注释里声明约束——现在由参数显式表达。
+   * 最前面一页；'asc' 新鲜端在尾部，取最后一页。与所属 BoundedList 的 `order` 不一致
+   * 会静默取错端，必须显式传入，不能只靠调用方自行保证。
    */
   readonly order?: DisplayOrder;
 }

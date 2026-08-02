@@ -1,0 +1,280 @@
+# BoundedList 缺陷列表（归档）
+
+> 主要对照：`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/bounded-list.spec.ts` 与 `apps/web/tests/performance/bounded-list.performance.spec.ts`（历史归档，对照关系截至归档时点）。
+> 最后复核：2026-07-30。
+> 触发更新：本文是归档快照，不再随源码演进更新；新缺陷登记、状态变更与当前测试结果统一维护在当前事实源。
+> 入口关系：上级归档说明见 [`README.md`](README.md)；当前缺陷状态、登记流程与维护规则见 [`../../packages/uikit/docs/boundedlist/缺陷列表.md`](../../packages/uikit/docs/boundedlist/缺陷列表.md)；本文仅供追溯，不作为当前事实源。
+
+本文归档 BoundedList 已关闭缺陷的复现条件、根因和修复摘要，共 46 条：17 条 `BL-BUG-NNN` 产品缺陷、26 条 `BL-UNIT-BUG-NNN` 单元评审缺陷、3 条 `BL-TEST-BUG-NNN` 测试基础设施缺陷，归档时全部 `CLOSED`。状态定义、登记与关闭流程见当前事实源，不在本文重复。
+
+## 1. 归档时基线快照
+
+- 环境：Windows，Chromium `149.0.7827.55`，Playwright `1.61.1`，独立 BoundedList browser harness。
+- 功能结果：`bounded-list.spec.ts` 共 **50 项，50 PASS，0 FAIL**。
+- 性能结果：`bounded-list.performance.spec.ts` 共 **6 项，6 PASS，0 FAIL**。
+- 合计：**56 项全部通过，当次没有 `test.fail`、`skip` 或 `fixme`**。
+- 并发稳定性证据：`fullyParallel`、4 workers、`retries=0` 的功能专项当次为 50/50，0 fail、0 retry。
+- 产品缺陷状态：`BL-BUG-001`～`BL-BUG-017` 共 17 条产品缺陷、`BL-UNIT-BUG-001`～`BL-UNIT-BUG-026` 共 26 条单元评审缺陷均已关闭，正确期望断言全部保留为普通回归测试。`BL-BUG-015`～`BL-BUG-017` 由源码复审发现，回归先落在单元层（G3o / G3p / H1b / H1c）。
+- 测试基础设施：`BL-TEST-BUG-001`～`BL-TEST-BUG-003` 已关闭；并发方向用例改用可控双请求 gate，防抖用例改用暂停虚拟时钟后的 299+1ms 精确推进，宿主视图的轻量 DOM 替身补齐标准节点移动与删除语义。
+- 单元补强：`packages/uikit/tests/unit/bounded-list/` 归档时基线为 7 个文件、418 项；单元分项与覆盖率见当前 [`测试方案.md`](../../packages/uikit/docs/boundedlist/测试方案.md)。
+- 本轮证据是对应 Playwright 标题、断言和通过结果；没有生成截图或 trace，不记录不存在的证据路径。
+
+> 编号按发现层级区分：`BL-BUG-NNN` 是真实 Chromium 产品缺陷，`BL-UNIT-BUG-NNN` 是单元评审产品缺陷，`BL-TEST-BUG-NNN` 是测试基础设施缺陷。
+
+## 2. 已关闭缺陷总览
+
+| ID | 严重度 | 状态 | 回归入口 | 修复摘要 |
+|---|---|---|---|---|
+| `BL-BUG-001` | P1 | CLOSED | 并发 `localPageSource` reset | reload 世代隔离缓存和进度，旧查询晚返回不再污染最新续翻快照 |
+| `BL-BUG-002` | P1 | CLOSED | 定向刷新与 reset / 本地写入 / 刷新乱序 | `requestId` 隔离窗口世代，并以仅在飞的 identity token 隔离刷新；不同 identity 并发互不淘汰 |
+| `BL-BUG-003` | P2 | CLOSED | `renderItem` 多平级根节点交互 | 每个根节点都写交互 identity，任一部分都能正确委托 |
+| `BL-BUG-004` | P1 | CLOSED | 外部 `SelectionStore` 上限 | `selection.store` 与 `selection.max` 构造互斥；外部 store 自己持有并执行上限 |
+| `BL-BUG-005` | P2 | CLOSED | prepend 后键盘焦点 | 持久记录 `focusedKey`，重渲后按 identity 找回焦点 |
+| `BL-BUG-006` | P2 | CLOSED | 缺少 `updatePill` 文案 | 文案未配置时提示条保持隐藏，不生成空白可点击状态 |
+| `BL-BUG-007` | P1 | CLOSED | 非法分页参数 | `pageSize`、`maxPages` 及二者乘积均做安全正整数校验 |
+| `BL-BUG-008` | P1 | CLOSED | 恶意 source 超页 | normalize 后单页超过 `pageSize` 立即抛错；reset 进入 `failed` 错误态且不接纳超量数据 |
+| `BL-BUG-009` | P1 | CLOSED | tail 内容异步增高 | 内容 load 使用最新滚动意图；原本贴底才重新贴底，已滚离则不抢回 |
+| `BL-BUG-010` | P0 | CLOSED | 重复 identity、高频 live 容量与失效游标 | 先跨页去重并同步硬裁剪；立即封锁旧游标并作废旧边界分页，后台 staged 权威 reconcile 保留 capped DOM、重放在飞本地变更 |
+| `BL-BUG-011` | P1 | CLOSED | dispose 后残留动画帧 | 帧调度 token、disposed 守卫与 cancel 共同阻止销毁后回写 |
+| `BL-BUG-012` | P1 | CLOSED | refresh 先于旧分页落地后的值回退 / 删除复活 | 接受 refresh 时若普通分页仍在飞，将 found / absent 最终态写入 overlay，待全部旧分页落定后再释放 |
+| `BL-BUG-013` | P1 | CLOSED | 中间页 / 首页被删空后的页位回收 | 空页立即回收，不再挤占 maxPages 名额；续翻锚点与 pages 解耦维护 |
+| `BL-BUG-014` | P2 | CLOSED | normalize 滤空整页与 localPageSource 的新鲜端 | 锚点前进与页位占用分开判断；localPageSource 显式接收 freshEdge |
+| `BL-BUG-015` | P1 | CLOSED | 失效游标期间的边界提示 | 边界提示改看窗口自己的账（`atBackwardEnd` / `atForwardEnd`），不再与「能否续翻」共用一个信号 |
+| `BL-BUG-016` | P2 | CLOSED | `pinnedItems` 与窗口条目同身份 | 去重收回组件内并统一 `visibleItems()` 序列，渲染 / 点击命中 / 选中快照共用同一份 |
+| `BL-BUG-017` | P2 | CLOSED | reset 在飞时的容量追平 | `reset` 与 reconcile 都登记在飞 Promise，重入合并对两者一视同仁 |
+| `BL-TEST-BUG-001` | TEST | CLOSED | 同方向请求去重、相反方向独立加载的并发用例 | 用可控双请求 gate 替代 80ms 固定延迟，断言只依赖请求是否已进入和显式放行 |
+| `BL-TEST-BUG-002` | TEST | CLOSED | 300ms 防抖和 dispose 取消防抖的虚拟时钟用例 | 暂停虚拟时钟后精确推进 299+1ms；销毁场景使用同步 `disposeNow()`，恢复时钟后再等待空闲 |
+| `BL-TEST-BUG-003` | TEST | CLOSED | UIKit 宿主视图的轻量 DOM 替身 | 补齐 `insertBefore`、`removeChild` 和父子关系，使替身支持 BoundedList 的 keyed DOM reconcile |
+
+## 3. 关闭证据
+
+### BL-BUG-001 [P1] [CLOSED] `localPageSource` 并发 reset 缓存污染
+
+- 原问题：旧查询的 `loadAll` 晚返回时会覆盖新查询已经发布的共享 `entries`，随后续翻混入旧查询数据。
+- 修复：`localPageSource` 为每次 reload 递增 generation；只有最新世代能发布共享缓存和进度，首页响应仍使用各自私有 snapshot 交给上层请求世代判断。
+- 功能证据：
+  - `localPageSource 并发 reset 只上报最新查询的进度，旧进度晚到也被丢弃`。
+  - `BL-BUG-001：localPageSource 并发 reset 的旧 loadAll 会污染新查询续翻缓存`。
+- 结果：乱序返回后续翻行全部属于最新查询，PASS。
+
+### BL-BUG-002 [P1] [CLOSED] 陈旧定向刷新覆盖新窗口
+
+- 原问题：`fetchByIdentity` 缺少完整世代保护，reset、同 identity 后发刷新或后续本地写入之后，旧结果仍可能 patch / remove 当前窗口；若只加全局刷新序号，又会把不同 identity 的合法并发结果误丢弃。
+- 修复：刷新落地先校验窗口级 `requestId`，再逐 identity 校验各自 generation / token。后发刷新以及 `patch` / `removeLocal` / `upsertLocal` 只使相关 identity 的旧 token 失效；不同 identity 的在飞请求互不淘汰。Map 只保留实际在飞 token，完成、失败或本地写入后立即释放，不随历史 identity 增长。
+- 功能证据：
+  - `BL-BUG-002：旧 fetchByIdentity 不应在后续 reset 后覆盖新窗口`。
+  - `同一 reset 世代的定向刷新乱序返回时，最后发出的结果保持胜出`。
+  - `不同 identity 的定向刷新并发互不丢弃，各自响应都能落地`。
+  - `staged reconcile 与定向刷新乱序并发时，旧窗口结果不会覆盖或丢失刷新结果`。
+- 单元补充：`E12e`～`E12j` 覆盖同 identity 本地写入胜出、token 有界释放、同步抛错、接受 refresh 后按旧分页是否在飞写入或淘汰 overlay、live 裁剪作废世代时释放 token，以及 refresh 先落地后旧页不能回退新值或复活删除项。
+- 结果：reset 后内容保持 `fresh-reset`；同 identity 后发或本地写入胜出；不同 identity 均能落地，PASS。
+
+### BL-BUG-003 [P2] [CLOSED] 多平级渲染根节点交互不完整
+
+- 原问题：一条数据返回多个平级元素时，只有首元素携带 identity，点击其它部分无法触发条目交互。
+- 修复：首元素继续承载滚动锚点和焦点语义；每一个渲染根元素都写入独立的交互 identity 属性。
+- 功能证据：`BL-BUG-003：renderItem 多个平级元素应全部触发同一 identity 交互`。
+- 结果：点击第二个平级部分仍只触发一次 identity `1` 的完整 `onActivate`，PASS。
+
+### BL-BUG-004 [P1] [CLOSED] 外部 `SelectionStore` 上限归属不明确
+
+- 原问题：同时传入外部 `store` 与 `selection.max` 时，`max` 会被静默忽略，调用方误以为组件仍会执行限制。
+- 修复：两者在构造期明确互斥并抛 `TypeError`；共享 store 的上限由 `new SelectionStore(max)` 自己持有，组件继续复用 store 的 `toggle` / `isExceeded` 结果。
+- 功能证据：`selection.store 与 selection.max 构造互斥，外部 store 自身上限生效`。
+- 结果：非法组合构造失败；`storeMax=1` 时第二项拒绝选择并触发一次 `onExceed`，PASS。
+
+### BL-BUG-005 [P2] [CLOSED] prepend 后焦点按 index 漂移
+
+- 原问题：重渲时只保存数组下标，头部插页后相同下标代表了另一条数据。
+- 修复：键盘移动时同时保存 `focusedKey`；重渲优先在新数组中按 identity 恢复，原身份被裁掉时才钳制到最近合法下标。
+- 功能证据：`BL-BUG-005：键盘焦点在 prepend 后应按 identity 保持而不是按 index 漂移`。
+- 结果：backward prepend 前后唯一 focused id 均为 `6`，PASS。
+
+### BL-BUG-006 [P2] [CLOSED] 空白更新提示条
+
+- 原问题：未提供 `text.updatePill` 时仍以空字符串显示一个可点击提示条。
+- 修复：只有 stale 且文案函数确实返回值时才显示提示条。
+- 功能证据：`BL-BUG-006：未提供 updatePill 文案时不应显示空白提示条`。
+- 结果：提示条节点可由宿主管理，但保持隐藏且文本为空，PASS。
+
+### BL-BUG-007 [P1] [CLOSED] 非法分页参数未快速失败
+
+- 原问题：0、负数、小数、`NaN`、`Infinity` 等配置会退化成空窗口或不可靠预算。
+- 修复：`pageSize`、`maxPages` 必须是正安全整数，`pageSize×maxPages` 也必须是安全整数，否则构造直接抛 `RangeError`。
+- 功能证据：`BL-BUG-007：分页参数非法值应在构造阶段快速失败`。
+- 结果：十组非法单参数配置均未创建实例；乘积溢出另有单元回归，PASS。
+
+### BL-BUG-008 [P1] [CLOSED] 恶意 source 单页超过 limit
+
+- 原问题：source 可以无视请求的 `limit` 返回超量数据，直接突破窗口与 DOM 预算。
+- 修复：`PageWindow` 对 `setInitial`、`appendForward`、`prependBackward` 三条 source 入窗路径统一先 normalize，再校验条目数不得超过 `pageSize`。
+- 功能证据：`恶意 source 单页超过 limit 时进入失败态且不突破 pageSize×maxPages 预算`。
+- 结果：测试 source 请求 `pageSize=10` 却返回 60 条时抛 `RangeError`；reset 结果为 `loaded=true`、`failed=true`、`count=0`、DOM 0 行，并上报 `phase='reset'`，PASS。
+
+这里选择“拒绝整页”而不是“静默截断”：静默截断会让 source 游标与实际接纳条目不一致，可能永久跳过数据；显式失败可以保持窗口正确并让调用方重试或修复 source。
+
+### BL-BUG-009 [P1] [CLOSED] tail 异步增高后贴底状态错误
+
+- 原问题：内容 load 时现算贴边会因内容已经增高而误判；滚离与 load 同帧时还可能用旧状态抢回底部。
+- 修复：原生 scroll 事件立即刷新最新滚动意图，load 只在该意图仍为贴底时执行多帧贴底。
+- 功能证据：
+  - `BL-BUG-009：tail 已贴底时内容 load 增高后仍应贴底`。
+  - `tail 从贴底滚离与内容 load 同帧发生时，以最新滚动意图为准且不重新贴底`。
+- 结果：贴底场景 load 后距底不超过 1px；同帧滚离场景保持 `scrollTop=0`，PASS。
+
+### BL-BUG-010 [P0] [CLOSED] live 去重与硬容量上限
+
+- 原问题：`mergeLive` 既可能重复保留同一 identity，也会让新鲜端页持续增长，使 DOM 绕过 `maxPages` 无界扩张。
+- 修复：
+  1. 并入前从全部已有页删除相同 identity，再把新值并入新鲜端。
+  2. `PageWindow` 保存 `hardBudget=pageSize×maxPages`，并入后同步从非新鲜端逐条裁剪，任何时刻 `count` 和 DOM 都不超过预算。
+  3. live eviction 后，被裁端原服务端游标立即标为失效，`hasMore` 对外封锁为 `false`；自动触界不得携旧游标续翻，显式 `loadMore` 也转成 `cursor: undefined` 的权威 reconcile。
+  4. live eviction 同时递增窗口请求世代，作废所有基于旧边界的在飞普通分页；晚到成功或失败都不得修改当前窗口。
+  5. reconcile 采用后台 staged 提交：请求期间保留当前 capped DOM；响应先进入独立 `PageWindow`，重放请求在飞期间按 identity 合并的 `upsertLocal` / `patch` / `removeLocal` 最终态，全部成功后才原子替换。
+  6. reconcile 失败时保留当前数据并暴露 `failed` / retry；若重放本地变更再次触发 eviction，则继续保持游标封锁与 stale，不把可能失真的边界当成可信分页锚点。
+  7. 普通 reset 与 loadMore 同样重放请求期间的本地最终态；overlay 是有界 Map，不按操作 FIFO 截断。普通 loadMore 无法完整重放时丢弃该页、封锁两端游标并进入 stale / 显式 staged reconcile，但不置 `failed`。所有路径都不自动循环重取。（唯一 identity 数超过硬预算时的处理方式后续改为静默丢最旧一条，不再让 reset / reconcile 因此进入 `failed`，见 `BL-UNIT-BUG-026`。）
+  8. 权威 reset / reconcile 已在飞时的 live eviction 只并入当前 overlay，由当前请求重放；不额外安排第二次追平或 deferred invalidate，避免后续首页响应反向覆盖已经保留的 live。
+  9. 用户或调用方一次显式 `loadMore` / 提示条重试即可建立新快照；若重试撞上 overlay 已溢出的在途 reconcile，立即递增 `requestId` 作废旧响应并新发无游标请求，无需第二次点击。
+- 功能证据：`BL-BUG-010：upsertLocal 同 identity 应替换而不是产生重复 DOM`。
+- 游标与恢复证据：
+  - `live eviction 后旧端游标立即失效，自动/手动续翻都改走后台权威 reconcile`。
+  - `staged reconcile 在飞时保留 capped DOM，并在响应后重放期间新增的 live 条目`。
+  - `staged reconcile 失败时保留 capped rows，并通过 failed/retry 完成恢复`。
+  - `普通 reset 在飞期间的 upsert/patch/remove 在权威响应后仍保留最终本地语义`。
+  - `forward loadMore 在飞时同 identity 的 upsert/patch 不被旧返回页覆盖或复制`。
+  - `pageSize=2/maxPages=1 裁剪后的 remove B 与重复 upsert C 在权威响应后保持最终语义`。
+  - `tail reset(pinEdge=false) 形成远离尾部的真实几何后，无 scroll 事件的 upsert 不自动追平或贴底`。
+- 单元竞态证据：
+  - `G3i mutation identity 超过硬预算时保留窗口并失败，显式重试再建立新快照`。
+  - `G3j 显式追平撞上已溢出的在途 reconcile 时立即用新快照作废旧请求`。
+  - `G3k reconcile 在飞时的 live 裁剪由当前请求重放，不再排第二次追平`。
+  - `G3l patch 继承既有 upsert 的重放顺序，不把身份移动到新鲜端`。
+- 性能证据：`BL-BUG-010：连续 1,000 次 upsertLocal 后仍必须满足硬上限`。
+- 结果：重复 identity 只保留更新后的一条；逻辑 1,000,000 条、`pageSize=50`、`maxPages=4` 下连续 1,000 次 live 插入后，状态与 DOM 均不超过 200；失效游标封锁、staged 成功重放与失败保留数据均 PASS。
+
+### BL-BUG-011 [P1] [CLOSED] dispose 后动画帧回写 DOM
+
+- 原问题：`pinToFreshEdge` 已排队的后续 rAF 在 dispose 后仍可能修改 `scrollTop`。
+- 修复：帧调度器使用递增 token 使已排队回调失效，回调本身检查 disposed；dispose 同时取消 invalidate、容量追平和滚动相关调度。
+- 功能证据：`BL-BUG-011：dispose 应取消 reset 尚未完成的贴边 rAF`。
+- 结果：`settleFrames=4` 的 reset 在首帧前 dispose，推进 5 帧后 `scrollTop` 仍为 0，PASS。
+
+### BL-BUG-012 [P1] [CLOSED] refresh 先落地后被旧分页回退
+
+- 原问题：普通 backward / forward 分页已经从旧快照发出时，较新的 `fetchByIdentity` 可能先落地并更新或删除窗口条目；旧分页随后并入会把新值回退，或把 refresh 已确认删除的条目重新带回。
+- 复现时序：
+  1. 同时暂停 backward 与 forward 两个普通分页请求。
+  2. 对窗口身份发起定向 refresh，分别覆盖“返回 found 新值”和“返回 absent 删除”。
+  3. 先让 refresh 落地，再依次放行两个旧分页响应。
+  4. 旧实现会在某个旧页并入后回退新值或复活删除项；双向并发还要求首个页落地后不能过早清空保护状态。
+- 修复：refresh token 通过窗口世代和 identity 双层校验后，若任一普通分页仍在飞，把 found 记录为 replace overlay、absent 记录为 remove overlay；每个旧页并入后重放，直到 backward / forward 都落定才释放。没有旧分页在飞时，接受 refresh 直接淘汰同 identity 的旧 overlay。
+- 单元证据：`E12j refresh 先于旧分页返回时，新值不回退且删除项不复活`，并额外断言首个方向返回后 overlay 仍保留、双向分页全部完成后清零；归档时 BoundedList 单元基线为 418 项。
+- 真实 Chromium 证据：`定向 refresh 先于旧分页落地时，新值不回退且删除项不复活`，目标用例 1/1 PASS；完整功能专项单 worker 51/51，4 workers 零重试连续两轮均 51/51。
+- 结果：found 保持 refresh 新值，absent 保持删除；旧分页无论返回方向与顺序都不能回退或复活，CLOSED。
+
+### BL-BUG-013 [P1] [CLOSED] 空页占位导致真实数据页被淘汰
+
+- 原问题：跨页去重（`dropIdsFromExistingPages`）与 `removeMatching` 用 `filter` 重写 `page.items`，却从不移除被删空的页。空页不贡献任何条目，却占着一个 `maxPages` 名额；当它位于中间或非淘汰端时，下一次续翻按 `maxPages` 淘汰的就是另一端的真实数据页——用户翻一页反而净损失一页内容。
+- 生产可达路径：`removeLocal` 删掉某页最后一条（删群成员 / 删消息），或 `mergeLive` 的跨页去重清空某页。
+- 根因：续翻锚点是从 `pages[0].startCursor` / `pages[last].endCursor` 现算的，于是「窗口边界在哪里」被迫绑死在「还剩哪些页」上，空页不能删。
+- 修复：`PageWindow` 显式维护 `headCursor` / `tailCursor`，与 `pages` 解耦。页被回收不改变窗口边界（边界之外的数据仍未加载），空页因此可以随时丢弃。`fallbackStartCursor` / `fallbackEndCursor` 两个特例字段一并消失，`loaded` 等价于 `count > 0`。
+- 回归入口：`page-window` D8（中间页删空后续翻不淘汰真实页）、D9（首页删空后 backward 边界仍停在原处）、C5（去重清空后立即回收页位）。
+
+### BL-BUG-014 [P2] [CLOSED] normalize 滤空整页占位与 localPageSource 新鲜端不匹配
+
+- 原问题①：源页非空但被 `normalize` 全部过滤时，为了让游标前进必须把这个空页塞进窗口占位，同样挤占 `maxPages` 名额。
+- 修复①：锚点是否前进只看**源页**是否非空（源页真为空时不能前进，否则会跳过尚未加载的数据），页是否入窗只看 `normalize` 后是否有条目，两个条件分开判断。
+- 原问题②：`localPageSource` 的 reset 写死取 `entries` 最前面一页，配 `freshEdge: 'tail'` 的列表会把最旧一页当首屏。该约束原本只写在注释里。
+- 修复②：`localPageSource` 增加 `freshEdge` 参数并按端取页，两处生产调用点补上显式取值。
+- 回归入口：`page-window` A6 / A11（空页不前进锚点）、`page-source` E1 / E2 / E3（两个新鲜端的 reset 取页方向）。
+
+### BL-BUG-015 [P1] [CLOSED] 失效游标期间错报「没有更多了」
+
+- 原问题：`cursorInvalid` 同时封锁了两件本该分开的事——「不能用这个游标续翻」和「这一端没有数据了」。`getState().hasMoreX` 把两者合成一个布尔传给渲染引擎，而引擎用 `!hasMoreX` 判定是否显示边界提示。于是 live 硬裁剪之后（被裁那一端**确实还有数据**，只是游标不可信）列表会显示「已到最早」；如果紧随其后的容量 reconcile 又失败，`cursorInvalid` 不再有任何路径被清除，这条错误提示从此永久留在界面上，同时触界检测也不再补页，用户只剩点提示条一条出路。
+- 生产可达路径：消息列表底部连续发消息 → 窗口满 → 硬预算裁剪 → 追平请求失败（断网 / 服务端 5xx）。
+- 修复：渲染状态里把两个信号拆开。`hasMoreBackward` / `hasMoreForward` 保持「能否续翻」语义驱动触界检测；新增 `atBackwardEnd` / `atForwardEnd` 表示「确认到达数据尽头」驱动边界提示，由组件按 `!PageWindow.hasMoreX` 传入（不叠加 `cursorInvalid`）。不提供时退化为 `!hasMoreX`，渲染引擎的既有调用方行为不变。
+- 回归入口：`bounded-list` G3o（裁剪后不显示边界提示、追平失败后仍不显示，且 retry 入口正常）。
+
+### BL-BUG-016 [P2] [CLOSED] `pinnedItems` 与窗口条目同身份时渲染重复行
+
+- 原问题：`paint()` 直接 `[...pinned, ...windowItems]`，不做任何身份去重，把这件事外包给每个调用方。渲染引擎按身份键协调 DOM，同一个 key 出现两次时 `renderedRows` 只记住后一条，而 desired 列表里同一个节点出现两次——`insertBefore` 把它搬走之后行数静默少一行，行缓存与真实 DOM 从此失配，后续复用判定全部失准。
+- 生产可达路径：会话列表的「空会话占位」在真实条目落库、首页重拉回来之后，两处会同时持有同一身份。该视图因此自己写了一段 `O(n×m)` 过滤来绕开，并在注释里明确承认「组件本身不去重，需要调用方自己避免」。`group-member-picker` 则是靠「身份不可能相同」侥幸成立。
+- 修复：抽出 `visibleItems()` 作为「当前该渲染的序列」的唯一来源，在其中按身份去重（窗口是权威，pinned 让位；pinned 自身重复也挡掉），渲染、`findItem`（点击命中）、`emitSelectionChange`（选中快照）三处共用它，保证「看到的 / 点到的 / 报出去的」是同一份序列和同一个顺序。调用方的手工过滤随之删除。
+- 回归入口：`bounded-list` H1b（同身份只渲染一行、窗口值胜出、pinned 自身重复也去重）、H1c（让位后点击命中与 `onSelectionChange` 都拿到窗口那一份）。
+
+### BL-BUG-017 [P2] [CLOSED] reset 在飞时的容量追平会把它打掉重发
+
+- 原问题：在飞权威请求记录里的 `promise` 只有 reconcile 分支回填，`reset` 的那一份恒为 `null`。`reconcileCapacity()` 的重入合并靠读这个字段，于是 reset 在飞期间的一次容量追平（在飞时发生的 live 裁剪、已排队的自动帧任务）会判定「没有请求在飞」，`++requestId` 把正在飞的 reset 作废再发一个新请求。既多打一次请求，也与既有约定「权威 reset / reconcile 已在飞时的 live eviction 只并入当前 overlay、由当前请求重放，不额外安排第二次追平」（`BL-BUG-010` 第 8 条）直接矛盾。
+- 修复：新增 `startAuthoritativePage()` 作为权威首页请求的唯一入口，发起后立刻把 Promise 登记进在飞记录，`reset` 与 reconcile 一视同仁；`reset()` 与 `reconcileCapacity()` 都改走它。
+- 回归入口：`bounded-list` G3p（reset 在飞期间裁剪触发的追平只合并、不新发请求，且该次 reset 的响应仍正常落地）。
+
+### BL-TEST-BUG-001 [TEST] [CLOSED] 并发方向用例依赖 80ms 调度窗口
+
+- 原问题：`同方向并发只发一次请求，相反方向可独立加载` 使用 `fetchDelayMs: 80` 制造请求重叠。4 workers 并行时，浏览器或 worker 调度可能让第一阶段请求在第二阶段触发前自然完成，测试会把调度抖动误判为同方向去重失效，曾出现 50/51；这不是 BoundedList 产品逻辑失败。
+- 修复：把固定延迟改为可控 gate。第一阶段确认同方向重复触发只进入一个请求并显式释放；第二阶段预置两个 gate，确认相反方向各自进入后再逐个释放。请求重叠与完成顺序完全由测试控制，不依赖机器速度或定时器窗口。
+- 回归入口：`apps/web/tests/component/bounded-list.spec.ts` 中 `同方向并发只发一次请求，相反方向可独立加载`。
+- 验证口径：`PLAYWRIGHT_WORKERS=4 ./tools/run_component_tests.sh`，固定 `retries=0`；50 项功能测试必须 50/50 PASS，不能通过降低 worker、增加重试或扩大固定等待掩盖竞态。
+- 结果：测试调度与产品行为已解耦，按 4 workers、0 retry 口径关闭。
+
+### BL-TEST-BUG-002 [TEST] [CLOSED] 虚拟时钟仍按真实时间流动导致防抖边界漂移
+
+- 原问题：Playwright `clock.install()` 只安装虚拟计时 API，时间默认仍随真实时间流动。4 workers 并发时，两次 `page.evaluate` 和 `fastForward(200)` 之间的调度开销可能使总虚拟时间超过 300ms，导致请求已经触发；在时钟暂停后调用会等待 animation frame 的异步 `dispose` helper，又会形成测试死锁。
+- 修复：挂载完成后先 `pauseAt`，连续查询后精确推进 299ms 断言未触发，再推进 1ms 验证 reset；断言后立即 `resume`。dispose 场景在暂停期使用同步 `disposeNow()`，释放请求并恢复时钟后才等待空闲。
+- 回归入口：`apps/web/tests/component/bounded-list.spec.ts` 中 `setQuery 默认 300ms 防抖、覆盖旧查询，0ms 立即 reset` 与 `dispose 幂等，隔离 pending 结果、取消防抖和后续 DOM apply，并清理资源`。
+- 验证口径：防抖目标用例按 4 workers、`retries=0` 重复 20/20 PASS；完整组件分类 51/51 PASS；仓库最终全量门禁通过。
+- 结果：测试只依赖受控虚拟时间与同步销毁语义，不再依赖 worker 调度速度，CLOSED。
+
+### BL-TEST-BUG-003 [TEST] [CLOSED] 宿主视图 DOM 替身缺少标准节点重排能力
+
+- 原问题：`uikit-message-search-jump.test.ts` 与 `uikit-message-forward-quote-detail.test.ts` 的局部 DOM 替身只实现了追加节点。BoundedList 改用保留节点身份的 keyed reconcile 后会调用标准 `insertBefore` / `removeChild`，导致两个宿主视图文件的 7 项单元测试在测试替身处失败；真实 Chromium DOM 不存在该限制。
+- 修复：两个替身补齐移动已有子节点、按引用节点插入、删除子节点以及 `parentElement` 同步语义。生产组件继续使用标准 DOM API，没有为测试环境增加降级分支。
+- 回归入口：`packages/uikit/tests/unit/uikit-message-search-jump.test.ts` 4 项与 `packages/uikit/tests/unit/uikit-message-forward-quote-detail.test.ts` 3 项。
+- 验证口径：目标 7 项必须 7/7 PASS，并由 UIKit 单元分类与仓库全量测试继续覆盖。
+- 结果：测试替身与浏览器 DOM 的相关契约重新一致，CLOSED。
+
+## 4. 首轮单元评审缺陷
+
+以下 26 条产品缺陷由首轮及后续单元评审发现，均已关闭。它们使用独立的 `BL-UNIT-BUG-NNN` 命名空间；与真实 Chromium 专项命中相同风险域时仍保留原发现记录，但详细行为契约以本文前述 `BL-BUG-NNN` 条目和归档时 [`测试方案.md`](../../packages/uikit/docs/boundedlist/测试方案.md) §4 为准。
+
+优先级口径：P0 会导致页面卡死或用户数据丢失；P1 是功能错误或契约未兑现；P2 是健壮性、一致性或可维护性问题。
+
+### 4.1 P0
+
+| ID | 缺陷与修复摘要 | 回归用例 |
+|---|---|---|
+| `BL-UNIT-BUG-001` | 翻页失败后，短列表贴边触发微任务内无限自动重试。空页强制收敛 `hasMore=false`；方向失败后暂停自动续翻，直到滚离、显式 `loadMore` 或 `reset`。 | `bounded-list` C13～C16；`page-window` A11 |
+| `BL-UNIT-BUG-002` | `removeLocal` 以当前窗口调用 `retainOnly`，误删共享 store 中其它 tab、pinned 或已裁剪条目。新增 `SelectionStore.delete(id)`，只摘目标身份。后续复核发现 `retainOnly` 自此再无任何生产调用点，已随导出面收窄一并删除（它正是本缺陷的成因，留着只是等下一次误用）。 | `bounded-list` G8/G8b/G8c；`selection` A8/A9 |
+| `BL-UNIT-BUG-003` | 旧定向刷新可污染 reset 后的新窗口，全局刷新序号又会误淘汰不同 identity。改用窗口 `requestId`、逐 identity token 与 overlay 保护。 | `bounded-list` E12b～E12j |
+| `BL-UNIT-BUG-026` | `mergeLive` 无条件把新鲜端 `hasMore` 置 `false`：窗口还没真正追平新鲜端（该端仍有未加载数据）时调用 `upsertLocal`（例如向上翻消息历史时发送新消息），会把本端新增错误拼接在一段旧历史后面并误关真正的续翻，中间那段数据在下一次 reset 前永久不可见。`upsertLocal` 增加 `reachesFreshEdge()` 守卫，未追平时只记入 mutation overlay 等重放；`replayPendingMutations` 同样逐条检查目标窗口是否已追平才重放 `upsert`；`patch`/`removeLocal` 相应扩展以命中「窗口没有但存在于 pending upsert」的条目。 | `page-window` E1/E1b；`bounded-list` C21/E12i/G1/G3 |
+
+### 4.2 P1
+
+| ID | 缺陷与修复摘要 | 回归用例 |
+|---|---|---|
+| `BL-UNIT-BUG-004` | 非空末页把 `hasMore` 收敛后提示条不消失。改为监听新鲜端 `hasMore` 从真到假。 | `bounded-list` F10/F11 |
+| `BL-UNIT-BUG-005` | 缺少 `text.updatePill` 时仍显示空提示条。文案缺省即隐藏。 | `bounded-list` F9 |
+| `BL-UNIT-BUG-006` | `onContentLoad` 未接入，图片异步增高后不重新贴底。接线并使用 load 前缓存的贴边状态。 | `bounded-list` M8/M9 |
+| `BL-UNIT-BUG-007` | `isActive() === false` 分支不重渲，重新可见时提示条和状态脱节。分支末尾补 `render()`。 | `bounded-list` E1b |
+| `BL-UNIT-BUG-008` | 空列表分支提前返回，不做触界检测，空首页会定格。返回前继续执行 `checkReach()`。 | `stream-window` C5/C5b；`bounded-list` C17 |
+| `BL-UNIT-BUG-009` | `mergeLive` 不按 identity 去重，重复或跨页条目被渲染多次。并入前统一跨页去重。 | `page-window` E6/E6b/E6c；`bounded-list` G11/G12 |
+| `BL-UNIT-BUG-010` | 空窗口 live 自建页使用空游标，后续向服务端发送非法续翻。保留首页 fallback 游标；无合法游标时收敛 `hasMore` 并短路。 | `page-window` A12/A13/E3/E3b；`bounded-list` C18～C20 |
+| `BL-UNIT-BUG-024` | 组件登记在进程级注册表，但宿主重连只广播实例注册表。构造参数注入宿主 `register`，保持多实例隔离。 | `bounded-list` A13 |
+
+### 4.3 P2
+
+| ID | 缺陷与修复摘要 | 回归用例 |
+|---|---|---|
+| `BL-UNIT-BUG-011` | `localPageSource` 接受非法游标后产生 `NaN` 并永久卡住。用 `Number.isFinite` 校验，非法值按 0 处理。 | `page-source` C8 |
+| `BL-UNIT-BUG-012` | `isQueryActive` 用 `JSON.stringify` 比较，键顺序不同即误判。改为有深度与环引用保护的结构比较。 | `bounded-list` H8/H8b/H8c |
+| `BL-UNIT-BUG-013` | 定向刷新请求返回前不重渲，提示条延迟出现。发请求前先 `render()`。 | `bounded-list` E11b |
+| `BL-UNIT-BUG-014` | `dispose()` 后已排队的贴边帧仍写 `scrollTop`。调度与回调增加 token、cancel 和 disposed 守卫。 | `bounded-list` L11 |
+| `BL-UNIT-BUG-015` | 焦点钳制晚于取键，窗口缩短那一帧丢失高亮。把钳制提前。 | `stream-window` I13 |
+| `BL-UNIT-BUG-016` | reset 失败与空数据共用“暂无数据”。新增错误文案、retry 入口和 `state.failed`。 | `bounded-list` H13～H15/M10；`stream-window` B8～B10 |
+| `BL-UNIT-BUG-017` | `maxPages=0` 时不同路径裁剪语义矛盾。窗口内部下限为 1，公开构造参数直接拒绝小于 1。 | `page-window` A14；`bounded-list` A9 |
+| `BL-UNIT-BUG-018` | `onSelectionChange.items` 与实际渲染顺序不一致。统一为 pinned 在前、窗口条目在后。 | `bounded-list` I9b |
+| `BL-UNIT-BUG-019` | `localPageSource.loadAll` 的进度无法透传。当时修复为请求增加可选 `onProgress` 并从组件 reset 注入；后续复核发现生产代码从未配置这条能力，两处调用方一直用自己的闭包上报进度，纯粹是死代码——已整体删除（`onLoadProgress`、`FetchPageRequest.onProgress`、`loadAll` 的 `onProgress` 参数），进度改为调用方在 `loadAll` 内部自行用闭包上报。 | 已随删除一并移除对应用例，不再保留回归入口 |
+| `BL-UNIT-BUG-020` | `pageSize`、`maxPages` 和外部 store/max 组合缺少校验。构造期抛 `RangeError` 或 `TypeError`。 | `bounded-list` A9/A10 |
+| `BL-UNIT-BUG-021` | 组件未设置列表和选项的可访问性属性，键盘导航不可达。构造时设置，dispose 时精确还原。 | `bounded-list` A11/A12/L1 |
+| `BL-UNIT-BUG-022` | `SelectionStore.notify()` 直接遍历可变 `Set`，通知期间增删订阅行为不确定。改为快照遍历。 | `selection` C6/C7 |
+| `BL-UNIT-BUG-023` | 广播忽略异步拒绝，产生未处理 Promise。兜住同步抛错与异步拒绝，不中断其它实例。 | `registry` B5/B6 |
+| `BL-UNIT-BUG-025` | 旧单文件与 `bounded-list/` 目录同名，模块解析优先命中旧入口。删除旧文件并把 controller 并入 registry。 | `bounded-list` A14 |
