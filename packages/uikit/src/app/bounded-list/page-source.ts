@@ -62,8 +62,8 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
       items: source.slice(clampedStart, clampedEnd),
       startCursor: String(clampedStart),
       endCursor: String(clampedEnd),
-      hasMoreBackward: clampedStart > 0,
-      hasMoreForward: clampedEnd < source.length,
+      hasMoreHead: clampedStart > 0,
+      hasMoreTail: clampedEnd < source.length,
       total: source.length,
     };
   }

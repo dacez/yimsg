@@ -27,13 +27,20 @@ export interface FetchPageRequest<Q> {
   readonly query: Q;
 }
 
-/** 一页分页结果，与 SDK PageInfo 同构；total 未提供时视为未知（组件对外呈现为 -1）。 */
+/**
+ * 一页分页结果；total 未提供时视为未知（组件对外呈现为 -1）。
+ *
+ * `hasMoreHead`/`hasMoreTail` 与 `PageWindow`、渲染状态用的是同一套 Edge 词汇；
+ * 调用方从 SDK `PageInfo`（`hasMoreBackward`/`hasMoreForward`，wire 协议自己的方向词汇）
+ * 映射过来时按 `backward→head`、`forward→tail` 一次性转换，与 `FetchPageRequest.backward`
+ * 的转换方向一致（见 `Edge` 类型说明），不随展示序变化。
+ */
 export interface PageLoadResult<T> {
   readonly items: readonly T[];
   readonly startCursor: string;
   readonly endCursor: string;
-  readonly hasMoreBackward: boolean;
-  readonly hasMoreForward: boolean;
+  readonly hasMoreHead: boolean;
+  readonly hasMoreTail: boolean;
   readonly total?: number;
 }
 
@@ -146,6 +153,12 @@ export interface BoundedListOptions<T, Q = void> {
   readonly onActivate?: (item: T, ev: Event) => void;
   readonly onSelectionChange?: (snapshot: SelectionSnapshot<T>) => void;
   readonly onLoadStateChange?: (state: BoundedListState) => void;
+  /**
+   * 窗口条目变化时上报，**不含** `pinnedItems()`。这是刻意的两份序列：渲染、点击命中
+   * （`findItem`）、选中快照（`onSelectionChange`）用的是含 pinned 且按身份去重的
+   * `visibleItems()`；这里给的是窗口自己的原始条目，供调用方在需要单独处理 pinned
+   * 的场景（例如自行拼接 pinned 后另作展示）中使用，不需要自己再去重。
+   */
   readonly onItemsChanged?: (items: readonly T[]) => void;
   readonly onError?: (error: unknown, phase: ErrorPhase) => void;
 }

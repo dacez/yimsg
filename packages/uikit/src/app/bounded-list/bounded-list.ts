@@ -428,7 +428,7 @@ export class BoundedList<T, Q = void> {
     const emptyText = items.length === 0
       ? (filtered ? (text.emptyFiltered?.() ?? text.empty?.()) : text.empty?.())
       : undefined;
-    // loaded/hasMoreBackward/hasMoreForward/loadingBackward/loadingForward 与 getState() 是同一份口径，
+    // loaded/hasMoreHead/hasMoreTail/loadingHead/loadingTail 与 getState() 是同一份口径，
     // 复用而不是各写一遍，避免以后改判定条件时漏改其中一处。
     // 贴边几何在这里只读一次：紧接着的 stream.render 会写 DOM，读写交替会强制同步重排。
     const state = this.buildState(this.atFreshEdge());
@@ -636,8 +636,7 @@ export class BoundedList<T, Q = void> {
   /**
    * 提示条自动消失路径②：新鲜端方向已经翻到尽头（该端 hasMore 收敛为 false）。
    * 判定条件是「hasMore 变 false」而不是「拿到空页」——非空的最后一页同样意味着
-   * 新鲜端之后再无未加载数据，提示条必须一起消失。两个字段必须一起清零，
-   * 否则残留计数会带到下一次提示条亮起。
+   * 新鲜端之后再无未加载数据，提示条必须一起消失。
    */
   private settleFreshEdgeBoundary(edge: Edge): void {
     if (edge !== this.edge.at) return;
