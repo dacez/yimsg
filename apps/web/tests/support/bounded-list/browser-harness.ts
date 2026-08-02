@@ -238,8 +238,8 @@ function pageFromRange(
     items,
     startCursor: String(start),
     endCursor: String(end),
-    hasMoreBackward: start > 0,
-    hasMoreForward: end < total,
+    hasMoreHead: start > 0,
+    hasMoreTail: end < total,
     total,
   };
 }

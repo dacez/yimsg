@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { PageWindow } from '../../../src/app/bounded-list/page-window';
 import type { PageLoadResult } from '../../../src/app/bounded-list/types';
 
-function page(items: number[], startCursor: string, endCursor: string, hasMoreBackward: boolean, hasMoreForward: boolean, total?: number): PageLoadResult<number> {
-  return { items, startCursor, endCursor, hasMoreBackward, hasMoreForward, total };
+function page(items: number[], startCursor: string, endCursor: string, hasMoreHead: boolean, hasMoreTail: boolean, total?: number): PageLoadResult<number> {
+  return { items, startCursor, endCursor, hasMoreHead, hasMoreTail, total };
 }
 
 const asKey = (n: number): string => String(n);

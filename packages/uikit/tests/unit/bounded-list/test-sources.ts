@@ -28,8 +28,8 @@ export function createInstantSource(getAll: () => TestItem[], opts?: { withTotal
           items,
           startCursor: '0',
           endCursor: String(items.length),
-          hasMoreBackward: false,
-          hasMoreForward: items.length < all.length,
+          hasMoreHead: false,
+          hasMoreTail: items.length < all.length,
           total: opts?.withTotal ? all.length : undefined,
         };
       }
@@ -37,11 +37,11 @@ export function createInstantSource(getAll: () => TestItem[], opts?: { withTotal
       if (req.backward) {
         const start = Math.max(0, cursor - req.limit);
         const items = all.slice(start, cursor);
-        return { items, startCursor: String(start), endCursor: String(cursor), hasMoreBackward: start > 0, hasMoreForward: cursor < all.length };
+        return { items, startCursor: String(start), endCursor: String(cursor), hasMoreHead: start > 0, hasMoreTail: cursor < all.length };
       }
       const end = Math.min(all.length, cursor + req.limit);
       const items = all.slice(cursor, end);
-      return { items, startCursor: String(cursor), endCursor: String(end), hasMoreBackward: cursor > 0, hasMoreForward: end < all.length };
+      return { items, startCursor: String(cursor), endCursor: String(end), hasMoreHead: cursor > 0, hasMoreTail: end < all.length };
     },
   };
 }
@@ -71,8 +71,8 @@ export function createAnchoredSource(getAll: () => TestItem[], anchorIndex: numb
         items: all.slice(start, end),
         startCursor: String(start),
         endCursor: String(end),
-        hasMoreBackward: start > 0,
-        hasMoreForward: end < all.length,
+        hasMoreHead: start > 0,
+        hasMoreTail: end < all.length,
       };
     },
   };
@@ -94,8 +94,8 @@ export function createOptimisticSource(getAll: () => TestItem[]): PageSource<Tes
         items: page,
         startCursor: String(cursor),
         endCursor: String(end),
-        hasMoreBackward: cursor > 0,
-        hasMoreForward: page.length === req.limit,
+        hasMoreHead: cursor > 0,
+        hasMoreTail: page.length === req.limit,
       };
     },
   };
@@ -142,6 +142,6 @@ export function createControllableFetcher<T>(): {
   };
 }
 
-export function pageOf(items: TestItem[], startCursor: string, endCursor: string, hasMoreBackward: boolean, hasMoreForward: boolean, total?: number): PageLoadResult<TestItem> {
-  return { items, startCursor, endCursor, hasMoreBackward, hasMoreForward, total };
+export function pageOf(items: TestItem[], startCursor: string, endCursor: string, hasMoreHead: boolean, hasMoreTail: boolean, total?: number): PageLoadResult<TestItem> {
+  return { items, startCursor, endCursor, hasMoreHead, hasMoreTail, total };
 }

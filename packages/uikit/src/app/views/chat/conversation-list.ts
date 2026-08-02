@@ -170,8 +170,8 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
         items: page.conversations,
         startCursor: page.page.startCursor,
         endCursor: page.page.endCursor,
-        hasMoreBackward: page.page.hasMoreBackward,
-        hasMoreForward: page.page.hasMoreForward,
+        hasMoreHead: page.page.hasMoreBackward,
+        hasMoreTail: page.page.hasMoreForward,
       }),
     ),
     fetchByIdentity: (ids) =>

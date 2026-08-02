@@ -1757,11 +1757,11 @@ describe('BoundedList / F 提示条自动消失（§5.3 三条路径）', () => 
         if (req.backward) {
           const start = Math.max(0, cursor - req.limit);
           const page = all.slice(start, cursor);
-          return { items: page, startCursor: String(start), endCursor: String(cursor), hasMoreBackward: page.length === req.limit, hasMoreForward: true };
+          return { items: page, startCursor: String(start), endCursor: String(cursor), hasMoreHead: page.length === req.limit, hasMoreTail: true };
         }
         const end = Math.min(all.length, cursor + req.limit);
         const page = all.slice(cursor, end);
-        return { items: page, startCursor: String(cursor), endCursor: String(end), hasMoreBackward: true, hasMoreForward: page.length === req.limit };
+        return { items: page, startCursor: String(cursor), endCursor: String(end), hasMoreHead: true, hasMoreTail: page.length === req.limit };
       },
     };
     const list = createBoundedList(baseOptions(host, optimisticBothEnds, { order: 'desc' }));

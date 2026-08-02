@@ -167,8 +167,8 @@ export class PageWindow<T> {
     // 窗口暂时没有条目但边界是确定的。
     this.headCursor = page.startCursor;
     this.tailCursor = page.endCursor;
-    this.moreHead = page.hasMoreBackward;
-    this.moreTail = page.hasMoreForward;
+    this.moreHead = page.hasMoreHead;
+    this.moreTail = page.hasMoreTail;
     this.totalCount = page.total ?? -1;
   }
 
@@ -190,7 +190,7 @@ export class PageWindow<T> {
     }
     if (page.items.length > 0) this.tailCursor = page.endCursor;
     // 空页 = 该方向已经没有数据，无论服务端怎么说都收敛为 false。
-    this.moreTail = page.items.length === 0 ? false : page.hasMoreForward;
+    this.moreTail = page.items.length === 0 ? false : page.hasMoreTail;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.shift();
@@ -213,7 +213,7 @@ export class PageWindow<T> {
       this.pages.unshift({ items, startCursor: page.startCursor, endCursor: page.endCursor });
     }
     if (page.items.length > 0) this.headCursor = page.startCursor;
-    this.moreHead = page.items.length === 0 ? false : page.hasMoreBackward;
+    this.moreHead = page.items.length === 0 ? false : page.hasMoreHead;
     this.totalCount = page.total ?? this.totalCount;
     while (this.pages.length > this.maxPages) {
       this.pages.pop();
