@@ -323,13 +323,13 @@ describe('PageSource / D 大数据量', () => {
     const source = localPageSource<Item, void>({ loadAll });
     const maxPages = 5;
     const pageSize = 40;
-    const window = new PageWindow<Item>(maxPages, undefined, (item) => String(item.id));
+    const window = new PageWindow<Item>({ maxPages, pageSize, identityOf: (item) => String(item.id) });
 
-    window.setInitial(await source.fetch({ backward: false, limit: pageSize, query: undefined }));
+    window.setFirstPage(await source.fetch({ backward: false, limit: pageSize, query: undefined }));
     for (let i = 0; i < 30; i++) {
       const page = await source.fetch({ cursor: window.cursorFor('tail'), backward: false, limit: pageSize, query: undefined });
       if (page.items.length === 0) break;
-      window.appendTail(page);
+      window.extend('tail', page);
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
     }
     expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
@@ -342,14 +342,14 @@ describe('PageSource / D 大数据量', () => {
     const source = localPageSource<Item, void>({ loadAll, compare: (a, b) => a.name.localeCompare(b.name) });
     const pageSize = 40;
     const maxPages = 5;
-    const window = new PageWindow<Item>(maxPages, undefined, (item) => String(item.id));
-    window.setInitial(await source.fetch({ backward: false, limit: pageSize, query: undefined }));
+    const window = new PageWindow<Item>({ maxPages, pageSize, identityOf: (item) => String(item.id) });
+    window.setFirstPage(await source.fetch({ backward: false, limit: pageSize, query: undefined }));
 
     let pages = 1;
     for (;;) {
       const page = await source.fetch({ cursor: window.cursorFor('tail'), backward: false, limit: pageSize, query: undefined });
       if (page.items.length === 0) break;
-      window.appendTail(page);
+      window.extend('tail', page);
       pages++;
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
     }

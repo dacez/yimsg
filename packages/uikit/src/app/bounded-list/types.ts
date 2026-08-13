@@ -5,21 +5,21 @@
  * 展示序：列表按什么方向排列，与协议文档「展示序」用词一致（同步机制方案.md）。
  * 'asc' = 旧→新（如消息），'desc' = 新→旧（如会话/联系人/群成员）。
  *
- * 只影响哪一端是新鲜端：'asc' 时新数据出现在尾部，'desc' 时出现在头部。组件内部
- * 只关心「哪一端」，一律用 Edge 表达，`order` 仅在构造时转换成一次 Edge 取值。
+ * 它只决定一件事：哪一端是新鲜端。'asc' 时新数据出现在尾部，'desc' 时出现在头部。
+ * 组件内部一律用 Edge 表达端，`order` 只在构造时转换成一次 Edge 取值。
  */
 export type DisplayOrder = 'asc' | 'desc';
 
 /**
  * 列表的一端：数组 / DOM 的头部还是尾部。
  *
- * wire 协议的 `backward`/`forward`（续翻请求朝哪边）与组件内部的 head/tail（哪端新鲜）
- * 是同一根轴：backward 恒等于 head、forward 恒等于 tail，没有例外。组件内部只用 Edge
- * 一套词汇，只在发出 `FetchPageRequest` 时转换成 `backward` 一次（见 `loadMoreInternal`）。
+ * wire 协议的 `backward`/`forward`（续翻请求朝哪边）与组件内部的 head/tail 是同一根轴：
+ * backward 恒等于 head、forward 恒等于 tail，没有例外。组件内部只用 Edge 一套词汇，
+ * 只在发出 `FetchPageRequest` 时转换成 `backward` 一次。
  */
 export type Edge = 'head' | 'tail';
 
-/** 分页请求参数：cursor 未提供表示 reset（拉首页）。 */
+/** 分页请求参数：cursor 未提供表示拉首页。 */
 export interface FetchPageRequest<Q> {
   readonly cursor?: string;
   readonly backward: boolean;
@@ -30,10 +30,9 @@ export interface FetchPageRequest<Q> {
 /**
  * 一页分页结果；total 未提供时视为未知（组件对外呈现为 -1）。
  *
- * `hasMoreHead`/`hasMoreTail` 与 `PageWindow`、渲染状态用的是同一套 Edge 词汇；
- * 调用方从 SDK `PageInfo`（`hasMoreBackward`/`hasMoreForward`，wire 协议自己的方向词汇）
- * 映射过来时按 `backward→head`、`forward→tail` 一次性转换，与 `FetchPageRequest.backward`
- * 的转换方向一致（见 `Edge` 类型说明），不随展示序变化。
+ * `hasMoreHead`/`hasMoreTail` 与组件内部用的是同一套 Edge 词汇；调用方从 SDK `PageInfo`
+ * （`hasMoreBackward`/`hasMoreForward`）映射过来时按 `backward→head`、`forward→tail`
+ * 一次性转换，不随展示序变化。
  */
 export interface PageLoadResult<T> {
   readonly items: readonly T[];
@@ -78,15 +77,14 @@ export interface BoundedListState {
   readonly loadingTail: boolean;
   readonly hasMoreHead: boolean;
   readonly hasMoreTail: boolean;
+  /** 当前渲染序列的条目数（含 pinnedItems 与本地层）。 */
   readonly count: number;
   readonly total: number;
   /**
-   * 有未追平的变化，提示条该亮起。
+   * 提示条该不该亮：有已知的变化但当前没有追平。
    *
-   * 刻意是**布尔而不是计数**：「有几条待处理更新」「首屏刷新失败了」「被硬预算裁掉了
-   * 几条看不见的」是三件不同的事，用一个数字表达它们必须约定各自怎么合并（累加 /
-   * 至少 1 / 取较大者），得到的数字对用户既不准也没意义。用户需要知道的只是
-   * 「下面还有没看到的东西」，那是一个布尔。需要精确条数的调用方自己数最准。
+   * 刻意是**布尔而不是计数**：「有几条待处理更新」对用户既不准也没意义，用户需要知道的
+   * 只是「上面还有没看到的东西」。需要精确条数的调用方自己数最准。
    */
   readonly stale: boolean;
   readonly atFreshEdge: boolean;
@@ -124,14 +122,16 @@ export interface BoundedListOptions<T, Q = void> {
    *
    * 必填：同一页面可以并存多个 AppInstance（嵌入式 UIKit 的多格子场景），它们的列表 id
    * 完全相同。若省略并退化到一份进程级注册表，同名列表会互相覆盖，且拿不到宿主的重连
-   * 广播。必填后「注册到哪个宿主」在编译期就是确定的。
+   * 广播。不接入广播的一次性列表显式传 `standaloneList`。
    */
   readonly register: RegisterBoundedList;
 
   readonly pageSize: number;
   readonly maxPages: number;
   readonly source: PageSource<T, Q>;
+  /** 定向刷新：只更新窗口内这些身份，不重排。不提供则收到 identities 通知时只亮提示条。 */
   readonly fetchByIdentity?: (ids: readonly string[]) => Promise<readonly T[]>;
+  /** 每页归一化（排序 / 去重 / 过滤），只作用于服务端返回的整页，不作用于本地层。 */
   readonly normalize?: (items: readonly T[]) => T[];
 
   readonly identityOf: (item: T) => string;
@@ -153,12 +153,7 @@ export interface BoundedListOptions<T, Q = void> {
   readonly onActivate?: (item: T, ev: Event) => void;
   readonly onSelectionChange?: (snapshot: SelectionSnapshot<T>) => void;
   readonly onLoadStateChange?: (state: BoundedListState) => void;
-  /**
-   * 窗口条目变化时上报，**不含** `pinnedItems()`。这是刻意的两份序列：渲染、点击命中
-   * （`findItem`）、选中快照（`onSelectionChange`）用的是含 pinned 且按身份去重的
-   * `visibleItems()`；这里给的是窗口自己的原始条目，供调用方在需要单独处理 pinned
-   * 的场景（例如自行拼接 pinned 后另作展示）中使用，不需要自己再去重。
-   */
+  /** 渲染序列变化时上报，与真正渲染出来的是同一份序列（含 pinnedItems 与本地层）。 */
   readonly onItemsChanged?: (items: readonly T[]) => void;
   readonly onError?: (error: unknown, phase: ErrorPhase) => void;
 }

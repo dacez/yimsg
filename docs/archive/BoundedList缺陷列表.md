@@ -1,11 +1,13 @@
 # BoundedList 缺陷列表（归档）
 
 > 主要对照：`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/bounded-list.spec.ts` 与 `apps/web/tests/performance/bounded-list.performance.spec.ts`（历史归档，对照关系截至归档时点）。
-> 最后复核：2026-07-30。
+> 最后复核：2026-08-13。
 > 触发更新：本文是归档快照，不再随源码演进更新；新缺陷登记、状态变更与当前测试结果统一维护在当前事实源。
 > 入口关系：上级归档说明见 [`README.md`](README.md)；当前缺陷状态、登记流程与维护规则见 [`../../packages/uikit/docs/boundedlist/缺陷列表.md`](../../packages/uikit/docs/boundedlist/缺陷列表.md)；本文仅供追溯，不作为当前事实源。
 
-本文归档 BoundedList 已关闭缺陷的复现条件、根因和修复摘要，共 46 条：17 条 `BL-BUG-NNN` 产品缺陷、26 条 `BL-UNIT-BUG-NNN` 单元评审缺陷、3 条 `BL-TEST-BUG-NNN` 测试基础设施缺陷，归档时全部 `CLOSED`。状态定义、登记与关闭流程见当前事实源，不在本文重复。
+本文归档 BoundedList 已关闭缺陷的复现条件、根因和修复摘要，共 47 条：18 条 `BL-BUG-NNN` 产品缺陷、26 条 `BL-UNIT-BUG-NNN` 单元评审缺陷、3 条 `BL-TEST-BUG-NNN` 测试基础设施缺陷，全部 `CLOSED`。状态定义、登记与关闭流程见当前事实源，不在本文重复。
+
+> 2026-08-13 的组件重构（权威窗口 + 本地层分离、请求单飞、单一追平决策点）删除了重放机制、容量 reconcile 与失效游标等内部结构，本文中提到这些结构的历史条目只作追溯，不再对应当前实现；当前实现见 [`../../packages/uikit/docs/boundedlist/组件设计.md`](../../packages/uikit/docs/boundedlist/组件设计.md)。
 
 ## 1. 归档时基线快照
 
@@ -42,6 +44,7 @@
 | `BL-BUG-015` | P1 | CLOSED | 失效游标期间的边界提示 | 边界提示改看窗口自己的账（`atBackwardEnd` / `atForwardEnd`），不再与「能否续翻」共用一个信号 |
 | `BL-BUG-016` | P2 | CLOSED | `pinnedItems` 与窗口条目同身份 | 去重收回组件内并统一 `visibleItems()` 序列，渲染 / 点击命中 / 选中快照共用同一份 |
 | `BL-BUG-017` | P2 | CLOSED | reset 在飞时的容量追平 | `reset` 与 reconcile 都登记在飞 Promise，重入合并对两者一视同仁 |
+| `BL-BUG-018` | P2 | CLOSED | 发送消息后会话列表提示条闪动 | 把「收到通知」（`dirty`）与「提示条该亮」（`stale`）拆开，只有追平决策点写 `stale`；请求在飞时决策直接返回，等响应落地后重新决策 |
 | `BL-TEST-BUG-001` | TEST | CLOSED | 同方向请求去重、相反方向独立加载的并发用例 | 用可控双请求 gate 替代 80ms 固定延迟，断言只依赖请求是否已进入和显式放行 |
 | `BL-TEST-BUG-002` | TEST | CLOSED | 300ms 防抖和 dispose 取消防抖的虚拟时钟用例 | 暂停虚拟时钟后精确推进 299+1ms；销毁场景使用同步 `disposeNow()`，恢复时钟后再等待空闲 |
 | `BL-TEST-BUG-003` | TEST | CLOSED | UIKit 宿主视图的轻量 DOM 替身 | 补齐 `insertBefore`、`removeChild` 和父子关系，使替身支持 BoundedList 的 keyed DOM reconcile |
@@ -201,6 +204,14 @@
 - 生产可达路径：会话列表的「空会话占位」在真实条目落库、首页重拉回来之后，两处会同时持有同一身份。该视图因此自己写了一段 `O(n×m)` 过滤来绕开，并在注释里明确承认「组件本身不去重，需要调用方自己避免」。`group-member-picker` 则是靠「身份不可能相同」侥幸成立。
 - 修复：抽出 `visibleItems()` 作为「当前该渲染的序列」的唯一来源，在其中按身份去重（窗口是权威，pinned 让位；pinned 自身重复也挡掉），渲染、`findItem`（点击命中）、`emitSelectionChange`（选中快照）三处共用它，保证「看到的 / 点到的 / 报出去的」是同一份序列和同一个顺序。调用方的手工过滤随之删除。
 - 回归入口：`bounded-list` H1b（同身份只渲染一行、窗口值胜出、pinned 自身重复也去重）、H1c（让位后点击命中与 `onSelectionChange` 都拿到窗口那一份）。
+
+### BL-BUG-018 [P2] [CLOSED] 发送消息后会话列表提示条一闪而过
+
+- 复现：在聊天框发送一条消息，会话列表先出现「有更新」提示条，随即自行消失。
+- 环境：真实 Chromium，会话列表贴在新鲜端（列表顶部）。
+- 根因：`invalidate()` 的决策在「有数据请求在飞」这一分支里直接点亮提示条，而那次在飞请求落地后决策又判定应该追平，追平成功即熄灭。本端发送会在很短时间内连续触发两次通知（`conversations:sent` 的定向拉取与随后的同步成功广播），第二次恰好落在第一次追平的在飞窗口里，于是提示条闪一下。
+- 修复：拆分 `dirty`（输入：收到过通知）与 `stale`（输出：提示条该亮），并规定只有追平决策点 `decide()` / `setStale()` 能写 `stale`；请求在飞时决策直接返回，由响应落地后重新决策。同一次重构还把本地写入移出权威窗口（`LocalOverlay`），`upsertLocal` 因此不再有任何点亮提示条的路径。
+- 回归：`bounded-list` E7（单元）、`BL-PW-015`（真实 Chromium，全程断言提示条不可见）。
 
 ### BL-BUG-017 [P2] [CLOSED] reset 在飞时的容量追平会把它打掉重发
 

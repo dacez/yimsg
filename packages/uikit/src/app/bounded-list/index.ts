@@ -5,6 +5,7 @@
 // 只被本目录内部使用的类型（BoundedListText、Edge、DisplayOrder、SelectionConfig、
 // RegisterBoundedList、LocalPageSourceOptions、ToggleResult）不再导出：它们是
 // BoundedListOptions 等已导出类型的组成部分，结构类型下调用方无需单独 import 也能用。
+// PageWindow / LocalOverlay / ListRenderer 是实现分层，同样不导出。
 //
 // BoundedList 只作为类型出现在调用方（`type BoundedList` 持有实例引用），没有任何
 // `new BoundedList(...)` 或静态成员访问，因此按类型导出，实例统一从 createBoundedList 来。
