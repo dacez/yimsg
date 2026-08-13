@@ -184,6 +184,9 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     pinnedItems: () => pinnedConversations(app),
     renderItem: (conv, ctx) => {
       if (ctx.index === 0) {
+        // windowItems 是上一次 onItemsChanged 的快照（已含 pinned 与本地层），但显式
+        // render() 不触发该回调：占位会话是在窗口数据没变的情况下出现的，必须在这里
+        // 再并一次当前 pinned，否则它的展示名拿不到缓存。重复身份对取展示信息无副作用。
         displayMaps = collectDisplayMaps(app, [...pinnedConversations(app), ...windowItems]);
       }
       return [renderConversationRow(app, conv, ctx, displayMaps!)];

@@ -216,26 +216,28 @@ describe('BoundedList 压力 / C 高频事件', () => {
     }
   });
 
-  it('C2 连续 2000 次 upsertLocal：窗口与 DOM 始终受 pageSize×maxPages 硬预算约束', async () => {
+  it('C2 连续 2000 次 upsertLocal：本地层自身有界，渲染序列不随写入次数增长', async () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(40), 0), { order: 'asc', pageSize: 40, maxPages: 5 }));
     await list.reset({ pinEdge: false });
     for (let i = 0; i < 2000; i++) list.upsertLocal({ id: 10000 + i, label: `local-${i}` });
     const state = list.getState();
-    expect(state.count).toBe(40 * 5);
+    // 权威窗口 ≤ pageSize×maxPages，本地层 ≤ pageSize，两者相加就是渲染序列的上界。
+    expect(state.count).toBeLessThanOrEqual(40 * 5 + 40);
     expect(rowNodes(host)).toHaveLength(state.count);
-    expect(state.hasMoreTail).toBe(false);
+    // 新鲜端在尾部：最后一次写入永远排在最后一条。
     expect(rowNodes(host).at(-1)?.className).toContain('row-11999');
     list.dispose();
   });
 
-  it('C3 1000 次 patch + 1000 次 removeLocal 后窗口自洽', async () => {
+  it('C3 1000 次 upsertLocal + 1000 次 removeLocal 后渲染序列自洽', async () => {
     const items = makeTestItems(1000);
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => items, 0), { pageSize: 1000, maxPages: 1 }));
     await list.reset({ pinEdge: false });
     expect(list.getState().count).toBe(1000);
-    for (let i = 0; i < 1000; i++) expect(list.patch(String(i), (item) => ({ ...item, label: `p-${i}` }))).toBe(true);
+    for (let i = 0; i < 1000; i++) list.upsertLocal({ id: i, label: `p-${i}` });
+    expect(list.getState().count).toBe(1000);
     for (let i = 0; i < 1000; i++) expect(list.removeLocal(String(i))).toBe(true);
     expect(list.getState().count).toBe(0);
     expect(rowNodes(host)).toHaveLength(0);
@@ -291,7 +293,8 @@ describe('BoundedList 压力 / D 极端形态数据', () => {
     }));
     await list.reset({ pinEdge: false });
     expect(rowNodes(host)[0].getAttribute('data-bsw-key')).toBe(`${long}-0`);
-    expect(list.patch(`${long}-3`, (item) => item)).toBe(true);
+    expect(list.removeLocal(`${long}-3`)).toBe(true);
+    expect(rowNodes(host)).toHaveLength(9);
     list.dispose();
   });
 

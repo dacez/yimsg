@@ -1,7 +1,7 @@
 # UIKit 方案
 
 > 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`、`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/` 与 `apps/web/tests/performance/`。
-> 最后复核：2026-07-30。
+> 最后复核：2026-08-13。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物、宿主回调或 UIKit 核心组件测试入口变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -268,7 +268,7 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | 单元测试 | `packages/uikit/tests/unit/uikit-theme-i18n.test.ts` | 主题变量、locale 覆盖、运行期切换 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-mode.test.ts`、`startup-mode.test.ts` | mode 分支、布局决策 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-navigation.test.ts` | `switchView` 在 `chat-only` / `contacts-only` 显示范围下强制落回对应视图 |
-| 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | BoundedList 核心：组件外壳、PageWindow、PageSource、SelectionStore、registry、StreamWindow、提示条 |
+| 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | BoundedList 核心：组件外壳、PageWindow、LocalOverlay、ListRenderer、PageSource、SelectionStore、提示条与辅助模块 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-message-page.test.ts`、`uikit-message-search-jump.test.ts` | 生产视图接入 BoundedList 后的状态清理、锚点跳转与投影同步 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-security.test.ts` | URL allowlist、SafeHtml、转义约束 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-settings-clear-data.test.ts` | 设置页「清除数据」按钮：仅 persistent 模式展示、确认弹窗、resetLocalData=current-user 重新初始化、失败与降级分支 |
@@ -279,7 +279,7 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 | 浏览器性能测试 | `apps/web/tests/performance/bounded-list.performance.spec.ts` | 100,000 条本地数据、逻辑 1,000,000 条、长程分页、事件风暴、创建 / 销毁与实时插入的容量和性能门禁 |
 | E2E 测试 | `apps/web/tests/e2e/*.spec.ts` | 主应用持久存储全量能力 |
 
-BoundedList 专项截至 2026-07-29 共 59 个 Playwright 用例（53 个功能用例、6 个性能用例）；此前登记的 12 个浏览器缺陷均有固定回归。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §6](../../../docs/development/测试方案.md#6-boundedlist-playwright-与性能专项)，历史证据见 [`../../../docs/archive/BoundedList缺陷列表.md`](../../../docs/archive/BoundedList缺陷列表.md)，当前缺陷状态见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。当次是否通过以实际测试输出为准，不在设计文档中长期固化。
+BoundedList 专项截至 2026-08-13 共 41 个 Playwright 用例（35 个功能用例、6 个性能用例）；此前登记的浏览器缺陷均有固定回归。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §6](../../../docs/development/测试方案.md#6-boundedlist-playwright-与性能专项)，历史证据见 [`../../../docs/archive/BoundedList缺陷列表.md`](../../../docs/archive/BoundedList缺陷列表.md)，当前缺陷状态见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。当次是否通过以实际测试输出为准，不在设计文档中长期固化。
 
 ## 11. 已知边界
 

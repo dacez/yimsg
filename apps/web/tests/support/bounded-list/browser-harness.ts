@@ -679,9 +679,6 @@ const api = {
   upsertLocal(key: string, item: TestItem): void {
     getEntry(key).list.upsertLocal(cloneItem(item));
   },
-  patchLabel(key: string, id: string, label: string): boolean {
-    return getEntry(key).list.patch(id, (item) => ({ ...item, label }));
-  },
   removeLocal(key: string, id: string): boolean {
     return getEntry(key).list.removeLocal(id);
   },
