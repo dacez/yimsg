@@ -1,5 +1,5 @@
 // bounded-list 测试专用的最小化 fake DOM：仓库测试环境是 vitest 的 node 环境（无 jsdom），
-// 所有列表渲染测试都靠手写的 fake element 驱动（与 uikit-bounded-stream-window.test.ts 一致）。
+// 所有列表渲染测试都靠手写的 fake element 驱动。
 // 这里补上 bounded-list 需要的能力：classList、parentElement、事件的增删（用于验证 dispose
 // 真的移除了监听，不只是「不再触发」）、getBoundingClientRect（锚点/滚动测试）、fake window。
 

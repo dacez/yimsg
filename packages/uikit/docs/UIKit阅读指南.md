@@ -1,7 +1,7 @@
 # UIKit 阅读指南
 
 > 主要对照：`packages/uikit/src/app/shell.ts`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/app-instance.ts`、`packages/uikit/src/app/views/`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/safe-dom.ts`、`packages/uikit/src/embed.ts`。
-> 最后复核：2026-07-29。
+> 最后复核：2026-08-16。
 > 触发更新：UIKit 视图结构、样式系统、DOM 构建模式、布局机制或新手上手路线发生变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
 
@@ -391,7 +391,7 @@ form.addEventListener('submit', (e) => { e.preventDefault(); /* 拦截默认提�
 ```ts
 const list = createBoundedList({
   scrollElement: app.$('conversation-list'),
-  source: serverPageSource(request => app.client.getConversations(request)),
+  source: sdkPageSource(request => app.client.getConversations(request), page => page.conversations),
   identityOf: conversationIdentity,
   renderItem(conv) {
     const div = app.dom.ownerDocument.createElement('div');
@@ -452,7 +452,8 @@ CSS 侧用**属性选择器**针对两种值写不同规则。`style.css` 中 `b
 会话、联系人、消息都可能成千上万条。如果每条都建一个 DOM 节点，浏览器会卡死。本项目所有列表共用同一种模式：**有界滑动窗口 + 全量渲染 + 双向翻页**，分两层。
 
 - **数据层** `app/bounded-list/page-window.ts` 的 `PageWindow`：内存里只保留「用户附近的若干页」，每页带服务端返回的不透明边界游标。向后 / 向前翻页用尾 / 首页游标拉下一页，窗口超过 `maxPages` 页就**整页裁掉相反端**，并把那一端的 `hasMore` 置 true——用户滚回去时再用相邻保留页的游标拉回来。
-- **渲染层** `app/bounded-list/stream-window.ts` 的 `BoundedStreamWindow`：因为数据窗口本身有上限，干脆把窗口里的条目**全部**渲染成真实 DOM，滚动时一个节点都不重建。没有窗口切片、没有 spacer、没有行高配置。两层由 `app/bounded-list/bounded-list.ts` 的 `createBoundedList` 统一编排，视图代码只提供数据源和单行渲染函数。
+- **本地层** `app/bounded-list/overlay.ts` 的 `LocalOverlay`：本端写入（乐观发送、就地删除）只记在这里，渲染时叠加在窗口之上，从不写进窗口——所以服务端响应落地永远不会覆盖本地写入，组件也就不需要任何重放机制。
+- **渲染层** `app/bounded-list/renderer.ts` 的 `ListRenderer`：因为数据窗口本身有上限，干脆把窗口里的条目**全部**渲染成真实 DOM，滚动时一个节点都不重建。没有窗口切片、没有 spacer、没有行高配置。三层由 `app/bounded-list/bounded-list.ts` 的 `createBoundedList` 统一编排，视图代码只提供数据源和单行渲染函数。完整设计见 [`boundedlist/导读.md`](boundedlist/导读.md)。
 
 ```mermaid
 flowchart TB
@@ -555,7 +556,7 @@ sequenceDiagram
 
 1. **绑定**：`BoundedList` 在列表容器上统一处理激活事件，再调用会话列表配置的 `onActivate`。
 2. **入口**：`openConversation` 更新 `currentConvKey/currentConversation`、清未读，并切换聊天界面状态。
-3. **取数**：消息列表执行 `reset({ query: {} })`；其 `serverPageSource` 通过 SDK 分页读取最新消息。
+3. **取数**：消息列表执行 `reset({ query: {} })`；其 `sdkPageSource` 通过 SDK 分页读取最新消息。
 4. **竞态保护**：请求完成后再次检查当前会话；快速切换时，旧会话结果不会继续执行占位群等业务判断。
 5. **渲染**：BoundedList 把分页结果写入有界窗口并渲染，`onItemsChanged` 同步 `currentMessages` 投影，随后滚到最新端。
 

@@ -7,7 +7,7 @@ import {
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { describeError } from '../../error-i18n';
-import { createBoundedList, localPageSource, serverPageSource, standaloneList, type BoundedList } from '../../bounded-list';
+import { createBoundedList, localPageSource, sdkPageSource, standaloneList, type BoundedList } from '../../bounded-list';
 import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
 import { contactFriendUid } from '../contacts';
 
@@ -63,16 +63,11 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.list.maxPages,
       register: (controller) => app.registerBoundedList(controller),
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit }) => app.client.getGroupMembers(groupId, { cursor, backward, limit }),
-        (page) => ({
-          items: page.members,
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreHead: page.page.hasMoreBackward,
-          hasMoreTail: page.page.hasMoreForward,
-          total: page.total,
-        }),
+        (page) => page.members,
+        // 群成员总数在响应顶层，不在 page.total 里。
+        (page) => page.total,
       ),
       identityOf: (member) => member.userId || '0',
       order: 'desc',
@@ -351,8 +346,9 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
         return [item];
       },
       text: {
-        empty: () => app.t('detail.addMemberEmpty'),
-        emptyFiltered: () => app.t('detail.addMemberNoResults'),
+        empty: () => searchInput.value.trim()
+          ? app.t('detail.addMemberNoResults')
+          : app.t('detail.addMemberEmpty'),
         loading: () => app.t('common.loading'),
         error: () => app.t('detail.addMemberLoadFailed'),
         retry: () => app.t('common.retry'),

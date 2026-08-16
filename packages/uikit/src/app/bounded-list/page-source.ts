@@ -1,18 +1,43 @@
 // PageSource 的两种实现（设计方案 §2.2、§4.2）：
-// - serverPageSource：服务端 keyset 游标分页，游标原样透传，不解析、不构造；
+// - sdkPageSource：服务端 keyset 游标分页，游标原样透传，不解析、不构造；
 // - localPageSource：对一次性拉到内存的全量数组做本地切片，游标 = 下标字符串。
 //   仅用于「刻意选择在客户端过滤/排序」的场景（提及群成员、添加群成员候选），
 //   本地游标不外传给服务端，不违反「游标对客户端不透明」的项目不变量。
 
 import type { DisplayOrder, FetchPageRequest, PageLoadResult, PageSource } from './types';
 
-/** 服务端分页：fetch 原样透传请求，map 把 SDK 响应整理成窗口要的结构。 */
-export function serverPageSource<R, T, Q>(
+/** SDK 所有分页响应共有的翻页信息（`packages/sdk/src/types.ts` 的 `PageInfo`）。 */
+interface SdkPageInfo {
+  readonly startCursor: string;
+  readonly endCursor: string;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
+  readonly total?: number;
+}
+
+/**
+ * 服务端分页：请求原样透传给 SDK，响应里的 `page` 按固定规则映射成窗口要的结构。
+ *
+ * 方向词汇的转换（`backward → head`、`forward → tail`）全项目只在这里发生一次；
+ * 调用方只需回答一个问题：这次响应里的条目在哪个字段（`selectItems`）。
+ *
+ * `selectTotal` 只给「总数不在 `page.total` 里」的接口用（如 `getGroupMembers`
+ * 的总数在响应顶层），其余一律不传。
+ */
+export function sdkPageSource<R extends { readonly page: SdkPageInfo }, T, Q>(
   fetch: (req: FetchPageRequest<Q>) => Promise<R>,
-  map: (raw: R) => PageLoadResult<T>,
+  selectItems: (raw: R) => readonly T[],
+  selectTotal?: (raw: R) => number,
 ): PageSource<T, Q> {
   return {
-    fetch: (req) => fetch(req).then(map),
+    fetch: (req) => fetch(req).then((raw): PageLoadResult<T> => ({
+      items: selectItems(raw),
+      startCursor: raw.page.startCursor,
+      endCursor: raw.page.endCursor,
+      hasMoreHead: raw.page.hasMoreBackward,
+      hasMoreTail: raw.page.hasMoreForward,
+      total: selectTotal ? selectTotal(raw) : raw.page.total,
+    })),
   };
 }
 

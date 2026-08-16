@@ -75,7 +75,7 @@ test.describe('Chat', () => {
 
   test('global chat search jump keeps the highlight visible on a long conversation under latency', async ({ browser }) => {
     // 回归用例：跳转命中的消息如果不是会话最后一条，get_messages({around}) 按协议约定
-    // 会把两端 has_more 都乐观置真，BoundedStreamWindow 触边会自动续拉一页并整份重渲
+    // 会把两端 has_more 都乐观置真，BoundedList 触边会自动续拉一页并整份重渲
     // 消息列表。真实网络下这次自动续拉常常在 scrollToMessage 加完高亮之后才返回，
     // 若高亮只是渲染后临时补的 class 就会被这次重渲冲掉——本地零延迟环境这个时间差
     // 太小很难稳定复现，所以这里显式给 WebSocket 连接加延迟来稳定触发。

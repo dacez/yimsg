@@ -25,7 +25,7 @@ import {
 } from './helpers';
 import { updateSelectionBar } from './selection';
 import { setSafeHtml, setTrustedAnchorHref, setTrustedImageSrc, safeHtml } from '../../safe-dom';
-import { createBoundedList, serverPageSource, type BoundedList, type RenderItemContext } from '../../bounded-list';
+import { createBoundedList, sdkPageSource, type BoundedList, type RenderItemContext } from '../../bounded-list';
 import { messageKey, sortUniqueBySeq, syncCurrentMessages } from './message-page';
 
 const BOTTOM_SETTLE_FRAME_COUNT = 4;
@@ -53,7 +53,6 @@ function scheduleFrame(callback: () => void): void {
 export function getMessageList(app: AppInstance): BoundedList<Message, MessageQuery> {
   if (app.chatState.messageList) return app.chatState.messageList;
 
-  let windowItems: readonly Message[] = [];
   let senderMap: ReturnType<typeof app.client.getUserInfos> = new Map();
 
   const list = createBoundedList<Message, MessageQuery>({
@@ -64,7 +63,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     register: (controller) => app.registerBoundedList(controller),
     isActive: () => Boolean(app.chatState.currentConvKey) && !app.$('view-chat').classList.contains('hidden'),
     initialQuery: {},
-    source: serverPageSource<Awaited<ReturnType<typeof app.client.getMessages>>, Message, MessageQuery>(
+    source: sdkPageSource<Awaited<ReturnType<typeof app.client.getMessages>>, Message, MessageQuery>(
       ({ cursor, backward, limit, query }) => {
         const conv = app.chatState.currentConversation;
         const target = conv ? app.client.describeConversation(conv).target : { toUid: '0' };
@@ -80,29 +79,22 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
         }
         return app.client.getMessages({ target, cursor, backward, limit });
       },
-      (page) => ({
-        items: page.messages,
-        startCursor: page.page.startCursor,
-        endCursor: page.page.endCursor,
-        hasMoreHead: page.page.hasMoreBackward,
-        hasMoreTail: page.page.hasMoreForward,
-      }),
+      (page) => page.messages,
     ),
     normalize: sortUniqueBySeq,
     identityOf: messageKey,
     order: 'asc',
-    renderItem: (msg, ctx) => {
-      if (ctx.index === 0) {
-        const myUid = app.client.getSessionSnapshot().currentUid;
-        const senderUids = new Set<string>();
-        for (const m of windowItems) {
-          const fromUid = m.senderId || '0';
-          if (fromUid !== myUid && fromUid !== '0') senderUids.add(fromUid);
-        }
-        senderMap = app.client.getUserInfos([...senderUids]);
+    // 发送者展示信息按整批预取一次，避免每行各查一次缓存。
+    beforeRender: (items) => {
+      const myUid = app.client.getSessionSnapshot().currentUid;
+      const senderUids = new Set<string>();
+      for (const m of items) {
+        const fromUid = m.senderId || '0';
+        if (fromUid !== myUid && fromUid !== '0') senderUids.add(fromUid);
       }
-      return renderMessageRow(app, msg, ctx, senderMap);
+      senderMap = app.client.getUserInfos([...senderUids]);
     },
+    renderItem: (msg, ctx) => renderMessageRow(app, msg, ctx, senderMap),
     text: {
       loading: () => app.t('common.loading'),
       headBoundary: () => app.t('chat.reachedEarliest'),
@@ -111,7 +103,6 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       retry: () => app.t('common.retry'),
     },
     onItemsChanged: (items) => {
-      windowItems = items;
       syncCurrentMessages(app, items);
       if (app.chatState.messageSelectionMode) updateSelectionBar(app);
     },
