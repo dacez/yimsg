@@ -10,13 +10,13 @@
 // BoundedList 只作为类型出现在调用方（`type BoundedList` 持有实例引用），没有任何
 // `new BoundedList(...)` 或静态成员访问，因此按类型导出，实例统一从 createBoundedList 来。
 
-export { createBoundedList } from './bounded-list';
-export { serverPageSource, localPageSource } from './page-source';
+export { createBoundedList, standaloneList } from './bounded-list';
+export { sdkPageSource, localPageSource } from './page-source';
 export { SelectionStore } from './selection';
-export { standaloneList } from './registry';
 
 export type { BoundedList } from './bounded-list';
 export type {
+  BoundedListController,
   BoundedListOptions,
   BoundedListState,
   ErrorPhase,
@@ -26,4 +26,3 @@ export type {
   RenderItemContext,
   SelectionSnapshot,
 } from './types';
-export type { BoundedListController } from './registry';

@@ -5,7 +5,7 @@ import type { AppInstance } from '../../app-instance';
 import { currentConversation, recallPlaceholderText } from './helpers';
 import { getMessageList, renderMessages } from './message-list';
 import { messageKey, resetMessagePage } from './message-page';
-import { createBoundedList, serverPageSource, type BoundedList } from '../../bounded-list';
+import { createBoundedList, sdkPageSource, type BoundedList } from '../../bounded-list';
 
 const HIGHLIGHT_MS = 1500;
 
@@ -111,7 +111,7 @@ export function setupMessageSearch(app: AppInstance): void {
     maxPages: APP_CONFIG.list.maxPages,
     register: (controller) => app.registerBoundedList(controller),
     initialQuery: { keyword: '' },
-    source: serverPageSource(
+    source: sdkPageSource(
       ({ cursor, backward, limit, query }) => {
         if (!query.keyword) {
           return Promise.resolve({
@@ -123,20 +123,14 @@ export function setupMessageSearch(app: AppInstance): void {
         const target = conversation?.target ?? { toUid: '0' };
         return app.client.searchMessages({ keyword: query.keyword, target, cursor, backward, limit });
       },
-      (page) => ({
-        items: page.messages,
-        startCursor: page.page.startCursor,
-        endCursor: page.page.endCursor,
-        hasMoreHead: page.page.hasMoreBackward,
-        hasMoreTail: page.page.hasMoreForward,
-        total: page.page.total,
-      }),
+      (page) => page.messages,
     ),
     identityOf: messageKey,
     order: 'desc',
     renderItem: (msg) => [renderSearchResultRow(app, msg)],
     text: {
-      emptyFiltered: () => app.t('chat.searchNoResults'),
+      // 关键字为空时（未搜索 / 已清空）不给空态文案，面板保持空白。
+      empty: () => input().value.trim() ? app.t('chat.searchNoResults') : '',
       loading: () => app.t('common.loading'),
       error: () => app.t('chat.searchFailed'),
       retry: () => app.t('common.retry'),

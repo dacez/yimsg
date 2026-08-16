@@ -132,8 +132,9 @@ export async function showGroupMemberPicker(
         return [item];
       },
       text: {
-        empty: () => app.t('groupMemberPicker.empty'),
-        emptyFiltered: () => app.t('groupMemberPicker.noResults'),
+        empty: () => searchInput.value.trim()
+          ? app.t('groupMemberPicker.noResults')
+          : app.t('groupMemberPicker.empty'),
         loading: () => app.t('groupMemberPicker.loadingCount', { n: loadingCount }),
         error: () => app.t('groupMemberPicker.loadFailed'),
         retry: () => app.t('common.retry'),

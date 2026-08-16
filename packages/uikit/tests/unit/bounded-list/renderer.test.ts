@@ -1,10 +1,10 @@
 // ListRenderer（渲染引擎）单测。
 // 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.4：
 //   A 有键协调 / B 状态与边界提示 / C 触界检测 / D 锚点 / E 贴边判定
-//   F 指针期间推迟重建 / G 点击委托 / H 键盘导航 / I 内容 load / J 释放。
+//   F 指针期间推迟重建 / G 点击委托 / I 内容 load / J 释放。
 
 import { describe, expect, it, vi } from 'vitest';
-import { ListRenderer, type ListRenderState } from '../../../src/app/bounded-list/renderer';
+import { ListRenderer, DEFAULT_REACH_PX, type ListRenderState } from '../../../src/app/bounded-list/renderer';
 import {
   FakeDocument,
   asElement,
@@ -20,24 +20,20 @@ function classNames(content: FakeElement): string[] {
 }
 
 function makeView(overrides: Partial<{
-  contentElement: FakeElement;
   onScroll: () => void;
   onScrollImmediate: () => void;
   onInteract: (id: string, ev: any) => void;
   onContentLoad: () => void;
-  reachPx: number;
   doc: FakeDocument;
 }> = {}) {
   const doc = overrides.doc ?? new FakeDocument();
   const scroller = doc.createElement();
   const view = new ListRenderer<string>({
     scrollElement: asElement(scroller),
-    contentElement: overrides.contentElement ? asElement(overrides.contentElement) : undefined,
     onScroll: overrides.onScroll,
     onScrollImmediate: overrides.onScrollImmediate,
     onInteract: overrides.onInteract,
     onContentLoad: overrides.onContentLoad,
-    reachPx: overrides.reachPx,
   });
   return { doc, scroller, view };
 }
@@ -225,22 +221,32 @@ describe('ListRenderer / B 状态与边界提示', () => {
 
 describe('ListRenderer / C 触界检测', () => {
   it('C1 触顶 / 触底且该端仍有更多时触发续翻', () => {
-    const { doc, scroller, view } = makeView({ reachPx: 50 });
+    const { doc, scroller, view } = makeView();
     const loadMore = vi.fn();
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
-    scroller.scrollTop = 20;
+    scroller.scrollTop = DEFAULT_REACH_PX - 1;
     view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
     expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['head']);
 
     loadMore.mockClear();
-    scroller.scrollTop = 890;
+    scroller.scrollTop = 900 - (DEFAULT_REACH_PX - 1);
     view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
     expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['tail']);
   });
 
+  it('C1b 两端都在触界范围之外时都不触发', () => {
+    const { doc, scroller, view } = makeView();
+    const loadMore = vi.fn();
+    scroller.clientHeight = 100;
+    scroller.scrollHeight = 10000;
+    scroller.scrollTop = 5000;
+    view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
+    expect(loadMore).not.toHaveBeenCalled();
+  });
+
   it('C2 该端没有更多时不触发', () => {
-    const { doc, scroller, view } = makeView({ reachPx: 50 });
+    const { doc, scroller, view } = makeView();
     const loadMore = vi.fn();
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
@@ -445,76 +451,12 @@ describe('ListRenderer / G 点击委托', () => {
     scroller.dispatch('click', { target: scroller });
     expect(onInteract).not.toHaveBeenCalled();
   });
-
-  it('G3 contentElement 与 scrollElement 分离时事件委托挂在 contentElement 上', () => {
-    const doc = new FakeDocument();
-    const content = doc.createElement();
-    const onInteract = vi.fn();
-    const { scroller, view } = makeView({ doc, contentElement: content, onInteract });
-    scroller.appendChild(content);
-    view.render(state(doc, { items: ['a'] }));
-
-    expect(classNames(content)).toEqual(['row-a']);
-    content.dispatch('click', { target: content.children[0] });
-    expect(onInteract).toHaveBeenCalledWith('k-a', expect.anything());
-  });
-});
-
-// ───────────────────────── H 键盘导航 ─────────────────────────
-
-describe('ListRenderer / H 键盘导航', () => {
-  it('H1 上下键移动高亮，Enter 激活当前行', () => {
-    const onInteract = vi.fn();
-    const { doc, scroller, view } = makeView({ onInteract });
-    view.render(state(doc, { items: ['a', 'b'] }));
-
-    scroller.dispatch('keydown', { key: 'ArrowDown' });
-    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(true);
-
-    scroller.dispatch('keydown', { key: 'ArrowDown' });
-    expect(scroller.children[1].classList.contains('bsw-row-focused')).toBe(true);
-    expect(scroller.children[0].classList.contains('bsw-row-focused')).toBe(false);
-
-    scroller.dispatch('keydown', { key: 'Enter' });
-    expect(onInteract).toHaveBeenCalledWith('k-b', expect.anything());
-  });
-
-  it('H2 走到两端之外时改为请求续翻', () => {
-    const loadMore = vi.fn();
-    const { doc, scroller, view } = makeView();
-    view.render(state(doc, { items: ['a'], loadMore }));
-
-    scroller.dispatch('keydown', { key: 'ArrowUp' });   // 从无高亮进入末行
-    scroller.dispatch('keydown', { key: 'ArrowUp' });   // 越过头部
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['head']);
-  });
-
-  it('H3 高亮行被裁出窗口后高亮释放，Enter 不再误激活', () => {
-    const onInteract = vi.fn();
-    const { doc, scroller, view } = makeView({ onInteract });
-    view.render(state(doc, { items: ['a', 'b'] }));
-    scroller.dispatch('keydown', { key: 'ArrowDown' });
-
-    view.render(state(doc, { items: ['c'] }));
-    scroller.dispatch('keydown', { key: 'Enter' });
-    expect(onInteract).not.toHaveBeenCalled();
-  });
-
-  it('H4 空列表时按键是空操作', () => {
-    const onInteract = vi.fn();
-    const { doc, scroller, view } = makeView({ onInteract });
-    view.render(state(doc, { items: [] }));
-
-    scroller.dispatch('keydown', { key: 'ArrowDown' });
-    scroller.dispatch('keydown', { key: 'Enter' });
-    expect(onInteract).not.toHaveBeenCalled();
-  });
 });
 
 // ───────────────────────── I 内容 load ─────────────────────────
 
 describe('ListRenderer / I 内容异步增高', () => {
-  it('I1 contentElement 内的 load 事件（捕获阶段）回调上层', () => {
+  it('I1 列表内的 load 事件（捕获阶段）回调上层', () => {
     const onContentLoad = vi.fn();
     const { scroller } = makeView({ onContentLoad });
     scroller.dispatch('load');

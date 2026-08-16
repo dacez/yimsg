@@ -1,7 +1,7 @@
 # UIKit 阅读指南
 
 > 主要对照：`packages/uikit/src/app/shell.ts`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/app-instance.ts`、`packages/uikit/src/app/views/`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/safe-dom.ts`、`packages/uikit/src/embed.ts`。
-> 最后复核：2026-08-13。
+> 最后复核：2026-08-16。
 > 触发更新：UIKit 视图结构、样式系统、DOM 构建模式、布局机制或新手上手路线发生变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文是面向「懂 TypeScript、不懂 HTML/CSS」读者的入门导读，讲清前端语法基础与本项目的实现套路，不替代 [`UI设计方案.md`](UI设计方案.md)（视图细节权威）与 [`UIKit方案.md`](UIKit方案.md)（嵌入契约权威）。
 
@@ -391,7 +391,7 @@ form.addEventListener('submit', (e) => { e.preventDefault(); /* 拦截默认提�
 ```ts
 const list = createBoundedList({
   scrollElement: app.$('conversation-list'),
-  source: serverPageSource(request => app.client.getConversations(request)),
+  source: sdkPageSource(request => app.client.getConversations(request), page => page.conversations),
   identityOf: conversationIdentity,
   renderItem(conv) {
     const div = app.dom.ownerDocument.createElement('div');
@@ -556,7 +556,7 @@ sequenceDiagram
 
 1. **绑定**：`BoundedList` 在列表容器上统一处理激活事件，再调用会话列表配置的 `onActivate`。
 2. **入口**：`openConversation` 更新 `currentConvKey/currentConversation`、清未读，并切换聊天界面状态。
-3. **取数**：消息列表执行 `reset({ query: {} })`；其 `serverPageSource` 通过 SDK 分页读取最新消息。
+3. **取数**：消息列表执行 `reset({ query: {} })`；其 `sdkPageSource` 通过 SDK 分页读取最新消息。
 4. **竞态保护**：请求完成后再次检查当前会话；快速切换时，旧会话结果不会继续执行占位群等业务判断。
 5. **渲染**：BoundedList 把分页结果写入有界窗口并渲染，`onItemsChanged` 同步 `currentMessages` 投影，随后滚到最新端。
 

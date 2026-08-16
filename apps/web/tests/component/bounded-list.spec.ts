@@ -61,7 +61,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await openBoundedListHarness(page);
   });
 
-  // ───────────── 构造、宿主与 a11y ─────────────
+  // ───────────── 构造与宿主 ─────────────
 
   test('构造默认值、id、完整初始状态、默认提示条与注册表', async ({ page }) => {
     const key = await mount(page, { id: 'bounded.defaults', itemCount: 0, autoReset: false });
@@ -89,27 +89,22 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     });
   });
 
-  test('真实元素具备 listbox/option 选择语义，dispose 后还原宿主原有 a11y 属性', async ({ page }) => {
-    const multi = await mount(page, { itemCount: 2, selection: { mode: 'multi', max: 2 }, reachPx: -1 });
-    const scroller = root(page, multi).locator('.bl-scroller');
-    await expect(scroller).toHaveAttribute('tabindex', '0');
-    await expect(scroller).toHaveAttribute('role', 'listbox');
-    await expect(scroller).toHaveAttribute('aria-multiselectable', 'true');
-    await expect(rows(page, multi).first()).toHaveAttribute('role', 'option');
-    await rows(page, multi).first().click();
-    await expect(rows(page, multi).first()).toHaveAttribute('aria-selected', 'true');
-
+  test('不改写宿主容器上的任何属性，宿主自设的属性原样保留', async ({ page }) => {
     const preconfigured = await mount(page, {
       itemCount: 1,
       selection: { mode: 'multi', max: 1 },
       initialA11y: { tabindex: '7', role: 'feed', ariaMultiselectable: 'false' },
       reachPx: -1,
     });
-    const preconfiguredScroller = root(page, preconfigured).locator('.bl-scroller');
+    const scroller = root(page, preconfigured).locator('.bl-scroller');
+    // 组件不接管容器语义：没有键盘导航，写 role/tabindex 只会给出无法操作的假承诺。
+    await expect(scroller).toHaveAttribute('tabindex', '7');
+    await expect(scroller).toHaveAttribute('role', 'feed');
+    await expect(scroller).toHaveAttribute('aria-multiselectable', 'false');
+
     await call(page, 'disposeNow', preconfigured);
-    await expect(preconfiguredScroller).toHaveAttribute('tabindex', '7');
-    await expect(preconfiguredScroller).toHaveAttribute('role', 'feed');
-    await expect(preconfiguredScroller).toHaveAttribute('aria-multiselectable', 'false');
+    await expect(scroller).toHaveAttribute('tabindex', '7');
+    await expect(scroller).toHaveAttribute('role', 'feed');
   });
 
   test('register 隔离到宿主注册表，只有对应宿主的广播命中它', async ({ page }) => {
@@ -134,10 +129,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<string[]>(page, 'customRegistryIds')).not.toContain('bounded.custom-registry');
   });
 
-  test('contentElement 与 scrollElement 分离时行仍渲染在内容容器内；pillHost 三态', async ({ page }) => {
-    const separate = await mount(page, { itemCount: 3, separateContent: true, reachPx: -1 });
-    await expect(root(page, separate).locator('.bl-content > [data-bsw-key]')).toHaveCount(3);
-
+  test('pillHost 三态', async ({ page }) => {
     const explicit = await mount(page, { itemCount: 1, pillHost: 'explicit', reachPx: -1 });
     expect(await call<{ parentClass: string }>(page, 'pillInfo', explicit))
       .toMatchObject({ exists: true, parentClass: 'bl-explicit-pill-host' });
@@ -304,7 +296,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 1,
       order: 'asc',
       rowHeight: 24,
-      settleFrames: 4,
       reachPx: -1,
     });
     await call(page, 'frames', 4);
@@ -585,44 +576,6 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup')));
     await call(page, 'frames', 2);
     expect(await handle!.evaluate((element) => element.isConnected)).toBe(false);
-  });
-
-  test('键盘 ArrowUp/Down、Enter 使用真实焦点与事件，并在两端触发续翻', async ({ page }) => {
-    const key = await mount(page, {
-      itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, reachPx: -1,
-    });
-    const scroller = root(page, key).locator('.bl-scroller');
-    await scroller.focus();
-
-    await scroller.press('ArrowDown');
-    expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['40']);
-    await scroller.press('ArrowDown');
-    expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['41']);
-
-    await scroller.press('Enter');
-    const activated = (await events(page, key)).filter((event) => event.type === 'onActivate');
-    expect(activated).toHaveLength(1);
-    expect(activated[0].payload).toMatchObject({ keyboard: true });
-
-    await call(page, 'clearFetchCalls', key);
-    await scroller.press('ArrowUp');
-    await scroller.press('ArrowUp');
-    await expect.poll(() => call<unknown[]>(page, 'fetchCalls', key)).toHaveLength(1);
-  });
-
-  test('键盘高亮在头部插页后按身份保持，不随下标漂移', async ({ page }) => {
-    const key = await mount(page, {
-      itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, reachPx: -1,
-    });
-    const scroller = root(page, key).locator('.bl-scroller');
-    await scroller.focus();
-    await scroller.press('ArrowDown');
-    await scroller.press('ArrowDown');
-    expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['41']);
-
-    await call(page, 'loadMore', key, 'head');
-    await call(page, 'frames', 2);
-    expect(await call<string[]>(page, 'focusedIds', key)).toEqual(['41']);
   });
 
   // ───────────── 错误处理 ─────────────
