@@ -102,13 +102,15 @@ describe('PageWindow 续翻', () => {
     expect(window.cursorFor('tail')).toBe('c2');
   });
 
-  it('reset 之后直接续翻：这一页同时确立两端边界', () => {
+  it('reset 之后没有任何续翻锚点，此时不允许续翻（由 BoundedList 短路，见 C8）', () => {
     const window = makeWindow();
+    window.setFirstPage(pageOf(makeTestItems(3), 'c0', 'c3', true, true));
     window.reset();
-    window.extend('tail', pageOf(makeTestItems(2), 'c0', 'c2', false, true));
 
-    expect(window.cursorFor('head')).toBe('c0');
-    expect(window.cursorFor('tail')).toBe('c2');
+    expect(window.cursorFor('head')).toBe('');
+    expect(window.cursorFor('tail')).toBe('');
+    expect(window.hasMore('head')).toBe(false);
+    expect(window.hasMore('tail')).toBe(false);
   });
 });
 

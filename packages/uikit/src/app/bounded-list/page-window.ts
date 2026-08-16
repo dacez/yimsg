@@ -100,15 +100,15 @@ export class PageWindow<T> {
     this.totalCount = page.total ?? -1;
   }
 
-  /** 往某一端续翻并入一页；超出 maxPages 时从另一端整页淘汰。 */
+  /**
+   * 往某一端续翻并入一页；超出 maxPages 时从另一端整页淘汰。
+   *
+   * 调用前提：该端已有非空续翻锚点（`cursorFor(edge) !== ''`）。这由上层保证——
+   * 拿不到锚点就根本不发这次请求，所以本方法不处理「窗口完全没有锚点」的情况。
+   */
   extend(edge: Edge, page: PageLoadResult<T>): void {
     const items = this.normalize(page.items);
     this.dropIdentities(items);
-    // 窗口一个锚点都没有（reset 之后直接续翻式重建）：这一页同时确立两端边界。
-    if (!this.headCursor && !this.tailCursor) {
-      this.headCursor = page.startCursor;
-      this.tailCursor = page.endCursor;
-    }
     if (items.length > 0) {
       const entry = { items, startCursor: page.startCursor, endCursor: page.endCursor };
       if (edge === 'head') this.pages.unshift(entry);

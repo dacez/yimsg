@@ -89,7 +89,7 @@ describe('LocalOverlay 生命周期', () => {
     overlay.put('3', { id: 3, label: 'c' });
 
     expect(overlay.size).toBe(2);
-    expect(overlay.has('1')).toBe(false);
-    expect(apply(overlay, [], 'tail')).toEqual(['b', 'c']);
+    // 最旧的 '1' 已被丢弃：它既不再以本地值渲染，也不再遮住权威序列里的同身份条目。
+    expect(apply(overlay, [{ id: 1, label: 'from-window' }], 'tail')).toEqual(['from-window', 'b', 'c']);
   });
 });

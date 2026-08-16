@@ -34,10 +34,6 @@ export class LocalOverlay<T> {
     return this.entries.size;
   }
 
-  has(id: string): boolean {
-    return this.entries.has(id);
-  }
-
   /** 当前记账水位，交给 settle 判断「哪些记账比这次请求更早」。 */
   mark(): number {
     return this.seq;

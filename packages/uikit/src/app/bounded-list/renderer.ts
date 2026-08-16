@@ -18,8 +18,11 @@ export const DEFAULT_REACH_PX = 160;
 
 export interface ListRendererOptions {
   readonly scrollElement: HTMLElement;
-  /** 触界阈值；负值等价于「关掉自动补页」（没有任何 scrollTop 能落进负的范围）。 */
-  readonly reachPx?: number;
+  /**
+   * 触界阈值；负值等价于「关掉自动补页」（没有任何距端距离能落进负的范围）。
+   * 由上层解析好默认值后传入，本层不再兜第二次底。
+   */
+  readonly reachPx: number;
   /** 原生 scroll 事件到达时同步执行，供上层在下一帧前缓存用户是否仍贴边。 */
   readonly onScrollImmediate?: () => void;
   /** 每个滚动帧（触界检测之前）执行的回调。 */
@@ -158,11 +161,16 @@ export class ListRenderer<T> {
     this.applyRender(state);
   }
 
-  /** 用户是否贴在 edge 一端（stickyPx 阈值内）。 */
-  isAtEdge(edge: Edge, stickyPx: number): boolean {
+  /**
+   * 当前滚动位置距 edge 一端还有多少像素（贴住该端时为 0）。
+   *
+   * 「贴边」「触界」都只是拿这个距离与不同阈值比较，所以滚动几何在整个组件里只有这
+   * 一处公式；上层要判贴边就用它比 STICKY_PX，本层要判触界就用它比 reachPx。
+   */
+  distanceTo(edge: Edge): number {
     const el = this.options.scrollElement;
-    if (edge === 'head') return el.scrollTop <= stickyPx;
-    return Math.max(0, el.scrollHeight - el.clientHeight) - el.scrollTop <= stickyPx;
+    if (edge === 'head') return el.scrollTop;
+    return Math.max(0, el.scrollHeight - el.clientHeight) - el.scrollTop;
   }
 
   /** 注销全部监听（含 window 级 pointer 兜底）、清空状态；调用后其它方法均为空操作。 */
@@ -307,10 +315,8 @@ export class ListRenderer<T> {
   private checkReach(): void {
     const state = this.lastState;
     if (!state || !state.loaded) return;
-    const el = this.options.scrollElement;
-    const reachPx = this.options.reachPx ?? DEFAULT_REACH_PX;
-    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (el.scrollTop <= reachPx && state.hasMoreHead) state.loadMore('head');
-    if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreTail) state.loadMore('tail');
+    const reachPx = this.options.reachPx;
+    if (state.hasMoreHead && this.distanceTo('head') <= reachPx) state.loadMore('head');
+    if (state.hasMoreTail && this.distanceTo('tail') <= reachPx) state.loadMore('tail');
   }
 }

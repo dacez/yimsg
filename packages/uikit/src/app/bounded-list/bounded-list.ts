@@ -70,6 +70,13 @@ export class BoundedList<T, Q = void> {
   /** 在飞的首页请求，供多个入口共享同一次追平。 */
   private firstPageRun: Promise<void> | null = null;
   /**
+   * 在飞的首页请求落地后要不要贴回新鲜端。
+   *
+   * 不能只看发起那次请求时的参数：一次不贴边的自动追平在飞时，用户点了提示条
+   * （要求贴边），这次点击会被合并进在飞请求，贴边意图必须跟着并进来。
+   */
+  private pinOnSettle = false;
+  /**
    * 窗口世代：每次首页请求发出时 +1。**所有**在飞响应都在发出时捕获它、落地时比对，
    * 不相等就整体丢弃、不触发任何回调。这是让旧响应失效的唯一机制。
    */
@@ -90,7 +97,10 @@ export class BoundedList<T, Q = void> {
   /** 提示条该不该亮（输出）。只有 decide() / setStale() 写它，见文件头规则 3。 */
   private stale = false;
 
-  /** 加载前缓存的贴边状态：图片异步增高后不能现算（内容已变高，必然误判成不贴边）。 */
+  /**
+   * 缓存的贴边状态，只有两个写入者：原生 scroll 事件（同步，早于本帧任何重排）与
+   * 加载 / 贴边路径。图片异步增高之后不能现算——内容已经变高，现算必然误判成不贴边。
+   */
   private stuck = true;
 
   constructor(private readonly opts: BoundedListOptions<T, Q>) {
@@ -111,7 +121,7 @@ export class BoundedList<T, Q = void> {
     // → 新鲜端在尾部。展示序与新鲜端是同一个比特的两种说法，这里只转换这一次。
     this.edge = (opts.order ?? 'desc') === 'desc' ? 'head' : 'tail';
     this.reachPx = opts.reachPx ?? DEFAULT_REACH_PX;
-    this.query = (opts.initialQuery as Q) ?? (undefined as Q);
+    this.query = opts.initialQuery as Q;
     this.window = this.createWindow();
     this.overlay = new LocalOverlay<T>(opts.pageSize);
 
@@ -131,7 +141,7 @@ export class BoundedList<T, Q = void> {
 
     this.renderer = new ListRenderer<T>({
       scrollElement: opts.scrollElement,
-      reachPx: opts.reachPx,
+      reachPx: this.reachPx,
       onScrollImmediate: () => { this.stuck = this.atFreshEdge(); },
       onScroll: () => this.onScrollFrame(),
       onInteract: (identity, ev) => this.onInteract(identity, ev),
@@ -300,7 +310,10 @@ export class BoundedList<T, Q = void> {
 
   /** 追平：保留当前窗口拉一次首页，落地时原子替换，所以不会闪空。重入合并。 */
   private refresh(pinEdge = false): Promise<void> {
-    return this.firstPageRun ?? this.loadFirstPage({ clear: false, pinEdge });
+    if (!this.firstPageRun) return this.loadFirstPage({ clear: false, pinEdge });
+    // 合并到在飞的那次请求，但贴边意图要并进去，不能被它原来的参数吞掉。
+    if (pinEdge) this.pinOnSettle = true;
+    return this.firstPageRun;
   }
 
   private loadFirstPage(opts: { clear: boolean; pinEdge: boolean }): Promise<void> {
@@ -317,6 +330,7 @@ export class BoundedList<T, Q = void> {
     const generation = ++this.generation;
     const overlayMark = this.overlay.mark();
     this.loading = 'first';
+    this.pinOnSettle = pinEdge;
     this.blocked.clear();
     this.dirty = false;
     this.dirtyIds.clear();
@@ -346,9 +360,8 @@ export class BoundedList<T, Q = void> {
       this.overlay.settle(overlayMark);
       this.settleFirstPage(null);
       this.emitAll();
-      if (pinEdge || this.stuck) this.pinToFreshEdge();
+      if (this.pinOnSettle || this.stuck) this.pinToFreshEdge();
       else this.stuck = this.atFreshEdge();
-      if (this.dirty) this.scheduleDecide();
     } catch (err) {
       if (this.isObsolete(generation)) return;
       this.settleFirstPage({ error: err });
@@ -365,7 +378,10 @@ export class BoundedList<T, Q = void> {
     // 失败也是一种「首屏已落定」：空态 / 错误态要能显示出来，不能永远转圈。
     this.loaded = true;
     this.failure = failure;
-    if (!this.dirty) this.stale = false;
+    // 请求期间到达的通知此前被 decide() 挡在「有请求在飞」那一支，现在重新决策一次；
+    // 成功与失败走同一条路，否则失败那次会把这段时间的通知永久吞掉。
+    if (this.dirty) this.scheduleDecide();
+    else this.stale = false;
   }
 
   private async loadPage(edge: Edge): Promise<void> {
@@ -493,29 +509,29 @@ export class BoundedList<T, Q = void> {
 
   // ---- 滚动与几何 ----
 
-  private atFreshEdge(): boolean {
-    return this.renderer.isAtEdge(this.edge, STICKY_PX[this.edge]);
+  /**
+   * 是否贴在新鲜端。滚动几何的公式只在 `ListRenderer.distanceTo` 一处，这里只负责
+   * 拿它与阈值比较；已经读过距离的调用方把值传进来，避免同一帧里重复读布局。
+   */
+  private atFreshEdge(distance: number = this.renderer.distanceTo(this.edge)): boolean {
+    return distance <= STICKY_PX[this.edge];
   }
 
   private onScrollFrame(): void {
-    // 滚动几何在本帧只读一次：逐处现算会重复触发布局，而且同一帧里问两次本来就该
-    // 得到同一个答案。
-    const el = this.opts.scrollElement;
-    const scrollTop = el.scrollTop;
-    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    const stickyPx = STICKY_PX[this.edge];
-    const atEdge = this.edge === 'head'
-      ? scrollTop <= stickyPx
-      : maxScrollTop - scrollTop <= stickyPx;
+    const headDistance = this.renderer.distanceTo('head');
+    const tailDistance = this.renderer.distanceTo('tail');
 
     // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该端的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
-    if (scrollTop > this.reachPx) this.blocked.delete('head');
-    if (maxScrollTop - scrollTop > this.reachPx) this.blocked.delete('tail');
-    this.stuck = atEdge;
+    if (headDistance > this.reachPx) this.blocked.delete('head');
+    if (tailDistance > this.reachPx) this.blocked.delete('tail');
 
     // 提示条自动消失：用户自己滚回新鲜端时重新决策，决策的结果就是追平。
-    if (atEdge && this.dirty) this.scheduleDecide();
+    // `stuck` 不在这里写：它由原生 scroll 事件同步更新（见 onScrollImmediate），
+    // 同一次滚动写两遍只会多一份「哪个才算数」的疑问。
+    if (this.atFreshEdge(this.edge === 'head' ? headDistance : tailDistance) && this.dirty) {
+      this.scheduleDecide();
+    }
   }
 
   /** 图片等异步增高内容加载完成：此前贴在尾部新鲜端的话重新贴回底部。 */

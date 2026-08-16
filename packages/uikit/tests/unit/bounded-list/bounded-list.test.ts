@@ -324,6 +324,26 @@ describe('BoundedList / C 续翻与触界', () => {
     expect(list.getState().count).toBe(6);
     list.dispose();
   });
+
+  it('C8 该端没有可用续翻锚点（空游标）时不发请求', async () => {
+    const host = createHost();
+    host.scroller.scrollTop = 0;
+    const fetchSpy = vi.fn();
+    // 服务端声称两端都还有更多，却没有给出任何游标：这种响应不能被翻译成一次「空游标请求」。
+    const list = createBoundedList(baseOptions(host, {
+      fetch: async () => {
+        fetchSpy();
+        return pageOf(makeTestItems(3), '', '', true, true);
+      },
+    }));
+    await list.reset();
+    await flushAsync();
+
+    await list.loadMore('head');
+    await list.loadMore('tail');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    list.dispose();
+  });
 });
 
 // ───────────────────────── D setQuery 防抖 ─────────────────────────
@@ -614,6 +634,39 @@ describe('BoundedList / F 提示条', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3)), { pillHost: false }));
     await list.reset();
     expect(host.parent.children).toHaveLength(1);
+    list.dispose();
+  });
+
+  it('F4 点击提示条时已有追平在飞：合并进那一次，落地后仍贴回新鲜端', async () => {
+    const host = createHost();
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const list = createBoundedList(baseOptions(host, source));
+    void list.reset();
+    pending[0].resolve(pageOf(makeTestItems(3), 'c0', 'c3', false, false));
+    await flushAsync();
+
+    // 用户滚离新鲜端 → 通知只点亮提示条。
+    scrollAway(host);
+    host.scroller.dispatch('scroll');
+    list.invalidate();
+    await flushAsync();
+    expect(pillVisible(host)).toBe(true);
+
+    // 用户滚回新鲜端 → 自动追平发出（这一次不带贴边意图）。
+    host.scroller.scrollTop = 0;
+    host.scroller.dispatch('scroll');
+    await flushAsync();
+    expect(pending.length).toBe(2);
+
+    // 追平还没落地，用户又滚走并点了仍然亮着的提示条：贴边意图必须并进在飞的那次请求。
+    scrollAway(host);
+    host.scroller.dispatch('scroll');
+    pillOf(host).dispatch('click');
+    pending[1].resolve(pageOf(makeTestItems(3, 6), 'c6', 'c9', false, false));
+    await flushAsync();
+
+    expect(pending.length).toBe(2);
+    expect(host.scroller.scrollTop).toBe(0);
     list.dispose();
   });
 });
@@ -1011,6 +1064,25 @@ describe('BoundedList / J 错误处理', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('J6 首屏失败期间到达的通知不会被吞掉，失败落地后重新决策', async () => {
+    const host = createHost();
+    host.scroller.scrollTop = 0; // 贴在新鲜端：决策的结果应当是再拉一次
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const list = createBoundedList(baseOptions(host, source, { onError: () => {} }));
+    void list.reset();
+    list.invalidate();
+    pending[0].reject(new Error('boom'));
+    await flushAsync();
+
+    expect(pending).toHaveLength(2);
+    pending[1].resolve(pageOf(makeTestItems(2), 'c0', 'c2', false, false));
+    await flushAsync();
+
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
+    expect(list.getState().failed).toBe(false);
+    list.dispose();
   });
 });
 

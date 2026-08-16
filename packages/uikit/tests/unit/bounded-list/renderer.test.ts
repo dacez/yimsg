@@ -30,6 +30,7 @@ function makeView(overrides: Partial<{
   const scroller = doc.createElement();
   const view = new ListRenderer<string>({
     scrollElement: asElement(scroller),
+    reachPx: DEFAULT_REACH_PX,
     onScroll: overrides.onScroll,
     onScrollImmediate: overrides.onScrollImmediate,
     onInteract: overrides.onInteract,
@@ -352,7 +353,7 @@ describe('ListRenderer / D 锚点', () => {
   it('D3 宿主拿不到布局信息时锚点整体降级为不校正，不抛错', () => {
     const doc = new FakeDocument();
     const scroller = stripBoundingRect(doc.createElement());
-    const view = new ListRenderer<string>({ scrollElement: asElement(scroller) });
+    const view = new ListRenderer<string>({ scrollElement: asElement(scroller), reachPx: DEFAULT_REACH_PX });
     scroller.scrollTop = 42;
 
     expect(() => view.render(state(doc, { items: ['a'] }))).not.toThrow();
@@ -362,27 +363,27 @@ describe('ListRenderer / D 锚点', () => {
 
 // ───────────────────────── E 贴边判定 ─────────────────────────
 
-describe('ListRenderer / E isAtEdge', () => {
-  it('E1 head 端看 scrollTop，tail 端看距底距离', () => {
+describe('ListRenderer / E 距端距离', () => {
+  it('E1 head 端等于 scrollTop，tail 端等于距底距离', () => {
     const { scroller, view } = makeView();
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
 
     scroller.scrollTop = 4;
-    expect(view.isAtEdge('head', 4)).toBe(true);
-    expect(view.isAtEdge('head', 3)).toBe(false);
+    expect(view.distanceTo('head')).toBe(4);
+    expect(view.distanceTo('tail')).toBe(896);
 
     scroller.scrollTop = 860;
-    expect(view.isAtEdge('tail', 40)).toBe(true);
-    expect(view.isAtEdge('tail', 39)).toBe(false);
+    expect(view.distanceTo('head')).toBe(860);
+    expect(view.distanceTo('tail')).toBe(40);
   });
 
-  it('E2 内容不足一屏时两端都判定为贴边', () => {
+  it('E2 内容不足一屏时两端距离都是 0（两端同时算贴边）', () => {
     const { scroller, view } = makeView();
     scroller.clientHeight = 500;
     scroller.scrollHeight = 100;
-    expect(view.isAtEdge('head', 0)).toBe(true);
-    expect(view.isAtEdge('tail', 0)).toBe(true);
+    expect(view.distanceTo('head')).toBe(0);
+    expect(view.distanceTo('tail')).toBe(0);
   });
 });
 
