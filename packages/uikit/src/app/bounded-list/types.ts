@@ -43,13 +43,12 @@ export interface PageLoadResult<T> {
   readonly total?: number;
 }
 
-/** 数据源抽象：「怎么取一页」。见 page-source.ts 的 serverPageSource / localPageSource。 */
+/** 数据源抽象：「怎么取一页」。见 page-source.ts 的 sdkPageSource / localPageSource。 */
 export interface PageSource<T, Q> {
   fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>>;
 }
 
 export interface RenderItemContext<T> {
-  readonly index: number;
   readonly identity: string;
   readonly selected: boolean;
   readonly selectable: boolean;
@@ -58,8 +57,11 @@ export interface RenderItemContext<T> {
 
 export interface BoundedListText {
   readonly loading?: () => string;
+  /**
+   * 空态文案。「无数据」与「无搜索结果」的区分由调用方自己给（它手里就握着搜索框），
+   * 组件不判断「什么算已过滤」——那需要把查询条件深比较一遍，既慢又容易误判。
+   */
   readonly empty?: () => string;
-  readonly emptyFiltered?: () => string;
   readonly headBoundary?: () => string;
   readonly tailBoundary?: () => string;
   /** 「背景有更新」提示条文案。刻意不带数量：见 BoundedListState.stale 的说明。 */
@@ -108,13 +110,23 @@ export interface SelectionConfig {
   readonly onExceed?: () => void;
 }
 
+/**
+ * 宿主侧的有界列表刷新契约：会话列表、当前会话消息、好友/请求列表等所有「有界列表」
+ * 通过 invalidate() 注册自己的追平动作。invalidate 语义等价于「收到一条属于本列表的
+ * 新数据通知」——具体是立即重拉追平还是推迟（点亮「有更新」提示），由各列表自己按
+ * 贴顶/可见性规则决定。调用方（例如重连成功）只管广播 invalidate。
+ */
+export interface BoundedListController {
+  readonly id: string;
+  invalidate(): void | Promise<void>;
+}
+
 /** 宿主注册表契约：注册一个实例并返回注销函数。 */
-export type RegisterBoundedList = (instance: { readonly id: string; invalidate(): void | Promise<void> }) => () => void;
+export type RegisterBoundedList = (instance: BoundedListController) => () => void;
 
 export interface BoundedListOptions<T, Q = void> {
   readonly id: string;
   readonly scrollElement: HTMLElement;
-  readonly contentElement?: HTMLElement;
   readonly pillHost?: HTMLElement | false;
   readonly isActive?: () => boolean;
   /**
@@ -138,10 +150,20 @@ export interface BoundedListOptions<T, Q = void> {
 
   /** 展示序，默认 'desc'（新鲜端在头部，如会话/联系人）。见 DisplayOrder 的说明。 */
   readonly order?: DisplayOrder;
-  readonly stickyPx?: number;
+  /**
+   * 距某一端多少像素以内触发自动补页，默认 160。
+   * 传负值等价于关掉自动补页——测试要逐页断言时用它，生产不传。
+   */
   readonly reachPx?: number;
-  readonly settleFrames?: number;
 
+  /**
+   * 每一轮渲染开始前调用一次，带上本轮要渲染的完整序列（序列为空时不调用）。
+   *
+   * 给「渲染前先按整批数据准备一次上下文」的调用方用（批量预取展示名、算一次分组基准）。
+   * 有它才不必让 `renderItem` 靠「这是不是第 0 行」反推批次开始——那种写法会把行下标
+   * 绑进复用判定里，头部插一页就让整窗口失去复用。
+   */
+  readonly beforeRender?: (items: readonly T[]) => void;
   readonly renderItem: (item: T, ctx: RenderItemContext<T>) => readonly HTMLElement[];
   readonly pinnedItems?: () => readonly T[];
   readonly text: BoundedListText;

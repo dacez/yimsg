@@ -80,7 +80,6 @@ function baseOptions(
     text: {
       loading: () => '加载中',
       empty: () => '暂无数据',
-      emptyFiltered: () => '无搜索结果',
       updatePill: () => '有更新',
     },
     ...overrides,
@@ -130,20 +129,20 @@ describe('BoundedList / A 构造与默认值', () => {
     expect(testRegistry.has('test-list')).toBe(false);
   });
 
-  it('A4 构造时写入 a11y 属性，dispose 后还原宿主原值', () => {
+  it('A4 不改写宿主容器上的任何属性', () => {
     const host = createHost();
     host.scroller.setAttribute('role', 'grid');
     const list = createBoundedList(baseOptions(host, createInstantSource(() => []), {
       selection: { mode: 'multi' },
     }));
 
-    expect(host.scroller.getAttribute('role')).toBe('listbox');
-    expect(host.scroller.getAttribute('tabindex')).toBe('0');
-    expect(host.scroller.getAttribute('aria-multiselectable')).toBe('true');
+    // 组件不再接管容器语义（无键盘导航，写 role/tabindex 只会给出无法操作的假承诺）。
+    expect(host.scroller.getAttribute('role')).toBe('grid');
+    expect(host.scroller.getAttribute('tabindex')).toBeNull();
+    expect(host.scroller.getAttribute('aria-multiselectable')).toBeNull();
 
     list.dispose();
     expect(host.scroller.getAttribute('role')).toBe('grid');
-    expect(host.scroller.getAttribute('tabindex')).toBeNull();
   });
 });
 
@@ -164,13 +163,19 @@ describe('BoundedList / B 首屏与 reset', () => {
     list.dispose();
   });
 
-  it('B2 首页为空时显示空态；有查询条件时显示过滤空态', async () => {
+  it('B2 首页为空时显示空态；空态文案每次渲染都向调用方重新求值', async () => {
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => [])) as BoundedListOptions<TestItem, string>);
+    let keyword = '';
+    const list = createBoundedList({
+      ...baseOptions(host, createInstantSource(() => [])),
+      // 组件不判断「什么算已过滤」：调用方自己按搜索框当前值给文案。
+      text: { loading: () => '加载中', empty: () => (keyword ? '无搜索结果' : '暂无数据') },
+    } as BoundedListOptions<TestItem, string>);
     await list.reset();
     expect(rendered(host)).toEqual(['empty-state']);
     expect(host.scroller.children[0].textContent).toBe('暂无数据');
 
+    keyword = 'kw';
     await list.reset({ query: 'kw' as never });
     expect(host.scroller.children[0].textContent).toBe('无搜索结果');
     list.dispose();
@@ -770,22 +775,39 @@ describe('BoundedList / H 渲染与文案', () => {
     list.dispose();
   });
 
-  it('H4 renderItem 拿到的上下文包含下标、身份与上一条', async () => {
+  it('H4 renderItem 拿到的上下文包含身份与上一条，不含行下标', async () => {
     const host = createHost();
-    const contexts: Array<{ index: number; identity: string; previous?: number }> = [];
+    const contexts: Array<{ identity: string; previous?: number }> = [];
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3)), {
       renderItem: (item, ctx) => {
-        contexts.push({ index: ctx.index, identity: ctx.identity, previous: ctx.previous?.id });
+        contexts.push({ identity: ctx.identity, previous: ctx.previous?.id });
         return [asElement(row(host.doc, `row-${item.id}`))];
       },
     }));
     await list.reset();
 
     expect(contexts).toEqual([
-      { index: 0, identity: '0', previous: undefined },
-      { index: 1, identity: '1', previous: 0 },
-      { index: 2, identity: '2', previous: 1 },
+      { identity: '0', previous: undefined },
+      { identity: '1', previous: 0 },
+      { identity: '2', previous: 1 },
     ]);
+    list.dispose();
+  });
+
+  it('H4b beforeRender 每轮渲染前拿到本轮完整序列，只调用一次', async () => {
+    const host = createHost();
+    const batches: string[][] = [];
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3)), {
+      beforeRender: (items) => batches.push(items.map((item) => idOf(item))),
+    }));
+    await list.reset();
+
+    // 首页落地那一轮拿到的就是真正渲染出来的三条。
+    expect(batches.at(-1)).toEqual(['0', '1', '2']);
+    const before = batches.length;
+    list.render();
+    expect(batches.length).toBe(before + 1);
+    expect(batches.at(-1)).toEqual(['0', '1', '2']);
     list.dispose();
   });
 

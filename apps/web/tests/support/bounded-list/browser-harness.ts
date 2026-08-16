@@ -2,7 +2,7 @@ import {
   SelectionStore,
   createBoundedList,
   localPageSource,
-  serverPageSource,
+  sdkPageSource,
   type BoundedList,
   type BoundedListOptions,
   type BoundedListState,
@@ -25,6 +25,8 @@ interface TestQuery {
 type TextKey =
   | 'loading'
   | 'empty'
+  // 组件没有「过滤空态」这个概念：调用方按当前关键字自己在 empty 里二选一，
+  // 这里模拟的就是生产里 contacts / message-search 的写法。
   | 'emptyFiltered'
   | 'headBoundary'
   | 'tailBoundary'
@@ -43,11 +45,8 @@ interface MountConfig {
   readonly initialQuery?: TestQuery;
   readonly sourceKind?: 'server' | 'local';
   readonly order?: 'asc' | 'desc';
-  readonly stickyPx?: number;
   readonly reachPx?: number;
-  readonly settleFrames?: number;
   readonly active?: boolean;
-  readonly separateContent?: boolean;
   readonly detachedScroller?: boolean;
   readonly pillHost?: 'default' | 'explicit' | 'false';
   readonly normalize?: 'none' | 'reverse' | 'dedupe-sort';
@@ -105,7 +104,6 @@ interface HarnessEntry {
       | 'sourceKind'
       | 'order'
       | 'active'
-      | 'separateContent'
       | 'detachedScroller'
       | 'pillHost'
       | 'normalize'
@@ -133,6 +131,8 @@ interface HarnessEntry {
   pinnedItems: TestItem[];
   pausedPageRequests: number;
   pauseNextIdentity: boolean;
+  /** 调用方侧记着的当前关键字，只用来决定空态文案（生产里就是搜索框的值）。 */
+  keyword: string;
   readonly pageGates: DeferredGate[];
   identityGate?: DeferredGate;
   running: Set<Promise<unknown>>;
@@ -278,7 +278,7 @@ function normalizeFor(config: MountConfig): ((items: readonly TestItem[]) => Tes
   return undefined;
 }
 
-function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['text'] {
+function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptions<TestItem, TestQuery>['text'] {
   const defaults: Record<TextKey, string> = {
     loading: '正在加载',
     empty: '列表为空',
@@ -303,8 +303,9 @@ function textFor(config: MountConfig): BoundedListOptions<TestItem, TestQuery>['
   const retry = value('retry');
   return {
     ...(loading === false ? {} : { loading: () => loading }),
-    ...(empty === false ? {} : { empty: () => empty }),
-    ...(emptyFiltered === false ? {} : { emptyFiltered: () => emptyFiltered }),
+    ...(empty === false ? {} : {
+      empty: () => (keywordOf() && emptyFiltered !== false ? emptyFiltered : empty),
+    }),
     ...(headBoundary === false ? {} : { headBoundary: () => headBoundary }),
     ...(tailBoundary === false ? {} : { tailBoundary: () => tailBoundary }),
     ...(updatePill === false
@@ -380,11 +381,7 @@ function createHost(config: MountConfig, key: string): {
     scroller.setAttribute('aria-multiselectable', config.initialA11y.ariaMultiselectable);
   }
 
-  const content = config.separateContent ? document.createElement('div') : scroller;
-  if (config.separateContent) {
-    content.className = 'bl-content';
-    scroller.appendChild(content);
-  }
+  const content = scroller;
 
   if (!config.detachedScroller) root.appendChild(scroller);
   document.querySelector('#fixtures')!.appendChild(root);
@@ -401,7 +398,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     sourceKind: configInput.sourceKind ?? 'server',
     order: configInput.order ?? 'desc',
     active: configInput.active ?? true,
-    separateContent: configInput.separateContent ?? false,
     detachedScroller: configInput.detachedScroller ?? false,
     pillHost: configInput.pillHost ?? 'default',
     normalize: configInput.normalize ?? 'none',
@@ -437,6 +433,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     pinnedItems: (config.pinnedItems ?? []).map(cloneItem),
     pausedPageRequests: 0,
     pauseNextIdentity: false,
+    keyword: configInput.initialQuery?.keyword ?? '',
     pageGates: [],
     running: new Set<Promise<unknown>>(),
   } as Omit<HarnessEntry, 'list'>;
@@ -476,7 +473,25 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
       filter: (item, query) => !query?.keyword || item.label.includes(query.keyword),
       compare: (a, b) => a.order - b.order,
     })
-    : serverPageSource(fetchPage, (page) => page);
+    // 走生产同一条 sdkPageSource 路径：先把测试用的分页结果包成 SDK 响应形状，
+    // 由 sdkPageSource 做 backward→head / forward→tail 的方向映射，在真实浏览器里
+    // 一并覆盖这段映射。
+    : sdkPageSource(
+      async (req: FetchPageRequest<TestQuery>) => {
+        const page = await fetchPage(req);
+        return {
+          items: page.items,
+          page: {
+            startCursor: page.startCursor,
+            endCursor: page.endCursor,
+            hasMoreBackward: page.hasMoreHead,
+            hasMoreForward: page.hasMoreTail,
+            total: page.total,
+          },
+        };
+      },
+      (raw) => raw.items,
+    );
 
   const store = config.selection?.storeKey
     ? sharedStores.get(config.selection.storeKey)
@@ -497,7 +512,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
   const options: BoundedListOptions<TestItem, TestQuery> = {
     id: config.id,
     scrollElement: host.scroller,
-    ...(config.separateContent ? { contentElement: host.content } : {}),
     ...(pillHost === undefined ? {} : { pillHost }),
     ...(configInput.active === undefined ? {} : { isActive: () => entryShell.active }),
     register: (instance: { readonly id: string; invalidate(): void | Promise<void> }) => {
@@ -533,9 +547,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     ...(normalize ? { normalize } : {}),
     identityOf: (item) => item.id,
     ...(configInput.order === undefined ? {} : { order: config.order }),
-    ...(config.stickyPx === undefined ? {} : { stickyPx: config.stickyPx }),
     ...(config.reachPx === undefined ? {} : { reachPx: config.reachPx }),
-    ...(config.settleFrames === undefined ? {} : { settleFrames: config.settleFrames }),
     renderItem: (item, context) => {
       const elements: HTMLElement[] = [];
       for (let part = 0; part < config.renderParts; part++) {
@@ -543,7 +555,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
         element.className = `bl-row bl-row-part-${part}`;
         element.dataset.id = item.id;
         element.dataset.part = String(part);
-        element.dataset.index = String(context.index);
         element.dataset.identity = context.identity;
         element.dataset.selected = String(context.selected);
         element.dataset.selectable = String(context.selectable);
@@ -560,7 +571,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     ...(configInput.pinnedItems === undefined
       ? {}
       : { pinnedItems: () => entryShell.pinnedItems }),
-    text: textFor(config),
+    text: textFor(config, () => entryShell.keyword),
     ...(config.selection
       ? {
         selection: {
@@ -579,7 +590,6 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
         onActivate: (item: TestItem, event: Event) => pushEvent(entryShell, 'onActivate', {
           item,
           eventType: event.type,
-          keyboard: event instanceof KeyboardEvent,
         }),
         onSelectionChange: (snapshot: SelectionSnapshot<TestItem>) =>
           pushEvent(entryShell, 'onSelectionChange', snapshot),
@@ -638,10 +648,13 @@ const api = {
     rememberedRows.delete(key);
   },
   reset(key: string, options?: { query?: TestQuery; pinEdge?: boolean }): Promise<void> {
-    return getEntry(key).list.reset(options);
+    const entry = getEntry(key);
+    if (options && 'query' in options) entry.keyword = options.query?.keyword ?? '';
+    return entry.list.reset(options);
   },
   startReset(key: string, options?: { query?: TestQuery; pinEdge?: boolean }): void {
     const entry = getEntry(key);
+    if (options && 'query' in options) entry.keyword = options.query?.keyword ?? '';
     start(entry, () => entry.list.reset(options));
   },
   loadMore(key: string, edge: 'head' | 'tail'): Promise<void> {
@@ -652,7 +665,9 @@ const api = {
     start(entry, () => entry.list.loadMore(edge));
   },
   setQuery(key: string, query: TestQuery, debounceMs?: number): void {
-    getEntry(key).list.setQuery(
+    const entry = getEntry(key);
+    entry.keyword = query.keyword ?? '';
+    entry.list.setQuery(
       query,
       debounceMs === undefined ? undefined : { debounceMs },
     );
@@ -844,10 +859,6 @@ const api = {
   allPartIds(key: string): string[] {
     return Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('.bl-row'))
       .map((element) => `${element.dataset.id}:${element.dataset.part}`);
-  },
-  focusedIds(key: string): string[] {
-    return Array.from(getEntry(key).content.querySelectorAll<HTMLElement>('.bsw-row-focused'))
-      .map((element) => element.dataset.id ?? '');
   },
   pillInfo(key: string) {
     const entry = getEntry(key);

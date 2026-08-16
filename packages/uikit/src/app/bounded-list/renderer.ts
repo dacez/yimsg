@@ -3,9 +3,9 @@
 // 只做三件事，不认识分页、通知、选中态：
 // 1. 有键协调：按 identity 复用行 DOM，只插入 / 移动 / 删除真正变化的节点；
 // 2. 滚动保持：协调前后按锚点行校正 scrollTop，头部插页时内容不跳；
-// 3. 事件：滚动帧、触界检测、点击 / 键盘激活、内容异步增高。
+// 3. 事件：滚动帧、触界检测、点击激活、内容异步增高。
 //
-// 本层自持全部 DOM 监听（scroll / pointer* / keydown / click / load），调用方不要再挂；
+// 本层自持全部 DOM 监听（scroll / pointer* / click / load），调用方不要再挂；
 // dispose() 必须注销**全部**监听，尤其是 window 级的 pointerup / pointercancel 兜底
 // （指针可能在列表之外抬起），漏掉会让每开一次弹窗就永久泄漏两个监听。
 
@@ -13,19 +13,20 @@ import { frameScheduler } from './frame';
 import { valuesEquivalent } from './deep-equal';
 import type { Edge } from './types';
 
+/** 距某一端多少像素以内算「触界」的默认阈值。 */
 export const DEFAULT_REACH_PX = 160;
 
 export interface ListRendererOptions {
   readonly scrollElement: HTMLElement;
-  readonly contentElement?: HTMLElement;
+  /** 触界阈值；负值等价于「关掉自动补页」（没有任何 scrollTop 能落进负的范围）。 */
   readonly reachPx?: number;
   /** 原生 scroll 事件到达时同步执行，供上层在下一帧前缓存用户是否仍贴边。 */
   readonly onScrollImmediate?: () => void;
   /** 每个滚动帧（触界检测之前）执行的回调。 */
   readonly onScroll?: () => void;
-  /** 用户「激活」某一行：点击（事件委托）或键盘 Enter / Space。 */
+  /** 用户点击某一行（事件委托）。 */
   readonly onInteract?: (identity: string, ev: Event) => void;
-  /** contentElement 内部任意元素 load 事件（捕获阶段），用于图片异步增高后的贴边校正。 */
+  /** 列表内部任意元素 load 事件（捕获阶段），用于图片异步增高后的贴边校正。 */
   readonly onContentLoad?: () => void;
 }
 
@@ -68,7 +69,6 @@ interface RenderedRow<T> {
 // `[data-bsw-key]` 定位节点，从不 import 常量本身。
 const ANCHOR_KEY_ATTR = 'data-bsw-key';
 const INTERACTION_KEY_ATTR = 'data-bsw-interact-key';
-const FOCUS_CLASS = 'bsw-row-focused';
 
 function nodesEquivalent(left: readonly HTMLElement[], right: readonly HTMLElement[]): boolean {
   return left.length === right.length
@@ -99,8 +99,6 @@ export class ListRenderer<T> {
   private pointerActive = false;
   private pendingRender = false;
   private disposed = false;
-  /** 键盘高亮只记身份：下标会随头部插页整体平移，身份不会。 */
-  private focusedKey: string | null = null;
 
   private readonly flushPending: (() => void) & { cancel: () => void };
   private readonly onScrollFrame: (() => void) & { cancel: () => void };
@@ -116,10 +114,9 @@ export class ListRenderer<T> {
     if (this.pendingRender) this.flushPending();
   };
   private readonly handleClick = (ev: Event) => {
-    const key = findKeyFromTarget(ev.target, this.contentElement());
+    const key = findKeyFromTarget(ev.target, this.options.scrollElement);
     if (key) this.options.onInteract?.(key, ev);
   };
-  private readonly handleKeydown = (ev: KeyboardEvent) => this.onKeydown(ev);
   private readonly handleContentLoad = () => this.options.onContentLoad?.();
 
   private readonly windowRef: (Window & typeof globalThis) | undefined;
@@ -143,13 +140,12 @@ export class ListRenderer<T> {
     scroller.addEventListener('pointerdown', this.handlePointerDown);
     scroller.addEventListener('pointerup', this.handlePointerRelease);
     scroller.addEventListener('pointercancel', this.handlePointerRelease);
-    scroller.addEventListener('keydown', this.handleKeydown as EventListener);
+    scroller.addEventListener('click', this.handleClick);
+    scroller.addEventListener('load', this.handleContentLoad, true);
     // 指针可能在列表之外抬起：在 window 上兜底监听释放（fake DOM 无 defaultView 时跳过）。
     this.windowRef = scroller.ownerDocument?.defaultView ?? undefined;
     this.windowRef?.addEventListener?.('pointerup', this.handlePointerRelease);
     this.windowRef?.addEventListener?.('pointercancel', this.handlePointerRelease);
-    this.contentElement().addEventListener('click', this.handleClick);
-    this.contentElement().addEventListener('load', this.handleContentLoad, true);
   }
 
   render(state: ListRenderState<T>): void {
@@ -180,33 +176,25 @@ export class ListRenderer<T> {
     scroller.removeEventListener('pointerdown', this.handlePointerDown);
     scroller.removeEventListener('pointerup', this.handlePointerRelease);
     scroller.removeEventListener('pointercancel', this.handlePointerRelease);
-    scroller.removeEventListener('keydown', this.handleKeydown as EventListener);
+    scroller.removeEventListener('click', this.handleClick);
+    scroller.removeEventListener('load', this.handleContentLoad, true);
     this.windowRef?.removeEventListener?.('pointerup', this.handlePointerRelease);
     this.windowRef?.removeEventListener?.('pointercancel', this.handlePointerRelease);
-    const content = this.contentElement();
-    content.removeEventListener('click', this.handleClick);
-    content.removeEventListener('load', this.handleContentLoad, true);
     this.lastState = null;
     this.renderedRows.clear();
     this.pendingRender = false;
-    this.focusedKey = null;
-  }
-
-  private contentElement(): HTMLElement {
-    return this.options.contentElement ?? this.options.scrollElement;
   }
 
   private applyRender(state: ListRenderState<T>): void {
     this.pendingRender = false;
     const scroller = this.options.scrollElement;
-    const content = this.contentElement();
-    const doc = content.ownerDocument;
+    const doc = scroller.ownerDocument;
     const scrollOffset = scroller.scrollTop;
-    const anchor = this.captureAnchor(content);
+    const anchor = this.captureAnchor();
 
     if (!state.loaded) {
       this.renderedRows.clear();
-      this.reconcileNodes(content, state.loadingText ? [createBoundaryHint(doc, state.loadingText, 'bottom')] : []);
+      this.reconcileNodes(state.loadingText ? [createBoundaryHint(doc, state.loadingText, 'bottom')] : []);
       return;
     }
     if (state.items.length === 0) {
@@ -219,8 +207,7 @@ export class ListRenderer<T> {
         next.push(placeholder);
       }
       this.renderedRows.clear();
-      this.reconcileNodes(content, next);
-      this.focusedKey = null;
+      this.reconcileNodes(next);
       // 空列表同样要做触界检测：服务端可能返回「空页但还有更多」（锚点加载的乐观策略、
       // 全过滤命中为空等），不检测就会永久定格在空态。
       this.checkReach();
@@ -240,7 +227,7 @@ export class ListRenderer<T> {
       const key = state.keyOf(item);
       const revision = state.revisionOf(item, index);
       const previous = this.renderedRows.get(key);
-      const attached = previous?.elements.every((element) => element.parentElement === content) ?? false;
+      const attached = previous?.elements.every((element) => element.parentElement === scroller) ?? false;
       if (
         state.reuseUnchangedRows
         && attached
@@ -252,10 +239,7 @@ export class ListRenderer<T> {
         continue;
       }
       const candidates = [...state.renderItem(item, index)];
-      if (candidates.length > 0) {
-        candidates[0].setAttribute(ANCHOR_KEY_ATTR, key);
-        if (key === this.focusedKey) candidates[0].classList?.add(FOCUS_CLASS);
-      }
+      if (candidates.length > 0) candidates[0].setAttribute(ANCHOR_KEY_ATTR, key);
       for (const element of candidates) element.setAttribute(INTERACTION_KEY_ATTR, key);
       // 内部数据更新统一按身份键委托交互；即使数据里含有 UI 不使用的字段差异，只要候选
       // DOM 完全一致就不换行。显式重绘保留更保守的条目等价检查，供宿主刷新行内自有监听。
@@ -273,20 +257,20 @@ export class ListRenderer<T> {
       desired.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
     }
 
-    this.reconcileNodes(content, desired);
+    this.reconcileNodes(desired);
     this.renderedRows = nextRows;
-    if (this.focusedKey !== null && !nextRows.has(this.focusedKey)) this.focusedKey = null;
     // 滚动位置只由一套机制负责，两者是「精确」与「兜底」的关系，不叠加：
     // - 有锚点：按锚点行的真实位移校正。头部插页时这是唯一正确的做法，恢复渲染前的
     //   绝对 scrollTop 反而会让内容整体跳动。
     // - 没有锚点（空列表、首屏、宿主 DOM 不支持 getBoundingClientRect）：退回绝对值，
     //   把 DOM 协调过程中被浏览器夹回 0 的 scrollTop 还原。
-    if (anchor) this.restoreAnchor(content, anchor);
+    if (anchor) this.restoreAnchor(anchor);
     else if (scroller.scrollTop !== scrollOffset) scroller.scrollTop = scrollOffset;
     this.checkReach();
   }
 
-  private reconcileNodes(content: HTMLElement, desired: readonly HTMLElement[]): void {
+  private reconcileNodes(desired: readonly HTMLElement[]): void {
+    const content = this.options.scrollElement;
     for (let index = 0; index < desired.length; index++) {
       const current = content.children[index] as HTMLElement | undefined;
       if (current === desired[index]) continue;
@@ -297,10 +281,11 @@ export class ListRenderer<T> {
     }
   }
 
-  private captureAnchor(content: HTMLElement): ScrollAnchor | null {
-    if (typeof content.getBoundingClientRect !== 'function') return null;
-    const top = this.options.scrollElement.getBoundingClientRect().top;
-    for (const child of Array.from(content.children) as HTMLElement[]) {
+  private captureAnchor(): ScrollAnchor | null {
+    const scroller = this.options.scrollElement;
+    if (typeof scroller.getBoundingClientRect !== 'function') return null;
+    const top = scroller.getBoundingClientRect().top;
+    for (const child of Array.from(scroller.children) as HTMLElement[]) {
       const key = child.getAttribute?.(ANCHOR_KEY_ATTR);
       if (!key) continue;
       const rect = child.getBoundingClientRect();
@@ -309,11 +294,11 @@ export class ListRenderer<T> {
     return null;
   }
 
-  private restoreAnchor(content: HTMLElement, anchor: ScrollAnchor): void {
-    if (typeof content.getBoundingClientRect !== 'function') return;
-    for (const child of Array.from(content.children) as HTMLElement[]) {
+  private restoreAnchor(anchor: ScrollAnchor): void {
+    const scroller = this.options.scrollElement;
+    if (typeof scroller.getBoundingClientRect !== 'function') return;
+    for (const child of Array.from(scroller.children) as HTMLElement[]) {
       if (child.getAttribute?.(ANCHOR_KEY_ATTR) !== anchor.key) continue;
-      const scroller = this.options.scrollElement;
       scroller.scrollTop += child.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.delta;
       return;
     }
@@ -327,44 +312,5 @@ export class ListRenderer<T> {
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     if (el.scrollTop <= reachPx && state.hasMoreHead) state.loadMore('head');
     if (maxScrollTop - el.scrollTop <= reachPx && state.hasMoreTail) state.loadMore('tail');
-  }
-
-  private onKeydown(ev: KeyboardEvent): void {
-    const state = this.lastState;
-    if (!state || state.items.length === 0) return;
-    const focusedIndex = this.focusedKey === null
-      ? -1
-      : state.items.findIndex((item) => state.keyOf(item) === this.focusedKey);
-
-    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      const step = ev.key === 'ArrowDown' ? 1 : -1;
-      const next = focusedIndex < 0 ? (step > 0 ? 0 : state.items.length - 1) : focusedIndex + step;
-      if (next < 0) {
-        state.loadMore('head');
-        return;
-      }
-      if (next >= state.items.length) {
-        state.loadMore('tail');
-        return;
-      }
-      this.focusedKey = state.keyOf(state.items[next]);
-      ev.preventDefault?.();
-      this.updateFocusClass();
-      return;
-    }
-    if (ev.key === 'Enter' || ev.key === ' ') {
-      if (this.focusedKey === null) return;
-      ev.preventDefault?.();
-      this.options.onInteract?.(this.focusedKey, ev);
-    }
-  }
-
-  private updateFocusClass(): void {
-    for (const [key, row] of this.renderedRows) {
-      const first = row.elements[0];
-      if (!first?.classList) continue;
-      if (key === this.focusedKey) first.classList.add(FOCUS_CLASS);
-      else first.classList.remove(FOCUS_CLASS);
-    }
   }
 }

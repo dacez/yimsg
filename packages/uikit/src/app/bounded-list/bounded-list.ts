@@ -16,16 +16,28 @@ import { SelectionStore } from './selection';
 import { createUpdatePill, type UpdatePillHandle } from './update-pill';
 import { ListRenderer, DEFAULT_REACH_PX } from './renderer';
 import { frameScheduler, nextFrame, type FrameScheduler } from './frame';
-import { valuesEquivalent } from './deep-equal';
 import type {
   BoundedListOptions,
   BoundedListState,
   Edge,
   ErrorPhase,
+  RegisterBoundedList,
   RenderItemContext,
 } from './types';
 
-const A11Y_ATTRS = ['tabindex', 'role', 'aria-multiselectable'] as const;
+/** 距新鲜端多少像素以内算贴边。tail 端（消息）行高差异大，阈值放宽。 */
+const STICKY_PX: Record<Edge, number> = { head: 4, tail: 50 };
+/** 贴边时连续校正多少帧。tail 端内容会异步增高，需要多帧。 */
+const SETTLE_FRAMES: Record<Edge, number> = { head: 1, tail: 4 };
+
+/**
+ * 显式声明「本列表不接入宿主的重连广播」。
+ *
+ * 用于模态框内的一次性候选列表：它们随弹窗创建、随弹窗 dispose，生命周期比一次重连
+ * 还短，被广播追平没有意义。写成具名常量而不是省略 `register`，是为了让「不注册」
+ * 成为可 grep、可复核的显式决定，而不是漏写参数的副作用。
+ */
+export const standaloneList: RegisterBoundedList = () => () => {};
 
 export class BoundedList<T, Q = void> {
   /** 远端事实：只被服务端响应修改。 */
@@ -37,21 +49,13 @@ export class BoundedList<T, Q = void> {
   private readonly selection?: SelectionStore;
   private readonly unsubscribeSelection?: () => void;
   private readonly unregister: () => void;
-  private readonly originalA11y = new Map<(typeof A11Y_ATTRS)[number], string | null>();
   private readonly scheduleDecide: FrameScheduler;
 
   /**
-   * 新鲜端派生出来的全部常量，构造期算一次：新数据从哪一端进来，决定了贴边阈值、
-   * 贴边校正帧数和贴边时 scrollTop 取 0 还是 scrollHeight。改新鲜端语义只改这一处。
+   * 新鲜端：新数据从哪一端进来。它决定了贴边阈值、贴边校正帧数，以及贴边时
+   * scrollTop 取 0 还是 scrollHeight。展示序只在构造期转换成它这一次。
    */
-  private readonly edge: {
-    /** 新鲜端。 */
-    readonly at: Edge;
-    /** 距新鲜端多少像素以内算贴边。 */
-    readonly stickyPx: number;
-    /** 贴边时连续校正多少帧（tail 端内容会异步增高，需要多帧）。 */
-    readonly settleFrames: number;
-  };
+  private readonly edge: Edge;
   private readonly reachPx: number;
 
   private query: Q;
@@ -105,12 +109,7 @@ export class BoundedList<T, Q = void> {
 
     // order='desc'（默认，新→旧，如会话）→ 新鲜端在头部；order='asc'（旧→新，如消息）
     // → 新鲜端在尾部。展示序与新鲜端是同一个比特的两种说法，这里只转换这一次。
-    const at: Edge = (opts.order ?? 'desc') === 'desc' ? 'head' : 'tail';
-    this.edge = {
-      at,
-      stickyPx: opts.stickyPx ?? (at === 'head' ? 4 : 50),
-      settleFrames: opts.settleFrames ?? (at === 'head' ? 1 : 4),
-    };
+    this.edge = (opts.order ?? 'desc') === 'desc' ? 'head' : 'tail';
     this.reachPx = opts.reachPx ?? DEFAULT_REACH_PX;
     this.query = (opts.initialQuery as Q) ?? (undefined as Q);
     this.window = this.createWindow();
@@ -120,8 +119,10 @@ export class BoundedList<T, Q = void> {
       this.selection = opts.selection.store ?? new SelectionStore(opts.selection.max);
       this.unsubscribeSelection = this.selection.subscribe(() => {
         if (this.disposed) return;
-        this.render();
-        this.emitSelectionChange();
+        const items = this.visibleItems();
+        // 选中态影响每一行的勾选框与禁用态，所以整表重绘。
+        this.paint(true, items);
+        this.emitSelectionChange(items);
       });
     }
 
@@ -130,7 +131,6 @@ export class BoundedList<T, Q = void> {
 
     this.renderer = new ListRenderer<T>({
       scrollElement: opts.scrollElement,
-      contentElement: opts.contentElement,
       reachPx: opts.reachPx,
       onScrollImmediate: () => { this.stuck = this.atFreshEdge(); },
       onScroll: () => this.onScrollFrame(),
@@ -138,7 +138,6 @@ export class BoundedList<T, Q = void> {
       onContentLoad: () => this.onContentLoad(),
     });
 
-    this.applyA11yAttributes();
     // 'microtask' 兜底：决策必须晚于触发它的那段同步代码（调用方往往还要继续改状态）。
     this.scheduleDecide = frameScheduler(() => this.decide(), 'microtask');
     // 多 AppInstance 共存时同名列表必须各自登记到宿主的注册表，所以 register 是必填的。
@@ -158,7 +157,12 @@ export class BoundedList<T, Q = void> {
     await this.loadFirstPage({ clear: true, pinEdge: optsIn?.pinEdge ?? true });
   }
 
-  /** 显式续翻一页。视为用户主动重试，解除该端的自动续翻暂停。 */
+  /**
+   * 显式续翻一页：视为用户主动重试，解除该端的自动续翻暂停。
+   *
+   * 生产里的续翻都由触界检测自动驱动，这个方法留给两类调用方：需要「加载更多」按钮的
+   * 宿主，以及需要确定性地推进一页、不依赖滚动几何的测试。
+   */
   async loadMore(edge: Edge): Promise<void> {
     if (this.disposed) return;
     this.blocked.delete(edge);
@@ -212,7 +216,7 @@ export class BoundedList<T, Q = void> {
     this.overlay.put(identity, item);
     // 本地值就是最新值，不必再为它发定向刷新。
     this.dirtyIds.delete(identity);
-    this.afterLocalChange();
+    this.emitAll();
     // 用户本来就在新鲜端：本端写入要跟着可见，而不是把画面停在原处让新条目留在视口外。
     if (wasAtEdge) this.pinToFreshEdge();
     else this.stuck = false;
@@ -228,14 +232,14 @@ export class BoundedList<T, Q = void> {
       // 只精确摘掉被删的这一个身份：共享 store 时其它实例的选中项与本次删除无关。
       this.selection?.delete(id);
     }
-    this.afterLocalChange();
+    this.emitAll();
     return visible;
   }
 
   /**
    * 宿主显式重绘：每一行都重跑 `renderItem`。
    * 宿主在行内挂了自己的监听 / 读了组件不知道的外部状态（展示名缓存、选中模式等）时
-   * 需要它。组件内部的数据更新走 `repaint()`，只重建真正变化的行。
+   * 需要它。组件内部的数据更新只重建真正变化的行，不重跑未变化行的 `renderItem`。
    */
   render(): void {
     this.paint(true);
@@ -251,7 +255,6 @@ export class BoundedList<T, Q = void> {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
-    this.restoreA11yAttributes();
     this.renderer.dispose();
     this.pill.dispose();
     this.unsubscribeSelection?.();
@@ -261,6 +264,14 @@ export class BoundedList<T, Q = void> {
   // ---- 只读状态（设计文档 §6） ----
 
   getState(): BoundedListState {
+    return this.buildState(this.visibleItems());
+  }
+
+  /**
+   * 渲染序列由调用方传进来，不在这里重算：一次操作往往要连着「上报序列 + 上报状态 +
+   * 重绘」三件事，各自现算就是把同一份序列拼三遍（含 pinned 去重）。
+   */
+  private buildState(items: readonly T[]): BoundedListState {
     return {
       loaded: this.loaded,
       loading: this.loading !== null,
@@ -268,7 +279,7 @@ export class BoundedList<T, Q = void> {
       loadingTail: this.loading === 'tail',
       hasMoreHead: this.window.hasMoreHead,
       hasMoreTail: this.window.hasMoreTail,
-      count: this.visibleItems().length,
+      count: items.length,
       total: this.window.total,
       stale: this.stale,
       atFreshEdge: this.atFreshEdge(),
@@ -317,8 +328,7 @@ export class BoundedList<T, Q = void> {
     }
     this.stuck = pinEdge || this.atFreshEdge();
     this.failure = null;
-    this.emitLoadState();
-    this.repaint();
+    this.emitStatus();
 
     try {
       const page = await this.opts.source.fetch({
@@ -334,30 +344,27 @@ export class BoundedList<T, Q = void> {
       this.window = next;
       // 这次请求之前的本地记账已被这一页覆盖，整体作废。
       this.overlay.settle(overlayMark);
-      this.settleFirstPage();
-      this.emitItemsChanged();
-      this.emitLoadState();
-      this.repaint();
+      this.settleFirstPage(null);
+      this.emitAll();
       if (pinEdge || this.stuck) this.pinToFreshEdge();
       else this.stuck = this.atFreshEdge();
       if (this.dirty) this.scheduleDecide();
     } catch (err) {
       if (this.isObsolete(generation)) return;
-      this.settleFirstPage();
-      this.failure = { error: err };
+      this.settleFirstPage({ error: err });
       this.reportError(err, 'reset');
-      this.emitLoadState();
-      this.repaint();
+      this.emitStatus();
       // 刻意不自动重试：此刻提示条就是重试入口，等用户点击或下一次 invalidate。
     }
   }
 
-  private settleFirstPage(): void {
+  /** 首页请求落定：成功与失败的全部状态写入都收敛在这里，不在调用点各写一半。 */
+  private settleFirstPage(failure: { readonly error: unknown } | null): void {
     this.loading = null;
     this.firstPageRun = null;
     // 失败也是一种「首屏已落定」：空态 / 错误态要能显示出来，不能永远转圈。
     this.loaded = true;
-    this.failure = null;
+    this.failure = failure;
     if (!this.dirty) this.stale = false;
   }
 
@@ -371,9 +378,9 @@ export class BoundedList<T, Q = void> {
 
     this.loading = edge;
     const generation = this.generation;
-    this.emitLoadState();
-    this.repaint();
+    this.emitStatus();
 
+    let extended = false;
     try {
       // backward 是 wire 协议自己的方向词汇，与组件内部的 Edge 只在这一处转换：
       // head 端续翻恒等于 backward 请求。
@@ -387,15 +394,15 @@ export class BoundedList<T, Q = void> {
       this.window.extend(edge, page);
       this.loading = null;
       this.blocked.delete(edge);
-      this.emitItemsChanged();
+      extended = true;
     } catch (err) {
       if (this.isObsolete(generation)) return;
       this.loading = null;
       this.blocked.add(edge);
       this.reportError(err, edge);
     }
-    this.emitLoadState();
-    this.repaint();
+    if (extended) this.emitAll();
+    else this.emitStatus();
     // 请求期间到达的通知在这里重新决策（此前 decide() 因为有请求在飞而直接返回）。
     if (this.dirty) this.scheduleDecide();
   }
@@ -422,9 +429,7 @@ export class BoundedList<T, Q = void> {
         changed = (found ? this.window.replace(id, found) : this.window.remove(id)) || changed;
       }
       if (!changed) return;
-      this.emitItemsChanged();
-      this.emitLoadState();
-      this.repaint();
+      this.emitAll();
     } catch (err) {
       if (this.isObsolete(generation)) return;
       this.reportError(err, 'refresh');
@@ -465,7 +470,7 @@ export class BoundedList<T, Q = void> {
     if (this.stale === value) return;
     this.stale = value;
     this.syncPill();
-    this.emitLoadState();
+    this.opts.onLoadStateChange?.(this.getState());
   }
 
   /** 提示条点击：贴回新鲜端并立刻追平；首屏还没成功过时提示条是重试入口。 */
@@ -489,7 +494,7 @@ export class BoundedList<T, Q = void> {
   // ---- 滚动与几何 ----
 
   private atFreshEdge(): boolean {
-    return this.renderer.isAtEdge(this.edge.at, this.edge.stickyPx);
+    return this.renderer.isAtEdge(this.edge, STICKY_PX[this.edge]);
   }
 
   private onScrollFrame(): void {
@@ -498,9 +503,10 @@ export class BoundedList<T, Q = void> {
     const el = this.opts.scrollElement;
     const scrollTop = el.scrollTop;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-    const atEdge = this.edge.at === 'head'
-      ? scrollTop <= this.edge.stickyPx
-      : maxScrollTop - scrollTop <= this.edge.stickyPx;
+    const stickyPx = STICKY_PX[this.edge];
+    const atEdge = this.edge === 'head'
+      ? scrollTop <= stickyPx
+      : maxScrollTop - scrollTop <= stickyPx;
 
     // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该端的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
@@ -514,16 +520,16 @@ export class BoundedList<T, Q = void> {
 
   /** 图片等异步增高内容加载完成：此前贴在尾部新鲜端的话重新贴回底部。 */
   private onContentLoad(): void {
-    if (this.disposed || this.edge.at !== 'tail' || !this.stuck) return;
+    if (this.disposed || this.edge !== 'tail' || !this.stuck) return;
     this.pinToFreshEdge();
   }
 
   private pinToFreshEdge(): void {
     const el = this.opts.scrollElement;
-    let remaining = this.edge.settleFrames;
+    let remaining = SETTLE_FRAMES[this.edge];
     const settle = (): void => {
       if (this.disposed) return; // dispose 之后不再触碰宿主 DOM
-      el.scrollTop = this.edge.at === 'head' ? 0 : el.scrollHeight;
+      el.scrollTop = this.edge === 'head' ? 0 : el.scrollHeight;
       this.stuck = true;
       remaining -= 1;
       if (remaining > 0) nextFrame(settle);
@@ -559,7 +565,7 @@ export class BoundedList<T, Q = void> {
    * 「报出去的」是同一份序列和同一个顺序。
    */
   private visibleItems(): readonly T[] {
-    const items = this.overlay.apply(this.window.items, this.edge.at, this.opts.identityOf);
+    const items = this.overlay.apply(this.window.items, this.edge, this.opts.identityOf);
     const pinned = this.opts.pinnedItems?.() ?? [];
     if (pinned.length === 0) return items;
     const seen = new Set(items.map((item) => this.opts.identityOf(item)));
@@ -573,16 +579,12 @@ export class BoundedList<T, Q = void> {
     return unique.length === 0 ? items : [...unique, ...items];
   }
 
-  /** 组件内部重绘：未变化的行复用已有 DOM，不重跑 renderItem。 */
-  private repaint(): void {
-    this.paint(false);
-  }
-
-  private paint(rebuildRows: boolean): void {
+  private paint(rebuildRows: boolean, items: readonly T[] = this.visibleItems()): void {
     if (this.disposed) return;
-    const items = this.visibleItems();
     const text = this.opts.text;
     const empty = items.length === 0;
+    // 没有行要渲染时不调用：beforeRender 是「为这批条目做准备」，空批次没什么可准备的。
+    if (!empty) this.opts.beforeRender?.(items);
     this.renderer.render({
       items,
       loaded: this.loaded,
@@ -590,9 +592,7 @@ export class BoundedList<T, Q = void> {
       hasMoreTail: this.window.hasMoreTail,
       loadingHead: this.loading === 'head',
       loadingTail: this.loading === 'tail',
-      emptyText: empty
-        ? (this.isFiltered() ? (text.emptyFiltered?.() ?? text.empty?.()) : text.empty?.())
-        : undefined,
+      emptyText: empty ? text.empty?.() : undefined,
       errorText: empty && this.failure ? text.error?.(this.failure.error) : undefined,
       loadingText: text.loading?.(),
       headBoundaryText: text.headBoundary?.(),
@@ -608,29 +608,27 @@ export class BoundedList<T, Q = void> {
 
   private renderRow(item: T, index: number, items: readonly T[]): readonly HTMLElement[] {
     const identity = this.opts.identityOf(item);
-    const { selected, selectable } = this.selectionFlags(identity);
     const ctx: RenderItemContext<T> = {
-      index,
       identity,
-      selected,
-      selectable,
+      ...this.selectionFlags(identity),
       previous: index > 0 ? items[index - 1] : undefined,
     };
-    const elements = this.opts.renderItem(item, ctx);
-    if (elements.length > 0) {
-      elements[0].setAttribute?.('role', 'option');
-      if (this.selection) elements[0].setAttribute?.('aria-selected', String(selected));
-    }
-    return elements;
+    return this.opts.renderItem(item, ctx);
   }
 
+  /**
+   * 会影响 renderItem 输出、但不在条目自身数据里的上下文签名。
+   *
+   * 刻意不含行下标：下标会随头部插页整体平移，一旦入签名，插一页就让整窗口失去复用、
+   * 每一行都重跑 renderItem。需要在渲染前按整批数据做一次准备的调用方用 `beforeRender`。
+   *
+   * 分隔符用 `\u0000`：身份串里可能含任何可打印字符，只有 NUL 一定不会出现，
+   * 拼接后不会有两组不同取值撞成同一个签名。
+   */
   private rowRevision(item: T, index: number, items: readonly T[]): string {
     const previousIdentity = index > 0 ? this.opts.identityOf(items[index - 1]) : '';
     const { selected, selectable } = this.selectionFlags(this.opts.identityOf(item));
-    // 只记「是否首行」而非精确 index：renderItem 唯一依赖 index 的地方是 index===0
-    // 的判定（首行批量预取），精确下标一旦入 revision，任何头部插入都会让每一行的
-    // revision 一起变化，导致整窗口跳过复用、重跑 renderItem。
-    return `${index === 0 ? 1 : 0} ${previousIdentity} ${selected ? 1 : 0} ${selectable ? 1 : 0}`;
+    return `${previousIdentity}\u0000${selected ? 1 : 0}\u0000${selectable ? 1 : 0}`;
   }
 
   /** 某个身份当前的选中态：渲染与 revision 共用同一份判定，避免各改一半。 */
@@ -639,10 +637,6 @@ export class BoundedList<T, Q = void> {
       selected: this.selection?.has(identity) ?? false,
       selectable: this.selection ? !this.selection.isExceeded(identity) : true,
     };
-  }
-
-  private isFiltered(): boolean {
-    return !valuesEquivalent(this.query, this.opts.initialQuery);
   }
 
   // ---- 交互与事件 ----
@@ -664,52 +658,34 @@ export class BoundedList<T, Q = void> {
     if (this.selection.toggle(identity) === 'rejected') this.opts.selection!.onExceed?.();
   }
 
-  private afterLocalChange(): void {
-    this.emitItemsChanged();
-    this.emitLoadState();
-    this.repaint();
+  // ---- 对外上报 ----
+  //
+  // 渲染序列只在这里算一次，然后串给「上报序列 / 上报状态 / 重绘」三件事。
+  // 它们本来就该看到同一份序列，各自现算既慢又给了三者不一致的机会。
+
+  /** 序列变了：上报序列 + 上报状态 + 重绘。 */
+  private emitAll(items: readonly T[] = this.visibleItems()): void {
+    this.opts.onItemsChanged?.(items);
+    this.emitStatus(items);
   }
 
-  private emitLoadState(): void {
-    this.opts.onLoadStateChange?.(this.getState());
+  /** 序列没变、只是加载态变了：上报状态 + 重绘。 */
+  private emitStatus(items: readonly T[] = this.visibleItems()): void {
+    this.opts.onLoadStateChange?.(this.buildState(items));
+    this.paint(false, items);
   }
 
-  private emitItemsChanged(): void {
-    this.opts.onItemsChanged?.(this.visibleItems());
-  }
-
-  private emitSelectionChange(): void {
+  private emitSelectionChange(items: readonly T[]): void {
     if (!this.selection || !this.opts.onSelectionChange) return;
     const ids = this.selection.snapshotIds();
-    // 顺序与去重都与渲染保持一致：同一份 visibleItems 序列。
-    const items = this.visibleItems().filter((item) => ids.has(this.opts.identityOf(item)));
-    this.opts.onSelectionChange({ ids, count: ids.size, items });
+    // 顺序与去重都与渲染保持一致：同一份渲染序列。
+    const selected = items.filter((item) => ids.has(this.opts.identityOf(item)));
+    this.opts.onSelectionChange({ ids, count: ids.size, items: selected });
   }
 
   private reportError(err: unknown, phase: ErrorPhase): void {
     if (this.opts.onError) this.opts.onError(err, phase);
     else console.warn(`[BoundedList:${this.opts.id}] ${phase} 失败`, err);
-  }
-
-  // ---- 宿主 DOM 属性 ----
-
-  private applyA11yAttributes(): void {
-    const el = this.opts.scrollElement;
-    for (const name of A11Y_ATTRS) {
-      this.originalA11y.set(name, el.getAttribute?.(name) ?? null);
-    }
-    el.setAttribute?.('tabindex', '0');
-    el.setAttribute?.('role', 'listbox');
-    if (this.opts.selection?.mode === 'multi') el.setAttribute?.('aria-multiselectable', 'true');
-    else el.removeAttribute?.('aria-multiselectable');
-  }
-
-  private restoreA11yAttributes(): void {
-    const el = this.opts.scrollElement as HTMLElement & { removeAttribute?: (name: string) => void };
-    for (const [name, value] of this.originalA11y) {
-      if (value === null) el.removeAttribute?.(name);
-      else el.setAttribute?.(name, value);
-    }
   }
 }
 
