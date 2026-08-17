@@ -1,18 +1,42 @@
 // PageSource 的两种实现（设计方案 §2.2、§4.2）：
-// - serverPageSource：服务端 keyset 游标分页，游标原样透传，不解析、不构造；
+// - sdkPageSource：服务端 keyset 游标分页，游标原样透传，不解析、不构造；
 // - localPageSource：对一次性拉到内存的全量数组做本地切片，游标 = 下标字符串。
 //   仅用于「刻意选择在客户端过滤/排序」的场景（提及群成员、添加群成员候选），
 //   本地游标不外传给服务端，不违反「游标对客户端不透明」的项目不变量。
 
 import type { DisplayOrder, FetchPageRequest, PageLoadResult, PageSource } from './types';
 
-/** 服务端分页：fetch 原样透传请求，map 把 SDK 响应整理成窗口要的结构。 */
-export function serverPageSource<R, T, Q>(
+/** SDK 所有分页响应共有的翻页信息（`packages/sdk/src/types.ts` 的 `PageInfo`）。 */
+interface SdkPageInfo {
+  readonly startCursor: string;
+  readonly endCursor: string;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
+  readonly total?: number;
+}
+
+/**
+ * 服务端分页：请求原样透传给 SDK，响应里的 `page` 也按同名字段搬进窗口要的结构，
+ * 全程没有方向词汇的翻译（组件与 wire 用的是同一套 `backward`/`forward`）。
+ * 调用方只需回答一个问题：这次响应里的条目在哪个字段（`selectItems`）。
+ *
+ * `selectTotal` 只给「总数不在 `page.total` 里」的接口用（如 `getGroupMembers`
+ * 的总数在响应顶层），其余一律不传。
+ */
+export function sdkPageSource<R extends { readonly page: SdkPageInfo }, T, Q>(
   fetch: (req: FetchPageRequest<Q>) => Promise<R>,
-  map: (raw: R) => PageLoadResult<T>,
+  selectItems: (raw: R) => readonly T[],
+  selectTotal?: (raw: R) => number,
 ): PageSource<T, Q> {
   return {
-    fetch: (req) => fetch(req).then(map),
+    fetch: (req) => fetch(req).then((raw): PageLoadResult<T> => ({
+      items: selectItems(raw),
+      startCursor: raw.page.startCursor,
+      endCursor: raw.page.endCursor,
+      hasMoreBackward: raw.page.hasMoreBackward,
+      hasMoreForward: raw.page.hasMoreForward,
+      total: selectTotal ? selectTotal(raw) : raw.page.total,
+    })),
   };
 }
 
@@ -22,8 +46,8 @@ export interface LocalPageSourceOptions<T, Q> {
   readonly compare?: (a: T, b: T) => number;
   /**
    * 展示序，必须与所属 BoundedList 的 `order` 一致，默认 'desc'。
-   * reset（cursor 未提供）要取的是新鲜端那一页：'desc' 新鲜端在头部，取 entries
-   * 最前面一页；'asc' 新鲜端在尾部，取最后一页。与所属 BoundedList 的 `order` 不一致
+   * reset（cursor 未提供）要取的是新鲜端那一页：'desc' 新鲜端在 backward 端，取 entries
+   * 最前面一页；'asc' 新鲜端在 forward 端，取最后一页。与所属 BoundedList 的 `order` 不一致
    * 会静默取错端，必须显式传入，不能只靠调用方自行保证。
    */
   readonly order?: DisplayOrder;
@@ -40,7 +64,7 @@ export interface LocalPageSourceOptions<T, Q> {
  * 绝不产出 "NaN" 这种此后永远翻不动的游标。
  */
 export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): PageSource<T, Q> {
-  const freshEdge = (options.order ?? 'desc') === 'desc' ? 'head' : 'tail';
+  const freshEdge = (options.order ?? 'desc') === 'desc' ? 'backward' : 'forward';
   let entries: T[] = [];
   let reloadGeneration = 0;
 
@@ -62,8 +86,8 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
       items: source.slice(clampedStart, clampedEnd),
       startCursor: String(clampedStart),
       endCursor: String(clampedEnd),
-      hasMoreHead: clampedStart > 0,
-      hasMoreTail: clampedEnd < source.length,
+      hasMoreBackward: clampedStart > 0,
+      hasMoreForward: clampedEnd < source.length,
       total: source.length,
     };
   }
@@ -77,8 +101,8 @@ export function localPageSource<T, Q>(options: LocalPageSourceOptions<T, Q>): Pa
     async fetch(req: FetchPageRequest<Q>): Promise<PageLoadResult<T>> {
       if (req.cursor === undefined) {
         const snapshot = await reload(req.query);
-        // reset 取新鲜端那一页：head 取最前面一页，tail 取最后一页。
-        return freshEdge === 'tail'
+        // reset 取新鲜端那一页：backward 端取最前面一页，forward 端取最后一页。
+        return freshEdge === 'forward'
           ? slice(snapshot, snapshot.length - req.limit, snapshot.length)
           : slice(snapshot, 0, req.limit);
       }

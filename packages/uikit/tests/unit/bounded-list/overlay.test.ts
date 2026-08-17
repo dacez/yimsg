@@ -1,0 +1,95 @@
+// LocalOverlay（本地层）单测。
+// 覆盖口径见 packages/uikit/docs/boundedlist/测试方案.md §4.3。
+
+import { describe, expect, it } from 'vitest';
+import { LocalOverlay } from '../../../src/app/bounded-list/overlay';
+import { idOf, makeTestItems, type TestItem } from './test-sources';
+
+function apply(overlay: LocalOverlay<TestItem>, base: readonly TestItem[], edge: 'backward' | 'forward'): string[] {
+  return overlay.apply(base, edge, idOf).map((item) => item.label);
+}
+
+describe('LocalOverlay 叠加语义', () => {
+  it('空本地层原样返回权威序列', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    expect(apply(overlay, makeTestItems(3), 'backward')).toEqual(['item-0', 'item-1', 'item-2']);
+  });
+
+  it('put 新身份：backward 端落在最前，forward 端落在最后', () => {
+    const backward = new LocalOverlay<TestItem>(8);
+    backward.put('9', { id: 9, label: 'local' });
+    expect(apply(backward, makeTestItems(2), 'backward')).toEqual(['local', 'item-0', 'item-1']);
+
+    const forward = new LocalOverlay<TestItem>(8);
+    forward.put('9', { id: 9, label: 'local' });
+    expect(apply(forward, makeTestItems(2), 'forward')).toEqual(['item-0', 'item-1', 'local']);
+  });
+
+  it('put 已在权威序列里的身份：从原位置摘掉并移到新鲜端（会话置顶语义）', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('2', { id: 2, label: 'promoted' });
+    expect(apply(overlay, makeTestItems(3), 'backward')).toEqual(['promoted', 'item-0', 'item-1']);
+  });
+
+  it('多次 put 按记账序排列：backward 端最后记的排最前', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('7', { id: 7, label: 'a' });
+    overlay.put('8', { id: 8, label: 'b' });
+    expect(apply(overlay, makeTestItems(1), 'backward')).toEqual(['b', 'a', 'item-0']);
+    expect(apply(overlay, makeTestItems(1), 'forward')).toEqual(['item-0', 'a', 'b']);
+  });
+
+  it('重复 put 同一身份只留一条，并移到记账序最后', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('7', { id: 7, label: 'a1' });
+    overlay.put('8', { id: 8, label: 'b' });
+    overlay.put('7', { id: 7, label: 'a2' });
+    expect(apply(overlay, [], 'forward')).toEqual(['b', 'a2']);
+    expect(overlay.size).toBe(2);
+  });
+
+  it('drop 把该身份从渲染序列里摘掉', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.drop('1');
+    expect(apply(overlay, makeTestItems(3), 'backward')).toEqual(['item-0', 'item-2']);
+  });
+
+  it('先 put 后 drop 只留删除态', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('9', { id: 9, label: 'local' });
+    overlay.drop('9');
+    expect(apply(overlay, makeTestItems(1), 'backward')).toEqual(['item-0']);
+  });
+});
+
+describe('LocalOverlay 生命周期', () => {
+  it('settle 只丢弃 mark 之前（含）的记账，之后记的保留', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('7', { id: 7, label: 'before' });
+    const mark = overlay.mark();
+    overlay.put('8', { id: 8, label: 'after' });
+
+    overlay.settle(mark);
+    expect(apply(overlay, [], 'forward')).toEqual(['after']);
+  });
+
+  it('clear 清空全部记账', () => {
+    const overlay = new LocalOverlay<TestItem>(8);
+    overlay.put('7', { id: 7, label: 'a' });
+    overlay.drop('1');
+    overlay.clear();
+    expect(overlay.size).toBe(0);
+    expect(apply(overlay, makeTestItems(2), 'backward')).toEqual(['item-0', 'item-1']);
+  });
+
+  it('超过上限时静默丢弃最旧的一条，保持有界', () => {
+    const overlay = new LocalOverlay<TestItem>(2);
+    overlay.put('1', { id: 1, label: 'a' });
+    overlay.put('2', { id: 2, label: 'b' });
+    overlay.put('3', { id: 3, label: 'c' });
+
+    expect(overlay.size).toBe(2);
+    // 最旧的 '1' 已被丢弃：它既不再以本地值渲染，也不再遮住权威序列里的同身份条目。
+    expect(apply(overlay, [{ id: 1, label: 'from-window' }], 'forward')).toEqual(['from-window', 'b', 'c']);
+  });
+});

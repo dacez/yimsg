@@ -2,10 +2,10 @@ import { CONTACT_FRIEND, CONTACT_PENDING_INCOMING, CONTACT_PENDING_OUTGOING } fr
 import { ORG_CHILD_PERSON, ORG_CHILD_TAG } from '@yimsg/sdk/uikit-internal';
 import { APP_CONFIG } from '../../app-config';
 import { describeError } from '../error-i18n';
-import type { Contact, ContactPage, LocalConversation } from '@yimsg/sdk';
+import type { Contact, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
-import { createBoundedList, serverPageSource, standaloneList, type BoundedList, type PageLoadResult, type RenderItemContext } from '../bounded-list';
+import { createBoundedList, sdkPageSource, standaloneList, type BoundedList, type RenderItemContext } from '../bounded-list';
 import { contactIdentity } from '../list-identity';
 import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_TRASH } from './panel-action-btn';
 import { openOrgAdmin } from './org-admin';
@@ -32,17 +32,6 @@ function contactOrgId(contact: Contact): string {
 
 // 渲染锚点键与跨页去重身份键共用同一稳定身份（friendUid:groupId:orgId），保证两者口径一致。
 const contactKey = contactIdentity;
-
-function contactPageLoad(page: ContactPage, items?: ReadonlyArray<Contact>): PageLoadResult<Contact> {
-  return {
-    items: items ?? page.contacts,
-    startCursor: page.page.startCursor,
-    endCursor: page.page.endCursor,
-    hasMoreHead: page.page.hasMoreBackward,
-    hasMoreTail: page.page.hasMoreForward,
-    total: page.page.total,
-  };
-}
 
 /** BoundedList 的 identityOf 用 `uid:gid:oid` 三段身份；批量定向刷新按段拆分成三个数组一次性请求。 */
 function fetchContactsByIdentity(app: AppInstance, ids: readonly string[]): Promise<readonly Contact[]> {
@@ -137,11 +126,11 @@ export function createContactsView(app: AppInstance) {
       register: (controller) => app.registerBoundedList(controller),
       isActive: isFriendsTabActive,
       initialQuery: { keyword: '' },
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit, query }) => query.keyword
           ? app.client.searchContacts({ keyword: query.keyword, status: CONTACT_FRIEND, cursor, backward, limit })
           : app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit }),
-        (page) => contactPageLoad(page),
+        (page) => page.contacts,
       ),
       fetchByIdentity: (ids) => fetchContactsByIdentity(app, ids),
       identityOf: contactKey,
@@ -149,10 +138,11 @@ export function createContactsView(app: AppInstance) {
       renderItem: (contact, ctx) => renderContactRow(contact, ctx),
       onActivate: (contact) => { void showContactDetail(contact); },
       text: {
-        empty: () => app.t('contacts.noFriends'),
-        emptyFiltered: () => app.t('contacts.noSearchResults'),
+        empty: () => friendKeyword
+          ? app.t('contacts.noSearchResults')
+          : app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreContacts'),
+        forwardBoundary: () => app.t('contacts.noMoreContacts'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -198,9 +188,9 @@ export function createContactsView(app: AppInstance) {
       maxPages: APP_CONFIG.list.maxPages,
       register: (controller) => app.registerBoundedList(controller),
       isActive: isRequestsTabActive,
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit }) => app.client.getContacts({ status: CONTACT_PENDING_INCOMING, cursor, backward, limit }),
-        (page) => contactPageLoad(page),
+        (page) => page.contacts,
       ),
       fetchByIdentity: (ids) => fetchContactsByIdentity(app, ids),
       identityOf: contactKey,
@@ -209,7 +199,7 @@ export function createContactsView(app: AppInstance) {
       text: {
         empty: () => app.t('contacts.noPendingRequests'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreRequests'),
+        forwardBoundary: () => app.t('contacts.noMoreRequests'),
         updatePill: () => app.t('contacts.listUpdated'),
         retry: () => app.t('common.retry'),
       },
@@ -248,9 +238,9 @@ export function createContactsView(app: AppInstance) {
       maxPages: APP_CONFIG.list.maxPages,
       register: (controller) => app.registerBoundedList(controller),
       isActive: isRequestsTabActive,
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit }) => app.client.getContacts({ status: CONTACT_PENDING_OUTGOING, cursor, backward, limit }),
-        (page) => contactPageLoad(page),
+        (page) => page.contacts,
       ),
       identityOf: contactKey,
       order: 'desc',
@@ -777,9 +767,9 @@ export function createContactsView(app: AppInstance) {
       pillHost: false,
       pageSize: FRIEND_PAGE_SIZE,
       maxPages: APP_CONFIG.list.maxPages,
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit }) => app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit }),
-        (page) => contactPageLoad(page, page.contacts.filter((contact) => contactFriendUid(contact) !== '0')),
+        (page) => page.contacts.filter((contact) => contactFriendUid(contact) !== '0'),
       ),
       identityOf: (contact) => contactFriendUid(contact),
       order: 'desc',
@@ -802,7 +792,7 @@ export function createContactsView(app: AppInstance) {
       text: {
         empty: () => app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
-        tailBoundary: () => app.t('contacts.noMoreContacts'),
+        forwardBoundary: () => app.t('contacts.noMoreContacts'),
         retry: () => app.t('common.retry'),
       },
       onSelectionChange: (snapshot) => {

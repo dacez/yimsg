@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-07-30。
+> 最后复核：2026-08-17。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -243,7 +243,7 @@ initAfterAuth():
 
 `messages:received` 是重绘信号，不是列表数据源。`main-app.ts` 只把 `event.messages` 交给宿主的 `onMessages`（角标、响铃等），再用 `event.conversationKeys` 定向刷新会话窗口，并让当前消息列表执行 `invalidate({ count: 1 })`。
 
-`BoundedList.invalidate()` 统一决定是否立即追平：用户位于新鲜端时在保留当前 DOM 的前提下后台拉取最新页，成功后按 identity 原子协调变化行；正在阅读历史时保留当前 DOM 与滚动位置，只累计提示条计数。提示条点击后跳回最新端。删除与本端发送分别走 `removeLocal()` 和 `upsertLocal()`，不再维护一套平行的消息页状态。
+`BoundedList.invalidate()` 统一决定是否立即追平：用户位于新鲜端时在保留当前 DOM 的前提下后台拉取最新页，成功后按 identity 原子协调变化行；正在阅读历史时保留当前 DOM 与滚动位置，只点亮「有更新」提示条（布尔，不带计数）。提示条点击后跳回最新端。删除与本端发送分别走 `removeLocal()` 和 `upsertLocal()`，写入本地层后立即可见，不再维护一套平行的消息页状态。
 
 消息列表事件、会话列表事件和重连广播的完整路由表见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。
 
@@ -575,7 +575,7 @@ uploadAndSend(file, type):
 
 图片占位消息的 `media_id` 直接是本地 `blob:` 预览地址：`message-list.ts` 的 `fillMessageBubble` 只在该消息命中 `pendingMessageIds` 且 `media_id` 以 `blob:` 开头时才直接使用它做 `img.src`（不经过面向远端内容的 `setTrustedImageSrc` 协议白名单，因为这条消息是本条会话自己刚创建的本地对象，不是外部输入）；文件占位消息没有可视预览，`media_id` 为空时按现有兜底逻辑展示文件名即可，不需要额外处理。
 
-**占位换真实消息不闪烁**：`bounded-list/stream-window.ts` 按稳定身份协调真实 DOM。发送确认或接收通知触发渲染时，语义和候选 DOM 都未变化的消息行沿用原节点，只插入新消息或替换确实从占位态变成权威态的那一行，不再清空整个消息容器。图片占位换成权威消息时，`src` 仍会从本地 `blob:` 预览地址变成 `/media/image/{id}`；`uploadAndSend` 在替换前用未挂载的 `Image()` 预热该 URL（失败也放行），避免目标行自身出现可见加载间隙。
+**占位换真实消息不闪烁**：`bounded-list/renderer.ts` 按稳定身份协调真实 DOM。发送确认或接收通知触发渲染时，语义和候选 DOM 都未变化的消息行沿用原节点，只插入新消息或替换确实从占位态变成权威态的那一行，不再清空整个消息容器。图片占位换成权威消息时，`src` 仍会从本地 `blob:` 预览地址变成 `/media/image/{id}`；`uploadAndSend` 在替换前用未挂载的 `Image()` 预热该 URL（失败也放行），避免目标行自身出现可见加载间隙。
 
 #### 引用与转发
 
@@ -1089,8 +1089,8 @@ container.appendChild(div);
 
 ```
 checkReach():
-  触底: maxScrollTop - scrollTop <= reachPx 且 hasMoreTail → loadTail()
-  触顶: scrollTop <= reachPx 且 hasMoreHead → loadHead()
+  触底: maxScrollTop - scrollTop <= reachPx 且 hasMoreForward → loadMore('forward')
+  触顶: scrollTop <= reachPx 且 hasMoreBackward → loadMore('backward')
   （并发守卫在加载回调内部：if (loading || !hasMore) return）
 
   加载完成 → loading = false → 重渲（视窗未填满时链式补页）

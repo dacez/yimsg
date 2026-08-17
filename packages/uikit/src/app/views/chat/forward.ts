@@ -6,7 +6,7 @@ import { describeError } from "../../error-i18n";
 import { conversationLabel } from "./helpers";
 import { exitMessageSelectionMode } from "./selection";
 import { appendLiveMessageToPage } from "./message-page";
-import { createBoundedList, serverPageSource, SelectionStore } from "../../bounded-list";
+import { createBoundedList, sdkPageSource, SelectionStore } from "../../bounded-list";
 import { contactFriendUid, contactGroupId } from "../contacts";
 
 const FORWARD_MAX_TARGETS = APP_CONFIG.forward.maxTargets;
@@ -90,16 +90,9 @@ async function showForwardModal(
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.list.maxPages,
       register: (c) => app.registerBoundedList(c),
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit }) => app.client.getConversations({ cursor, backward, limit }),
-        (page) => ({
-          items: page.conversations,
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreHead: page.page.hasMoreBackward,
-          hasMoreTail: page.page.hasMoreForward,
-          total: page.page.total,
-        }),
+        (page) => page.conversations,
       ),
       identityOf: (conv) => app.client.describeConversation(conv).key,
       order: "desc",
@@ -108,7 +101,7 @@ async function showForwardModal(
       text: {
         empty: () => app.t("chat.forwardNoConversation"),
         loading: () => app.t("common.loading"),
-        tailBoundary: () => app.t("chat.noMoreConversations"),
+        forwardBoundary: () => app.t("chat.noMoreConversations"),
         retry: () => app.t("common.retry"),
       },
       onItemsChanged: (items) => {
@@ -131,19 +124,12 @@ async function showForwardModal(
       maxPages: APP_CONFIG.list.maxPages,
       register: (c) => app.registerBoundedList(c),
       initialQuery: { keyword: "" },
-      source: serverPageSource(
+      source: sdkPageSource(
         ({ cursor, backward, limit, query }) => query.keyword
           ? app.client.searchContacts({ keyword: query.keyword, status: CONTACT_FRIEND, cursor, backward, limit })
           : app.client.getContacts({ status: CONTACT_FRIEND, cursor, backward, limit }),
-        (page) => ({
-          // 组织类通讯录条目不是会话目标，只保留可直接开聊的好友 / 收藏群。
-          items: page.contacts.filter((c) => contactFriendUid(c) !== "0" || contactGroupId(c) !== "0"),
-          startCursor: page.page.startCursor,
-          endCursor: page.page.endCursor,
-          hasMoreHead: page.page.hasMoreBackward,
-          hasMoreTail: page.page.hasMoreForward,
-          total: page.page.total,
-        }),
+        // 组织类通讯录条目不是会话目标，只保留可直接开聊的好友 / 收藏群。
+        (page) => page.contacts.filter((c) => contactFriendUid(c) !== "0" || contactGroupId(c) !== "0"),
       ),
       identityOf: (contact) => app.client.describeConversation(forwardContactConv(contact)).key,
       order: "desc",
@@ -152,7 +138,7 @@ async function showForwardModal(
       text: {
         empty: () => app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
         loading: () => app.t("common.loading"),
-        tailBoundary: () => app.t("contacts.noMoreContacts"),
+        forwardBoundary: () => app.t("contacts.noMoreContacts"),
         retry: () => app.t("common.retry"),
       },
       onError: (error) => console.warn("[yimsg/uikit] forward contact list failed:", error),

@@ -6,7 +6,7 @@ import { msgPreview } from "./helpers";
 import { applyConversationGuards } from "./composer";
 import { closeMessageActionMenu, exitMessageSelectionMode } from "./selection";
 import { closeMessageSearchPanel } from "./message-search";
-import { createBoundedList, serverPageSource, type BoundedList, type RenderItemContext } from "../../bounded-list";
+import { createBoundedList, sdkPageSource, type BoundedList, type RenderItemContext } from "../../bounded-list";
 import { conversationIdentity } from "../../list-identity";
 import { resetMessagePage } from "./message-page";
 import { getMessageList } from "./message-list";
@@ -156,7 +156,6 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
   if (app.chatState.conversationList) return app.chatState.conversationList;
 
   let displayMaps: ReturnType<typeof collectDisplayMaps> | null = null;
-  let windowItems: readonly LocalConversation[] = [];
 
   const list = createBoundedList<LocalConversation>({
     id: "conversations",
@@ -164,15 +163,9 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     pageSize: APP_CONFIG.list.pageSize,
     maxPages: APP_CONFIG.list.maxPages,
     register: (controller) => app.registerBoundedList(controller),
-    source: serverPageSource(
+    source: sdkPageSource(
       ({ cursor, backward, limit }) => app.client.getConversations({ cursor, backward, limit }),
-      (page) => ({
-        items: page.conversations,
-        startCursor: page.page.startCursor,
-        endCursor: page.page.endCursor,
-        hasMoreHead: page.page.hasMoreBackward,
-        hasMoreTail: page.page.hasMoreForward,
-      }),
+      (page) => page.conversations,
     ),
     fetchByIdentity: (ids) =>
       app.client.getConversations({ targets: ids.map(identityToTarget) }).then((p) => p.conversations),
@@ -182,21 +175,18 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     // 就不再钉在头部：组件按身份去重 pinnedItems 与窗口条目，窗口是权威，这里直接
     // 把占位会话全交出去即可。
     pinnedItems: () => pinnedConversations(app),
-    renderItem: (conv, ctx) => {
-      if (ctx.index === 0) {
-        displayMaps = collectDisplayMaps(app, [...pinnedConversations(app), ...windowItems]);
-      }
-      return [renderConversationRow(app, conv, ctx, displayMaps!)];
-    },
+    // 展示名等信息按整批预取一次：beforeRender 拿到的就是本轮真正要渲染的序列
+    // （已含 pinnedItems 与本地层），不必再自己拼一份快照。
+    beforeRender: (items) => { displayMaps = collectDisplayMaps(app, items); },
+    renderItem: (conv, ctx) => [renderConversationRow(app, conv, ctx, displayMaps!)],
     text: {
       empty: () => app.t("chat.noConversations"),
       loading: () => app.t("common.loading"),
-      tailBoundary: () => app.t("chat.noMoreConversations"),
+      forwardBoundary: () => app.t("chat.noMoreConversations"),
       updatePill: () => app.t("chat.listUpdated"),
       retry: () => app.t("common.retry"),
     },
     onActivate: (conv) => { void openConversation(app, conv); },
-    onItemsChanged: (items) => { windowItems = items; },
     onLoadStateChange: () => {
       app.setNavBadge('.nav-item[data-view="chat"]', app.chatState.conversationTotalUnreadCount > 0);
     },

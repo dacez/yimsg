@@ -113,7 +113,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, edge: 'tail'): Promise<void>;
+          loadMore(key: string, edge: 'forward'): Promise<void>;
           state(key: string): { count: number };
           rowCount(key: string): number;
           rowIds(key: string): string[];
@@ -132,7 +132,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       let maxRows = 0;
       for (let pageIndex = 0; pageIndex < 250; pageIndex++) {
         const started = performance.now();
-        await api.loadMore(key, 'tail');
+        await api.loadMore(key, 'forward');
         document.body.offsetHeight;
         samples.push(performance.now() - started);
         maxCount = Math.max(maxCount, api.state(key).count);
@@ -170,13 +170,13 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
     expect(timings.max).toBeLessThanOrEqual(250);
   });
 
-  test('200 行窗口连续 patch 200 次，P95 ≤ 50ms 且没有 DOM 增长', async ({ page }, testInfo) => {
+  test('200 行窗口连续本端写入 200 次，P95 ≤ 50ms 且没有 DOM 增长', async ({ page }, testInfo) => {
     const result = await page.evaluate(async () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, edge: 'tail'): Promise<void>;
-          patchLabel(key: string, id: string, label: string): boolean;
+          loadMore(key: string, edge: 'forward'): Promise<void>;
+          upsertLocal(key: string, item: { id: string; label: string; order: number }): void;
           state(key: string): { count: number };
           rowCount(key: string): number;
           removeCase(key: string): void;
@@ -188,12 +188,12 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         maxPages: 5,
         reachPx: -1,
       });
-      for (let index = 0; index < 4; index++) await api.loadMore(key, 'tail');
+      for (let index = 0; index < 4; index++) await api.loadMore(key, 'forward');
       const samples: number[] = [];
       for (let index = 0; index < 200; index++) {
         const id = String(index);
         const started = performance.now();
-        api.patchLabel(key, id, `patched-${index}`);
+        api.upsertLocal(key, { id, label: `patched-${index}`, order: index });
         document.body.offsetHeight;
         samples.push(performance.now() - started);
       }
@@ -204,7 +204,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
     });
     const timings = summarize(result.samples.slice(20));
     const record: PerformanceRecord = {
-      name: 'bounded-list-200-row-patch',
+      name: 'bounded-list-200-row-local-upsert',
       dataSize: 1_000_000,
       pageSize: 40,
       maxPages: 5,
@@ -328,7 +328,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
     expect(heapDeltaBytes).toBeLessThanOrEqual(16 * 1024 * 1024);
   });
 
-  test('BL-BUG-010：连续 1,000 次 upsertLocal 后仍必须满足硬上限', async ({ page }, testInfo) => {
+  test('连续 1,000 次 upsertLocal 后渲染序列仍满足硬上限', async ({ page }, testInfo) => {
     const result = await page.evaluate(async () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
@@ -373,7 +373,8 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
     };
     await attachRecord(testInfo, record);
 
-    expect(result.count).toBeLessThanOrEqual(200);
-    expect(result.domRows).toBeLessThanOrEqual(200);
+    // 硬上限 = 权威窗口 pageSize×maxPages 加上本地层自身的 pageSize 上限。
+    expect(result.count).toBeLessThanOrEqual(250);
+    expect(result.domRows).toBeLessThanOrEqual(250);
   });
 });

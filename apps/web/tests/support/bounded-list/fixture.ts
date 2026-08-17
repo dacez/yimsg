@@ -27,11 +27,9 @@ const html = `<!doctype html>
       .bl-case { position: relative; width: 360px; min-height: 190px; border: 1px solid #999; }
       .bl-scroller { width: 100%; height: 160px; overflow-y: auto; outline: none; }
       .bl-scroller:focus { outline: 2px solid #1769ff; }
-      .bl-content { min-height: 100%; }
       .bl-row { display: block; width: 100%; padding: 4px 8px; border-bottom: 1px solid #ddd; }
       .bl-row[data-selected="true"] { background: #dce9ff; }
       .bl-row[data-selectable="false"] { opacity: 0.45; }
-      .bsw-row-focused { outline: 2px solid #c2185b; outline-offset: -2px; }
       .list-boundary-hint, .empty-state { min-height: 24px; padding: 3px 8px; }
       .list-updated-pill { position: absolute; z-index: 2; right: 8px; bottom: 8px; padding: 4px 8px; background: #1769ff; color: white; }
       .hidden { display: none !important; }
