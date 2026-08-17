@@ -159,7 +159,7 @@ describe('BoundedList / B 首屏与 reset', () => {
     expect(state.loaded).toBe(true);
     expect(state.count).toBe(3);
     expect(state.total).toBe(6);
-    expect(state.hasMoreTail).toBe(true);
+    expect(state.hasMoreForward).toBe(true);
     list.dispose();
   });
 
@@ -226,7 +226,7 @@ describe('BoundedList / C 续翻与触界', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(9))));
     await list.reset();
     scrollAway(host);
-    await list.loadMore('tail');
+    await list.loadMore('forward');
 
     expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-3', 'row-4', 'row-5']);
     list.dispose();
@@ -237,10 +237,10 @@ describe('BoundedList / C 续翻与触界', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(30))));
     await list.reset();
     scrollAway(host);
-    for (let i = 0; i < 5; i++) await list.loadMore('tail');
+    for (let i = 0; i < 5; i++) await list.loadMore('forward');
 
     expect(list.getState().count).toBeLessThanOrEqual(6);
-    expect(list.getState().hasMoreHead).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
     list.dispose();
   });
 
@@ -251,7 +251,7 @@ describe('BoundedList / C 续翻与触界', () => {
     await list.reset({ pinEdge: false });
     expect(renderedRows(host)).toEqual(['row-6', 'row-7', 'row-8']);
 
-    await list.loadMore('head');
+    await list.loadMore('backward');
     expect(renderedRows(host)).toEqual(['row-3', 'row-4', 'row-5', 'row-6', 'row-7', 'row-8']);
     list.dispose();
   });
@@ -266,8 +266,8 @@ describe('BoundedList / C 续翻与触界', () => {
     scrollAway(host);
 
     const before = pending.length;
-    void list.loadMore('tail');
-    void list.loadMore('tail');
+    void list.loadMore('forward');
+    void list.loadMore('forward');
     expect(pending.length).toBe(before + 1);
     list.dispose();
   });
@@ -283,7 +283,7 @@ describe('BoundedList / C 续翻与触界', () => {
     await flushAsync();
 
     expect(list.getState().count).toBe(6);
-    expect(list.getState().hasMoreTail).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     list.dispose();
   });
 
@@ -300,7 +300,7 @@ describe('BoundedList / C 续翻与触界', () => {
     await flushAsync();
     await flushAsync();
 
-    expect(list.getState().hasMoreTail).toBe(false);
+    expect(list.getState().hasMoreForward).toBe(false);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     list.dispose();
   });
@@ -339,8 +339,8 @@ describe('BoundedList / C 续翻与触界', () => {
     await list.reset();
     await flushAsync();
 
-    await list.loadMore('head');
-    await list.loadMore('tail');
+    await list.loadMore('backward');
+    await list.loadMore('forward');
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     list.dispose();
   });
@@ -708,7 +708,7 @@ describe('BoundedList / G 本地层', () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(12), 6)));
     await list.reset({ pinEdge: false });
-    expect(list.getState().hasMoreHead).toBe(true);
+    expect(list.getState().hasMoreBackward).toBe(true);
 
     list.upsertLocal({ id: 99, label: 'local' });
     expect(renderedRows(host)[0]).toBe('row-99');
@@ -819,8 +819,8 @@ describe('BoundedList / H 渲染与文案', () => {
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(6)), {
       text: {
         loading: () => '加载中',
-        headBoundary: () => '到顶了',
-        tailBoundary: () => '到底了',
+        backwardBoundary: () => '到顶了',
+        forwardBoundary: () => '到底了',
       },
     }));
     await list.reset();
@@ -1019,13 +1019,13 @@ describe('BoundedList / J 错误处理', () => {
     // 首页落地后自动补页 → 失败 → 该端被暂停，不会在同一帧里无限重试。
     pending[1].reject(new Error('page failed'));
     await flushAsync();
-    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'tail');
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'forward');
     const afterFailure = pending.length;
     await flushAsync();
     expect(pending).toHaveLength(afterFailure);
 
     // 显式 loadMore 视为用户主动重试，解除暂停。
-    void list.loadMore('tail');
+    void list.loadMore('forward');
     expect(pending.length).toBe(afterFailure + 1);
     list.dispose();
   });
@@ -1097,7 +1097,7 @@ describe('BoundedList / K 释放', () => {
     list.dispose();
 
     await list.reset();
-    await list.loadMore('tail');
+    await list.loadMore('forward');
     list.invalidate();
     list.upsertLocal({ id: 9, label: 'x' });
     expect(list.removeLocal('0')).toBe(false);
@@ -1175,7 +1175,7 @@ describe('BoundedList / L 只读状态', () => {
     await list.reset();
     expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2']);
     scrollAway(host);
-    await list.loadMore('tail');
+    await list.loadMore('forward');
     expect(list.getState().count).toBe(6);
     expect(list.getState().total).toBe(9);
     list.dispose();

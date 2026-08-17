@@ -60,7 +60,7 @@ export class LocalOverlay<T> {
 
   /**
    * 把本地层叠加到权威序列上：被记账的身份先从原位置摘掉，put 的条目再按记账序
-   * 落到新鲜端（head 端时最后记账的排在最前）。
+   * 落到新鲜端（backward 端时最后记账的排在最前）。
    */
   apply(base: readonly T[], freshEdge: Edge, identityOf: (item: T) => string): readonly T[] {
     if (this.entries.size === 0) return base;
@@ -70,7 +70,7 @@ export class LocalOverlay<T> {
       if (entry.item !== null) puts.push(entry.item);
     }
     if (puts.length === 0) return kept;
-    return freshEdge === 'head' ? [...puts.reverse(), ...kept] : [...kept, ...puts];
+    return freshEdge === 'backward' ? [...puts.reverse(), ...kept] : [...kept, ...puts];
   }
 
   private record(id: string, item: T | null): void {

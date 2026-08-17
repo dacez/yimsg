@@ -97,8 +97,8 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     renderItem: (msg, ctx) => renderMessageRow(app, msg, ctx, senderMap),
     text: {
       loading: () => app.t('common.loading'),
-      headBoundary: () => app.t('chat.reachedEarliest'),
-      tailBoundary: () => app.t('chat.reachedLatest'),
+      backwardBoundary: () => app.t('chat.reachedEarliest'),
+      forwardBoundary: () => app.t('chat.reachedLatest'),
       updatePill: () => app.t('chat.jumpToLatest'),
       retry: () => app.t('common.retry'),
     },

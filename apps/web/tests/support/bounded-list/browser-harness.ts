@@ -28,8 +28,8 @@ type TextKey =
   // 组件没有「过滤空态」这个概念：调用方按当前关键字自己在 empty 里二选一，
   // 这里模拟的就是生产里 contacts / message-search 的写法。
   | 'emptyFiltered'
-  | 'headBoundary'
-  | 'tailBoundary'
+  | 'backwardBoundary'
+  | 'forwardBoundary'
   | 'updatePill'
   | 'error'
   | 'retry';
@@ -188,7 +188,7 @@ function cloneItem(item: TestItem): TestItem {
 
 function phaseOf(req: FetchPageRequest<TestQuery>): ErrorPhase {
   if (req.cursor === undefined) return 'reset';
-  return req.backward ? 'head' : 'tail';
+  return req.backward ? 'backward' : 'forward';
 }
 
 function generatedItem(index: number): TestItem {
@@ -238,8 +238,8 @@ function pageFromRange(
     items,
     startCursor: String(start),
     endCursor: String(end),
-    hasMoreHead: start > 0,
-    hasMoreTail: end < total,
+    hasMoreBackward: start > 0,
+    hasMoreForward: end < total,
     total,
   };
 }
@@ -283,8 +283,8 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
     loading: '正在加载',
     empty: '列表为空',
     emptyFiltered: '没有匹配项',
-    headBoundary: '已到开头',
-    tailBoundary: '已到结尾',
+    backwardBoundary: '已到开头',
+    forwardBoundary: '已到结尾',
     updatePill: '有更新',
     error: '加载失败：{message}',
     retry: '重新加载',
@@ -296,8 +296,8 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
   const loading = value('loading');
   const empty = value('empty');
   const emptyFiltered = value('emptyFiltered');
-  const headBoundary = value('headBoundary');
-  const tailBoundary = value('tailBoundary');
+  const backwardBoundary = value('backwardBoundary');
+  const forwardBoundary = value('forwardBoundary');
   const updatePill = value('updatePill');
   const error = value('error');
   const retry = value('retry');
@@ -306,8 +306,8 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
     ...(empty === false ? {} : {
       empty: () => (keywordOf() && emptyFiltered !== false ? emptyFiltered : empty),
     }),
-    ...(headBoundary === false ? {} : { headBoundary: () => headBoundary }),
-    ...(tailBoundary === false ? {} : { tailBoundary: () => tailBoundary }),
+    ...(backwardBoundary === false ? {} : { backwardBoundary: () => backwardBoundary }),
+    ...(forwardBoundary === false ? {} : { forwardBoundary: () => forwardBoundary }),
     ...(updatePill === false
       ? {}
       : { updatePill: () => updatePill }),
@@ -474,8 +474,8 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
       compare: (a, b) => a.order - b.order,
     })
     // 走生产同一条 sdkPageSource 路径：先把测试用的分页结果包成 SDK 响应形状，
-    // 由 sdkPageSource 做 backward→head / forward→tail 的方向映射，在真实浏览器里
-    // 一并覆盖这段映射。
+    // 由 sdkPageSource 把 page 的 hasMoreBackward / hasMoreForward 原样搬进窗口，
+    // 在真实浏览器里一并覆盖这条数据源路径。
     : sdkPageSource(
       async (req: FetchPageRequest<TestQuery>) => {
         const page = await fetchPage(req);
@@ -484,8 +484,8 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           page: {
             startCursor: page.startCursor,
             endCursor: page.endCursor,
-            hasMoreBackward: page.hasMoreHead,
-            hasMoreForward: page.hasMoreTail,
+            hasMoreBackward: page.hasMoreBackward,
+            hasMoreForward: page.hasMoreForward,
             total: page.total,
           },
         };
@@ -657,10 +657,10 @@ const api = {
     if (options && 'query' in options) entry.keyword = options.query?.keyword ?? '';
     start(entry, () => entry.list.reset(options));
   },
-  loadMore(key: string, edge: 'head' | 'tail'): Promise<void> {
+  loadMore(key: string, edge: 'backward' | 'forward'): Promise<void> {
     return getEntry(key).list.loadMore(edge);
   },
-  startLoadMore(key: string, edge: 'head' | 'tail'): void {
+  startLoadMore(key: string, edge: 'backward' | 'forward'): void {
     const entry = getEntry(key);
     start(entry, () => entry.list.loadMore(edge));
   },

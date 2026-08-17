@@ -26,9 +26,9 @@ describe('PageSource / A sdkPageSource', () => {
     expect(result.items).toEqual([1, 2]);
     expect(result.startCursor).toBe('s');
     expect(result.endCursor).toBe('e');
-    // backward → head、forward → tail 的方向转换只在这里发生一次。
-    expect(result.hasMoreHead).toBe(false);
-    expect(result.hasMoreTail).toBe(true);
+    // `page` 的 hasMoreBackward / hasMoreForward 按同名字段原样搬进 PageLoadResult。
+    expect(result.hasMoreBackward).toBe(false);
+    expect(result.hasMoreForward).toBe(true);
     expect(result.total).toBe(7);
     expect(fetchRaw).toHaveBeenCalledWith({ cursor: 'c1', backward: true, limit: 40, query: { keyword: 'a' } });
   });
@@ -115,8 +115,8 @@ describe('PageSource / B localPageSource', () => {
     expect(first.items.map((i) => i.id)).toEqual([9, 8, 7]);
     expect(first.startCursor).toBe('0');
     expect(first.endCursor).toBe('3');
-    expect(first.hasMoreHead).toBe(false);
-    expect(first.hasMoreTail).toBe(true);
+    expect(first.hasMoreBackward).toBe(false);
+    expect(first.hasMoreForward).toBe(true);
     expect(first.total).toBe(10);
     expect(loadAll).toHaveBeenCalledTimes(1);
   });
@@ -129,11 +129,11 @@ describe('PageSource / B localPageSource', () => {
 
     const forward = await source.fetch({ cursor: first.endCursor, backward: false, limit: 4, query: undefined });
     expect(forward.items.map((i) => i.id)).toEqual([4, 5, 6, 7]);
-    expect(forward.hasMoreTail).toBe(true);
+    expect(forward.hasMoreForward).toBe(true);
 
     const backward = await source.fetch({ cursor: forward.startCursor, backward: true, limit: 4, query: undefined });
     expect(backward.items.map((i) => i.id)).toEqual([0, 1, 2, 3]);
-    expect(backward.hasMoreHead).toBe(false);
+    expect(backward.hasMoreBackward).toBe(false);
 
     expect(loadAll).toHaveBeenCalledTimes(1);
   });
@@ -161,8 +161,8 @@ describe('PageSource / B localPageSource', () => {
     const page = await source.fetch({ backward: false, limit: 10, query: { keyword: '不存在' } });
     expect(page.items).toEqual([]);
     expect(page.total).toBe(0);
-    expect(page.hasMoreHead).toBe(false);
-    expect(page.hasMoreTail).toBe(false);
+    expect(page.hasMoreBackward).toBe(false);
+    expect(page.hasMoreForward).toBe(false);
   });
 
   it('B5 compare 不污染 loadAll 返回的原数组（排序作用在副本上）', async () => {
@@ -241,11 +241,11 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     expect(backwardAtStart.items).toEqual([]);
     expect(backwardAtStart.startCursor).toBe('0');
     expect(backwardAtStart.endCursor).toBe('0');
-    expect(backwardAtStart.hasMoreHead).toBe(false);
+    expect(backwardAtStart.hasMoreBackward).toBe(false);
 
     const forwardAtEnd = await source.fetch({ cursor: '5', backward: false, limit: 10, query: undefined });
     expect(forwardAtEnd.items).toEqual([]);
-    expect(forwardAtEnd.hasMoreTail).toBe(false);
+    expect(forwardAtEnd.hasMoreForward).toBe(false);
   });
 
   it('C2 远超集合长度的游标被夹紧到末尾，不抛错', async () => {
@@ -265,13 +265,13 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     expect(negForward.items).toEqual([]);
     expect(negForward.startCursor).toBe('0');
     expect(negForward.endCursor).toBe('0');
-    // 注意：夹紧后区间为空，但 hasMoreTail 仍按「0 < 5」为真——
+    // 注意：夹紧后区间为空，但 hasMoreForward 仍按「0 < 5」为真——
     // 这与「空页应当收敛该端 hasMore」的直觉相反，属于 BL-BUG-01 那一类风险的诱因之一。
-    expect(negForward.hasMoreTail).toBe(true);
+    expect(negForward.hasMoreForward).toBe(true);
 
     const negBackward = await source.fetch({ cursor: '-42', backward: true, limit: 3, query: undefined });
     expect(negBackward.items).toEqual([]);
-    expect(negBackward.hasMoreHead).toBe(false);
+    expect(negBackward.hasMoreBackward).toBe(false);
   });
 
   it('C4 limit=0 返回空页，游标退化为同一位置的空区间', async () => {
@@ -280,18 +280,18 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     expect(first.items).toEqual([]);
     expect(first.startCursor).toBe('0');
     expect(first.endCursor).toBe('0');
-    expect(first.hasMoreTail).toBe(true);
+    expect(first.hasMoreForward).toBe(true);
 
     const mid = await source.fetch({ cursor: '2', backward: false, limit: 0, query: undefined });
     expect(mid.items).toEqual([]);
     expect(mid.startCursor).toBe('2');
-    expect(mid.hasMoreHead).toBe(true);
+    expect(mid.hasMoreBackward).toBe(true);
   });
 
   it('C5 空集合上的任意请求都返回空页且两端都没有更多', async () => {
     const source = localPageSource<Item, void>({ loadAll: async () => [] });
     const first = await source.fetch({ backward: false, limit: 10, query: undefined });
-    expect(first).toEqual({ items: [], startCursor: '0', endCursor: '0', hasMoreHead: false, hasMoreTail: false, total: 0 });
+    expect(first).toEqual({ items: [], startCursor: '0', endCursor: '0', hasMoreBackward: false, hasMoreForward: false, total: 0 });
     const next = await source.fetch({ cursor: '0', backward: false, limit: 10, query: undefined });
     expect(next.items).toEqual([]);
   });
@@ -303,7 +303,7 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     expect(page.items.map((i) => i.id)).toEqual([0, 1, 2]);
     expect(page.startCursor).toBe('0');
     expect(page.endCursor).toBe('3');
-    expect(page.hasMoreHead).toBe(false);
+    expect(page.hasMoreBackward).toBe(false);
   });
 
   it('C8 非法游标（无法解析成有限数）按 0 处理，绝不产出 "NaN" 这种再也翻不动的游标', async () => {
@@ -319,7 +319,7 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
       const backward = await source.fetch({ cursor: bad, backward: true, limit: 2, query: undefined });
       expect(backward.items).toEqual([]);
       expect(backward.startCursor).toBe('0');
-      expect(backward.hasMoreHead).toBe(false);
+      expect(backward.hasMoreBackward).toBe(false);
     }
   });
 
@@ -332,7 +332,7 @@ describe('PageSource / C localPageSource 边界与非法输入', () => {
     const stale = await source.fetch({ cursor: '90', backward: false, limit: 10, query: undefined });
     expect(stale.items).toEqual([]);
     expect(stale.startCursor).toBe('3');
-    expect(stale.hasMoreTail).toBe(false);
+    expect(stale.hasMoreForward).toBe(false);
   });
 });
 
@@ -348,9 +348,9 @@ describe('PageSource / D 大数据量', () => {
 
     window.setFirstPage(await source.fetch({ backward: false, limit: pageSize, query: undefined }));
     for (let i = 0; i < 30; i++) {
-      const page = await source.fetch({ cursor: window.cursorFor('tail'), backward: false, limit: pageSize, query: undefined });
+      const page = await source.fetch({ cursor: window.cursorFor('forward'), backward: false, limit: pageSize, query: undefined });
       if (page.items.length === 0) break;
-      window.extend('tail', page);
+      window.extend('forward', page);
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
     }
     expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
@@ -368,15 +368,15 @@ describe('PageSource / D 大数据量', () => {
 
     let pages = 1;
     for (;;) {
-      const page = await source.fetch({ cursor: window.cursorFor('tail'), backward: false, limit: pageSize, query: undefined });
+      const page = await source.fetch({ cursor: window.cursorFor('forward'), backward: false, limit: pageSize, query: undefined });
       if (page.items.length === 0) break;
-      window.extend('tail', page);
+      window.extend('forward', page);
       pages++;
       expect(window.count).toBeLessThanOrEqual(pageSize * maxPages);
     }
     expect(pages).toBe(Math.ceil(size / pageSize));
     expect(loadAll).toHaveBeenCalledTimes(1);
-    expect(window.hasMoreTail).toBe(false);
+    expect(window.hasMoreForward).toBe(false);
     // 排序按 name 倒序号，因此最后一页的最后一条应该是 id=0（name 最大）。
     expect(window.items[window.count - 1].id).toBe(0);
   });
@@ -389,7 +389,7 @@ describe('PageSource / D 大数据量', () => {
     const page = await source.fetch({ backward: false, limit: 40, query: { keyword: 'name-49999' } });
     expect(page.items.map((i) => i.id)).toEqual([49999]);
     expect(page.total).toBe(1);
-    expect(page.hasMoreTail).toBe(false);
+    expect(page.hasMoreForward).toBe(false);
   });
 });
 
@@ -401,8 +401,8 @@ describe('localPageSource / E 新鲜端', () => {
     const page = await source.fetch({ backward: false, limit: 3, query: undefined });
     expect(page.items.map((i) => i.id)).toEqual([0, 1, 2]);
     expect(page.startCursor).toBe('0');
-    expect(page.hasMoreHead).toBe(false);
-    expect(page.hasMoreTail).toBe(true);
+    expect(page.hasMoreBackward).toBe(false);
+    expect(page.hasMoreForward).toBe(true);
   });
 
   it('E2 order=asc 时 reset 取最后一页，并从那里向前续翻', async () => {
@@ -416,8 +416,8 @@ describe('localPageSource / E 新鲜端', () => {
     expect(page.items.map((i) => i.id)).toEqual([7, 8, 9]);
     expect(page.startCursor).toBe('7');
     expect(page.endCursor).toBe('10');
-    expect(page.hasMoreHead).toBe(true);
-    expect(page.hasMoreTail).toBe(false);
+    expect(page.hasMoreBackward).toBe(true);
+    expect(page.hasMoreForward).toBe(false);
 
     const older = await source.fetch({ cursor: '7', backward: true, limit: 3, query: undefined });
     expect(older.items.map((i) => i.id)).toEqual([4, 5, 6]);
@@ -430,7 +430,7 @@ describe('localPageSource / E 新鲜端', () => {
     });
     const page = await source.fetch({ backward: false, limit: 5, query: undefined });
     expect(page.items.map((i) => i.id)).toEqual([0, 1]);
-    expect(page.hasMoreHead).toBe(false);
-    expect(page.hasMoreTail).toBe(false);
+    expect(page.hasMoreBackward).toBe(false);
+    expect(page.hasMoreForward).toBe(false);
   });
 });

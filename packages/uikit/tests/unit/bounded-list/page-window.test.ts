@@ -21,10 +21,10 @@ describe('PageWindow 首页', () => {
     expect(labels(window)).toEqual(['item-0', 'item-1', 'item-2']);
     expect(window.count).toBe(3);
     expect(window.total).toBe(42);
-    expect(window.cursorFor('head')).toBe('c0');
-    expect(window.cursorFor('tail')).toBe('c3');
-    expect(window.hasMore('head')).toBe(false);
-    expect(window.hasMore('tail')).toBe(true);
+    expect(window.cursorFor('backward')).toBe('c0');
+    expect(window.cursorFor('forward')).toBe('c3');
+    expect(window.hasMore('backward')).toBe(false);
+    expect(window.hasMore('forward')).toBe(true);
   });
 
   it('首页为空时仍然确立边界，条目为空', () => {
@@ -32,7 +32,7 @@ describe('PageWindow 首页', () => {
     window.setFirstPage(pageOf([], 'c0', 'c0', false, false));
 
     expect(window.count).toBe(0);
-    expect(window.cursorFor('head')).toBe('c0');
+    expect(window.cursorFor('backward')).toBe('c0');
     expect(window.total).toBe(-1);
   });
 
@@ -42,7 +42,7 @@ describe('PageWindow 首页', () => {
     window.setFirstPage(pageOf(makeTestItems(2, 10), 'b0', 'b2', false, false));
 
     expect(labels(window)).toEqual(['item-10', 'item-11']);
-    expect(window.hasMore('tail')).toBe(false);
+    expect(window.hasMore('forward')).toBe(false);
   });
 
   it('normalize 之后仍超过 pageSize 时抛错，可见窗口不被污染', () => {
@@ -56,30 +56,30 @@ describe('PageWindow 续翻', () => {
   it('两端各自并入一页，只有并入端的边界前进', () => {
     const window = makeWindow();
     window.setFirstPage(pageOf(makeTestItems(3, 3), 'c3', 'c6', true, true));
-    window.extend('head', pageOf(makeTestItems(3), 'c0', 'c3', false, true));
+    window.extend('backward', pageOf(makeTestItems(3), 'c0', 'c3', false, true));
 
     expect(labels(window)).toEqual(['item-0', 'item-1', 'item-2', 'item-3', 'item-4', 'item-5']);
-    expect(window.cursorFor('head')).toBe('c0');
-    expect(window.cursorFor('tail')).toBe('c6');
-    expect(window.hasMore('head')).toBe(false);
+    expect(window.cursorFor('backward')).toBe('c0');
+    expect(window.cursorFor('forward')).toBe('c6');
+    expect(window.hasMore('backward')).toBe(false);
   });
 
   it('超过 maxPages 时从对端整页淘汰，并把该端边界改回淘汰后的位置', () => {
     const window = makeWindow(2);
     window.setFirstPage(pageOf(makeTestItems(3), 'c0', 'c3', false, true));
-    window.extend('tail', pageOf(makeTestItems(3, 3), 'c3', 'c6', false, true));
-    window.extend('tail', pageOf(makeTestItems(3, 6), 'c6', 'c9', false, true));
+    window.extend('forward', pageOf(makeTestItems(3, 3), 'c3', 'c6', false, true));
+    window.extend('forward', pageOf(makeTestItems(3, 6), 'c6', 'c9', false, true));
 
     expect(labels(window)).toEqual(['item-3', 'item-4', 'item-5', 'item-6', 'item-7', 'item-8']);
     expect(window.count).toBe(6);
-    expect(window.hasMore('head')).toBe(true);
-    expect(window.cursorFor('head')).toBe('c3');
+    expect(window.hasMore('backward')).toBe(true);
+    expect(window.cursorFor('backward')).toBe('c3');
   });
 
   it('并入新页时先摘掉窗口里的同身份条目，同一身份至多出现一次', () => {
     const window = makeWindow(3);
     window.setFirstPage(pageOf(makeTestItems(3), 'c0', 'c3', false, true));
-    window.extend('tail', pageOf([{ id: 2, label: 'item-2-new' }, { id: 9, label: 'item-9' }], 'c3', 'c5', false, true));
+    window.extend('forward', pageOf([{ id: 2, label: 'item-2-new' }, { id: 9, label: 'item-9' }], 'c3', 'c5', false, true));
 
     expect(labels(window)).toEqual(['item-0', 'item-1', 'item-2-new', 'item-9']);
   });
@@ -87,19 +87,19 @@ describe('PageWindow 续翻', () => {
   it('拿到空页时该端 hasMore 收敛为 false，游标不前进（服务端违约也不会无限补页）', () => {
     const window = makeWindow();
     window.setFirstPage(pageOf(makeTestItems(3), 'c0', 'c3', false, true));
-    window.extend('tail', pageOf([], 'c9', 'c9', false, true));
+    window.extend('forward', pageOf([], 'c9', 'c9', false, true));
 
-    expect(window.hasMore('tail')).toBe(false);
-    expect(window.cursorFor('tail')).toBe('c3');
+    expect(window.hasMore('forward')).toBe(false);
+    expect(window.cursorFor('forward')).toBe('c3');
   });
 
   it('normalize 把整页滤空时不占页位，但游标照常前进', () => {
     const window = makeWindow(2, 3, (items) => items.filter((item) => item.id % 2 === 0));
     window.setFirstPage(pageOf(makeTestItems(1), 'c0', 'c1', false, true));
-    window.extend('tail', pageOf([{ id: 1, label: 'odd' }], 'c1', 'c2', false, true));
+    window.extend('forward', pageOf([{ id: 1, label: 'odd' }], 'c1', 'c2', false, true));
 
     expect(labels(window)).toEqual(['item-0']);
-    expect(window.cursorFor('tail')).toBe('c2');
+    expect(window.cursorFor('forward')).toBe('c2');
   });
 
   it('reset 之后没有任何续翻锚点，此时不允许续翻（由 BoundedList 短路，见 C8）', () => {
@@ -107,10 +107,10 @@ describe('PageWindow 续翻', () => {
     window.setFirstPage(pageOf(makeTestItems(3), 'c0', 'c3', true, true));
     window.reset();
 
-    expect(window.cursorFor('head')).toBe('');
-    expect(window.cursorFor('tail')).toBe('');
-    expect(window.hasMore('head')).toBe(false);
-    expect(window.hasMore('tail')).toBe(false);
+    expect(window.cursorFor('backward')).toBe('');
+    expect(window.cursorFor('forward')).toBe('');
+    expect(window.hasMore('backward')).toBe(false);
+    expect(window.hasMore('forward')).toBe(false);
   });
 });
 
@@ -127,12 +127,12 @@ describe('PageWindow 按身份就地增删', () => {
   it('remove 命中时摘掉条目并回收空页；未命中返回 false', () => {
     const window = makeWindow(2);
     window.setFirstPage(pageOf(makeTestItems(1), 'c0', 'c1', false, true));
-    window.extend('tail', pageOf(makeTestItems(2, 1), 'c1', 'c3', false, true));
+    window.extend('forward', pageOf(makeTestItems(2, 1), 'c1', 'c3', false, true));
 
     expect(window.remove('0')).toBe(true);
     expect(labels(window)).toEqual(['item-1', 'item-2']);
     // 空页被回收后不再挤占 maxPages 名额：再并入一页不会淘汰真实数据页。
-    window.extend('tail', pageOf(makeTestItems(2, 3), 'c3', 'c5', false, false));
+    window.extend('forward', pageOf(makeTestItems(2, 3), 'c3', 'c5', false, false));
     expect(labels(window)).toEqual(['item-1', 'item-2', 'item-3', 'item-4']);
     expect(window.remove('0')).toBe(false);
   });
@@ -151,7 +151,7 @@ describe('PageWindow 硬有界', () => {
     const window = makeWindow(3, 4);
     window.setFirstPage(pageOf(makeTestItems(4), 'c0', 'c4', true, true));
     for (let i = 1; i <= 20; i++) {
-      const edge = i % 3 === 0 ? 'head' : 'tail';
+      const edge = i % 3 === 0 ? 'backward' : 'forward';
       const start = i * 4;
       window.extend(edge, pageOf(makeTestItems(4, start), `c${start}`, `c${start + 4}`, true, true));
       expect(window.count).toBeLessThanOrEqual(12);

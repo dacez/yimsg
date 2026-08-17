@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-08-13。
+> 最后复核：2026-08-17。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -1089,8 +1089,8 @@ container.appendChild(div);
 
 ```
 checkReach():
-  触底: maxScrollTop - scrollTop <= reachPx 且 hasMoreTail → loadTail()
-  触顶: scrollTop <= reachPx 且 hasMoreHead → loadHead()
+  触底: maxScrollTop - scrollTop <= reachPx 且 hasMoreForward → loadMore('forward')
+  触顶: scrollTop <= reachPx 且 hasMoreBackward → loadMore('backward')
   （并发守卫在加载回调内部：if (loading || !hasMore) return）
 
   加载完成 → loading = false → 重渲（视窗未填满时链式补页）

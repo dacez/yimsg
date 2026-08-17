@@ -25,10 +25,10 @@ import type {
   RenderItemContext,
 } from './types';
 
-/** 距新鲜端多少像素以内算贴边。tail 端（消息）行高差异大，阈值放宽。 */
-const STICKY_PX: Record<Edge, number> = { head: 4, tail: 50 };
-/** 贴边时连续校正多少帧。tail 端内容会异步增高，需要多帧。 */
-const SETTLE_FRAMES: Record<Edge, number> = { head: 1, tail: 4 };
+/** 距新鲜端多少像素以内算贴边。forward 端（消息）行高差异大，阈值放宽。 */
+const STICKY_PX: Record<Edge, number> = { backward: 4, forward: 50 };
+/** 贴边时连续校正多少帧。forward 端内容会异步增高，需要多帧。 */
+const SETTLE_FRAMES: Record<Edge, number> = { backward: 1, forward: 4 };
 
 /**
  * 显式声明「本列表不接入宿主的重连广播」。
@@ -63,7 +63,7 @@ export class BoundedList<T, Q = void> {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * 在飞请求（单飞）：'first' 是首页请求，'head'/'tail' 是该端续翻，null 是空闲。
+   * 在飞请求（单飞）：'first' 是首页请求，'backward'/'forward' 是该端续翻，null 是空闲。
    * 既是状态也是锁，见文件头规则 2。
    */
   private loading: 'first' | Edge | null = null;
@@ -117,9 +117,9 @@ export class BoundedList<T, Q = void> {
       throw new TypeError(`[BoundedList:${opts.id}] selection.store 与 selection.max 互斥：共享 store 的上限由该 store 自己决定`);
     }
 
-    // order='desc'（默认，新→旧，如会话）→ 新鲜端在头部；order='asc'（旧→新，如消息）
-    // → 新鲜端在尾部。展示序与新鲜端是同一个比特的两种说法，这里只转换这一次。
-    this.edge = (opts.order ?? 'desc') === 'desc' ? 'head' : 'tail';
+    // order='desc'（默认，新→旧，如会话）→ 新鲜端是 backward 端；order='asc'（旧→新，
+    // 如消息）→ 新鲜端是 forward 端。展示序与新鲜端是同一个比特的两种说法，只转换这一次。
+    this.edge = (opts.order ?? 'desc') === 'desc' ? 'backward' : 'forward';
     this.reachPx = opts.reachPx ?? DEFAULT_REACH_PX;
     this.query = opts.initialQuery as Q;
     this.window = this.createWindow();
@@ -285,10 +285,10 @@ export class BoundedList<T, Q = void> {
     return {
       loaded: this.loaded,
       loading: this.loading !== null,
-      loadingHead: this.loading === 'head',
-      loadingTail: this.loading === 'tail',
-      hasMoreHead: this.window.hasMoreHead,
-      hasMoreTail: this.window.hasMoreTail,
+      loadingBackward: this.loading === 'backward',
+      loadingForward: this.loading === 'forward',
+      hasMoreBackward: this.window.hasMoreBackward,
+      hasMoreForward: this.window.hasMoreForward,
       count: items.length,
       total: this.window.total,
       stale: this.stale,
@@ -398,11 +398,10 @@ export class BoundedList<T, Q = void> {
 
     let extended = false;
     try {
-      // backward 是 wire 协议自己的方向词汇，与组件内部的 Edge 只在这一处转换：
-      // head 端续翻恒等于 backward 请求。
+      // 组件与 wire 用的是同一套方向词汇，这里只是把 Edge 写成 SDK 的布尔参数形式。
       const page = await this.opts.source.fetch({
         cursor,
-        backward: edge === 'head',
+        backward: edge === 'backward',
         limit: this.opts.pageSize,
         query: this.query,
       });
@@ -518,25 +517,25 @@ export class BoundedList<T, Q = void> {
   }
 
   private onScrollFrame(): void {
-    const headDistance = this.renderer.distanceTo('head');
-    const tailDistance = this.renderer.distanceTo('tail');
+    const backwardDistance = this.renderer.distanceTo('backward');
+    const forwardDistance = this.renderer.distanceTo('forward');
 
     // 用户把某一端滚离触界范围，说明他离开了那个失败现场：解除该端的自动续翻暂停，
     // 再滚回去时可以自然重试，既不会死循环也不需要额外的重试按钮。
-    if (headDistance > this.reachPx) this.blocked.delete('head');
-    if (tailDistance > this.reachPx) this.blocked.delete('tail');
+    if (backwardDistance > this.reachPx) this.blocked.delete('backward');
+    if (forwardDistance > this.reachPx) this.blocked.delete('forward');
 
     // 提示条自动消失：用户自己滚回新鲜端时重新决策，决策的结果就是追平。
     // `stuck` 不在这里写：它由原生 scroll 事件同步更新（见 onScrollImmediate），
     // 同一次滚动写两遍只会多一份「哪个才算数」的疑问。
-    if (this.atFreshEdge(this.edge === 'head' ? headDistance : tailDistance) && this.dirty) {
+    if (this.atFreshEdge(this.edge === 'backward' ? backwardDistance : forwardDistance) && this.dirty) {
       this.scheduleDecide();
     }
   }
 
-  /** 图片等异步增高内容加载完成：此前贴在尾部新鲜端的话重新贴回底部。 */
+  /** 图片等异步增高内容加载完成：此前贴在 forward 端（底部）新鲜端的话重新贴回去。 */
   private onContentLoad(): void {
-    if (this.disposed || this.edge !== 'tail' || !this.stuck) return;
+    if (this.disposed || this.edge !== 'forward' || !this.stuck) return;
     this.pinToFreshEdge();
   }
 
@@ -545,7 +544,7 @@ export class BoundedList<T, Q = void> {
     let remaining = SETTLE_FRAMES[this.edge];
     const settle = (): void => {
       if (this.disposed) return; // dispose 之后不再触碰宿主 DOM
-      el.scrollTop = this.edge === 'head' ? 0 : el.scrollHeight;
+      el.scrollTop = this.edge === 'backward' ? 0 : el.scrollHeight;
       this.stuck = true;
       remaining -= 1;
       if (remaining > 0) nextFrame(settle);
@@ -604,15 +603,15 @@ export class BoundedList<T, Q = void> {
     this.renderer.render({
       items,
       loaded: this.loaded,
-      hasMoreHead: this.window.hasMoreHead,
-      hasMoreTail: this.window.hasMoreTail,
-      loadingHead: this.loading === 'head',
-      loadingTail: this.loading === 'tail',
+      hasMoreBackward: this.window.hasMoreBackward,
+      hasMoreForward: this.window.hasMoreForward,
+      loadingBackward: this.loading === 'backward',
+      loadingForward: this.loading === 'forward',
       emptyText: empty ? text.empty?.() : undefined,
       errorText: empty && this.failure ? text.error?.(this.failure.error) : undefined,
       loadingText: text.loading?.(),
-      headBoundaryText: text.headBoundary?.(),
-      tailBoundaryText: text.tailBoundary?.(),
+      backwardBoundaryText: text.backwardBoundary?.(),
+      forwardBoundaryText: text.forwardBoundary?.(),
       loadMore: (edge) => this.autoLoadMore(edge),
       renderItem: (item, index) => this.renderRow(item, index, items),
       keyOf: (item) => this.opts.identityOf(item),

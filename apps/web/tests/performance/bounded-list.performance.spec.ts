@@ -113,7 +113,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, edge: 'tail'): Promise<void>;
+          loadMore(key: string, edge: 'forward'): Promise<void>;
           state(key: string): { count: number };
           rowCount(key: string): number;
           rowIds(key: string): string[];
@@ -132,7 +132,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       let maxRows = 0;
       for (let pageIndex = 0; pageIndex < 250; pageIndex++) {
         const started = performance.now();
-        await api.loadMore(key, 'tail');
+        await api.loadMore(key, 'forward');
         document.body.offsetHeight;
         samples.push(performance.now() - started);
         maxCount = Math.max(maxCount, api.state(key).count);
@@ -175,7 +175,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
       const api = (window as unknown as {
         boundedListTestHarness: {
           mount(config: unknown): Promise<string>;
-          loadMore(key: string, edge: 'tail'): Promise<void>;
+          loadMore(key: string, edge: 'forward'): Promise<void>;
           upsertLocal(key: string, item: { id: string; label: string; order: number }): void;
           state(key: string): { count: number };
           rowCount(key: string): number;
@@ -188,7 +188,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         maxPages: 5,
         reachPx: -1,
       });
-      for (let index = 0; index < 4; index++) await api.loadMore(key, 'tail');
+      for (let index = 0; index < 4; index++) await api.loadMore(key, 'forward');
       const samples: number[] = [];
       for (let index = 0; index < 200; index++) {
         const id = String(index);

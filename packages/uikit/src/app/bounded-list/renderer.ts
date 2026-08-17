@@ -38,16 +38,16 @@ export interface ListRenderState<T> {
   /** false = 首屏还没落定，显示加载文案而不是空态。 */
   readonly loaded: boolean;
   /** 该端还能不能续翻：同时驱动触界自动补页和「没有更多了」边界提示。 */
-  readonly hasMoreHead: boolean;
-  readonly hasMoreTail: boolean;
-  readonly loadingHead: boolean;
-  readonly loadingTail: boolean;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
+  readonly loadingBackward: boolean;
+  readonly loadingForward: boolean;
   readonly emptyText?: string;
   /** 首屏加载失败时代替 emptyText 显示。 */
   readonly errorText?: string;
   readonly loadingText?: string;
-  readonly headBoundaryText?: string;
-  readonly tailBoundaryText?: string;
+  readonly backwardBoundaryText?: string;
+  readonly forwardBoundaryText?: string;
   readonly loadMore: (edge: Edge) => void;
   readonly renderItem: (item: T, index: number) => readonly HTMLElement[];
   readonly keyOf: (item: T) => string;
@@ -163,13 +163,14 @@ export class ListRenderer<T> {
 
   /**
    * 当前滚动位置距 edge 一端还有多少像素（贴住该端时为 0）。
+   * 列表自上而下按展示序渲染，所以 backward 端就是视觉上的顶部、forward 端是底部。
    *
    * 「贴边」「触界」都只是拿这个距离与不同阈值比较，所以滚动几何在整个组件里只有这
    * 一处公式；上层要判贴边就用它比 STICKY_PX，本层要判触界就用它比 reachPx。
    */
   distanceTo(edge: Edge): number {
     const el = this.options.scrollElement;
-    if (edge === 'head') return el.scrollTop;
+    if (edge === 'backward') return el.scrollTop;
     return Math.max(0, el.scrollHeight - el.clientHeight) - el.scrollTop;
   }
 
@@ -224,9 +225,9 @@ export class ListRenderer<T> {
 
     const desired: HTMLElement[] = [];
     const nextRows = new Map<string, RenderedRow<T>>();
-    if (!state.hasMoreHead && state.headBoundaryText) {
-      desired.push(createBoundaryHint(doc, state.headBoundaryText, 'top'));
-    } else if (state.loadingHead && state.loadingText) {
+    if (!state.hasMoreBackward && state.backwardBoundaryText) {
+      desired.push(createBoundaryHint(doc, state.backwardBoundaryText, 'top'));
+    } else if (state.loadingBackward && state.loadingText) {
       desired.push(createBoundaryHint(doc, state.loadingText, 'top'));
     }
 
@@ -259,9 +260,9 @@ export class ListRenderer<T> {
       nextRows.set(key, { item, elements, revision });
     }
 
-    if (!state.hasMoreTail && state.tailBoundaryText) {
-      desired.push(createBoundaryHint(doc, state.tailBoundaryText, 'bottom'));
-    } else if (state.loadingTail && state.loadingText) {
+    if (!state.hasMoreForward && state.forwardBoundaryText) {
+      desired.push(createBoundaryHint(doc, state.forwardBoundaryText, 'bottom'));
+    } else if (state.loadingForward && state.loadingText) {
       desired.push(createBoundaryHint(doc, state.loadingText, 'bottom'));
     }
 
@@ -316,7 +317,7 @@ export class ListRenderer<T> {
     const state = this.lastState;
     if (!state || !state.loaded) return;
     const reachPx = this.options.reachPx;
-    if (state.hasMoreHead && this.distanceTo('head') <= reachPx) state.loadMore('head');
-    if (state.hasMoreTail && this.distanceTo('tail') <= reachPx) state.loadMore('tail');
+    if (state.hasMoreBackward && this.distanceTo('backward') <= reachPx) state.loadMore('backward');
+    if (state.hasMoreForward && this.distanceTo('forward') <= reachPx) state.loadMore('forward');
   }
 }

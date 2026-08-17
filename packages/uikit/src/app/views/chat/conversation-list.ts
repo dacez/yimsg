@@ -182,7 +182,7 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     text: {
       empty: () => app.t("chat.noConversations"),
       loading: () => app.t("common.loading"),
-      tailBoundary: () => app.t("chat.noMoreConversations"),
+      forwardBoundary: () => app.t("chat.noMoreConversations"),
       updatePill: () => app.t("chat.listUpdated"),
       retry: () => app.t("common.retry"),
     },

@@ -5,21 +5,28 @@
  * 展示序：列表按什么方向排列，与协议文档「展示序」用词一致（同步机制方案.md）。
  * 'asc' = 旧→新（如消息），'desc' = 新→旧（如会话/联系人/群成员）。
  *
- * 它只决定一件事：哪一端是新鲜端。'asc' 时新数据出现在尾部，'desc' 时出现在头部。
- * 组件内部一律用 Edge 表达端，`order` 只在构造时转换成一次 Edge 取值。
+ * 它只决定一件事：哪一端是新鲜端。'asc' 时新数据出现在 forward 端，'desc' 时出现在
+ * backward 端。组件内部一律用 Edge 表达端，`order` 只在构造时转换成一次 Edge 取值。
  */
 export type DisplayOrder = 'asc' | 'desc';
 
 /**
- * 列表的一端：数组 / DOM 的头部还是尾部。
+ * 列表的一端，直接沿用 wire 协议的方向词汇（`protocol/yimsg.proto` 的 `PageDirection`）：
  *
- * wire 协议的 `backward`/`forward`（续翻请求朝哪边）与组件内部的 head/tail 是同一根轴：
- * backward 恒等于 head、forward 恒等于 tail，没有例外。组件内部只用 Edge 一套词汇，
- * 只在发出 `FetchPageRequest` 时转换成 `backward` 一次。
+ * - `'backward'`：逆展示序的那一端，也就是数组头部、DOM 上方；
+ * - `'forward'`：沿展示序的那一端，也就是数组尾部、DOM 下方。
+ *
+ * 全项目只有这一套方向词汇：SDK 的 `hasMoreBackward`/`hasMoreForward`、组件内部状态和
+ * 续翻请求用的是同样两个词，中间没有任何映射。展示序不改变这个对应关系——列表永远
+ * 自上而下按展示序渲染，所以 backward 端恒在上方。
  */
-export type Edge = 'head' | 'tail';
+export type Edge = 'backward' | 'forward';
 
-/** 分页请求参数：cursor 未提供表示拉首页。 */
+/**
+ * 分页请求参数：cursor 未提供表示拉首页。
+ *
+ * `backward` 就是 SDK 分页方法的同名参数，调用方原样透传即可，不需要翻译成别的词。
+ */
 export interface FetchPageRequest<Q> {
   readonly cursor?: string;
   readonly backward: boolean;
@@ -30,16 +37,14 @@ export interface FetchPageRequest<Q> {
 /**
  * 一页分页结果；total 未提供时视为未知（组件对外呈现为 -1）。
  *
- * `hasMoreHead`/`hasMoreTail` 与组件内部用的是同一套 Edge 词汇；调用方从 SDK `PageInfo`
- * （`hasMoreBackward`/`hasMoreForward`）映射过来时按 `backward→head`、`forward→tail`
- * 一次性转换，不随展示序变化。
+ * `hasMoreBackward`/`hasMoreForward` 与 SDK `PageInfo` 的同名字段完全一致，原样搬过来即可。
  */
 export interface PageLoadResult<T> {
   readonly items: readonly T[];
   readonly startCursor: string;
   readonly endCursor: string;
-  readonly hasMoreHead: boolean;
-  readonly hasMoreTail: boolean;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
   readonly total?: number;
 }
 
@@ -62,8 +67,8 @@ export interface BoundedListText {
    * 组件不判断「什么算已过滤」——那需要把查询条件深比较一遍，既慢又容易误判。
    */
   readonly empty?: () => string;
-  readonly headBoundary?: () => string;
-  readonly tailBoundary?: () => string;
+  readonly backwardBoundary?: () => string;
+  readonly forwardBoundary?: () => string;
   /** 「背景有更新」提示条文案。刻意不带数量：见 BoundedListState.stale 的说明。 */
   readonly updatePill?: () => string;
   /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
@@ -75,10 +80,10 @@ export interface BoundedListText {
 export interface BoundedListState {
   readonly loaded: boolean;
   readonly loading: boolean;
-  readonly loadingHead: boolean;
-  readonly loadingTail: boolean;
-  readonly hasMoreHead: boolean;
-  readonly hasMoreTail: boolean;
+  readonly loadingBackward: boolean;
+  readonly loadingForward: boolean;
+  readonly hasMoreBackward: boolean;
+  readonly hasMoreForward: boolean;
   /** 当前渲染序列的条目数（含 pinnedItems 与本地层）。 */
   readonly count: number;
   readonly total: number;
@@ -100,7 +105,7 @@ export interface SelectionSnapshot<T> {
   readonly items: readonly T[];
 }
 
-export type ErrorPhase = 'reset' | 'head' | 'tail' | 'refresh';
+export type ErrorPhase = 'reset' | 'backward' | 'forward' | 'refresh';
 
 export interface SelectionConfig {
   readonly mode: 'single' | 'multi';

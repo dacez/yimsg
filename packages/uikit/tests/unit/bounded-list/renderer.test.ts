@@ -44,10 +44,10 @@ function state(doc: FakeDocument, overrides: Partial<ListRenderState<string>> = 
   return {
     items: [],
     loaded: true,
-    hasMoreHead: false,
-    hasMoreTail: false,
-    loadingHead: false,
-    loadingTail: false,
+    hasMoreBackward: false,
+    hasMoreForward: false,
+    loadingBackward: false,
+    loadingForward: false,
     loadMore: () => {},
     renderItem: (item: string) => [asElement(row(doc, `row-${item}`))],
     keyOf: (item: string) => `k-${item}`,
@@ -193,8 +193,8 @@ describe('ListRenderer / B 状态与边界提示', () => {
     const { doc, scroller, view } = makeView();
     view.render(state(doc, {
       items: ['a'],
-      headBoundaryText: '到顶了',
-      tailBoundaryText: '到底了',
+      backwardBoundaryText: '到顶了',
+      forwardBoundaryText: '到底了',
     }));
 
     expect(classNames(scroller)).toEqual([
@@ -208,10 +208,10 @@ describe('ListRenderer / B 状态与边界提示', () => {
     const { doc, scroller, view } = makeView();
     view.render(state(doc, {
       items: ['a'],
-      hasMoreHead: true,
-      loadingHead: true,
+      hasMoreBackward: true,
+      loadingBackward: true,
       loadingText: '加载中',
-      headBoundaryText: '到顶了',
+      backwardBoundaryText: '到顶了',
     }));
 
     expect(scroller.children[0].textContent).toBe('加载中');
@@ -227,13 +227,13 @@ describe('ListRenderer / C 触界检测', () => {
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
     scroller.scrollTop = DEFAULT_REACH_PX - 1;
-    view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['head']);
+    view.render(state(doc, { items: ['a'], hasMoreBackward: true, hasMoreForward: true, loadMore }));
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['backward']);
 
     loadMore.mockClear();
     scroller.scrollTop = 900 - (DEFAULT_REACH_PX - 1);
-    view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['tail']);
+    view.render(state(doc, { items: ['a'], hasMoreBackward: true, hasMoreForward: true, loadMore }));
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['forward']);
   });
 
   it('C1b 两端都在触界范围之外时都不触发', () => {
@@ -242,7 +242,7 @@ describe('ListRenderer / C 触界检测', () => {
     scroller.clientHeight = 100;
     scroller.scrollHeight = 10000;
     scroller.scrollTop = 5000;
-    view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
+    view.render(state(doc, { items: ['a'], hasMoreBackward: true, hasMoreForward: true, loadMore }));
     expect(loadMore).not.toHaveBeenCalled();
   });
 
@@ -261,22 +261,22 @@ describe('ListRenderer / C 触界检测', () => {
     const loadMore = vi.fn();
     scroller.clientHeight = 500;
     scroller.scrollHeight = 100;
-    view.render(state(doc, { items: ['a'], hasMoreHead: true, hasMoreTail: true, loadMore }));
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['head', 'tail']);
+    view.render(state(doc, { items: ['a'], hasMoreBackward: true, hasMoreForward: true, loadMore }));
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['backward', 'forward']);
   });
 
   it('C4 未加载时不做触界检测', () => {
     const { doc, view } = makeView();
     const loadMore = vi.fn();
-    view.render(state(doc, { loaded: false, hasMoreTail: true, loadMore }));
+    view.render(state(doc, { loaded: false, hasMoreForward: true, loadMore }));
     expect(loadMore).not.toHaveBeenCalled();
   });
 
   it('C5 空列表但仍有更多时照样补页，不会永远定格在空态', () => {
     const { doc, view } = makeView();
     const loadMore = vi.fn();
-    view.render(state(doc, { items: [], hasMoreTail: true, loadMore }));
-    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['tail']);
+    view.render(state(doc, { items: [], hasMoreForward: true, loadMore }));
+    expect(loadMore.mock.calls.map((c) => c[0])).toEqual(['forward']);
   });
 
   it('C6 滚动经帧合并后先回调 onScroll 再做触界检测', () => {
@@ -285,7 +285,7 @@ describe('ListRenderer / C 触界检测', () => {
       const { doc, scroller, view } = makeView({ onScroll: () => order.push('scroll') });
       scroller.clientHeight = 100;
       scroller.scrollHeight = 1000;
-      view.render(state(doc, { items: ['a'], hasMoreHead: true, loadMore: () => order.push('load') }));
+      view.render(state(doc, { items: ['a'], hasMoreBackward: true, loadMore: () => order.push('load') }));
       order.length = 0;
 
       scroller.dispatch('scroll');
@@ -364,26 +364,26 @@ describe('ListRenderer / D 锚点', () => {
 // ───────────────────────── E 贴边判定 ─────────────────────────
 
 describe('ListRenderer / E 距端距离', () => {
-  it('E1 head 端等于 scrollTop，tail 端等于距底距离', () => {
+  it('E1 backward 端等于 scrollTop，forward 端等于距底距离', () => {
     const { scroller, view } = makeView();
     scroller.clientHeight = 100;
     scroller.scrollHeight = 1000;
 
     scroller.scrollTop = 4;
-    expect(view.distanceTo('head')).toBe(4);
-    expect(view.distanceTo('tail')).toBe(896);
+    expect(view.distanceTo('backward')).toBe(4);
+    expect(view.distanceTo('forward')).toBe(896);
 
     scroller.scrollTop = 860;
-    expect(view.distanceTo('head')).toBe(860);
-    expect(view.distanceTo('tail')).toBe(40);
+    expect(view.distanceTo('backward')).toBe(860);
+    expect(view.distanceTo('forward')).toBe(40);
   });
 
   it('E2 内容不足一屏时两端距离都是 0（两端同时算贴边）', () => {
     const { scroller, view } = makeView();
     scroller.clientHeight = 500;
     scroller.scrollHeight = 100;
-    expect(view.distanceTo('head')).toBe(0);
-    expect(view.distanceTo('tail')).toBe(0);
+    expect(view.distanceTo('backward')).toBe(0);
+    expect(view.distanceTo('forward')).toBe(0);
   });
 });
 

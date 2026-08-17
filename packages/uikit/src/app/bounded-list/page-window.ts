@@ -3,7 +3,7 @@
 // 三条不变量（改动前先读 packages/uikit/docs/boundedlist/组件设计.md §4）：
 // 1. 窗口最多 maxPages 页，每页最多 pageSize 条，所以条目数恒 ≤ pageSize×maxPages；
 // 2. 同一身份在窗口里至多出现一次（并入新页时先把旧的同身份条目摘掉）；
-// 3. 续翻锚点（headCursor / tailCursor）与页数组解耦维护，空页可以随时丢弃。
+// 3. 续翻锚点（backwardCursor / forwardCursor）与页数组解耦维护，空页可以随时丢弃。
 //
 // 本类**不包含任何本地写入**：本端发送、乐观更新、就地删除都在 overlay.ts 里，
 // 窗口只被「服务端响应」修改。这条边界是整个组件不需要重放机制的原因。
@@ -25,25 +25,25 @@ export interface PageWindowOptions<T> {
 
 export class PageWindow<T> {
   private pages: WindowPage<T>[] = [];
-  private moreHead = false;
-  private moreTail = false;
+  private moreBackward = false;
+  private moreForward = false;
   private totalCount = -1;
   /**
    * 窗口两端的续翻锚点，显式维护而不是从 `pages[0]` / `pages[last]` 现算：
    * 页会因跨页去重、就地删除或 normalize 过滤而变空，空页必须能被丢弃（否则它白占
    * maxPages 名额，下一次淘汰淘掉的是另一端的真实数据页），锚点独立维护才做得到。
    */
-  private headCursor = '';
-  private tailCursor = '';
+  private backwardCursor = '';
+  private forwardCursor = '';
 
   constructor(private readonly opts: PageWindowOptions<T>) {}
 
-  get hasMoreHead(): boolean {
-    return this.moreHead;
+  get hasMoreBackward(): boolean {
+    return this.moreBackward;
   }
 
-  get hasMoreTail(): boolean {
-    return this.moreTail;
+  get hasMoreForward(): boolean {
+    return this.moreForward;
   }
 
   get total(): number {
@@ -64,11 +64,11 @@ export class PageWindow<T> {
 
   /** 该端下一次续翻要用的游标；空串表示没有可用锚点。 */
   cursorFor(edge: Edge): string {
-    return edge === 'head' ? this.headCursor : this.tailCursor;
+    return edge === 'backward' ? this.backwardCursor : this.forwardCursor;
   }
 
   hasMore(edge: Edge): boolean {
-    return edge === 'head' ? this.moreHead : this.moreTail;
+    return edge === 'backward' ? this.moreBackward : this.moreForward;
   }
 
   has(id: string): boolean {
@@ -82,21 +82,21 @@ export class PageWindow<T> {
 
   reset(): void {
     this.pages = [];
-    this.moreHead = false;
-    this.moreTail = false;
+    this.moreBackward = false;
+    this.moreForward = false;
     this.totalCount = -1;
-    this.headCursor = '';
-    this.tailCursor = '';
+    this.backwardCursor = '';
+    this.forwardCursor = '';
   }
 
   /** 首页落地：整窗替换，两端边界由这一页确立。 */
   setFirstPage(page: PageLoadResult<T>): void {
     const items = this.normalize(page.items);
     this.pages = items.length ? [{ items, startCursor: page.startCursor, endCursor: page.endCursor }] : [];
-    this.headCursor = page.startCursor;
-    this.tailCursor = page.endCursor;
-    this.moreHead = page.hasMoreHead;
-    this.moreTail = page.hasMoreTail;
+    this.backwardCursor = page.startCursor;
+    this.forwardCursor = page.endCursor;
+    this.moreBackward = page.hasMoreBackward;
+    this.moreForward = page.hasMoreForward;
     this.totalCount = page.total ?? -1;
   }
 
@@ -111,19 +111,19 @@ export class PageWindow<T> {
     this.dropIdentities(items);
     if (items.length > 0) {
       const entry = { items, startCursor: page.startCursor, endCursor: page.endCursor };
-      if (edge === 'head') this.pages.unshift(entry);
+      if (edge === 'backward') this.pages.unshift(entry);
       else this.pages.push(entry);
     }
     // 锚点与页位分开判断：源页非空 → 锚点必须前进（哪怕 normalize 把它滤空了），否则
     // 下一次续翻拿旧游标原地打转；源页真为空 → 该端已经没有数据，锚点不动、hasMore
     // 无论服务端怎么说都收敛为 false（防止触界检测无限补页）。
     const sourceEmpty = page.items.length === 0;
-    if (edge === 'head') {
-      if (!sourceEmpty) this.headCursor = page.startCursor;
-      this.moreHead = sourceEmpty ? false : page.hasMoreHead;
+    if (edge === 'backward') {
+      if (!sourceEmpty) this.backwardCursor = page.startCursor;
+      this.moreBackward = sourceEmpty ? false : page.hasMoreBackward;
     } else {
-      if (!sourceEmpty) this.tailCursor = page.endCursor;
-      this.moreTail = sourceEmpty ? false : page.hasMoreTail;
+      if (!sourceEmpty) this.forwardCursor = page.endCursor;
+      this.moreForward = sourceEmpty ? false : page.hasMoreForward;
     }
     this.totalCount = page.total ?? this.totalCount;
     this.evict(edge);
@@ -180,14 +180,14 @@ export class PageWindow<T> {
   /** 超出 maxPages 时从 keepEdge 的对端整页淘汰，并把该端边界改回被淘汰之后的位置。 */
   private evict(keepEdge: Edge): void {
     while (this.pages.length > this.opts.maxPages) {
-      if (keepEdge === 'head') {
+      if (keepEdge === 'backward') {
         this.pages.pop();
-        this.moreTail = true;
-        this.tailCursor = this.pages[this.pages.length - 1].endCursor;
+        this.moreForward = true;
+        this.forwardCursor = this.pages[this.pages.length - 1].endCursor;
       } else {
         this.pages.shift();
-        this.moreHead = true;
-        this.headCursor = this.pages[0].startCursor;
+        this.moreBackward = true;
+        this.backwardCursor = this.pages[0].startCursor;
       }
     }
   }
