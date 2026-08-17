@@ -107,6 +107,9 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       if (app.chatState.messageSelectionMode) updateSelectionBar(app);
     },
     onError: (_error, phase) => {
+      // 只有 'reset' 才弹提示：那意味着用户面前这块消息区是空的。其余阶段（含后台追平
+      // 'catchup'、续翻、定向刷新）失败时旧消息都还完整摆着，网络抖一下不该弹一次错——
+      // 提示条仍然是重试入口。
       if (phase === 'reset') app.showToast(app.t('chat.failedToLoadMessages'), 'error');
       else console.warn(`[yimsg/uikit] message list ${phase} failed:`, _error);
     },

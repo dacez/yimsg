@@ -198,9 +198,10 @@ export class ListRenderer<T> {
     this.pendingRender = false;
     const scroller = this.options.scrollElement;
     const doc = scroller.ownerDocument;
-    const scrollOffset = scroller.scrollTop;
-    const anchor = this.captureAnchor();
 
+    // 两个早退分支（首屏未落定 / 序列为空）渲染出来的都是单个占位节点，没有滚动位置
+    // 可保持，所以锚点在它们之后才捕获——captureAnchor 要逐个子节点读布局，不该为
+    // 用不上它的分支白跑一遍。
     if (!state.loaded) {
       this.renderedRows.clear();
       this.reconcileNodes(state.loadingText ? [createBoundaryHint(doc, state.loadingText, 'bottom')] : []);
@@ -223,6 +224,8 @@ export class ListRenderer<T> {
       return;
     }
 
+    const scrollOffset = scroller.scrollTop;
+    const anchor = this.captureAnchor();
     const desired: HTMLElement[] = [];
     const nextRows = new Map<string, RenderedRow<T>>();
     if (!state.hasMoreBackward && state.backwardBoundaryText) {
@@ -250,10 +253,14 @@ export class ListRenderer<T> {
       const candidates = [...state.renderItem(item, index)];
       if (candidates.length > 0) candidates[0].setAttribute(ANCHOR_KEY_ATTR, key);
       for (const element of candidates) element.setAttribute(INTERACTION_KEY_ATTR, key);
-      // 内部数据更新统一按身份键委托交互；即使数据里含有 UI 不使用的字段差异，只要候选
-      // DOM 完全一致就不换行。显式重绘保留更保守的条目等价检查，供宿主刷新行内自有监听。
+      // 条目数据变了就一定换节点，哪怕新旧 DOM 一模一样：宿主可以在 renderItem 里给行挂
+      // 自己的监听（见 组件设计.md §13.2 第 3 条），那些回调闭包着**当时那个 item**，
+      // 留着旧节点等于留着一个绑在旧数据上的回调。只有「数据没变、仅上下文签名变了」
+      // （如上一条身份、选中态）且候选 DOM 完全一致时才复用旧节点，省掉一次 DOM 替换。
+      // 这条判据与 reuseUnchangedRows 无关：两种模式同一口径，不存在「显式重绘更保守」
+      // 的第二套规则。
       const canReuse = attached
-        && (state.reuseUnchangedRows || valuesEquivalent(previous!.item, item))
+        && valuesEquivalent(previous!.item, item)
         && nodesEquivalent(previous!.elements, candidates);
       const elements = canReuse ? previous!.elements : candidates;
       desired.push(...elements);

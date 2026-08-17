@@ -53,8 +53,9 @@ export class SelectionStore {
     return true;
   }
 
-  /** 单选场景：选中集替换为仅含该 id。 */
+  /** 单选场景：选中集替换为仅含该 id。已经正是这一项时不通知（重复点同一行不该整表重绘）。 */
   replaceSingle(id: string): void {
+    if (this.ids.size === 1 && this.ids.has(id)) return;
     this.ids = new Set([id]);
     this.notify();
   }
