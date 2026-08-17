@@ -105,7 +105,13 @@ export interface SelectionSnapshot<T> {
   readonly items: readonly T[];
 }
 
-export type ErrorPhase = 'reset' | 'backward' | 'forward' | 'refresh';
+/**
+ * 出错时正在做什么。`reset` 与 `catchup` 发的是同一种首页请求，但对宿主是两回事：
+ * `reset` 失败意味着**用户面前这块列表没内容**（该弹提示），`catchup` 失败只是后台追平
+ * 没成功、旧内容还好好摆着（该静默，提示条仍是重试入口）。合成一个取值，宿主就只能
+ * 在「网络抖一下也弹一次错」和「首屏空白却一声不吭」之间二选一。
+ */
+export type ErrorPhase = 'reset' | 'catchup' | 'backward' | 'forward' | 'refresh';
 
 export interface SelectionConfig {
   readonly mode: 'single' | 'multi';

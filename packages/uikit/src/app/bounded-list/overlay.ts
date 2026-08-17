@@ -34,6 +34,17 @@ export class LocalOverlay<T> {
     return this.entries.size;
   }
 
+  /**
+   * 这条身份是否被本端删除（墓碑）。
+   *
+   * `apply` 只作用于权威窗口序列，而渲染序列里还有一段 `pinnedItems()`：它由宿主现算、
+   * 不进窗口，所以「本端删掉一条恰好只存在于 pinned 里的条目」必须由上层拿这个判据把它
+   * 也滤掉，否则 `removeLocal` 报告删掉了、下一帧它又被钉回来。
+   */
+  isDropped(id: string): boolean {
+    return this.entries.get(id)?.item === null;
+  }
+
   /** 当前记账水位，交给 settle 判断「哪些记账比这次请求更早」。 */
   mark(): number {
     return this.seq;

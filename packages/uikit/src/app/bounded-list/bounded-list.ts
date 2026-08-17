@@ -7,8 +7,9 @@
 //    覆盖后要重放回去」的机制——渲染时叠加一次就够了。
 // 2. **同一时刻只有一个分页请求在飞（单飞）。** `loading` 既是状态也是锁：首页请求
 //    抢占并作废在飞的续翻，续翻在有请求在飞时直接放弃（触界检测每帧都会重来）。
-// 3. **只有 `decide()` 会点亮 / 熄灭提示条。** 「正在追平」不是「有没看到的更新」，
-//    在请求在飞时提前点亮，就会在响应落地后立刻熄灭，用户看到的是闪一下。
+// 3. **只有 `decide()` 会点亮提示条。** 「正在追平」不是「有没看到的更新」，在请求在飞时
+//    提前点亮，就会在响应落地后立刻熄灭，用户看到的是闪一下。熄灭则不止一条路径：
+//    首页请求落定与 `reset` 清空窗口都会无条件熄灭它。
 
 import { PageWindow } from './page-window';
 import { LocalOverlay } from './overlay';
@@ -90,16 +91,37 @@ export class BoundedList<T, Q = void> {
   private loaded = false;
   private failure: { readonly error: unknown } | null = null;
 
-  /** 收到过通知、还没做追平决策（输入）。 */
+  /**
+   * 收到过通知、还没被一次首页追平覆盖（输入）。
+   *
+   * **只有首页请求发出时才清零**，`decide()` 决定「先不追平、只点亮提示条」时刻意不清：
+   * 它正是「用户滚回新鲜端就自动追平」（`onScrollFrame`）和「请求落地后重新决策」
+   * （`settleFirstPage` / `loadPage` 末尾）的依据。清早了这两条路径就都断了。
+   */
   private dirty = false;
   /** 需要定向刷新的身份（输入）。 */
   private readonly dirtyIds = new Set<string>();
-  /** 提示条该不该亮（输出）。只有 decide() / setStale() 写它，见文件头规则 3。 */
+  /**
+   * 提示条该不该亮（输出）。
+   *
+   * **点亮只有 `decide()` 一条路径**（文件头规则 3）；熄灭还有首页请求落定
+   * （`settleFirstPage`）与 `reset` 清空窗口（`runFirstPage` 的 clear 分支）两条。
+   * 换句话说：这个字段可以被「追平成功了」无条件熄灭，但绝不能被「正在追平」点亮。
+   */
   private stale = false;
 
   /**
-   * 缓存的贴边状态，只有两个写入者：原生 scroll 事件（同步，早于本帧任何重排）与
-   * 加载 / 贴边路径。图片异步增高之后不能现算——内容已经变高，现算必然误判成不贴边。
+   * **缓存的**贴边状态：最近一次「布局还没被我们自己改动过」时用户是否贴在新鲜端。
+   *
+   * 组件里有两套贴边口径，用错就是一类 bug，判据是「读的这一刻，布局有没有被我们自己
+   * 改过」：
+   * - 现算 `atFreshEdge()`：读的是用户此刻的真实位置。滚动帧、追平决策、`getState()`
+   *   用它——这些时刻布局是用户滚出来的，现算才准。
+   * - 缓存 `stuck`：图片异步增高、首页整窗替换之后，内容已经变高 / 变了，现算必然把
+   *   「用户本来贴着底」误判成「已经滚离底部」，只能回头看变化之前的那次观测。
+   *
+   * 写入者只有三类：原生 scroll 事件（同步回调，早于本帧任何重排，是唯一的「用户操作」
+   * 写入点）、`pinToFreshEdge()`（我们刚把它贴过去）、以及本端写入与首页请求的落点判断。
    */
   private stuck = true;
 
@@ -365,7 +387,8 @@ export class BoundedList<T, Q = void> {
     } catch (err) {
       if (this.isObsolete(generation)) return;
       this.settleFirstPage({ error: err });
-      this.reportError(err, 'reset');
+      // clear=true 是 reset（用户面前会是空列表），clear=false 是后台追平（旧内容还在）。
+      this.reportError(err, clear ? 'reset' : 'catchup');
       this.emitStatus();
       // 刻意不自动重试：此刻提示条就是重试入口，等用户点击或下一次 invalidate。
     }
@@ -574,7 +597,7 @@ export class BoundedList<T, Q = void> {
    *
    * 去重必须在组件里做：渲染引擎按身份键协调 DOM，同一个身份出现两次会让行缓存与真实
    * DOM 静默失配。窗口是权威，pinned 里凡是已经出现过的身份一律让位（占位会话在真实
-   * 条目落库后就不该继续钉在头部）。
+   * 条目落库后就不该继续钉在头部）；被本端删除的身份同样不再钉。
    *
    * 渲染、点击命中、选中快照、`onItemsChanged` 共用它，保证「看到的」「点到的」
    * 「报出去的」是同一份序列和同一个顺序。
@@ -588,6 +611,8 @@ export class BoundedList<T, Q = void> {
     for (const item of pinned) {
       const identity = this.opts.identityOf(item);
       if (seen.has(identity)) continue;
+      // 本端删除对 pinned 同样生效：pinned 不进窗口，overlay.apply 够不着它。
+      if (this.overlay.isDropped(identity)) continue;
       seen.add(identity);
       unique.push(item);
     }

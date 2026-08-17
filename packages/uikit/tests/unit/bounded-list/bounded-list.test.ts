@@ -800,6 +800,37 @@ describe('BoundedList / H 渲染与文案', () => {
     list.dispose();
   });
 
+  it('H1b removeLocal 也能删掉只存在于 pinnedItems 里的条目', async () => {
+    // pinned 不进窗口，overlay.apply 够不着它：少了 isDropped 这一步，removeLocal 会
+    // 报告删掉了、下一帧宿主又把它钉回来。
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(2)), {
+      pinnedItems: () => [{ id: 100, label: 'pinned' }],
+    }));
+    await list.reset();
+    expect(renderedRows(host)).toEqual(['row-100', 'row-0', 'row-1']);
+
+    expect(list.removeLocal('100')).toBe(true);
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
+    expect(list.getState().count).toBe(2);
+    list.dispose();
+  });
+
+  it('H1c 删除窗口外的身份返回 false，但记账仍拦住后续续翻把它拉回来', async () => {
+    const host = createHost();
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(6)), {
+      reachPx: -1,
+    }));
+    await list.reset();
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2']);
+
+    // id=4 此刻不在渲染序列里：返回 false，但墓碑照记。
+    expect(list.removeLocal('4')).toBe(false);
+    await list.loadMore('forward');
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2', 'row-3', 'row-5']);
+    list.dispose();
+  });
+
   it('H2 onItemsChanged 报出的就是真正渲染的那份序列（含 pinned 与本地层）', async () => {
     const host = createHost();
     const seen: string[][] = [];
@@ -987,6 +1018,31 @@ describe('BoundedList / J 错误处理', () => {
     pending[1].resolve(pageOf(makeTestItems(2), 'c0', 'c2', false, false));
     await flushAsync();
     expect(list.getState().failed).toBe(false);
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
+    list.dispose();
+  });
+
+  it('J1b 后台追平失败上报 catchup 而不是 reset，且旧内容仍在', async () => {
+    // reset 失败 = 用户面前这块列表没内容（宿主该弹提示）；catchup 失败 = 后台追平没成功、
+    // 旧内容还摆着（宿主该静默）。合成一个取值，宿主就只能在「网络抖一下也弹错」和
+    // 「首屏空白却一声不吭」之间二选一。
+    const host = createHost();
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const onError = vi.fn();
+    const list = createBoundedList(baseOptions(host, source, { onError }));
+    void list.reset();
+    pending[0].resolve(pageOf(makeTestItems(2), 'c0', 'c2', false, false));
+    await flushAsync();
+
+    // 贴在新鲜端 → invalidate 直接触发保留窗口的追平。
+    host.scroller.scrollTop = 0;
+    list.invalidate();
+    await flushAsync();
+    pending[1].reject(new Error('boom'));
+    await flushAsync();
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), 'catchup');
+    expect(onError).not.toHaveBeenCalledWith(expect.any(Error), 'reset');
     expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
     list.dispose();
   });

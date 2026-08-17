@@ -151,6 +151,29 @@ describe('SelectionStore / C 订阅通知', () => {
     expect(tabB).toHaveBeenCalledTimes(1);
   });
 
+  it('C1b replaceSingle 选中的已经正是这一项时不通知（重复点同一行不该整表重绘）', () => {
+    const store = new SelectionStore();
+    const listener = vi.fn();
+    store.replaceSingle('a');
+    store.subscribe(listener);
+    store.replaceSingle('a');
+    expect(listener).not.toHaveBeenCalled();
+    store.replaceSingle('b');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('C1c 多选留下的多项被 replaceSingle 收敛成一项时照常通知', () => {
+    // 「已选集合里含有该 id」不等于「已经正是这一项」，收敛掉其余项是真实变化。
+    const store = new SelectionStore();
+    store.toggle('a');
+    store.toggle('b');
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.replaceSingle('a');
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect([...store.snapshotIds()]).toEqual(['a']);
+  });
+
   it('C2 subscribe 返回的取消函数生效后不再收到通知，且可重复调用', () => {
     const store = new SelectionStore();
     const listener = vi.fn();

@@ -146,6 +146,30 @@ describe('ListRenderer / A 有键协调', () => {
     expect(scroller.children[0]).not.toBe(before);
   });
 
+  it('A7b 内部更新（reuseUnchangedRows=true）时条目数据变化即使 DOM 一致也换节点', () => {
+    // 宿主可以在 renderItem 里给行挂闭包着「当时那个 item」的监听，数据变了还留着旧节点
+    // 就等于留着一个绑在旧数据上的回调。这条判据与 reuseUnchangedRows 无关，见 A7。
+    const { doc, scroller, view } = makeView();
+    const renderItem = () => [asElement(row(doc, 'row-fixed'))];
+    view.render(state(doc, { items: ['a'], renderItem }));
+    const before = scroller.children[0];
+    view.render(state(doc, { items: ['a2'], keyOf: () => 'k-a', renderItem }));
+
+    expect(scroller.children[0]).not.toBe(before);
+  });
+
+  it('A7c 条目数据没变、只有 revision 变时 DOM 一致就复用旧节点', () => {
+    // A7b 的另一半：闭包着的还是同一个 item，复用是安全的，也是这条判据存在的意义。
+    const { doc, scroller, view } = makeView();
+    const renderItem = vi.fn(() => [asElement(row(doc, 'row-fixed'))]);
+    view.render(state(doc, { items: ['a'], renderItem, revisionOf: () => 'v1' }));
+    const before = scroller.children[0];
+    view.render(state(doc, { items: ['a'], renderItem, revisionOf: () => 'v2' }));
+
+    expect(renderItem).toHaveBeenCalledTimes(2);
+    expect(scroller.children[0]).toBe(before);
+  });
+
   it('A8 渲染前后 scrollTop 被夹回 0 时显式恢复', () => {
     const { doc, scroller, view } = makeView();
     scroller.scrollTop = 300;
