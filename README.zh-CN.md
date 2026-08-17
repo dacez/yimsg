@@ -98,7 +98,7 @@ Yimsg 是一套**极简单机部署、数据完全自主**的私有化即时通�
 
 ## 下载 v0.1
 
-[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.2) 提供 Windows x86-64、Linux x86-64 / ARM64 和 macOS Apple Silicon 四种发行包，每个包内含三个可执行文件：`yimsg`（服务端）、`yimsg-cli`（供 AI 调用的命令行客户端）、`yimsg-agent`（多账号自动回复常驻进程）。下载、完整解压后直接运行 `yimsg`（Windows 为 `yimsg.exe`），默认无需配置文件，浏览器访问 `http://127.0.0.1:38081/` 即可。
+[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.3) 提供 Windows x86-64、Linux x86-64 / ARM64 和 macOS Apple Silicon 四种发行包，每个包内含三个可执行文件：`yimsg`（服务端）、`yimsg-cli`（供 AI 调用的命令行客户端）、`yimsg-agent`（多账号自动回复常驻进程）。下载、完整解压后直接运行 `yimsg`（Windows 为 `yimsg.exe`），默认无需配置文件，浏览器访问 `http://127.0.0.1:38081/` 即可。
 
 需要让局域网或公网中的其它设备连接时，只需一条命令：
 

@@ -98,7 +98,7 @@ Yimsg is a **minimal, single-machine, fully data-sovereign** private instant mes
 
 ## Download v0.1
 
-[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.2) provides packages for Windows x86-64, Linux x86-64 / ARM64, and macOS Apple Silicon. Each package bundles three binaries: `yimsg` (the server), `yimsg-cli` (a command-line client for AI callers), and `yimsg-agent` (a multi-account auto-reply daemon). Download and fully extract an archive, then run `yimsg` (`yimsg.exe` on Windows). No configuration file is required by default; open `http://127.0.0.1:38081/` in a browser.
+[GitHub Releases](https://github.com/dacez/yimsg/releases/tag/v0.1.3) provides packages for Windows x86-64, Linux x86-64 / ARM64, and macOS Apple Silicon. Each package bundles three binaries: `yimsg` (the server), `yimsg-cli` (a command-line client for AI callers), and `yimsg-agent` (a multi-account auto-reply daemon). Download and fully extract an archive, then run `yimsg` (`yimsg.exe` on Windows). No configuration file is required by default; open `http://127.0.0.1:38081/` in a browser.
 
 To accept connections from other devices on a LAN or public network, use one command:
 
