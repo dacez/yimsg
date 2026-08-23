@@ -6,6 +6,8 @@ import type { Contact, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
 import { createBoundedList, sdkPageSource, standaloneList, type BoundedList, type RenderItemContext } from '../bounded-list';
+import { createListPill } from './list-pill';
+import { debounce } from '../utils';
 import { contactIdentity } from '../list-identity';
 import { panelActionBtn, SVG_CHAT, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_TRASH } from './panel-action-btn';
 import { openOrgAdmin } from './org-admin';
@@ -118,6 +120,11 @@ export function createContactsView(app: AppInstance) {
 
   function getFriendList(): BoundedList<Contact, { keyword: string }> {
     if (state.friendList) return state.friendList;
+    const pill = createListPill(
+      app.$('friends-tab').parentElement,
+      () => list.catchUp(),
+      { updated: () => app.t('contacts.listUpdated'), retry: () => app.t('common.retry') },
+    );
     const list = createBoundedList<Contact, { keyword: string }>({
       id: 'contacts.friends',
       scrollElement: app.$('friends-tab'),
@@ -143,13 +150,12 @@ export function createContactsView(app: AppInstance) {
           : app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
         forwardBoundary: () => app.t('contacts.noMoreContacts'),
-        updatePill: () => app.t('contacts.listUpdated'),
-        retry: () => app.t('common.retry'),
       },
+      onLoadStateChange: (s) => pill.sync(s),
       onError: (error) => console.warn('[yimsg/uikit] friends list failed:', error),
     });
     state.friendList = list;
-    app.registerDisposer(() => list.dispose());
+    app.registerDisposer(() => { list.dispose(); pill.dispose(); });
     void list.reset();
     return list;
   }
@@ -181,6 +187,11 @@ export function createContactsView(app: AppInstance) {
 
   function getRequestList(): BoundedList<Contact> {
     if (state.requestList) return state.requestList;
+    const pill = createListPill(
+      app.$('requests-incoming').parentElement,
+      () => list.catchUp(),
+      { updated: () => app.t('contacts.listUpdated'), retry: () => app.t('common.retry') },
+    );
     const list = createBoundedList<Contact>({
       id: 'contacts.requests',
       scrollElement: app.$('requests-incoming'),
@@ -200,14 +211,15 @@ export function createContactsView(app: AppInstance) {
         empty: () => app.t('contacts.noPendingRequests'),
         loading: () => app.t('common.loading'),
         forwardBoundary: () => app.t('contacts.noMoreRequests'),
-        updatePill: () => app.t('contacts.listUpdated'),
-        retry: () => app.t('common.retry'),
       },
-      onLoadStateChange: (s) => updateContactBadges(s.total >= 0 ? s.total : s.count),
+      onLoadStateChange: (s) => {
+        pill.sync(s);
+        updateContactBadges(s.total >= 0 ? s.total : s.count);
+      },
       onError: (error) => console.warn('[yimsg/uikit] request list failed:', error),
     });
     state.requestList = list;
-    app.registerDisposer(() => list.dispose());
+    app.registerDisposer(() => { list.dispose(); pill.dispose(); });
     void list.reset();
     return list;
   }
@@ -233,7 +245,6 @@ export function createContactsView(app: AppInstance) {
     const list = createBoundedList<Contact>({
       id: 'contacts.outgoingRequests',
       scrollElement: app.$('requests-outgoing'),
-      pillHost: false,
       pageSize: REQUEST_PAGE_SIZE,
       maxPages: APP_CONFIG.list.maxPages,
       register: (controller) => app.registerBoundedList(controller),
@@ -247,7 +258,6 @@ export function createContactsView(app: AppInstance) {
       renderItem: (contact) => renderOutgoingRow(contact),
       text: {
         loading: () => app.t('common.loading'),
-        retry: () => app.t('common.retry'),
       },
       onLoadStateChange: (s) => {
         const title = app.dom.getElementById('requests-outgoing-title');
@@ -263,12 +273,18 @@ export function createContactsView(app: AppInstance) {
     return list;
   }
 
-  // 关键字变化：更新查询条件并重拉首页（组件内置 300ms 防抖）。
+  // 关键字变化：防抖之后更新查询条件并重拉首页。防抖时长是这个搜索框的交互决定，
+  // 所以由宿主持有；列表本身只认「换查询条件就重拉首页」。
+  const resetFriendListToKeyword = debounce((keyword: string) => {
+    void getFriendList().reset({ query: { keyword } });
+  });
+  app.registerDisposer(() => resetFriendListToKeyword.cancel());
+
   function applyFriendKeywordChange(rawKeyword: string): void {
     const keyword = rawKeyword.trim();
     if (keyword === friendKeyword) return;
     friendKeyword = keyword;
-    getFriendList().setQuery({ keyword });
+    resetFriendListToKeyword(keyword);
   }
 
   // 请求 tab 的「待我处理」与「我发出的」两个列表一起重拉首页。
@@ -783,7 +799,6 @@ export function createContactsView(app: AppInstance) {
       scrollElement: listEl,
       // 建群弹窗内的一次性候选列表，随弹窗销毁，不接入宿主广播。
       register: standaloneList,
-      pillHost: false,
       pageSize: FRIEND_PAGE_SIZE,
       maxPages: APP_CONFIG.list.maxPages,
       source: sdkPageSource(
@@ -812,7 +827,6 @@ export function createContactsView(app: AppInstance) {
         empty: () => app.t('contacts.noFriends'),
         loading: () => app.t('common.loading'),
         forwardBoundary: () => app.t('contacts.noMoreContacts'),
-        retry: () => app.t('common.retry'),
       },
       onSelectionChange: (snapshot) => {
         selectedUids = [...snapshot.ids];

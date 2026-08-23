@@ -8,6 +8,7 @@ import { closeMessageActionMenu, exitMessageSelectionMode } from "./selection";
 import { closeMessageSearchPanel } from "./message-search";
 import { createBoundedList, sdkPageSource, type BoundedList, type RenderItemContext } from "../../bounded-list";
 import { conversationIdentity } from "../../list-identity";
+import { createListPill } from "../list-pill";
 import { resetMessagePage } from "./message-page";
 import { getMessageList } from "./message-list";
 
@@ -155,7 +156,14 @@ function renderConversationRow(
 function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
   if (app.chatState.conversationList) return app.chatState.conversationList;
 
-  let displayMaps: ReturnType<typeof collectDisplayMaps> | null = null;
+  // beforeRender 每一轮渲染开始时都会被调用（空批次也调），所以 renderItem 拿到的
+  // displayMaps 永远是本轮的，不需要非空断言。
+  let displayMaps = collectDisplayMaps(app, []);
+  const pill = createListPill(
+    app.$("conversation-list").parentElement,
+    () => list.catchUp(),
+    { updated: () => app.t("chat.listUpdated"), retry: () => app.t("common.retry") },
+  );
 
   const list = createBoundedList<LocalConversation>({
     id: "conversations",
@@ -178,22 +186,21 @@ function getConversationList(app: AppInstance): BoundedList<LocalConversation> {
     // 展示名等信息按整批预取一次：beforeRender 拿到的就是本轮真正要渲染的序列
     // （已含 pinnedItems 与本地层），不必再自己拼一份快照。
     beforeRender: (items) => { displayMaps = collectDisplayMaps(app, items); },
-    renderItem: (conv, ctx) => [renderConversationRow(app, conv, ctx, displayMaps!)],
+    renderItem: (conv, ctx) => [renderConversationRow(app, conv, ctx, displayMaps)],
     text: {
       empty: () => app.t("chat.noConversations"),
       loading: () => app.t("common.loading"),
       forwardBoundary: () => app.t("chat.noMoreConversations"),
-      updatePill: () => app.t("chat.listUpdated"),
-      retry: () => app.t("common.retry"),
     },
     onActivate: (conv) => { void openConversation(app, conv); },
-    onLoadStateChange: () => {
+    onLoadStateChange: (state) => {
+      pill.sync(state);
       app.setNavBadge('.nav-item[data-view="chat"]', app.chatState.conversationTotalUnreadCount > 0);
     },
   });
 
   app.chatState.conversationList = list;
-  app.registerDisposer(() => list.dispose());
+  app.registerDisposer(() => { list.dispose(); pill.dispose(); });
   void list.reset();
   void refreshUnreadBadge(app);
   return list;

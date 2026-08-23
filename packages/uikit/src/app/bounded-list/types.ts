@@ -26,12 +26,25 @@ export type Edge = 'backward' | 'forward';
  * 分页请求参数：cursor 未提供表示拉首页。
  *
  * `backward` 就是 SDK 分页方法的同名参数，调用方原样透传即可，不需要翻译成别的词。
+ * 首页请求恒为 `false`（SDK 首页没有方向概念），要取哪一端由 `freshEdge` 单独给出。
  */
 export interface FetchPageRequest<Q> {
   readonly cursor?: string;
   readonly backward: boolean;
   readonly limit: number;
   readonly query: Q;
+  /**
+   * 所属列表的新鲜端，由 `order` 换算而来，每次请求都带上。
+   *
+   * 只有「自己决定首页取哪一端」的数据源用得上它（本地切片源：'backward' 取数组最前面
+   * 一页，'forward' 取最后一页；消息列表用它把首页请求翻译成 SDK 的「取最新一页」）。
+   * 它不是 wire 字段：`sdkPageSource` 把整个请求原样交给调用方的 fetch 函数，调用方按需
+   * 解构自己要的字段，不需要的自然不会传给 SDK。
+   *
+   * 有了它，数据源就不必再单独配一份展示序，也就没有「两处 order 必须一致、不一致
+   * 静默取错端」这种跨对象隐式契约。
+   */
+  readonly freshEdge: Edge;
 }
 
 /**
@@ -69,12 +82,8 @@ export interface BoundedListText {
   readonly empty?: () => string;
   readonly backwardBoundary?: () => string;
   readonly forwardBoundary?: () => string;
-  /** 「背景有更新」提示条文案。刻意不带数量：见 BoundedListState.stale 的说明。 */
-  readonly updatePill?: () => string;
   /** 首屏加载失败时代替空态显示的文案；不提供则退化为空态文案。 */
   readonly error?: (error: unknown) => string;
-  /** 首屏加载失败时提示条上的重试文案；不提供则失败后不显示重试入口。 */
-  readonly retry?: () => string;
 }
 
 export interface BoundedListState {
@@ -88,10 +97,13 @@ export interface BoundedListState {
   readonly count: number;
   readonly total: number;
   /**
-   * 提示条该不该亮：有已知的变化但当前没有追平。
+   * 有已知的变化但当前没有追平，也就是「上面还有没看到的东西」。
    *
    * 刻意是**布尔而不是计数**：「有几条待处理更新」对用户既不准也没意义，用户需要知道的
-   * 只是「上面还有没看到的东西」。需要精确条数的调用方自己数最准。
+   * 只是有没有。需要精确条数的调用方自己数最准。
+   *
+   * 组件只报这个状态，不画任何提示条 DOM：要不要提示、长什么样、点了做什么，都是宿主
+   * 的事（宿主在 `onLoadStateChange` 里读它，点击时调 `catchUp()`）。
    */
   readonly stale: boolean;
   readonly atFreshEdge: boolean;
@@ -138,7 +150,6 @@ export type RegisterBoundedList = (instance: BoundedListController) => () => voi
 export interface BoundedListOptions<T, Q = void> {
   readonly id: string;
   readonly scrollElement: HTMLElement;
-  readonly pillHost?: HTMLElement | false;
   readonly isActive?: () => boolean;
   /**
    * 把自己登记到宿主的注册表，返回注销函数。
@@ -162,9 +173,14 @@ export interface BoundedListOptions<T, Q = void> {
   /** 展示序，默认 'desc'（新鲜端在头部，如会话/联系人）。见 DisplayOrder 的说明。 */
   readonly order?: DisplayOrder;
   /**
-   * 距某一端多少像素以内触发自动补页，默认 160。
-   * 传负值等价于关掉自动补页——测试要逐页断言时用它，生产不传。
+   * 触界自动补页总开关，默认 true。
+   *
+   * 关掉之后只有显式 `loadMore(edge)` 能续翻，滚动不再触发任何请求——要逐页断言的
+   * 测试用它。它与 `reachPx` 是两件事：一个决定「补不补」，一个决定「多近算触界」，
+   * 所以不合并成「reachPx 传负值即关闭」那种魔法值。
    */
+  readonly autoLoad?: boolean;
+  /** 距某一端多少像素以内算触界、触发自动补页，默认 160。 */
   readonly reachPx?: number;
 
   /**
