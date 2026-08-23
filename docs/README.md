@@ -1,7 +1,7 @@
 # Yimsg 文档索引
 
 > 主要对照：当前 monorepo 目录、各组件 README、根 README 与文档一致性检查工具。
-> 最后复核：2026-07-29。
+> 最后复核：2026-08-23。
 > 触发更新：组件目录、文档入口、维护边界或验证命令发生变化时同步更新。
 > 入口关系：根目录 [`../README.zh-CN.md`](../README.zh-CN.md) 面向使用者；本文件负责跨组件文档导航。
 
@@ -34,6 +34,7 @@ docs/archive/            历史资料，不作为当前事实源
 | 使用或维护 AI 调用的 CLI | [`../cli/README.md`](../cli/README.md) → [`../cli/docs/cli方案.md`](../cli/docs/cli方案.md) |
 | 使用或维护多账号自动回复 Agent | [`../agent/README.md`](../agent/README.md) → [`../agent/docs/agent方案.md`](../agent/docs/agent方案.md) |
 | 理解跨端同步 | [`architecture/同步机制方案.md`](architecture/同步机制方案.md) |
+| 判断展示资料何时该强刷 | [`architecture/展示资料缓存刷新策略.md`](architecture/展示资料缓存刷新策略.md) |
 | 运行自动化测试 | [`development/测试方案.md`](development/测试方案.md) |
 | 执行线上网页真实操作测试 | [`development/线上网页真实操作测试方案.md`](development/线上网页真实操作测试方案.md) → [`development/线上网页真实操作测试TODO.md`](development/线上网页真实操作测试TODO.md) |
 | 下载发行包或部署 | [`deployment/部署方案.md`](deployment/部署方案.md)（第 0 节为解压即用） |

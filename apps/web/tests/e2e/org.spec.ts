@@ -141,4 +141,75 @@ test.describe('Org directory', () => {
     await page.click('#oa-close');
     await expect(page.locator('#modal-overlay:not(.hidden)')).toHaveCount(0);
   });
+
+  // 回归 BUG-005：组织 / tag 展示名走 DisplayInfoCache（TTL 7 天），写操作既不回写本地缓存，
+  // org:updated 也只同步结构边不带名字，于是发起改名的那一端在 TTL 内一直读到旧名——服务端
+  // 已经改好、别的账号首次拉取就是新名，只有操作者自己的弹层标题、面包屑和通讯录条目不变。
+  // 修复口径：点击驱动的入口（打开弹层、切换节点、写操作成功后）绕过 TTL 强刷展示资料。
+  test('renaming an org refreshes the open manage panel, breadcrumb and contacts row', async ({ page }) => {
+    await register(page, uniqueUser('renameorg'), '123456', 'RenameOrg');
+    await page.click('[data-view="contacts"]');
+    await page.click('#create-org-btn');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+
+    const orgName = `改名前组织_${Date.now()}`;
+    await page.fill('#modal-text-input', orgName);
+    await page.click('#modal-confirm-btn');
+
+    const orgRow = page.locator('#friends-tab .contact-item', { hasText: orgName });
+    await expect(orgRow).toBeVisible({ timeout: 20_000 });
+    await orgRow.click();
+    const panel = page.locator('#contacts-detail-panel');
+    await expect(panel.locator('.org-crumb-current')).toContainText(orgName, { timeout: 10_000 });
+    await panel.locator('#contacts-org-manage').click();
+    await expect(page.locator('#modal-content #oa-rename')).toBeVisible({ timeout: 10_000 });
+
+    const renamed = `${orgName}_R1`;
+    await page.click('#oa-rename');
+    await page.fill('#modal-text-input', renamed);
+    await page.click('#modal-confirm-btn');
+
+    // 弹层不关闭，当场追平：标题和面包屑都必须变成新名称，不能停留在旧名。
+    await expect(page.locator('#modal-content .org-admin-header strong')).toHaveText(renamed, { timeout: 10_000 });
+    await expect(page.locator('#modal-content .org-crumb-current')).toContainText(renamed);
+
+    // 关闭弹层后，背后的组织详情面包屑和通讯录条目同样是新名称。
+    await page.click('#oa-close');
+    await expect(panel.locator('.org-crumb-current')).toContainText(renamed, { timeout: 10_000 });
+    await expect(page.locator('#friends-tab .contact-item', { hasText: renamed })).toBeVisible({ timeout: 10_000 });
+  });
+
+  // 回归 BUG-005 的另一半：组织被删除（或本人被移出）后，已经打开的组织详情曾经原样留在
+  // 屏幕上——通讯录入口消失了，面包屑、成员和管理入口还在，点任何操作都报 not an org member。
+  // 修复口径有两条互补的判据：重拉本节点返回 FORBIDDEN / NOT_FOUND 时立即判失效收起；
+  // 而组织刚被删除、通讯录组织行还没被异步清掉的那段时间里 get_tags 只会返回空列表、不报错，
+  // 所以还要以 contacts:updated 后"通讯录入口是否还在"兜底。网络、内部错误等可恢复失败不收起。
+  test('deleting an org closes the stale org detail left behind the manage modal', async ({ page }) => {
+    await register(page, uniqueUser('delorg'), '123456', 'DelOrg');
+    await page.click('[data-view="contacts"]');
+    await page.click('#create-org-btn');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
+
+    const orgName = `待删除组织_${Date.now()}`;
+    await page.fill('#modal-text-input', orgName);
+    await page.click('#modal-confirm-btn');
+
+    const orgRow = page.locator('#friends-tab .contact-item', { hasText: orgName });
+    await expect(orgRow).toBeVisible({ timeout: 20_000 });
+    await orgRow.click();
+    const panel = page.locator('#contacts-detail-panel');
+    await expect(panel.locator('.org-crumb-current')).toContainText(orgName, { timeout: 10_000 });
+    await panel.locator('#contacts-org-manage').click();
+    await expect(page.locator('#modal-content #oa-delete-org')).toBeVisible({ timeout: 10_000 });
+
+    await page.click('#oa-delete-org');
+    await page.click('#modal-confirm-btn');
+    await expect(page.locator('#modal-overlay:not(.hidden)')).toHaveCount(0, { timeout: 10_000 });
+
+    // 通讯录入口先消失（服务端异步清组织行 + contacts:updated），随后失效详情必须自动收起：
+    // 面包屑清空、回到"选择联系人"空态，不把陈旧的组织结构留在右侧。
+    await expect(page.locator('#friends-tab .contact-item', { hasText: orgName })).toHaveCount(0, { timeout: 30_000 });
+    await expect(panel.locator('.org-crumb')).toHaveCount(0, { timeout: 30_000 });
+    await expect(panel.locator('.contacts-detail-empty')).toBeVisible();
+  });
 });

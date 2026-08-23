@@ -1,7 +1,7 @@
 import { CONTACT_FRIEND, CONTACT_PENDING_INCOMING, CONTACT_PENDING_OUTGOING } from '@yimsg/sdk';
 import { ORG_CHILD_PERSON, ORG_CHILD_TAG } from '@yimsg/sdk/uikit-internal';
 import { APP_CONFIG } from '../../app-config';
-import { describeError } from '../error-i18n';
+import { describeError, serverErrorCodeOf } from '../error-i18n';
 import type { Contact, LocalConversation } from '@yimsg/sdk';
 import { displayGroupName, displayUserName } from '@yimsg/sdk';
 import type { AppInstance } from '../app-instance';
@@ -503,10 +503,17 @@ export function createContactsView(app: AppInstance) {
     }
   }
 
-  /** 组织架构浏览器：面包屑 + 当前层子项（子 tag 与人按服务端绝对排序混合）。 */
-  async function renderOrgPanel(): Promise<void> {
+  /**
+   * 组织架构浏览器：面包屑 + 当前层子项（子 tag 与人按服务端绝对排序混合）。
+   * forceRefresh 只由点击驱动的入口（打开组织条目、切换面包屑、下钻子部门）和 org:updated
+   * 通知传入，绕过展示资料 TTL 直接取最新组织 / tag 名；display:updated 驱动的重绘必须保持
+   * 默认 false，否则"强刷 → display:updated → 再强刷"会形成无限循环。
+   * 口径见 docs/architecture/展示资料缓存刷新策略.md。
+   */
+  async function renderOrgPanel(options: { forceRefresh?: boolean } = {}): Promise<void> {
     const orgId = orgPanelOrgId;
     if (!orgId) return;
+    const forceRefresh = options.forceRefresh === true;
     const reqId = ++detailRequestId;
     const panel = app.$('contacts-detail-panel');
     if (!panel) return;
@@ -517,6 +524,14 @@ export function createContactsView(app: AppInstance) {
       tags = page.tags;
     } catch (e) {
       app.showToast(app.t('contacts.orgLoadFailed') + describeError(app, e), 'error');
+      // 组织已被删除或本人已被移出：当前详情已经失效，直接收起回到空态，不把陈旧的面包屑、
+      // 成员和管理入口留在屏幕上继续误导操作。网络 / 内部错误属于可恢复失败，保留原内容。
+      const code = serverErrorCodeOf(e);
+      if (code === 'FORBIDDEN' || code === 'NOT_FOUND') {
+        orgPanelOrgId = null;
+        orgPanelStack = [];
+        void showContactDetail(null);
+      }
       return;
     }
     if (reqId !== detailRequestId || orgPanelOrgId !== orgId) return;
@@ -528,8 +543,8 @@ export function createContactsView(app: AppInstance) {
     const childTagIds = tags.filter(i => i.childType === ORG_CHILD_TAG).map(i => i.childId);
     const ancestorTagIds = orgPanelStack.filter(id => id !== orgId);
     const userDisplayMap = app.client.getUserInfos(memberUids);
-    const tagDisplayMap = app.client.getTagInfos(orgId, [...new Set([...childTagIds, ...ancestorTagIds])]);
-    const orgDisplayMap = app.client.getOrgInfos([orgId]);
+    const tagDisplayMap = app.client.getTagInfos(orgId, [...new Set([...childTagIds, ...ancestorTagIds])], { forceRefresh });
+    const orgDisplayMap = app.client.getOrgInfos([orgId], { forceRefresh });
 
     const crumbNameOf = (tagId: string): string => tagId === orgId
       ? (orgDisplayMap.get(tagId)?.name || app.t('contacts.orgLoading'))
@@ -582,7 +597,7 @@ export function createContactsView(app: AppInstance) {
         const idx = Number((el as HTMLElement).dataset.crumb);
         if (idx < orgPanelStack.length - 1) {
           orgPanelStack = orgPanelStack.slice(0, idx + 1);
-          void renderOrgPanel();
+          void renderOrgPanel({ forceRefresh: true });
         }
       });
     });
@@ -590,7 +605,7 @@ export function createContactsView(app: AppInstance) {
       el.addEventListener('click', () => {
         const item = tags[Number((el as HTMLElement).dataset.idx)];
         orgPanelStack = [...orgPanelStack, item.childId];
-        void renderOrgPanel();
+        void renderOrgPanel({ forceRefresh: true });
       });
     });
     panel.querySelectorAll('.org-member-row').forEach(el => {
@@ -612,12 +627,39 @@ export function createContactsView(app: AppInstance) {
     getFriendList().render();
     orgPanelOrgId = orgId;
     orgPanelStack = [orgId];
-    await renderOrgPanel();
+    await renderOrgPanel({ forceRefresh: true });
   }
 
-  /** 组织架构变更（org:updated）：刷新打开中的组织面板。 */
+  /**
+   * 通讯录条目变化（contacts:updated）：组织被删除或本人被移出时，服务端只是异步清掉
+   * 通讯录里的组织行，在那之前 get_tags 对组织根仍会返回空列表而不是错误，光靠重拉失败
+   * 判定不了失效。所以这里以"通讯录入口是否还在"为准：入口没了就收起已经打开的组织详情，
+   * 让左侧列表和右侧详情始终是同一份事实。
+   */
+  async function closeOrgPanelIfEntryGone(): Promise<void> {
+    const orgId = orgPanelOrgId;
+    if (!orgId) return;
+    let stillListed: boolean;
+    try {
+      const page = await app.client.getContacts({ orgIds: [orgId], limit: 1 });
+      stillListed = page.contacts.length > 0;
+    } catch {
+      // 读取失败不做判定：保留当前详情，不把网络抖动当成组织已消失。
+      return;
+    }
+    if (stillListed || orgPanelOrgId !== orgId) return;
+    orgPanelOrgId = null;
+    orgPanelStack = [];
+    void showContactDetail(null);
+  }
+
+  /**
+   * 组织架构变更（org:updated）：刷新打开中的组织面板。
+   * 通知本身就表示服务端数据已变，这里强刷展示资料把改名后的组织 / 部门名一起追平；
+   * 组织被删除或本人被移出时，重拉必然失败，由 renderOrgPanel 的失效分支收起面板。
+   */
   function refreshOrgPanel(orgIds: ReadonlyArray<string>): void {
-    if (orgPanelOrgId && orgIds.includes(orgPanelOrgId)) void renderOrgPanel();
+    if (orgPanelOrgId && orgIds.includes(orgPanelOrgId)) void renderOrgPanel({ forceRefresh: true });
   }
 
   async function showContactDetail(contact: Contact | null): Promise<void> {
@@ -916,6 +958,7 @@ export function createContactsView(app: AppInstance) {
     refreshContactsDisplay,
     updateContactBadges,
     refreshOrgPanel,
+    closeOrgPanelIfEntryGone,
     showCreateGroupModal,
   };
 }

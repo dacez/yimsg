@@ -46,6 +46,8 @@ function handleMessagesReceived(app: AppInstance, keys: ReadonlyArray<string>) {
 
 function handleContactsChanged(app: AppInstance) {
   void app.client.getContactCount(CONTACT_PENDING_INCOMING).then(n => app.views.contacts?.updateContactBadges(n));
+  // 组织被删除或本人被移出时通讯录组织行会消失，已经打开的组织详情必须跟着收起。
+  void app.views.contacts?.closeOrgPanelIfEntryGone();
 
   if (!app.$('view-contacts').classList.contains('hidden')) {
     // 背景刷新：用户不在列表顶部时不打断浏览（loadContacts 内部判定并推迟）。

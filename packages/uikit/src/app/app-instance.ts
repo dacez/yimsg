@@ -134,6 +134,7 @@ interface AppViews {
     refreshContactsDisplay(): void;
     updateContactBadges(pendingCount: number): void;
     refreshOrgPanel(orgIds: ReadonlyArray<string>): void;
+    closeOrgPanelIfEntryGone(): Promise<void>;
     showCreateGroupModal(): Promise<void>;
   };
   settings: {
