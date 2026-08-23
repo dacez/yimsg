@@ -10,7 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { createBoundedList } from '../../../src/app/bounded-list/bounded-list';
-import { localPageSource } from '../../../src/app/bounded-list/page-source';
+import { localPageSource } from '../../../src/app/views/local-page-source';
 import { SelectionStore } from '../../../src/app/bounded-list/selection';
 import type { BoundedListOptions } from '../../../src/app/bounded-list/types';
 import { FakeDocument, asElement, row, viewOf } from './fake-dom';

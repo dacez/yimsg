@@ -1,7 +1,6 @@
 import {
   SelectionStore,
   createBoundedList,
-  localPageSource,
   sdkPageSource,
   type BoundedList,
   type BoundedListOptions,
@@ -11,6 +10,9 @@ import {
   type PageLoadResult,
   type SelectionSnapshot,
 } from '../../../../../packages/uikit/src/app/bounded-list/index.ts';
+import { localPageSource } from '../../../../../packages/uikit/src/app/views/local-page-source.ts';
+import { createListPill, type ListPillHandle } from '../../../../../packages/uikit/src/app/views/list-pill.ts';
+import { debounce, type Debounced } from '../../../../../packages/uikit/src/app/utils.ts';
 
 interface TestItem {
   readonly id: string;
@@ -34,6 +36,12 @@ type TextKey =
   | 'error'
   | 'retry';
 
+/** 提示条文案（宿主侧 createListPill 的入参），与组件的 text 分开。 */
+interface PillTextConfig {
+  readonly updated: string | false;
+  readonly retry: string | false;
+}
+
 interface MountConfig {
   readonly id?: string;
   readonly itemCount?: number;
@@ -45,6 +53,7 @@ interface MountConfig {
   readonly initialQuery?: TestQuery;
   readonly sourceKind?: 'server' | 'local';
   readonly order?: 'asc' | 'desc';
+  readonly autoLoad?: boolean;
   readonly reachPx?: number;
   readonly active?: boolean;
   readonly detachedScroller?: boolean;
@@ -122,6 +131,10 @@ interface HarnessEntry {
   readonly content: HTMLElement;
   readonly explicitPillHost: HTMLElement;
   readonly list: BoundedList<TestItem, TestQuery>;
+  /** 宿主侧提示条；pillHost:'false' 的用例拿到的是空操作句柄（宿主决定不要提示条）。 */
+  readonly pill: ListPillHandle;
+  /** 宿主侧搜索防抖：模拟生产里搜索框接线，也让 setQuery 命令能带防抖时长。 */
+  readonly search: Debounced<[TestQuery]>;
   readonly fetchCalls: FetchCall[];
   readonly events: HarnessEvent[];
   readonly failNext: Set<ErrorPhase>;
@@ -298,9 +311,7 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
   const emptyFiltered = value('emptyFiltered');
   const backwardBoundary = value('backwardBoundary');
   const forwardBoundary = value('forwardBoundary');
-  const updatePill = value('updatePill');
   const error = value('error');
-  const retry = value('retry');
   return {
     ...(loading === false ? {} : { loading: () => loading }),
     ...(empty === false ? {} : {
@@ -308,9 +319,6 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
     }),
     ...(backwardBoundary === false ? {} : { backwardBoundary: () => backwardBoundary }),
     ...(forwardBoundary === false ? {} : { forwardBoundary: () => forwardBoundary }),
-    ...(updatePill === false
-      ? {}
-      : { updatePill: () => updatePill }),
     ...(error === false
       ? {}
       : {
@@ -319,8 +327,16 @@ function textFor(config: MountConfig, keywordOf: () => string): BoundedListOptio
           reason instanceof Error ? reason.message : String(reason),
         ),
       }),
-    ...(retry === false ? {} : { retry: () => retry }),
   };
+}
+
+/** 提示条文案取自同一份 text 配置，只是交给宿主的 createListPill 而不是组件。 */
+function pillTextFor(config: MountConfig): PillTextConfig {
+  const value = (key: TextKey, fallback: string): string | false =>
+    config.text && Object.prototype.hasOwnProperty.call(config.text, key)
+      ? config.text[key] ?? false
+      : fallback;
+  return { updated: value('updatePill', '有更新'), retry: value('retry', '重新加载') };
 }
 
 function recordFetchCall(
@@ -457,6 +473,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
           backward: false,
           limit: config.pageSize,
           query,
+          freshEdge: config.order === 'asc' ? 'forward' : 'backward',
         };
         const phase = phaseOf(syntheticReq);
         recordFetchCall(fetchCalls, syntheticReq, phase);
@@ -502,17 +519,10 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
       })()
     : undefined;
 
-  const pillHost = config.pillHost === 'false'
-    ? false
-    : config.pillHost === 'explicit'
-      ? host.explicitPillHost
-      : undefined;
-
   const normalize = normalizeFor(config);
   const options: BoundedListOptions<TestItem, TestQuery> = {
     id: config.id,
     scrollElement: host.scroller,
-    ...(pillHost === undefined ? {} : { pillHost }),
     ...(configInput.active === undefined ? {} : { isActive: () => entryShell.active }),
     register: (instance: { readonly id: string; invalidate(): void | Promise<void> }) => {
       const custom = config.register === 'custom';
@@ -547,6 +557,7 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
     ...(normalize ? { normalize } : {}),
     identityOf: (item) => item.id,
     ...(configInput.order === undefined ? {} : { order: config.order }),
+    ...(config.autoLoad === undefined ? {} : { autoLoad: config.autoLoad }),
     ...(config.reachPx === undefined ? {} : { reachPx: config.reachPx }),
     renderItem: (item, context) => {
       const elements: HTMLElement[] = [];
@@ -585,6 +596,12 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
       }
       : {}),
     ...(configInput.initialQuery === undefined ? {} : { initialQuery: config.initialQuery }),
+    // 没开 callbacks 的用例也要让提示条跟上状态：生产里提示条同样是靠这个回调驱动的。
+    ...(config.callbacks ? {} : {
+      onLoadStateChange: (state: BoundedListState) => {
+        (entryShell as Partial<HarnessEntry>).pill?.sync(state);
+      },
+    }),
     ...(config.callbacks
       ? {
         onActivate: (item: TestItem, event: Event) => pushEvent(entryShell, 'onActivate', {
@@ -593,8 +610,10 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
         }),
         onSelectionChange: (snapshot: SelectionSnapshot<TestItem>) =>
           pushEvent(entryShell, 'onSelectionChange', snapshot),
-        onLoadStateChange: (state: BoundedListState) =>
-          pushEvent(entryShell, 'onLoadStateChange', state),
+        onLoadStateChange: (state: BoundedListState) => {
+          (entryShell as Partial<HarnessEntry>).pill?.sync(state);
+          pushEvent(entryShell, 'onLoadStateChange', state);
+        },
         onItemsChanged: (changedItems: readonly TestItem[]) =>
           pushEvent(entryShell, 'onItemsChanged', changedItems),
         onError: (error: unknown, phase: ErrorPhase) =>
@@ -604,9 +623,25 @@ async function mount(configInput: MountConfig = {}): Promise<string> {
   };
 
   const list = createBoundedList(options);
+
+  // 宿主侧接线，与生产 views 里的写法一致：提示条是宿主的 DOM，由 onLoadStateChange
+  // 驱动；搜索防抖是宿主的 debounce。'false' 表示这个宿主根本不要提示条。
+  const pillText = pillTextFor(configInput);
+  const pill = createListPill(
+    config.pillHost === 'false'
+      ? null
+      : config.pillHost === 'explicit' ? host.explicitPillHost : host.root,
+    () => list.catchUp(),
+    {
+      ...(pillText.updated === false ? {} : { updated: () => pillText.updated as string }),
+      ...(pillText.retry === false ? {} : { retry: () => pillText.retry as string }),
+    },
+  );
+  const search = debounce((query: TestQuery) => void list.reset({ query }));
+
   // 数据源、回调与测试命令必须共享同一个可变 entry；不能在这里展开复制，
   // 否则 pause/setItems/setActive 等命令只会改到 Map 中的副本。
-  const entry = Object.assign(entryShell, { list }) as HarnessEntry;
+  const entry = Object.assign(entryShell, { list, pill, search }) as HarnessEntry;
   entries.set(key, entry);
   if (config.autoReset ?? true) await list.reset();
   return key;
@@ -634,15 +669,22 @@ const api = {
   mount,
   async dispose(key: string): Promise<void> {
     const entry = getEntry(key);
+    entry.search.cancel();
     entry.list.dispose();
+    entry.pill.dispose();
     await afterAnimationFrames();
   },
   disposeNow(key: string): void {
-    getEntry(key).list.dispose();
+    const entry = getEntry(key);
+    entry.search.cancel();
+    entry.list.dispose();
+    entry.pill.dispose();
   },
   removeCase(key: string): void {
     const entry = getEntry(key);
+    entry.search.cancel();
     entry.list.dispose();
+    entry.pill.dispose();
     entry.root.remove();
     entries.delete(key);
     rememberedRows.delete(key);
@@ -664,13 +706,12 @@ const api = {
     const entry = getEntry(key);
     start(entry, () => entry.list.loadMore(edge));
   },
+  // 生产里搜索框的接线：默认走宿主防抖，debounceMs<=0 表示「这是明确意图」直接 flush。
   setQuery(key: string, query: TestQuery, debounceMs?: number): void {
     const entry = getEntry(key);
     entry.keyword = query.keyword ?? '';
-    entry.list.setQuery(
-      query,
-      debounceMs === undefined ? undefined : { debounceMs },
-    );
+    if (debounceMs !== undefined && debounceMs <= 0) entry.search.flush(query);
+    else entry.search(query);
   },
   invalidate(
     key: string,

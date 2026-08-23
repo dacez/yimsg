@@ -7,6 +7,7 @@ import { conversationLabel } from "./helpers";
 import { exitMessageSelectionMode } from "./selection";
 import { appendLiveMessageToPage } from "./message-page";
 import { createBoundedList, sdkPageSource, SelectionStore } from "../../bounded-list";
+import { debounce } from "../../utils";
 import { contactFriendUid, contactGroupId } from "../contacts";
 
 const FORWARD_MAX_TARGETS = APP_CONFIG.forward.maxTargets;
@@ -86,7 +87,6 @@ async function showForwardModal(
     const conversationList = createBoundedList<LocalConversation>({
       id: "forward.conversations",
       scrollElement: app.$("forward-conversation-list"),
-      pillHost: false,
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.list.maxPages,
       register: (c) => app.registerBoundedList(c),
@@ -102,7 +102,6 @@ async function showForwardModal(
         empty: () => app.t("chat.forwardNoConversation"),
         loading: () => app.t("common.loading"),
         forwardBoundary: () => app.t("chat.noMoreConversations"),
-        retry: () => app.t("common.retry"),
       },
       onItemsChanged: (items) => {
         // 未指定默认目标（无正在打开的会话）时，首页到达后自动预选第一个候选。
@@ -115,11 +114,10 @@ async function showForwardModal(
     void conversationList.reset();
 
     // 通讯录候选（好友 / 收藏群）：切到该 tab 才首次拉取，避免每次转发都多一次请求。
-    // 关键字非空时改走 search_contacts，setQuery 的防抖由组件统一处理。
+    // 关键字非空时改走 search_contacts。
     const contactList = createBoundedList<Contact, { keyword: string }>({
       id: "forward.contacts",
       scrollElement: app.$("forward-contact-list"),
-      pillHost: false,
       pageSize: FORWARD_CONTACT_PAGE_SIZE,
       maxPages: APP_CONFIG.list.maxPages,
       register: (c) => app.registerBoundedList(c),
@@ -139,7 +137,6 @@ async function showForwardModal(
         empty: () => app.t(contactKeyword ? "contacts.noSearchResults" : "contacts.noFriends"),
         loading: () => app.t("common.loading"),
         forwardBoundary: () => app.t("contacts.noMoreContacts"),
-        retry: () => app.t("common.retry"),
       },
       onError: (error) => console.warn("[yimsg/uikit] forward contact list failed:", error),
     });
@@ -185,13 +182,15 @@ async function showForwardModal(
     });
 
     const contactSearchInput = app.$("forward-contact-search-input") as HTMLInputElement;
+    const searchContacts = debounce((keyword: string) => void contactList.reset({ query: { keyword } }));
+    controller.signal.addEventListener("abort", () => searchContacts.cancel());
     contactSearchInput.addEventListener(
       "input",
       () => {
         const keyword = contactSearchInput.value.trim();
         if (keyword === contactKeyword) return;
         contactKeyword = keyword;
-        contactList.setQuery({ keyword });
+        searchContacts(keyword);
       },
       { signal: controller.signal },
     );

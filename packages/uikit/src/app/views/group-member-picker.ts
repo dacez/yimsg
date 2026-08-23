@@ -1,7 +1,9 @@
 import { displayUserName } from '@yimsg/sdk';
 import { APP_CONFIG } from '../../app-config';
 import type { AppInstance } from '../app-instance';
-import { createBoundedList, localPageSource, standaloneList } from '../bounded-list';
+import { createBoundedList, standaloneList } from '../bounded-list';
+import { localPageSource } from './local-page-source';
+import { debounce } from '../utils';
 
 export type GroupMemberPickResult =
   | { kind: 'member'; uid: string }
@@ -106,12 +108,10 @@ export async function showGroupMemberPicker(
       scrollElement: app.$('group-member-picker-list'),
       // 弹窗内一次性候选列表，生命周期短于一次重连，不接入宿主广播。
       register: standaloneList,
-      pillHost: false,
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        order: 'desc',
         loadAll: () => loadAllMemberEntries(app, groupId, excluded, (n) => {
           loadingCount = n;
         }),
@@ -137,7 +137,6 @@ export async function showGroupMemberPicker(
           : app.t('groupMemberPicker.empty'),
         loading: () => app.t('groupMemberPicker.loadingCount', { n: loadingCount }),
         error: () => app.t('groupMemberPicker.loadFailed'),
-        retry: () => app.t('common.retry'),
       },
       onActivate: (entry) => finish(entry.kind === 'all' ? { kind: 'all' } : { kind: 'member', uid: entry.uid }),
       onLoadStateChange: (s) => { searchInput.disabled = !s.loaded; if (s.loaded) searchInput.focus(); },
@@ -146,7 +145,9 @@ export async function showGroupMemberPicker(
     void list.reset();
     app.client.on('display:updated', onDisplayUpdated);
 
-    searchInput.addEventListener('input', () => list.setQuery({ keyword: searchInput.value.trim() }), { signal: controller.signal });
+    const search = debounce((keyword: string) => void list.reset({ query: { keyword } }));
+    controller.signal.addEventListener('abort', () => search.cancel());
+    searchInput.addEventListener('input', () => search(searchInput.value.trim()), { signal: controller.signal });
     searchInput.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Escape') finish(null);
     }, { signal: controller.signal });

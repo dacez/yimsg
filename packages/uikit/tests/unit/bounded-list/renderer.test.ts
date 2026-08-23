@@ -30,6 +30,7 @@ function makeView(overrides: Partial<{
   const scroller = doc.createElement();
   const view = new ListRenderer<string>({
     scrollElement: asElement(scroller),
+    autoLoad: true,
     reachPx: DEFAULT_REACH_PX,
     onScroll: overrides.onScroll,
     onScrollImmediate: overrides.onScrollImmediate,
@@ -377,7 +378,7 @@ describe('ListRenderer / D 锚点', () => {
   it('D3 宿主拿不到布局信息时锚点整体降级为不校正，不抛错', () => {
     const doc = new FakeDocument();
     const scroller = stripBoundingRect(doc.createElement());
-    const view = new ListRenderer<string>({ scrollElement: asElement(scroller), reachPx: DEFAULT_REACH_PX });
+    const view = new ListRenderer<string>({ scrollElement: asElement(scroller), autoLoad: true, reachPx: DEFAULT_REACH_PX });
     scroller.scrollTop = 42;
 
     expect(() => view.render(state(doc, { items: ['a'] }))).not.toThrow();

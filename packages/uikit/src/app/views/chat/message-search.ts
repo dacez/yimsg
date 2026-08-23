@@ -6,6 +6,7 @@ import { currentConversation, recallPlaceholderText } from './helpers';
 import { getMessageList, renderMessages } from './message-list';
 import { messageKey, resetMessagePage } from './message-page';
 import { createBoundedList, sdkPageSource, type BoundedList } from '../../bounded-list';
+import { debounce, type Debounced } from '../../utils';
 
 const HIGHLIGHT_MS = 1500;
 
@@ -57,13 +58,23 @@ export async function jumpToMessageInConversation(app: AppInstance, target: Conv
   scrollToMessage(app, msgId);
 }
 
-const searchResultLists = new WeakMap<AppInstance, BoundedList<Message, { keyword: string }>>();
+// 结果列表与它的搜索防抖一起存：关面板时必须把待触发的那次一并取消，否则用户打完字
+// 立刻切会话，300ms 后旧关键字还会再搜一次，把刚清空的结果又填回来。
+interface SearchResultsHandle {
+  readonly list: BoundedList<Message, { keyword: string }>;
+  readonly search: Debounced<[string]>;
+}
+
+const searchResultLists = new WeakMap<AppInstance, SearchResultsHandle>();
 
 /** 关闭消息搜索面板并清空输入/结果；切换会话时调用，避免搜索结果跨会话残留。 */
 export function closeMessageSearchPanel(app: AppInstance): void {
   app.$('message-search-panel').classList.add('hidden');
   (app.$('message-search-input') as HTMLInputElement).value = '';
-  searchResultLists.get(app)?.setQuery({ keyword: '' }, { debounceMs: 0 });
+  const handle = searchResultLists.get(app);
+  if (!handle) return;
+  handle.search.cancel();
+  void handle.list.reset({ query: { keyword: '' } });
 }
 
 function renderSearchResultRow(app: AppInstance, msg: Message): HTMLElement {
@@ -106,7 +117,6 @@ export function setupMessageSearch(app: AppInstance): void {
   const resultsList = createBoundedList<Message, { keyword: string }>({
     id: 'message-search-results',
     scrollElement: app.$('message-search-results'),
-    pillHost: false,
     pageSize: APP_CONFIG.list.pageSize,
     maxPages: APP_CONFIG.list.maxPages,
     register: (controller) => app.registerBoundedList(controller),
@@ -133,14 +143,11 @@ export function setupMessageSearch(app: AppInstance): void {
       empty: () => input().value.trim() ? app.t('chat.searchNoResults') : '',
       loading: () => app.t('common.loading'),
       error: () => app.t('chat.searchFailed'),
-      retry: () => app.t('common.retry'),
     },
     onActivate: (msg) => void jumpToResult(msg.messageId),
     onError: (error) => console.warn('[yimsg/uikit] message search failed:', error),
   });
-  searchResultLists.set(app, resultsList);
   void resultsList.reset();
-  app.registerDisposer(() => resultsList.dispose());
 
   // 搜索结果里的发送者昵称首次渲染时可能还没入缓存，异步补齐后靠 display:updated 重绘。
   const onDisplayUpdated = (): void => resultsList.render();
@@ -157,15 +164,19 @@ export function setupMessageSearch(app: AppInstance): void {
     input().focus();
   }
 
+  // 防抖只服务于「边打字边搜」；清空关键字与回车都是明确的意图，用 flush 立刻生效。
+  const search = debounce((keyword: string) => void resultsList.reset({ query: { keyword } }));
+  searchResultLists.set(app, { list: resultsList, search });
+  app.registerDisposer(() => { search.cancel(); resultsList.dispose(); });
   input().addEventListener('input', () => {
     const keyword = input().value.trim();
-    // 清空关键字立即回到空白态，不需要等待防抖；非空关键字沿用组件内置 300ms 防抖。
-    resultsList.setQuery({ keyword }, keyword ? undefined : { debounceMs: 0 });
+    if (keyword) search(keyword);
+    else search.flush('');
   });
   input().addEventListener('keydown', (event) => {
     const key = (event as KeyboardEvent).key;
     if (key === 'Enter') {
-      resultsList.setQuery({ keyword: input().value.trim() }, { debounceMs: 0 });
+      search.flush(input().value.trim());
     } else if (key === 'Escape') {
       closePanel();
     }

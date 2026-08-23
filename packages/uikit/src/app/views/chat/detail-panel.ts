@@ -7,18 +7,28 @@ import {
 import { APP_CONFIG } from '../../../app-config';
 import type { AppInstance } from '../../app-instance';
 import { describeError } from '../../error-i18n';
-import { createBoundedList, localPageSource, sdkPageSource, standaloneList, type BoundedList } from '../../bounded-list';
+import { createBoundedList, sdkPageSource, standaloneList, type BoundedList } from '../../bounded-list';
+import { localPageSource } from '../local-page-source';
+import { createListPill, type ListPillHandle } from '../list-pill';
+import { debounce } from '../../utils';
 import { panelActionBtn, SVG_REMARK, SVG_BELL, SVG_BELL_OFF, SVG_BAN, SVG_STAR, SVG_STAR_FILLED, SVG_PLUS } from '../panel-action-btn';
 import { contactFriendUid } from '../contacts';
 
 // 群详情面板每次 showGroupDetail 都会重建成员列表实例（面板重开即重建，无背景刷新）；
 // 重建前必须先 dispose 上一个实例，否则每次改备注/收藏/换头像/移除成员都会泄漏一个实例。
-const groupMemberLists = new WeakMap<AppInstance, BoundedList<GroupMember>>();
+// 列表与它的提示条同生共死，所以一起存：群资料面板每次打开都重建这两样。
+interface GroupMemberListHandle {
+  readonly list: BoundedList<GroupMember>;
+  readonly pill: ListPillHandle;
+}
+
+const groupMemberLists = new WeakMap<AppInstance, GroupMemberListHandle>();
 
 function disposeGroupMemberList(app: AppInstance): void {
   const existing = groupMemberLists.get(app);
   if (existing) {
-    existing.dispose();
+    existing.list.dispose();
+    existing.pill.dispose();
     groupMemberLists.delete(app);
   }
 }
@@ -57,6 +67,11 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
     `;
 
     disposeGroupMemberList(app);
+    const memberPill = createListPill(
+      app.$('members-list').parentElement,
+      () => memberList.catchUp(),
+      { retry: () => app.t('common.retry') },
+    );
     const memberList = createBoundedList<GroupMember>({
       id: 'detail.groupMembers',
       scrollElement: app.$('members-list'),
@@ -76,23 +91,23 @@ export async function showGroupDetail(app: AppInstance, groupId: string) {
         empty: () => app.t('detail.noMembers'),
         loading: () => app.t('common.loading'),
         forwardBoundary: () => app.t('detail.noMoreMembers'),
-        retry: () => app.t('common.retry'),
       },
       onItemsChanged: (items) => {
         memberItems = items;
         app.client.getUserInfos(items.map((member) => member.userId || '0'));
       },
       onLoadStateChange: (s) => {
+        memberPill.sync(s);
         memberTotal = s.total;
         const title = app.dom.getElementById('members-title');
         if (title) title.textContent = app.t('detail.memberCount', { n: memberTotal >= 0 ? memberTotal : s.count });
       },
       onError: (error) => console.warn('[yimsg/uikit] group member list failed:', error),
     });
-    groupMemberLists.set(app, memberList);
+    groupMemberLists.set(app, { list: memberList, pill: memberPill });
     let isOwner = false;
     await memberList.reset();
-    if (app.chatState.detailRequestId !== requestId) { memberList.dispose(); groupMemberLists.delete(app); return; }
+    if (app.chatState.detailRequestId !== requestId) { disposeGroupMemberList(app); return; }
 
     const ownerMember = memberItems.find((member) => member.role === GROUP_ROLE_OWNER);
     isOwner = ownerMember ? (ownerMember.userId || '0') === app.client.getSessionSnapshot().currentUid : false;
@@ -320,12 +335,10 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
       scrollElement: app.$('add-member-list'),
       // 加群成员弹窗内的一次性候选列表，随弹窗销毁，不接入宿主广播。
       register: standaloneList,
-      pillHost: false,
       pageSize: APP_CONFIG.list.pageSize,
       maxPages: APP_CONFIG.groupMemberPicker.maxPages,
       initialQuery: { keyword: '' },
       source: localPageSource({
-        order: 'desc',
         loadAll: () => loadAddMemberCandidates(app, groupId, controller.signal),
         filter: (entry, query) => !query.keyword || entry.name.toLowerCase().includes(query.keyword.toLowerCase()),
         compare: (a, b) => collator.compare(a.name, b.name),
@@ -351,7 +364,6 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
           : app.t('detail.addMemberEmpty'),
         loading: () => app.t('common.loading'),
         error: () => app.t('detail.addMemberLoadFailed'),
-        retry: () => app.t('common.retry'),
       },
       onLoadStateChange: (s) => { searchInput.disabled = !s.loaded; },
       onError: (error) => console.warn('[yimsg/uikit] add-member candidates failed:', error),
@@ -371,15 +383,18 @@ async function showAddMemberModal(app: AppInstance, groupId: string): Promise<vo
       }
     };
 
+    const applyKeyword = debounce((keyword: string) => void list.reset({ query: { keyword } }));
+
     const finish = () => {
       controller.abort();
       app.client.off('display:updated', onDisplayUpdated);
+      applyKeyword.cancel();
       list.dispose();
       app.closeModal();
       resolve();
     };
 
-    searchInput.addEventListener('input', () => list.setQuery({ keyword: searchInput.value.trim() }));
+    searchInput.addEventListener('input', () => applyKeyword(searchInput.value.trim()));
     searchInput.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Escape') finish();
     });
