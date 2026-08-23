@@ -26,6 +26,7 @@ import {
 import { updateSelectionBar } from './selection';
 import { setSafeHtml, setTrustedAnchorHref, setTrustedImageSrc, safeHtml } from '../../safe-dom';
 import { createBoundedList, sdkPageSource, type BoundedList, type RenderItemContext } from '../../bounded-list';
+import { createListPill } from '../list-pill';
 import { messageKey, sortUniqueBySeq, syncCurrentMessages } from './message-page';
 
 const BOTTOM_SETTLE_FRAME_COUNT = 4;
@@ -54,6 +55,11 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
   if (app.chatState.messageList) return app.chatState.messageList;
 
   let senderMap: ReturnType<typeof app.client.getUserInfos> = new Map();
+  const pill = createListPill(
+    app.$('message-list').parentElement,
+    () => list.catchUp(),
+    { updated: () => app.t('chat.jumpToLatest'), retry: () => app.t('common.retry') },
+  );
 
   const list = createBoundedList<Message, MessageQuery>({
     id: 'open-conversation-messages',
@@ -64,18 +70,17 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     isActive: () => Boolean(app.chatState.currentConvKey) && !app.$('view-chat').classList.contains('hidden'),
     initialQuery: {},
     source: sdkPageSource<Awaited<ReturnType<typeof app.client.getMessages>>, Message, MessageQuery>(
-      ({ cursor, backward, limit, query }) => {
+      ({ cursor, backward, limit, query, freshEdge }) => {
         const conv = app.chatState.currentConversation;
         const target = conv ? app.client.describeConversation(conv).target : { toUid: '0' };
         if (cursor === undefined && query?.aroundMsgId) {
           return app.client.getMessages({ target, around: query.aroundMsgId, limit });
         }
-        // reset() 固定以 cursor=undefined、backward=false 发起首页请求；但本列表
-        // order='asc'（新鲜端在尾部），无游标时必须取"最新一页"，对应 getMessages 的
-        // backward=true（从尾部往前取 limit 条），而不是字面透传的 backward=false
-        // （那会从最早消息开始，取到最旧一页）。
+        // 首页请求的 backward 恒为 false（SDK 的 backward 只在带游标时有意义），要取
+        // 哪一端看 freshEdge：本列表 order='asc'，新鲜端在尾部，所以首页必须取"最新
+        // 一页"，对应 getMessages 的 backward=true（从尾部往前取 limit 条）。
         if (cursor === undefined) {
-          return app.client.getMessages({ target, backward: true, limit });
+          return app.client.getMessages({ target, backward: freshEdge === 'forward', limit });
         }
         return app.client.getMessages({ target, cursor, backward, limit });
       },
@@ -99,9 +104,8 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       loading: () => app.t('common.loading'),
       backwardBoundary: () => app.t('chat.reachedEarliest'),
       forwardBoundary: () => app.t('chat.reachedLatest'),
-      updatePill: () => app.t('chat.jumpToLatest'),
-      retry: () => app.t('common.retry'),
     },
+    onLoadStateChange: (state) => pill.sync(state),
     onItemsChanged: (items) => {
       syncCurrentMessages(app, items);
       if (app.chatState.messageSelectionMode) updateSelectionBar(app);
@@ -116,7 +120,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
   });
 
   app.chatState.messageList = list;
-  app.registerDisposer(() => list.dispose());
+  app.registerDisposer(() => { list.dispose(); pill.dispose(); });
   return list;
 }
 

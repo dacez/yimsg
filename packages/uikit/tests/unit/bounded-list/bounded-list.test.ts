@@ -1,15 +1,15 @@
 // BoundedList（组件外壳）单测。
 // 分类见 packages/uikit/docs/boundedlist/测试方案.md §4.5：
-//   A 构造与默认值 / B 首屏与 reset / C 续翻与触界 / D setQuery 防抖
-//   E invalidate 决策 / F 提示条 / G 本地层 / H 渲染与文案
+//   A 构造与默认值 / B 首屏与 reset / C 续翻与触界 / D 查询条件切换
+//   E invalidate 决策 / F catchUp 追平入口 / G 本地层 / H 渲染与文案
 //   I 交互与选中态 / J 错误处理 / K 释放 / L 只读状态。
 
 import { describe, expect, it, vi } from 'vitest';
 import { createBoundedList } from '../../../src/app/bounded-list/bounded-list';
-import { localPageSource } from '../../../src/app/bounded-list/page-source';
+import { localPageSource } from '../../../src/app/views/local-page-source';
 import { SelectionStore } from '../../../src/app/bounded-list/selection';
 import type { BoundedListOptions } from '../../../src/app/bounded-list/types';
-import { FakeDocument, asElement, row, type FakeElement } from './fake-dom';
+import { FakeDocument, asElement, row } from './fake-dom';
 import {
   createAnchoredSource,
   createControllableFetcher,
@@ -80,7 +80,6 @@ function baseOptions(
     text: {
       loading: () => '加载中',
       empty: () => '暂无数据',
-      updatePill: () => '有更新',
     },
     ...overrides,
   };
@@ -92,14 +91,6 @@ function rendered(host: Host): string[] {
 
 function renderedRows(host: Host): string[] {
   return rendered(host).filter((cls) => cls.startsWith('row-'));
-}
-
-function pillOf(host: Host): FakeElement {
-  return host.parent.children[1];
-}
-
-function pillVisible(host: Host): boolean {
-  return !pillOf(host).classList.contains('hidden');
 }
 
 // ───────────────────────── A 构造与默认值 ─────────────────────────
@@ -346,37 +337,13 @@ describe('BoundedList / C 续翻与触界', () => {
   });
 });
 
-// ───────────────────────── D setQuery 防抖 ─────────────────────────
+// ───────────────────────── D 查询条件切换 ─────────────────────────
+//
+// 组件不再自带防抖：`reset({ query })` 立即生效，「输入停顿多久才查」是宿主的交互决定
+// （`views/utils.ts` 的 debounce，用例见 views/debounce.test.ts）。
 
-describe('BoundedList / D setQuery 防抖', () => {
-  it('D1 防抖窗口内的多次输入只触发一次重拉，且用最后一个关键字', async () => {
-    vi.useFakeTimers();
-    try {
-      const host = createHost();
-      const queries: string[] = [];
-      const list = createBoundedList<TestItem, string>({
-        ...baseOptions(host, createInstantSource(() => makeTestItems(3))) as unknown as BoundedListOptions<TestItem, string>,
-        initialQuery: '',
-        source: {
-          fetch: async (req) => {
-            queries.push(req.query);
-            return pageOf(makeTestItems(1), 'c0', 'c1', false, false);
-          },
-        },
-      });
-      list.setQuery('a');
-      list.setQuery('ab');
-      vi.advanceTimersByTime(299);
-      expect(queries).toHaveLength(0);
-      vi.advanceTimersByTime(1);
-      expect(queries).toEqual(['ab']);
-      list.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('D2 debounceMs<=0 时立即重拉', async () => {
+describe('BoundedList / D 查询条件切换', () => {
+  it('D1 reset({ query }) 立即用新查询条件重拉首页', async () => {
     const host = createHost();
     const queries: string[] = [];
     const list = createBoundedList<TestItem, string>({
@@ -389,35 +356,49 @@ describe('BoundedList / D setQuery 防抖', () => {
         },
       },
     });
-    list.setQuery('x', { debounceMs: 0 });
-    await flushAsync();
+    await list.reset({ query: 'x' });
     expect(queries).toEqual(['x']);
     list.dispose();
   });
 
-  it('D3 dispose 时取消未触发的防抖', async () => {
-    vi.useFakeTimers();
-    try {
-      const host = createHost();
-      const fetch = vi.fn(async () => pageOf([], 'c0', 'c0', false, false));
-      const list = createBoundedList<TestItem, string>({
-        ...baseOptions(host, { fetch }) as unknown as BoundedListOptions<TestItem, string>,
-        initialQuery: '',
-      });
-      list.setQuery('a');
-      list.dispose();
-      vi.advanceTimersByTime(500);
-      expect(fetch).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('D2 连续切换查询条件时只有最后一次的结果落地（世代守卫）', async () => {
+    const host = createHost();
+    const { source, pending } = createControllableSource<TestItem, string>();
+    const list = createBoundedList<TestItem, string>({
+      ...baseOptions(host, createInstantSource(() => makeTestItems(3))) as unknown as BoundedListOptions<TestItem, string>,
+      initialQuery: '',
+      source,
+    });
+    void list.reset({ query: 'a' });
+    void list.reset({ query: 'b' });
+    // 先落地的是旧查询的响应：世代已经推进，它必须被整体丢弃。
+    pending[0].resolve(pageOf(makeTestItems(3), 'c0', 'c3', false, false));
+    await flushAsync();
+    expect(renderedRows(host)).toEqual([]);
+
+    pending[1].resolve(pageOf(makeTestItems(2, 10), 'c10', 'c12', false, false));
+    await flushAsync();
+    expect(renderedRows(host)).toEqual(['row-10', 'row-11']);
+    list.dispose();
+  });
+
+  it('D3 dispose 之后 reset 不再发请求', async () => {
+    const host = createHost();
+    const fetch = vi.fn(async () => pageOf([], 'c0', 'c0', false, false));
+    const list = createBoundedList<TestItem, string>({
+      ...baseOptions(host, { fetch }) as unknown as BoundedListOptions<TestItem, string>,
+      initialQuery: '',
+    });
+    list.dispose();
+    await list.reset({ query: 'a' });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
 // ───────────────────────── E invalidate 决策 ─────────────────────────
 
 describe('BoundedList / E invalidate 决策', () => {
-  it('E1 贴着新鲜端时直接追平重拉，提示条不出现', async () => {
+  it('E1 贴着新鲜端时直接追平重拉，stale 不点亮', async () => {
     const host = createHost();
     let all = makeTestItems(3);
     const list = createBoundedList(baseOptions(host, createInstantSource(() => all)));
@@ -430,11 +411,10 @@ describe('BoundedList / E invalidate 决策', () => {
 
     expect(renderedRows(host)).toEqual(['row-9', 'row-0', 'row-1']);
     expect(list.getState().stale).toBe(false);
-    expect(pillVisible(host)).toBe(false);
     list.dispose();
   });
 
-  it('E2 用户滚离新鲜端时只点亮提示条，不重排', async () => {
+  it('E2 用户滚离新鲜端时只点亮 stale，不重排', async () => {
     const host = createHost();
     let all = makeTestItems(3);
     const list = createBoundedList(baseOptions(host, createInstantSource(() => all)));
@@ -447,12 +427,11 @@ describe('BoundedList / E invalidate 决策', () => {
 
     expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2']);
     expect(list.getState().stale).toBe(true);
-    expect(pillVisible(host)).toBe(true);
-    expect(pillOf(host).textContent).toBe('有更新');
+    expect(list.getState().stale).toBe(true);
     list.dispose();
   });
 
-  it('E3 列表不可见时只点亮提示条，即便贴着新鲜端也不重拉', async () => {
+  it('E3 列表不可见时只点亮 stale，即便贴着新鲜端也不重拉', async () => {
     const host = createHost();
     const fetchSpy = vi.fn();
     const inner = createInstantSource(() => makeTestItems(3));
@@ -469,7 +448,7 @@ describe('BoundedList / E invalidate 决策', () => {
     list.dispose();
   });
 
-  it('E4 用户滚回新鲜端时自动追平并熄灭提示条', async () => {
+  it('E4 用户滚回新鲜端时自动追平并熄灭 stale', async () => {
     const host = createHost();
     let all = makeTestItems(3);
     const list = createBoundedList(baseOptions(host, createInstantSource(() => all)));
@@ -478,14 +457,14 @@ describe('BoundedList / E invalidate 决策', () => {
     all = [{ id: 9, label: 'item-9' }, ...all];
     list.invalidate();
     await flushAsync();
-    expect(pillVisible(host)).toBe(true);
+    expect(list.getState().stale).toBe(true);
 
     host.scroller.scrollTop = 0;
     host.scroller.dispatch('scroll');
     await flushAsync();
 
     expect(renderedRows(host)).toEqual(['row-9', 'row-0', 'row-1']);
-    expect(pillVisible(host)).toBe(false);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -528,7 +507,7 @@ describe('BoundedList / E invalidate 决策', () => {
     list.dispose();
   });
 
-  it('E7 回归：请求在飞期间到达的通知不会让提示条闪一下', async () => {
+  it('E7 回归：请求在飞期间到达的通知不会让 stale 闪一下', async () => {
     const host = createHost();
     const { source, pending } = createControllableSource<TestItem, void>();
     const list = createBoundedList(baseOptions(host, source));
@@ -537,22 +516,21 @@ describe('BoundedList / E invalidate 决策', () => {
     await flushAsync();
     expect(host.scroller.scrollTop).toBe(0); // 贴着新鲜端
 
-    // 追平请求在飞时又收到一条通知：此刻既不能追平，也绝不能点亮提示条。
+    // 追平请求在飞时又收到一条通知：此刻既不能追平，也绝不能点亮 stale。
     list.invalidate();
     await flushAsync();
     expect(pending).toHaveLength(2);
     list.invalidate();
     await flushAsync();
-    expect(pillVisible(host)).toBe(false);
     expect(list.getState().stale).toBe(false);
 
     pending[1].resolve(pageOf(makeTestItems(3), 'c0', 'c3', false, false));
     await flushAsync();
-    // 落地后重新决策：仍贴边 → 再追平一次，全程提示条不亮。
-    expect(pillVisible(host)).toBe(false);
+    // 落地后重新决策：仍贴边 → 再追平一次，全程 stale 不点亮。
+    expect(list.getState().stale).toBe(false);
     pending[2]?.resolve(pageOf(makeTestItems(3), 'c0', 'c3', false, false));
     await flushAsync();
-    expect(pillVisible(host)).toBe(false);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
@@ -591,10 +569,13 @@ describe('BoundedList / E invalidate 决策', () => {
   });
 });
 
-// ───────────────────────── F 提示条 ─────────────────────────
+// ───────────────────────── F catchUp 追平入口 ─────────────────────────
+//
+// 组件不画提示条：它只报 stale / failed 两个状态，并提供 catchUp() 这一个追平入口。
+// 提示条 DOM 在宿主侧（views/list-pill.ts，用例见 views/list-pill.test.ts）。
 
-describe('BoundedList / F 提示条', () => {
-  it('F1 点击提示条立即追平并贴回新鲜端', async () => {
+describe('BoundedList / F catchUp 追平入口', () => {
+  it('F1 catchUp 贴回新鲜端并追平，stale 随之熄灭', async () => {
     const host = createHost();
     let all = makeTestItems(3);
     const list = createBoundedList(baseOptions(host, createInstantSource(() => all)));
@@ -603,41 +584,47 @@ describe('BoundedList / F 提示条', () => {
     all = [{ id: 9, label: 'item-9' }, ...all];
     list.invalidate();
     await flushAsync();
-    expect(pillVisible(host)).toBe(true);
+    expect(list.getState().stale).toBe(true);
 
-    pillOf(host).dispatch('click');
+    list.catchUp();
     await flushAsync();
 
     expect(renderedRows(host)).toEqual(['row-9', 'row-0', 'row-1']);
     expect(host.scroller.scrollTop).toBe(0);
-    expect(pillVisible(host)).toBe(false);
+    expect(list.getState().stale).toBe(false);
     list.dispose();
   });
 
-  it('F2 没有提供 updatePill 文案时不出现空白提示条', async () => {
+  it('F2 stale 变化会经 onLoadStateChange 上报（宿主据此显示提示条）', async () => {
     const host = createHost();
+    const states: boolean[] = [];
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3)), {
-      text: { loading: () => '加载中', empty: () => '暂无数据' },
+      onLoadStateChange: (state) => states.push(state.stale),
     }));
     await list.reset();
+    expect(states.at(-1)).toBe(false);
+
     scrollAway(host);
     list.invalidate();
     await flushAsync();
+    expect(states.at(-1)).toBe(true);
 
-    expect(list.getState().stale).toBe(true);
-    expect(pillVisible(host)).toBe(false);
+    list.catchUp();
+    await flushAsync();
+    expect(states.at(-1)).toBe(false);
     list.dispose();
   });
 
-  it('F3 pillHost=false 时不创建任何提示条 DOM', async () => {
+  it('F3 组件不在宿主容器里创建任何自己的 DOM', async () => {
     const host = createHost();
-    const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3)), { pillHost: false }));
+    const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(3))));
     await list.reset();
+    // 滚动容器之外没有多出任何节点：提示条之类的装饰完全由宿主决定。
     expect(host.parent.children).toHaveLength(1);
     list.dispose();
   });
 
-  it('F4 点击提示条时已有追平在飞：合并进那一次，落地后仍贴回新鲜端', async () => {
+  it('F4 catchUp 时已有追平在飞：合并进那一次，落地后仍贴回新鲜端', async () => {
     const host = createHost();
     const { source, pending } = createControllableSource<TestItem, void>();
     const list = createBoundedList(baseOptions(host, source));
@@ -645,12 +632,12 @@ describe('BoundedList / F 提示条', () => {
     pending[0].resolve(pageOf(makeTestItems(3), 'c0', 'c3', false, false));
     await flushAsync();
 
-    // 用户滚离新鲜端 → 通知只点亮提示条。
+    // 用户滚离新鲜端 → 通知只点亮 stale。
     scrollAway(host);
     host.scroller.dispatch('scroll');
     list.invalidate();
     await flushAsync();
-    expect(pillVisible(host)).toBe(true);
+    expect(list.getState().stale).toBe(true);
 
     // 用户滚回新鲜端 → 自动追平发出（这一次不带贴边意图）。
     host.scroller.scrollTop = 0;
@@ -658,15 +645,32 @@ describe('BoundedList / F 提示条', () => {
     await flushAsync();
     expect(pending.length).toBe(2);
 
-    // 追平还没落地，用户又滚走并点了仍然亮着的提示条：贴边意图必须并进在飞的那次请求。
+    // 追平还没落地，用户又滚走并触发了 catchUp：贴边意图必须并进在飞的那次请求。
     scrollAway(host);
     host.scroller.dispatch('scroll');
-    pillOf(host).dispatch('click');
+    list.catchUp();
     pending[1].resolve(pageOf(makeTestItems(3, 6), 'c6', 'c9', false, false));
     await flushAsync();
 
     expect(pending.length).toBe(2);
     expect(host.scroller.scrollTop).toBe(0);
+    list.dispose();
+  });
+
+  it('F5 首屏失败后 catchUp 等价于重拉首页', async () => {
+    const host = createHost();
+    const { source, pending } = createControllableSource<TestItem, void>();
+    const list = createBoundedList(baseOptions(host, source));
+    void list.reset();
+    pending[0].reject(new Error('boom'));
+    await flushAsync();
+    expect(list.getState().failed).toBe(true);
+
+    list.catchUp();
+    pending[1].resolve(pageOf(makeTestItems(2), 'c0', 'c2', false, false));
+    await flushAsync();
+    expect(list.getState().failed).toBe(false);
+    expect(renderedRows(host)).toEqual(['row-0', 'row-1']);
     list.dispose();
   });
 });
@@ -704,7 +708,7 @@ describe('BoundedList / G 本地层', () => {
     list.dispose();
   });
 
-  it('G4 窗口还没追平新鲜端时也照样立即可见（本端写入不猜位置、不点提示条）', async () => {
+  it('G4 窗口还没追平新鲜端时也照样立即可见（本端写入不猜位置、不点 stale）', async () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createAnchoredSource(() => makeTestItems(12), 6)));
     await list.reset({ pinEdge: false });
@@ -819,7 +823,7 @@ describe('BoundedList / H 渲染与文案', () => {
   it('H1c 删除窗口外的身份返回 false，但记账仍拦住后续续翻把它拉回来', async () => {
     const host = createHost();
     const list = createBoundedList(baseOptions(host, createInstantSource(() => makeTestItems(6)), {
-      reachPx: -1,
+      autoLoad: false,
     }));
     await list.reset();
     expect(renderedRows(host)).toEqual(['row-0', 'row-1', 'row-2']);
@@ -990,7 +994,7 @@ describe('BoundedList / I 交互与选中态', () => {
 // ───────────────────────── J 错误处理 ─────────────────────────
 
 describe('BoundedList / J 错误处理', () => {
-  it('J1 首屏失败进入错误态，提示条充当重试入口', async () => {
+  it('J1 首屏失败进入错误态，catchUp 是重试入口', async () => {
     const host = createHost();
     const { source, pending } = createControllableSource<TestItem, void>();
     const onError = vi.fn();
@@ -1000,7 +1004,6 @@ describe('BoundedList / J 错误处理', () => {
         loading: () => '加载中',
         empty: () => '暂无数据',
         error: () => '加载失败',
-        retry: () => '重试',
       },
     }));
     void list.reset();
@@ -1011,10 +1014,8 @@ describe('BoundedList / J 错误处理', () => {
     expect(list.getState().loaded).toBe(true);
     expect(rendered(host)).toEqual(['list-error-state']);
     expect(onError).toHaveBeenCalledWith(expect.any(Error), 'reset');
-    expect(pillOf(host).textContent).toBe('重试');
-    expect(pillVisible(host)).toBe(true);
 
-    pillOf(host).dispatch('click');
+    list.catchUp();
     pending[1].resolve(pageOf(makeTestItems(2), 'c0', 'c2', false, false));
     await flushAsync();
     expect(list.getState().failed).toBe(false);

@@ -7,14 +7,16 @@
 //    覆盖后要重放回去」的机制——渲染时叠加一次就够了。
 // 2. **同一时刻只有一个分页请求在飞（单飞）。** `loading` 既是状态也是锁：首页请求
 //    抢占并作废在飞的续翻，续翻在有请求在飞时直接放弃（触界检测每帧都会重来）。
-// 3. **只有 `decide()` 会点亮提示条。** 「正在追平」不是「有没看到的更新」，在请求在飞时
-//    提前点亮，就会在响应落地后立刻熄灭，用户看到的是闪一下。熄灭则不止一条路径：
-//    首页请求落定与 `reset` 清空窗口都会无条件熄灭它。
+// 3. **只有 `decide()` 会点亮 `stale`。** 「正在追平」不是「有没看到的更新」，在请求在飞时
+//    提前点亮，宿主的提示条就会在响应落地后立刻熄灭，用户看到的是闪一下。熄灭则不止一条
+//    路径：首页请求落定与 `reset` 清空窗口都会无条件熄灭它。
+//
+// 组件不画任何提示条：`stale` / `failed` 只是 `getState()` 的两个字段，宿主自己决定要不要
+// 提示、长什么样，点击时调 `catchUp()`。
 
 import { PageWindow } from './page-window';
 import { LocalOverlay } from './overlay';
 import { SelectionStore } from './selection';
-import { createUpdatePill, type UpdatePillHandle } from './update-pill';
 import { ListRenderer, DEFAULT_REACH_PX } from './renderer';
 import { frameScheduler, nextFrame, type FrameScheduler } from './frame';
 import type {
@@ -46,7 +48,6 @@ export class BoundedList<T, Q = void> {
   /** 本地事实：本端写入，渲染时叠加在窗口之上。 */
   private readonly overlay: LocalOverlay<T>;
   private readonly renderer: ListRenderer<T>;
-  private readonly pill: UpdatePillHandle;
   private readonly selection?: SelectionStore;
   private readonly unsubscribeSelection?: () => void;
   private readonly unregister: () => void;
@@ -61,7 +62,6 @@ export class BoundedList<T, Q = void> {
 
   private query: Q;
   private disposed = false;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * 在飞请求（单飞）：'first' 是首页请求，'backward'/'forward' 是该端续翻，null 是空闲。
@@ -102,7 +102,7 @@ export class BoundedList<T, Q = void> {
   /** 需要定向刷新的身份（输入）。 */
   private readonly dirtyIds = new Set<string>();
   /**
-   * 提示条该不该亮（输出）。
+   * 有没看到的更新（输出，经 `getState().stale` 给宿主）。
    *
    * **点亮只有 `decide()` 一条路径**（文件头规则 3）；熄灭还有首页请求落定
    * （`settleFirstPage`）与 `reset` 清空窗口（`runFirstPage` 的 clear 分支）两条。
@@ -158,11 +158,9 @@ export class BoundedList<T, Q = void> {
       });
     }
 
-    const pillHost = opts.pillHost === undefined ? (opts.scrollElement.parentElement ?? false) : opts.pillHost;
-    this.pill = createUpdatePill(pillHost, () => this.catchUp());
-
     this.renderer = new ListRenderer<T>({
       scrollElement: opts.scrollElement,
+      autoLoad: opts.autoLoad ?? true,
       reachPx: this.reachPx,
       onScrollImmediate: () => { this.stuck = this.atFreshEdge(); },
       onScroll: () => this.onScrollFrame(),
@@ -199,24 +197,6 @@ export class BoundedList<T, Q = void> {
     if (this.disposed) return;
     this.blocked.delete(edge);
     await this.loadPage(edge);
-  }
-
-  /** 改查询条件并重拉首页；默认防抖 300ms（搜索框直接接上即可）。 */
-  setQuery(query: Q, opts?: { debounceMs?: number }): void {
-    if (this.disposed) return;
-    const debounceMs = opts?.debounceMs ?? 300;
-    if (this.debounceTimer !== null) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    if (debounceMs <= 0) {
-      void this.reset({ query });
-      return;
-    }
-    this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null;
-      void this.reset({ query });
-    }, debounceMs);
   }
 
   /**
@@ -269,6 +249,18 @@ export class BoundedList<T, Q = void> {
   }
 
   /**
+   * 立刻贴回新鲜端并追平：宿主的「有更新 / 回到最新」提示条点击时调它。
+   *
+   * 首屏还没成功过（`failed`）时它等价于重拉首页，所以同一个入口既是「追平」也是
+   * 「重试」，宿主不必分辨当前是哪一种。
+   */
+  catchUp(): void {
+    if (this.disposed) return;
+    if (!this.loaded) void this.reset({ pinEdge: true });
+    else void this.refresh(true);
+  }
+
+  /**
    * 宿主显式重绘：每一行都重跑 `renderItem`。
    * 宿主在行内挂了自己的监听 / 读了组件不知道的外部状态（展示名缓存、选中模式等）时
    * 需要它。组件内部的数据更新只重建真正变化的行，不重跑未变化行的 `renderItem`。
@@ -283,12 +275,7 @@ export class BoundedList<T, Q = void> {
     this.scheduleDecide.cancel();
     this.overlay.clear();
     this.dirtyIds.clear();
-    if (this.debounceTimer !== null) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
     this.renderer.dispose();
-    this.pill.dispose();
     this.unsubscribeSelection?.();
     this.unregister();
   }
@@ -369,9 +356,12 @@ export class BoundedList<T, Q = void> {
     try {
       const page = await this.opts.source.fetch({
         cursor: undefined,
+        // 首页没有方向：SDK 的 backward 只在带游标时有意义，恒传 false。数据源要是
+        // 自己决定首页取哪一端（本地切片源），看 freshEdge。
         backward: false,
         limit: this.opts.pageSize,
         query: this.query,
+        freshEdge: this.edge,
       });
       if (this.isObsolete(generation)) return;
       // 先在独立窗口上落地：normalize 与超页校验都可能抛错，成功了才替换可见窗口。
@@ -427,6 +417,7 @@ export class BoundedList<T, Q = void> {
         backward: edge === 'backward',
         limit: this.opts.pageSize,
         query: this.query,
+        freshEdge: this.edge,
       });
       if (this.isObsolete(generation)) return;
       this.window.extend(edge, page);
@@ -507,26 +498,7 @@ export class BoundedList<T, Q = void> {
   private setStale(value: boolean): void {
     if (this.stale === value) return;
     this.stale = value;
-    this.syncPill();
     this.opts.onLoadStateChange?.(this.getState());
-  }
-
-  /** 提示条点击：贴回新鲜端并立刻追平；首屏还没成功过时提示条是重试入口。 */
-  private catchUp(): void {
-    if (!this.loaded) void this.reset({ pinEdge: true });
-    else void this.refresh(true);
-  }
-
-  private syncPill(): void {
-    // 首屏失败时提示条充当重试入口（点击即重拉）；否则才是「有更新」提示。
-    if (this.failure) {
-      const retryText = this.opts.text.retry?.();
-      this.pill.setVisible(retryText !== undefined, retryText);
-      return;
-    }
-    const text = this.opts.text.updatePill?.();
-    // 没有提供文案就不该出现一个空白提示条。
-    this.pill.setVisible(this.stale && text !== undefined, text);
   }
 
   // ---- 滚动与几何 ----
@@ -623,8 +595,9 @@ export class BoundedList<T, Q = void> {
     if (this.disposed) return;
     const text = this.opts.text;
     const empty = items.length === 0;
-    // 没有行要渲染时不调用：beforeRender 是「为这批条目做准备」，空批次没什么可准备的。
-    if (!empty) this.opts.beforeRender?.(items);
+    // 无条件调用，空批次也调（此时收到的是空数组）。宿主拿 beforeRender 的产物去写
+    // renderItem，少一次调用就少一次赋值，宿主只能用非空断言去赌「组件一定先调过」。
+    this.opts.beforeRender?.(items);
     this.renderer.render({
       items,
       loaded: this.loaded,
@@ -643,7 +616,6 @@ export class BoundedList<T, Q = void> {
       reuseUnchangedRows: !rebuildRows,
       revisionOf: (item, index) => this.rowRevision(item, index, items),
     });
-    this.syncPill();
   }
 
   private renderRow(item: T, index: number, items: readonly T[]): readonly HTMLElement[] {

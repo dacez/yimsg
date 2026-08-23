@@ -94,7 +94,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       itemCount: 1,
       selection: { mode: 'multi', max: 1 },
       initialA11y: { tabindex: '7', role: 'feed', ariaMultiselectable: 'false' },
-      reachPx: -1,
+      autoLoad: false,
     });
     const scroller = root(page, preconfigured).locator('.bl-scroller');
     // 组件不接管容器语义：没有键盘导航，写 role/tabindex 只会给出无法操作的假承诺。
@@ -112,7 +112,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       id: 'bounded.custom-registry',
       itemCount: 3,
       register: 'custom',
-      reachPx: -1,
+      autoLoad: false,
     });
     expect(await call<string[]>(page, 'registryIds')).not.toContain('bounded.custom-registry');
     expect(await call<string[]>(page, 'customRegistryIds')).toContain('bounded.custom-registry');
@@ -129,12 +129,14 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect(await call<string[]>(page, 'customRegistryIds')).not.toContain('bounded.custom-registry');
   });
 
-  test('pillHost 三态', async ({ page }) => {
-    const explicit = await mount(page, { itemCount: 1, pillHost: 'explicit', reachPx: -1 });
+  // 提示条是宿主的 DOM（views/list-pill.ts），组件只报 stale / failed。这里覆盖宿主的
+  // 三种选择：挂在默认容器、挂在指定容器、根本不要提示条。
+  test('提示条由宿主挂载：默认容器 / 指定容器 / 不要', async ({ page }) => {
+    const explicit = await mount(page, { itemCount: 1, pillHost: 'explicit', autoLoad: false });
     expect(await call<{ parentClass: string }>(page, 'pillInfo', explicit))
       .toMatchObject({ exists: true, parentClass: 'bl-explicit-pill-host' });
 
-    const none = await mount(page, { itemCount: 1, pillHost: 'false', reachPx: -1 });
+    const none = await mount(page, { itemCount: 1, pillHost: 'false', autoLoad: false });
     expect(await call<{ exists: boolean }>(page, 'pillInfo', none)).toMatchObject({ exists: false });
   });
 
@@ -147,7 +149,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 2,
       initialQuery: { keyword: '' },
       autoReset: false,
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'pauseNextPage', key);
     await call(page, 'startReset', key, { query: { keyword: 'item' }, pinEdge: true });
@@ -188,7 +190,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pageSize: 10,
       maxPages: 1,
       initialQuery: { keyword: '' },
-      reachPx: -1,
+      autoLoad: false,
     });
     await expect(root(page, key).locator('.list-boundary-hint-top')).toHaveText('已到开头');
     await expect(root(page, key).locator('.list-boundary-hint-bottom')).toHaveText('已到结尾');
@@ -212,7 +214,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pageSize: 10,
       maxPages: 2,
       initialStart: 40,
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'clearFetchCalls', key);
 
@@ -232,7 +234,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('单飞：已有请求在飞时的续翻请求被放弃，不会并发打两次', async ({ page }) => {
-    const key = await mount(page, { itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, reachPx: -1 });
+    const key = await mount(page, { itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, autoLoad: false });
     await call(page, 'clearFetchCalls', key);
 
     await call(page, 'pauseNextPage', key);
@@ -275,7 +277,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 3,
       initialStart: 50,
       rowHeight: 40,
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'setScrollTop', key, 120);
     await dispatchScroll(page, key);
@@ -296,7 +298,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 1,
       order: 'asc',
       rowHeight: 24,
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'frames', 4);
     expect((await call<ListState>(page, 'state', key)).atFreshEdge).toBe(true);
@@ -306,16 +308,17 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     expect((await call<ListState>(page, 'state', key)).atFreshEdge).toBe(true);
   });
 
-  // ───────────── setQuery ─────────────
+  // ───────────── 查询条件切换 ─────────────
 
-  test('setQuery 默认 300ms 防抖、覆盖旧查询，0ms 立即重拉', async ({ page }) => {
+  // 防抖在宿主侧（views/utils.ts 的 debounce），组件只提供 reset({ query })。
+  test('宿主防抖：窗口内多次输入只重拉一次并用最后一个关键字，flush 立即重拉', async ({ page }) => {
     const key = await mount(page, {
       sourceKind: 'local',
       itemCount: 20,
       pageSize: 10,
       maxPages: 1,
       initialQuery: { keyword: '' },
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'clearFetchCalls', key);
 
@@ -332,10 +335,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
     await expect(rows(page, key)).toHaveCount(10);
   });
 
-  // ───────────── invalidate 决策与提示条 ─────────────
+  // ───────────── invalidate 决策与宿主提示条 ─────────────
 
   test('贴着新鲜端收到 invalidate 时直接追平，提示条不出现', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
     await call(page, 'setItems', key, [
       { id: 'new', label: 'item-new', order: -1 },
       ...await call<TestItem[]>(page, 'createItems', 10),
@@ -356,7 +359,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 2,
       rowHeight: 40,
       fetchByIdentity: true,
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'setScrollTop', key, 400);
     await dispatchScroll(page, key);
@@ -382,7 +385,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   test('回归：追平请求在飞期间到达的通知不会让提示条闪一下', async ({ page }) => {
     // 本端发消息 → 会话列表先收到一次通知开始追平，紧接着又收到同步成功的通知。
     // 第二条通知落在「请求在飞」的时间窗里，此时点亮提示条就会在响应落地后立刻熄灭。
-    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, autoLoad: false });
     const pillStates: boolean[] = [];
 
     await call(page, 'pauseNextPage', key);
@@ -403,7 +406,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('追平期间保留当前 DOM，权威首页到达后只替换变化的行', async ({ page }) => {
-    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, autoLoad: false });
     await call(page, 'rememberRows', key);
 
     await call(page, 'pauseNextPage', key);
@@ -418,7 +421,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('isActive=false 时只记 stale，恢复活动并贴边后才追平', async ({ page }) => {
-    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, active: false, reachPx: -1 });
+    const key = await mount(page, { itemCount: 20, pageSize: 10, maxPages: 2, active: false, autoLoad: false });
     await call(page, 'clearFetchCalls', key);
 
     await call(page, 'invalidate', key);
@@ -440,7 +443,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       maxPages: 2,
       rowHeight: 40,
       text: { updatePill: false },
-      reachPx: -1,
+      autoLoad: false,
     });
     await call(page, 'setScrollTop', key, 400);
     await dispatchScroll(page, key);
@@ -454,7 +457,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   // ───────────── 本地层 ─────────────
 
   test('upsertLocal 立即可见并落在新鲜端，权威首页落地后让位给服务端事实', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
 
     await call(page, 'upsertLocal', key, { id: 'local', label: 'local-item', order: -1 });
     expect((await call<string[]>(page, 'rowIds', key))[0]).toBe('local');
@@ -471,7 +474,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('upsertLocal 已在窗口内的身份 = 移到新鲜端（发消息后会话置顶）', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
     const before = await call<string[]>(page, 'rowIds', key);
     expect(before[0]).toBe('0');
 
@@ -482,7 +485,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('请求在飞期间的本端写入不会被这次响应吞掉', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
 
     await call(page, 'pauseNextPage', key);
     await call(page, 'invalidate', key);
@@ -499,7 +502,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('单条删除只变更对应 DOM，未变化行保持真实节点身份', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
     await call(page, 'rememberRows', key);
 
     // 删掉末行：其余行的下标、上一条身份、选中态都没变，节点必须原样复用。
@@ -519,7 +522,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pageSize: 10,
       maxPages: 2,
       pinnedItems: [{ id: 'pinned', label: 'pinned', order: -1 }],
-      reachPx: -1,
+      autoLoad: false,
     });
     expect((await call<string[]>(page, 'rowIds', key))[0]).toBe('pinned');
 
@@ -532,16 +535,16 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   // ───────────── 交互 ─────────────
 
   test('无 selection / single / multi+max 的真实点击行为', async ({ page }) => {
-    const plain = await mount(page, { itemCount: 3, reachPx: -1 });
+    const plain = await mount(page, { itemCount: 3, autoLoad: false });
     await rows(page, plain).nth(1).locator('.bl-row-label').click();
     expect((await events(page, plain)).filter((event) => event.type === 'onActivate')).toHaveLength(1);
 
-    const single = await mount(page, { itemCount: 3, selection: { mode: 'single' }, reachPx: -1 });
+    const single = await mount(page, { itemCount: 3, selection: { mode: 'single' }, autoLoad: false });
     await rows(page, single).nth(0).click();
     await rows(page, single).nth(1).click();
     await expect(root(page, single).locator('[data-selected="true"]')).toHaveCount(1);
 
-    const multi = await mount(page, { itemCount: 3, selection: { mode: 'multi', max: 1 }, reachPx: -1 });
+    const multi = await mount(page, { itemCount: 3, selection: { mode: 'multi', max: 1 }, autoLoad: false });
     await rows(page, multi).nth(0).click();
     await rows(page, multi).nth(1).click();
     expect((await events(page, multi)).filter((event) => event.type === 'onExceed')).toHaveLength(1);
@@ -550,10 +553,10 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
   test('共享 SelectionStore 跨两个真实列表同步', async ({ page }) => {
     const left = await mount(page, {
-      itemCount: 3, selection: { mode: 'multi', storeKey: 'shared' }, reachPx: -1,
+      itemCount: 3, selection: { mode: 'multi', storeKey: 'shared' }, autoLoad: false,
     });
     const right = await mount(page, {
-      itemCount: 3, selection: { mode: 'multi', storeKey: 'shared' }, reachPx: -1,
+      itemCount: 3, selection: { mode: 'multi', storeKey: 'shared' }, autoLoad: false,
     });
 
     await rows(page, left).nth(0).click();
@@ -565,7 +568,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('真实 pointerdown 期间不重建 DOM，window pointerup 后下一帧才应用', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoLoad: false });
     const target = root(page, key).locator('[data-bsw-key="1"]');
     const handle = await target.elementHandle();
 
@@ -581,7 +584,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   // ───────────── 错误处理 ─────────────
 
   test('首屏失败展示错误态与重试入口，重试成功后清零', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoReset: false, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoReset: false, autoLoad: false });
     await call(page, 'failNext', key, 'reset');
     await call(page, 'reset', key);
     await call(page, 'waitForIdle', key);
@@ -601,7 +604,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('首屏失败后不自动重试，避免请求风暴', async ({ page }) => {
-    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoReset: false, reachPx: -1 });
+    const key = await mount(page, { itemCount: 10, pageSize: 10, maxPages: 2, autoReset: false, autoLoad: false });
     await call(page, 'failNext', key, 'reset');
     await call(page, 'reset', key);
     await call(page, 'waitForIdle', key);
@@ -613,7 +616,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
   test('续翻与定向刷新失败都只上报 phase，不破坏当前窗口', async ({ page }) => {
     const key = await mount(page, {
-      itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, fetchByIdentity: true, rowHeight: 40, reachPx: -1,
+      itemCount: 100, pageSize: 10, maxPages: 3, initialStart: 40, fetchByIdentity: true, rowHeight: 40, autoLoad: false,
     });
     await call(page, 'failNext', key, 'forward');
     await call(page, 'loadMore', key, 'forward');
@@ -635,7 +638,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
   test('恶意 source 单页超过 limit 时进入失败态且不突破容量', async ({ page }) => {
     const key = await mount(page, {
-      itemCount: 50, pageSize: 10, maxPages: 2, overflowPageBy: 5, autoReset: false, reachPx: -1,
+      itemCount: 50, pageSize: 10, maxPages: 2, overflowPageBy: 5, autoReset: false, autoLoad: false,
     });
     await call(page, 'reset', key);
     await call(page, 'waitForIdle', key);
@@ -653,7 +656,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
       pageSize: 40,
       maxPages: 3,
       initialQuery: { keyword: '' },
-      reachPx: -1,
+      autoLoad: false,
     });
     for (let i = 0; i < 6; i++) await call(page, 'loadMore', key, 'forward');
     await call(page, 'waitForIdle', key);
@@ -665,7 +668,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
   });
 
   test('后发 reset 胜出，旧请求晚返回不覆盖当前 DOM', async ({ page }) => {
-    const key = await mount(page, { itemCount: 40, pageSize: 10, maxPages: 2, autoReset: false, reachPx: -1 });
+    const key = await mount(page, { itemCount: 40, pageSize: 10, maxPages: 2, autoReset: false, autoLoad: false });
     await call(page, 'pauseNextPage', key);
     await call(page, 'startReset', key);
     await expect.poll(() => call<boolean>(page, 'hasPageGate', key)).toBe(true);
@@ -682,7 +685,7 @@ test.describe('BoundedList 真实 Chromium 组件契约', () => {
 
   test('dispose 幂等，隔离在飞结果、取消防抖并清理 DOM 与注册项', async ({ page }) => {
     const key = await mount(page, {
-      id: 'bounded.dispose', itemCount: 40, pageSize: 10, maxPages: 2, reachPx: -1,
+      id: 'bounded.dispose', itemCount: 40, pageSize: 10, maxPages: 2, autoLoad: false,
     });
     await call(page, 'pauseNextPage', key);
     await call(page, 'startLoadMore', key, 'forward');

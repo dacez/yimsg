@@ -74,7 +74,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
           itemCount: 100_000,
           pageSize: 40,
           maxPages: 5,
-          reachPx: -1,
+          autoLoad: false,
           initialQuery: { keyword: 'item-99' },
         });
         document.body.offsetHeight;
@@ -125,7 +125,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         logicalCount: 1_000_000,
         pageSize: 100,
         maxPages: 5,
-        reachPx: -1,
+        autoLoad: false,
       });
       const samples: number[] = [];
       let maxCount = 0;
@@ -186,7 +186,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         logicalCount: 1_000_000,
         pageSize: 40,
         maxPages: 5,
-        reachPx: -1,
+        autoLoad: false,
       });
       for (let index = 0; index < 4; index++) await api.loadMore(key, 'forward');
       const samples: number[] = [];
@@ -241,7 +241,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         logicalCount: 1_000_000,
         pageSize: 100,
         maxPages: 5,
-        reachPx: -1,
+        autoLoad: false,
       });
       api.clearFetchCalls(key);
       const started = performance.now();
@@ -343,7 +343,7 @@ test.describe('BoundedList 超大数据与性能门禁', () => {
         pageSize: 50,
         maxPages: 4,
         order: 'asc',
-        reachPx: -1,
+        autoLoad: false,
       });
       const started = performance.now();
       for (let index = 0; index < 1_000; index++) {

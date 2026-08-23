@@ -129,6 +129,9 @@ function createApp() {
     client: {
       getMessages,
       describeConversation: vi.fn(() => descriptor),
+      // beforeRender 每一轮渲染都会调用（含空批次），它要按整批条目预取发送者展示信息。
+      getSessionSnapshot: vi.fn(() => ({ currentUid: '1' })),
+      getUserInfos: vi.fn(() => new Map()),
     },
     chatState: {
       currentConvKey: null as string | null,

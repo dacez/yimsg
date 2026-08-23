@@ -18,10 +18,9 @@ export const DEFAULT_REACH_PX = 160;
 
 export interface ListRendererOptions {
   readonly scrollElement: HTMLElement;
-  /**
-   * 触界阈值；负值等价于「关掉自动补页」（没有任何距端距离能落进负的范围）。
-   * 由上层解析好默认值后传入，本层不再兜第二次底。
-   */
+  /** 触界自动补页总开关；false 时 checkReach 直接返回，滚动不再触发任何请求。 */
+  readonly autoLoad: boolean;
+  /** 触界阈值，由上层解析好默认值后传入，本层不再兜第二次底。 */
   readonly reachPx: number;
   /** 原生 scroll 事件到达时同步执行，供上层在下一帧前缓存用户是否仍贴边。 */
   readonly onScrollImmediate?: () => void;
@@ -321,6 +320,7 @@ export class ListRenderer<T> {
   }
 
   private checkReach(): void {
+    if (!this.options.autoLoad) return;
     const state = this.lastState;
     if (!state || !state.loaded) return;
     const reachPx = this.options.reachPx;
