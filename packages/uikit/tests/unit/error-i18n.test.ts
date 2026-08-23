@@ -71,3 +71,27 @@ describe('describeError', () => {
     expect(describeError(makeApp('en'), err)).toBe('Invalid input.');
   });
 });
+
+// serverErrorCodeOf 是"目标是否已经失效"这类分支的唯一判定入口（组织被删除 / 本人被移出
+// 后收起陈旧详情）。它必须只认 WebSocket 业务错误的稳定 code，不能把连接失败、上传失败
+// 这类可恢复错误也判成失效，否则一次抖动就会把用户正在看的面板收掉。
+describe('serverErrorCodeOf', () => {
+  it('returns the stable server error code for WebSocket business errors', async () => {
+    const { serverErrorCodeOf } = await import('../../src/app/error-i18n');
+    expect(serverErrorCodeOf(new RequestError('REQUEST_FAILED', 'not_an_org_member', {
+      details: { serverErrorCode: 'FORBIDDEN' },
+    }))).toBe('FORBIDDEN');
+    expect(serverErrorCodeOf(new RequestError('REQUEST_FAILED', 'tag_not_found', {
+      details: { serverErrorCode: 'NOT_FOUND' },
+    }))).toBe('NOT_FOUND');
+  });
+
+  it('returns null for recoverable failures that must not be treated as a dead target', async () => {
+    const { serverErrorCodeOf } = await import('../../src/app/error-i18n');
+    expect(serverErrorCodeOf(new ConnectionError('CONNECTION_FAILED', '连接失败'))).toBeNull();
+    expect(serverErrorCodeOf(new RequestError('UPLOAD_FAILED', 'network error'))).toBeNull();
+    expect(serverErrorCodeOf(new ValidationError('text too long'))).toBeNull();
+    expect(serverErrorCodeOf(new Error('boom'))).toBeNull();
+    expect(serverErrorCodeOf('plain string')).toBeNull();
+  });
+});

@@ -39,3 +39,14 @@ export function describeError(app: AppInstance, error: unknown): string {
   const sdkText = app.t(sdkKey);
   return sdkText !== sdkKey ? sdkText : app.t('error.unknown');
 }
+
+/**
+ * 取服务端稳定错误码（`FORBIDDEN` / `NOT_FOUND` 等），非 WebSocket 业务错误返回 null。
+ * 只供"目标是否已经失效"这类必须按错误类别分流的分支使用：可恢复失败（网络、内部错误）
+ * 保留当前界面，失效失败才收起面板。展示给用户的文案一律仍走 describeError。
+ */
+export function serverErrorCodeOf(error: unknown): string | null {
+  if (!isYimsgError(error) || error.kind !== 'request') return null;
+  const code = error.details?.serverErrorCode;
+  return typeof code === 'string' ? code : null;
+}

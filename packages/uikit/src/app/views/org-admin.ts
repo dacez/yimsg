@@ -9,6 +9,10 @@ import { describeError } from '../error-i18n';
  * org:updated 轻通知 + 重新拉取本节点数据（本弹层每次写操作后重新 render 自己）；
  * tag/user/org 的展示名称异步补齐靠订阅 display:updated 触发重新 render，弹层关闭
  * 时解绑。
+ * 组织 / tag 展示名不随写操作广播，改名后本地缓存在 TTL 内仍是旧值，所以点击驱动的入口
+ * （打开弹层、切换节点、每次写操作成功后）走 renderFresh() 绕过 TTL 强刷；display:updated
+ * 驱动的重绘只能走 render() 读缓存，否则"强刷 → display:updated → 再强刷"会无限循环。
+ * 口径见 docs/architecture/展示资料缓存刷新策略.md。
  * 权限完全由服务端 requireOrgManage 把关：调用方对当前节点没有管理权限时，
  * 写 action 抛 FORBIDDEN，这里统一用 toast 提示，不在前端预判权限。
  * 添加成员 / 授予管理员按用户名录入（操作者不该也不需要知道对方 uid），
@@ -42,8 +46,14 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
   });
   stopWatchingClose.observe(modalContent, { attributes: true, attributeFilter: ['class'] });
 
-  async function render(): Promise<void> {
+  /** 点击驱动的重绘：导航换节点和写操作成功后都要绕过 TTL 取最新组织 / tag 名。 */
+  function renderFresh(): void {
+    void render({ forceRefresh: true });
+  }
+
+  async function render(options: { forceRefresh?: boolean } = {}): Promise<void> {
     const reqId = ++requestId;
+    const forceRefresh = options.forceRefresh === true;
     const tagId = stack[stack.length - 1];
     const isRoot = tagId === orgId;
 
@@ -70,8 +80,8 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
     const childTagIds = items.filter(i => i.childType === ORG_CHILD_TAG).map(i => i.childId);
     const ancestorTagIds = stack.filter(id => id !== orgId);
     const userDisplayMap = app.client.getUserInfos([...new Set([...memberUids, ...admins])]);
-    const tagDisplayMap = app.client.getTagInfos(orgId, [...new Set([...childTagIds, ...ancestorTagIds])]);
-    const orgDisplayMap = app.client.getOrgInfos([orgId]);
+    const tagDisplayMap = app.client.getTagInfos(orgId, [...new Set([...childTagIds, ...ancestorTagIds])], { forceRefresh });
+    const orgDisplayMap = app.client.getOrgInfos([orgId], { forceRefresh });
 
     const crumbNameOf = (id: string): string => id === orgId
       ? (orgDisplayMap.get(id)?.name || app.t('contacts.orgLoading'))
@@ -162,14 +172,14 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
     modal.querySelectorAll<HTMLElement>('[data-crumb]').forEach((el) => {
       el.addEventListener('click', () => {
         const i = Number(el.dataset.crumb);
-        if (i < stack.length - 1) { stack = stack.slice(0, i + 1); void render(); }
+        if (i < stack.length - 1) { stack = stack.slice(0, i + 1); renderFresh(); }
       });
     });
     modal.querySelectorAll<HTMLElement>('[data-enter]').forEach((el) => {
       el.addEventListener('click', () => {
         const item = items[Number(el.dataset.enter)];
         stack = [...stack, item.childId];
-        void render();
+        renderFresh();
       });
     });
 
@@ -190,7 +200,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
         }
       }
-      void render();
+      renderFresh();
     });
 
     // ---- 组织根：删除整个组织（不可撤销，删后直接关闭弹层） ----
@@ -209,7 +219,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           app.showToast(app.t('orgAdmin.actionSucceeded'), 'success');
         } catch (e) {
           app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
-          void render();
+          renderFresh();
           return;
         }
         modal.classList.remove('modal-content-wide');
@@ -233,7 +243,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
           app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
         }
       }
-      void render();
+      renderFresh();
     });
     modal.querySelectorAll<HTMLElement>('[data-rename-tag]').forEach((el) => {
       el.addEventListener('click', async () => {
@@ -253,7 +263,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
-        void render();
+        renderFresh();
       });
     });
     modal.querySelectorAll<HTMLElement>('[data-delete-tag]').forEach((el) => {
@@ -274,7 +284,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
-        void render();
+        renderFresh();
       });
     });
 
@@ -289,7 +299,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
       } catch (e) {
         app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
       }
-      void render();
+      renderFresh();
     });
     modal.querySelectorAll<HTMLElement>('[data-rank-member]').forEach((el) => {
       el.addEventListener('click', async () => {
@@ -309,7 +319,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
-        void render();
+        renderFresh();
       });
     });
     modal.querySelectorAll<HTMLElement>('[data-remove-member]').forEach((el) => {
@@ -329,7 +339,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
-        void render();
+        renderFresh();
       });
     });
 
@@ -343,7 +353,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
       } catch (e) {
         app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
       }
-      void render();
+      renderFresh();
     });
     modal.querySelectorAll<HTMLElement>('[data-revoke]').forEach((el) => {
       el.addEventListener('click', async () => {
@@ -362,7 +372,7 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
             app.showToast(app.t('orgAdmin.actionFailed') + describeError(app, e), 'error');
           }
         }
-        void render();
+        renderFresh();
       });
     });
 
@@ -372,5 +382,5 @@ export async function openOrgAdmin(app: AppInstance, orgId: string, initialTagId
     });
   }
 
-  await render();
+  await render({ forceRefresh: true });
 }
