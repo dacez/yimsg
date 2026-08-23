@@ -273,7 +273,7 @@
 - 影响：组织管理者和成员可能基于陈旧名称、成员和权限状态继续操作，页面与服务端事实不一致。
 - 初步定位：组织写操作后的本地 DataGateway 更新与当前 `org-view` / 管理弹层失效处理不完整。
 - 根因（2026-08-23 复核确认）：组织 / tag 展示名走 `DisplayInfoCache`，TTL 7 天且写操作不回写本地缓存；`org:updated` 只同步结构边，不带展示名。于是发起改名的一端在 TTL 内始终读到旧名，其他账号因缓存未命中反而首次就拿到新名。
-- 修复：点击驱动的入口（点开组织条目、切换面包屑、下钻子部门、打开管理弹层、弹层内切换节点、每次写操作成功后）与 `org:updated` 通知统一以 `{ forceRefresh: true }` 绕过 TTL 重取展示名；`display:updated` 驱动的重绘保持普通读以避免强刷回环；重拉本节点返回 `FORBIDDEN` / `NOT_FOUND` 时判定详情失效并收起回到空态。口径见 [`展示资料缓存刷新策略.md`](../architecture/展示资料缓存刷新策略.md)。
+- 修复：点击驱动的入口（点开组织条目、切换面包屑、下钻子部门、打开管理弹层、弹层内切换节点、每次写操作成功后）与 `org:updated` 通知统一以 `{ forceRefresh: true }` 绕过 TTL 重取展示名；`display:updated` 驱动的重绘保持普通读以避免强刷回环；详情失效按两条互补判据处理：重拉本节点返回 `FORBIDDEN` / `NOT_FOUND` 时直接收起；组织删除后通讯录组织行是异步清理的、期间 `get_tags` 只返回空列表不报错，因此 `contacts:updated` 到达时还会复核通讯录入口是否仍在，入口没了同样收起。口径见 [`展示资料缓存刷新策略.md`](../architecture/展示资料缓存刷新策略.md)。
 - 回归：`packages/uikit/tests/unit/uikit-org-display-refresh.test.ts`、`packages/uikit/tests/unit/error-i18n.test.ts` 与 `apps/web/tests/e2e/org.spec.ts` 的两条新增用例。
 
 ### BUG-006 [P2] [CONFIRMED] 普通或已撤权的组织成员仍显示完整管理面板

@@ -197,7 +197,10 @@ test.describe('Settings', () => {
     await page1.click('#clear-data-btn');
     await expect(page1.locator('#modal-overlay:not(.hidden)')).toBeVisible({ timeout: 5000 });
     await page1.click('#modal-confirm-btn');
-    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 10_000 });
+    // Clear Data 要关闭并重建本地 SQLite/OPFS 副本再重新全量追平，耗时受本机负载影响很大：
+    // 单独跑不到 10s，但全量 E2E 并发（多 worker + 共用服务端）下会成倍放大。这里给足预算，
+    // 断言的是"最终一定成功"而不是"必须在 10s 内成功"，避免把负载抖动误报成功能失败。
+    await expect(page1.locator('.toast-success')).toBeVisible({ timeout: 60_000 });
 
     // 仍处于持久存储模式且未登出；本地库被清空后应从服务端重新全量追平好友数据。
     await expect(page1.locator('#settings-mode')).toHaveText('持久存储');

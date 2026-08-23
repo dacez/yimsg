@@ -631,6 +631,29 @@ export function createContactsView(app: AppInstance) {
   }
 
   /**
+   * 通讯录条目变化（contacts:updated）：组织被删除或本人被移出时，服务端只是异步清掉
+   * 通讯录里的组织行，在那之前 get_tags 对组织根仍会返回空列表而不是错误，光靠重拉失败
+   * 判定不了失效。所以这里以"通讯录入口是否还在"为准：入口没了就收起已经打开的组织详情，
+   * 让左侧列表和右侧详情始终是同一份事实。
+   */
+  async function closeOrgPanelIfEntryGone(): Promise<void> {
+    const orgId = orgPanelOrgId;
+    if (!orgId) return;
+    let stillListed: boolean;
+    try {
+      const page = await app.client.getContacts({ orgIds: [orgId], limit: 1 });
+      stillListed = page.contacts.length > 0;
+    } catch {
+      // 读取失败不做判定：保留当前详情，不把网络抖动当成组织已消失。
+      return;
+    }
+    if (stillListed || orgPanelOrgId !== orgId) return;
+    orgPanelOrgId = null;
+    orgPanelStack = [];
+    void showContactDetail(null);
+  }
+
+  /**
    * 组织架构变更（org:updated）：刷新打开中的组织面板。
    * 通知本身就表示服务端数据已变，这里强刷展示资料把改名后的组织 / 部门名一起追平；
    * 组织被删除或本人被移出时，重拉必然失败，由 renderOrgPanel 的失效分支收起面板。
@@ -935,6 +958,7 @@ export function createContactsView(app: AppInstance) {
     refreshContactsDisplay,
     updateContactBadges,
     refreshOrgPanel,
+    closeOrgPanelIfEntryGone,
     showCreateGroupModal,
   };
 }

@@ -181,8 +181,9 @@ test.describe('Org directory', () => {
 
   // 回归 BUG-005 的另一半：组织被删除（或本人被移出）后，已经打开的组织详情曾经原样留在
   // 屏幕上——通讯录入口消失了，面包屑、成员和管理入口还在，点任何操作都报 not an org member。
-  // 修复口径：重拉本节点返回 FORBIDDEN / NOT_FOUND 即判定当前详情失效，收起回到空态；
-  // 网络、内部错误等可恢复失败仍保留原内容。
+  // 修复口径有两条互补的判据：重拉本节点返回 FORBIDDEN / NOT_FOUND 时立即判失效收起；
+  // 而组织刚被删除、通讯录组织行还没被异步清掉的那段时间里 get_tags 只会返回空列表、不报错，
+  // 所以还要以 contacts:updated 后"通讯录入口是否还在"兜底。网络、内部错误等可恢复失败不收起。
   test('deleting an org closes the stale org detail left behind the manage modal', async ({ page }) => {
     await register(page, uniqueUser('delorg'), '123456', 'DelOrg');
     await page.click('[data-view="contacts"]');
@@ -205,9 +206,10 @@ test.describe('Org directory', () => {
     await page.click('#modal-confirm-btn');
     await expect(page.locator('#modal-overlay:not(.hidden)')).toHaveCount(0, { timeout: 10_000 });
 
-    // 失效详情必须自动收起：面包屑清空、回到"选择联系人"空态，通讯录条目也随之消失。
-    await expect(panel.locator('.org-crumb')).toHaveCount(0, { timeout: 20_000 });
+    // 通讯录入口先消失（服务端异步清组织行 + contacts:updated），随后失效详情必须自动收起：
+    // 面包屑清空、回到"选择联系人"空态，不把陈旧的组织结构留在右侧。
+    await expect(page.locator('#friends-tab .contact-item', { hasText: orgName })).toHaveCount(0, { timeout: 30_000 });
+    await expect(panel.locator('.org-crumb')).toHaveCount(0, { timeout: 30_000 });
     await expect(panel.locator('.contacts-detail-empty')).toBeVisible();
-    await expect(page.locator('#friends-tab .contact-item', { hasText: orgName })).toHaveCount(0, { timeout: 20_000 });
   });
 });
