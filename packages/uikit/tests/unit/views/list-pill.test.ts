@@ -44,13 +44,15 @@ describe('createListPill / A 挂载与显隐', () => {
     expect(host.children[0].classList.contains('hidden')).toBe(true);
   });
 
-  it('A2 初始 class 同时带基础样式与列表提示条样式', () => {
+  it('A2 初始 class 只有一个提示条样式类，定位口径不分裂', () => {
     const doc = new FakeDocument();
     const host = doc.createElement();
     createListPill(asElement(host), () => {}, BOTH);
     const cls = host.children[0].classList;
     expect(cls.contains('list-updated-pill')).toBe(true);
-    expect(cls.contains('new-message-pill')).toBe(true);
+    // 曾经的 bug：同时挂 list-updated-pill 与 new-message-pill 两个各带 bottom 的类，
+    // 靠样式表先后顺序决出胜负，消息列表提示条因此被定位到输入框里。
+    expect(cls.contains('new-message-pill')).toBe(false);
     expect(cls.contains('hidden')).toBe(true);
   });
 

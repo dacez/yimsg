@@ -117,6 +117,9 @@ export const APP_SHELL_HTML = `
           </div>
           <div id="chat-empty" class="empty-state">选择一个会话开始聊天</div>
           <div id="message-list"></div>
+          <!-- 零高度锚点：卡在消息列表与输入框之间，「有新消息」提示条挂在这里，
+               于是它悬浮在消息列表底部而不是压进输入框，且不受输入框高度变化影响。 -->
+          <div id="message-pill-anchor" class="message-pill-anchor"></div>
           <div id="message-input-area" class="hidden">
             <div class="message-input-row">
               <button class="icon-btn" id="msg-attach" title="附件">

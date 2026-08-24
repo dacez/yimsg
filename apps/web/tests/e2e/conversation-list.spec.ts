@@ -203,7 +203,7 @@ test.describe('Conversation list bounded stream window', () => {
       // 贴顶背景刷新必须自动滚回最顶端（reset 后归零），而不是被锚点恢复下推（旧 bug 下 scrollTop>4）。
       await expect.poll(() => convListScrollTop(page), { timeout: 10_000 }).toBeLessThanOrEqual(4);
       // 贴顶自动追平，不应点亮「有新消息」提示条。
-      await expect(page.locator('#left-panel .new-message-pill')).toBeHidden();
+      await expect(page.locator('#left-panel .list-updated-pill')).toBeHidden();
     } finally {
       await ctx2.close();
     }
@@ -255,7 +255,7 @@ test.describe('Conversation list bounded stream window', () => {
       // 不在顶部：列表不重排、不滚回顶部。
       expect(await convListScrollTop(page)).toBeGreaterThan(4);
       // 不在顶部收到消息：点亮「列表有更新」提示条。
-      await expect(page.locator('#left-panel .new-message-pill')).toBeVisible();
+      await expect(page.locator('#left-panel .list-updated-pill')).toBeVisible();
     } finally {
       await ctx2.close();
     }

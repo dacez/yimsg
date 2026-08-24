@@ -456,7 +456,7 @@ test.describe('Message Pagination', () => {
     await expect(page.locator('.message-bubble', { hasText: latest })).toBeHidden({ timeout: 5_000 });
     // 上翻历史导致尾部页被有界窗口裁剪时，底部仍有更新页可加载，
     // 但这不是实时新消息，不能误亮"有新消息"提示条。
-    await expect(page.locator('#center-panel .new-message-pill')).toBeHidden({ timeout: 1_000 });
+    await expect(page.locator('#center-panel .list-updated-pill')).toBeHidden({ timeout: 1_000 });
 
     const beforeMax = Math.max(...extractSeqNums(await getMessageTexts(page)));
     await expect(async () => {

@@ -428,11 +428,14 @@ body[data-layout="mobile"] .mode-options{grid-template-columns:1fr}
 
 /* 所有列表都只保留有界窗口：数据变更时按 key 协调并保持视口锚点，滚动本身不重建 DOM；
    保留浏览器原生 scroll anchoring，兜底头像 / 图片等异步增高。 */
-/* 新消息提示条：消息窗口 stale 时显示，点击后跳到最新一页。 */
-.new-message-pill{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;z-index:5;border:1px solid var(--border);border-radius:999px;background:var(--bg-panel);color:var(--primary);padding:6px 14px;font-size:var(--font-size-caption);line-height:var(--line-height-caption);cursor:pointer;box-shadow:var(--shadow-md)}
-.new-message-pill:hover{background:var(--primary-light)}
-/* 会话列表"列表有更新"提示条：悬浮于左面板底部，点击回到顶部并重拉首页 */
-.list-updated-pill{bottom:16px}
+/* 有界列表「有更新 / 重试」提示条：悬浮在宿主容器底部居中，点击回到新鲜端并追平。
+   只有这一处定位口径，具体贴在哪由宿主选择挂载容器决定（会话列表挂 #left-panel，
+   消息列表挂零高度的 #message-pill-anchor）。 */
+.list-updated-pill{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:5;border:1px solid var(--border);border-radius:999px;background:var(--bg-panel);color:var(--primary);padding:6px 14px;font-size:var(--font-size-caption);line-height:var(--line-height-caption);cursor:pointer;box-shadow:var(--shadow-md)}
+.list-updated-pill:hover{background:var(--primary-light)}
+/* 消息列表提示条锚点：零高度，正好卡在消息列表底边与输入框顶边之间，
+   提示条据此悬浮在消息列表底部，不随输入框高度变化而漂移，也不会压进输入框里。 */
+.message-pill-anchor{position:relative;height:0;z-index:5}
 .list-boundary-hint{width:100%;padding:8px 12px;text-align:center;color:var(--text-secondary);font-size:var(--font-size-caption);line-height:var(--line-height-caption);box-sizing:border-box}
 #conversation-list,#message-list,#friends-tab,#requests-outgoing,#requests-incoming,#search-tab,#members-list,.member-select-list,.forward-conversation-list,.group-member-picker-list{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
 #conversation-list::-webkit-scrollbar,#message-list::-webkit-scrollbar,#friends-tab::-webkit-scrollbar,#requests-outgoing::-webkit-scrollbar,#requests-incoming::-webkit-scrollbar,#search-tab::-webkit-scrollbar,#members-list::-webkit-scrollbar,.member-select-list::-webkit-scrollbar,.forward-conversation-list::-webkit-scrollbar,.group-member-picker-list::-webkit-scrollbar{display:none}
