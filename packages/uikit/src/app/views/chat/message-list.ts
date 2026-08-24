@@ -25,6 +25,7 @@ import {
 } from './helpers';
 import { updateSelectionBar } from './selection';
 import { setSafeHtml, setTrustedAnchorHref, setTrustedImageSrc, safeHtml } from '../../safe-dom';
+import { isViewVisible } from '../../utils';
 import { createBoundedList, sdkPageSource, type BoundedList, type RenderItemContext } from '../../bounded-list';
 import { createListPill } from '../list-pill';
 import { messageKey, sortUniqueBySeq, syncCurrentMessages } from './message-page';
@@ -72,7 +73,7 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
     pageSize: APP_CONFIG.chat.messagePageSize,
     maxPages: APP_CONFIG.chat.messagePageMaxPages,
     register: (controller) => app.registerBoundedList(controller),
-    isActive: () => Boolean(app.chatState.currentConvKey) && !app.$('view-chat').classList.contains('hidden'),
+    isActive: () => Boolean(app.chatState.currentConvKey) && isViewVisible(app, 'chat'),
     initialQuery: {},
     source: sdkPageSource<Awaited<ReturnType<typeof app.client.getMessages>>, Message, MessageQuery>(
       ({ cursor, backward, limit, query, freshEdge }) => {
@@ -412,12 +413,26 @@ export function removeMessage(app: AppInstance, messageId: string): void {
 // refreshOpenConversation 收到 messages:received 重绘信号时刷新打开中的会话。
 // 不消费通知 payload：BoundedList 的 invalidate 决策树统一处理"贴底直接追平"还是
 // "点亮提示条"，替代原来手写的贴边判断与 pendingNewMessageCount 记账。
+//
+// 聊天视图不可见时同样要 invalidate：可见性是"现在追平还是先攒着"的决定，不是"要不要
+// 知道"的决定，后者由组件的 isActive() 负责（不可见时只点亮 stale）。曾经在这里按视图
+// 隐藏早退，等于把通知整条吞掉——用户切走再切回来，对方发的消息根本不在列表里，滚动也
+// 补不回来（组件的 dirty 从未被置起）。
 export async function refreshOpenConversation(app: AppInstance): Promise<void> {
   if (!app.chatState.currentConvKey) return;
-  if (app.$('view-chat').classList.contains('hidden')) return;
   app.chatState.messageList?.invalidate();
 
   if (isNearBottom(app.$('message-list'))) clearUnreadForOpenConversation(app);
+}
+
+// resumeOpenConversation 聊天视图重新可见时调用（switchView）：把隐藏期间攒下的变化
+// 重新交给 BoundedList 决策一次——贴底就追平并清未读，上翻阅读中就保持视口、只留提示条。
+// 不自己判断贴底也不自己清未读：那两件事分别是组件的 decide() 与 stale 真→假 的既有职责，
+// 这里只负责"重新问一次"。没有未追平的变化时什么都不做，不为切视图白发一次请求。
+export function resumeOpenConversation(app: AppInstance): void {
+  const list = app.chatState.messageList;
+  if (!list?.getState().stale) return;
+  list.invalidate();
 }
 
 // 清当前会话未读：会话可见性判据（桌面 / 移动端布局差异）只在这一处，调用方只负责

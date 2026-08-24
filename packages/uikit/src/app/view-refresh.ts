@@ -1,5 +1,6 @@
 import type { AppInstance } from './app-instance';
 import { isNearBottom } from './views/chat/message-list';
+import { isViewVisible, type MainViewName } from './utils';
 
 // 不做 URL 深链恢复：每次进入 ready 状态都固定落在会话列表（chat）视图，
 // 不读取、也不依赖任何外部（宿主页面）URL 状态。
@@ -19,10 +20,10 @@ interface RefreshVisibleViewsOptions {
   readonly contacts?: ViewRefreshMode;
 }
 
-function shouldRefreshView(app: AppInstance, viewId: 'view-settings' | 'view-contacts', mode: ViewRefreshMode): boolean {
+function shouldRefreshView(app: AppInstance, view: MainViewName, mode: ViewRefreshMode): boolean {
   if (mode === 'always') return true;
   if (mode === 'skip') return false;
-  return !app.$(viewId).classList.contains('hidden');
+  return isViewVisible(app, view);
 }
 
 export function refreshVisibleViews(app: AppInstance, options: RefreshVisibleViewsOptions = {}): void {
@@ -37,10 +38,10 @@ export function refreshVisibleViews(app: AppInstance, options: RefreshVisibleVie
   if (options.detail === 'refresh') app.views.chat?.refreshDetailPanel();
   if (options.detail === 'rerender') app.views.chat?.rerenderCurrentDetailPanel();
 
-  if (shouldRefreshView(app, 'view-settings', options.settings ?? 'skip')) {
+  if (shouldRefreshView(app, 'settings', options.settings ?? 'skip')) {
     app.views.settings?.renderSettings();
   }
-  if (shouldRefreshView(app, 'view-contacts', options.contacts ?? 'skip')) {
+  if (shouldRefreshView(app, 'contacts', options.contacts ?? 'skip')) {
     app.views.contacts?.refreshContactsDisplay();
   }
 

@@ -133,7 +133,7 @@
 └── .nav-item[data-view="settings"]   设置图标
 ```
 
-点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`。只改内存态和 DOM class，不触碰 `location`/`history`：无论在应用内做任何操作（登录/注册、聊天、建群、加好友等），浏览器"后退"都应该直接离开应用本身，而不是回退到应用内部的上一个视图或上一个打开的会话——这是所有视图切换和打开会话都不写 URL 的直接原因。
+点击导航项 → `switchView(name)` → 隐藏所有 `.view`，显示 `#view-{name}`，更新 `.active`；切回聊天视图时调 `resumeOpenConversation()`，把隐藏期间攒下的变化重新交给消息列表决策一次（贴底就追平并清未读，上翻阅读中就只留提示条）。「某个主视图是否可见」的判据只有 `utils.ts` 的 `isViewVisible(app, name)` 一处，不在各调用点各写一遍 class 判断。只改内存态和 DOM class，不触碰 `location`/`history`：无论在应用内做任何操作（登录/注册、聊天、建群、加好友等），浏览器"后退"都应该直接离开应用本身，而不是回退到应用内部的上一个视图或上一个打开的会话——这是所有视图切换和打开会话都不写 URL 的直接原因。
 
 会话列表是有界滑动窗口，按服务端不透明边界游标双向翻页、超限整页裁剪；未读角标直接使用会话项携带的 `unreadCount`。他端来消息时，贴顶就追平最新页，不贴顶只刷新窗口内受影响的会话并点亮更新提示；本端发送则回到最新端。删除和清未读只定向处理当前窗口内的会话。完整分页与事件路由见 [`boundedlist/生产集成.md`](boundedlist/生产集成.md)。
 
@@ -381,7 +381,8 @@ sequenceDiagram
 | `openConversation(conv)` | 切换到指定会话，加载消息 |
 | `renderMessages()` | 重绘中栏消息列表 |
 | `scrollToBottom()` | 消息列表滚动到底部；动态高度消息会在多帧测量后继续收敛到底部 |
-| `refreshOpenConversation()` | 收到 `messages:received` 后对当前消息窗口调用 `invalidate()`；位于新鲜端时追平并清当前会话未读，否则只点亮提示条 |
+| `refreshOpenConversation()` | 收到 `messages:received` 后对当前消息窗口调用 `invalidate()`（聊天视图不可见时同样要调，见 §5.1 补充约束）；位于新鲜端时追平并清当前会话未读，否则只点亮提示条 |
+| `resumeOpenConversation()` | 聊天视图重新可见时（`switchView`）重新决策一次：有未追平的变化才 `invalidate()`，没有就什么都不做 |
 | `refreshDetailPanel()` | 轻量刷新详情面板的昵称/头像，由 main-app.ts 在 `display:updated` 时调用 |
 | `rerenderCurrentDetailPanel()` | 当前详情面板整块重绘，用于屏蔽 / 免打扰状态变更后的刷新 |
 | `applyConversationGuards()` | 根据屏蔽列表状态禁用当前单聊的输入、表情与附件按钮 |
@@ -505,7 +506,9 @@ openConversation(conv):
 补充约束：
 
 - 上面这条 `clearUnread(target)` 只属于“用户真正打开会话”的路径。桌面布局下，当前 chat 视图可见时仍允许自动清当前会话未读；mobile 布局下只有 `#view-chat.mobile-showing-chat` 时才允许自动清未读，若只是停留在会话列表，不应因为保留了 `currentConvKey` 就自动消红点。
-- 打开会话之后，「用户已经看到最新消息」还有两条路径也必须清未读，判据统一是消息窗口追平到新鲜端：一是贴底时收到新消息（`refreshOpenConversation()` 的贴底分支），二是上翻阅读时先点亮提示条、随后追平（点提示条或自己滑回底部，都体现为消息列表 `state.stale` 由真变假）。少了后者，用户点完「有新消息」已经看到内容，会话列表红点却还挂着，要等下一条消息在贴底状态下到达才顺带清掉。切换会话导致的 `stale` 归零不是追平，按会话 key 记账排除。
+- 打开会话之后，「用户已经看到最新消息」还有两条路径也必须清未读，判据统一是消息窗口追平到新鲜端：一是贴底时收到新消息（`refreshOpenConversation()` 的贴底分支），二是上翻阅读时先点亮提示条、随后追平（点提示条、自己滑回底部、或切走视图后再切回来时人正贴底，都体现为消息列表 `state.stale` 由真变假）。少了后者，用户点完「有新消息」已经看到内容，会话列表红点却还挂着，要等下一条消息在贴底状态下到达才顺带清掉。切换会话导致的 `stale` 归零不是追平，按会话 key 记账排除。
+- **通知不因视图隐藏而丢**：`refreshOpenConversation()` 在聊天视图不可见时也必须照常 `invalidate()`。可见性是「现在追平还是先攒着」的决定，不是「要不要知道」的决定，后者由 BoundedList 的 `isActive()` 负责（不可见时只点亮 `stale`）。曾经在这里按视图隐藏早退，通知被整条吞掉：用户切去通讯录、对方发来消息、再切回聊天，消息根本不在列表里，滚动也补不回来（组件的 `dirty` 从未被置起）。
+- **不得用 `chatState.currentConversation` 判断未读**。它是打开会话那一刻的快照，此后永不更新（只在 `openConversationShell` 写入一次），只能读路由身份这类不变字段。曾经 `switchView` 用它的 `unreadCount` 决定要不要清未读，结果完全看运气：打开时有红点的会话每次切回都白清一次，打开时没红点的会话（从通讯录发起、或已读完再点一次）切回来永远清不掉。正确做法是把「视图重新可见」这个事实交给 `resumeOpenConversation()`，由既有的追平决策顺带清未读。
 - 群头像和群名更新不向全部成员主动广播，普通会话列表允许继续显示 TTL 内的旧缓存。用户明确进入群聊时，必须调用 `getGroupInfos([groupId], { forceRefresh: true })`；Instant 模式更新内存 cache，Persistent 模式先更新本地数据库再更新 cache，随后通过 `display:updated` 刷新当前会话标题、会话列表和已打开的群详情。
 
 #### 发送消息流程

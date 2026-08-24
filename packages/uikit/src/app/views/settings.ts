@@ -1,6 +1,7 @@
 import type { AppInstance } from '../app-instance';
 import { describeError } from '../error-i18n';
 import { refreshVisibleViews } from '../view-refresh';
+import { isViewVisible } from '../utils';
 
 export function createSettingsView(app: AppInstance) {
   async function saveProfile() {
@@ -65,7 +66,7 @@ export function createSettingsView(app: AppInstance) {
       }
 
       app.views.chat?.renderConversationList({ force: true });
-      if (!app.$('view-contacts').classList.contains('hidden')) {
+      if (isViewVisible(app, 'contacts')) {
         void app.views.contacts?.loadContacts();
       }
       renderSettings();
