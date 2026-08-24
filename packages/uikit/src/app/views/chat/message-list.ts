@@ -55,11 +55,16 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
   if (app.chatState.messageList) return app.chatState.messageList;
 
   let senderMap: ReturnType<typeof app.client.getUserInfos> = new Map();
+  // 挂在零高度锚点上（见 shell.ts 的 #message-pill-anchor），提示条因此悬浮在消息列表
+  // 底部；挂到 #center-panel 上会按输入框高度硬编码偏移，输入框一变高就压进输入框里。
   const pill = createListPill(
-    app.$('message-list').parentElement,
+    app.$('message-pill-anchor'),
     () => list.catchUp(),
     { updated: () => app.t('chat.jumpToLatest'), retry: () => app.t('common.retry') },
   );
+  // 提示条亮起（stale）的那个会话：追平时（stale 由真变假）要把这期间累积的未读一并清掉。
+  // 记会话 key 而不是布尔，是为了排除"切换会话导致 stale 归零"——那不是追平。
+  let staleConvKey: string | null = null;
 
   const list = createBoundedList<Message, MessageQuery>({
     id: 'open-conversation-messages',
@@ -105,7 +110,18 @@ export function getMessageList(app: AppInstance): BoundedList<Message, MessageQu
       backwardBoundary: () => app.t('chat.reachedEarliest'),
       forwardBoundary: () => app.t('chat.reachedLatest'),
     },
-    onLoadStateChange: (state) => pill.sync(state),
+    onLoadStateChange: (state) => {
+      pill.sync(state);
+      // 追平的两条路径（点提示条、自己滑回底部）都经过这一次 stale 真→假 跃迁：
+      // 用户在这一刻已经看到了新消息，会话列表红点必须跟着消，不能等下一条消息到达。
+      if (state.stale) {
+        staleConvKey = app.chatState.currentConvKey || null;
+      } else {
+        const caughtUp = staleConvKey !== null && staleConvKey === (app.chatState.currentConvKey || null);
+        staleConvKey = null;
+        if (caughtUp && !state.failed) clearUnreadForOpenConversation(app);
+      }
+    },
     onItemsChanged: (items) => {
       syncCurrentMessages(app, items);
       if (app.chatState.messageSelectionMode) updateSelectionBar(app);
@@ -401,8 +417,13 @@ export async function refreshOpenConversation(app: AppInstance): Promise<void> {
   if (app.$('view-chat').classList.contains('hidden')) return;
   app.chatState.messageList?.invalidate();
 
-  if (canAutoClearUnreadCurrentConversation(app) && isNearBottom(app.$('message-list'))) {
-    const target = currentConversation(app)?.target;
-    if (target) app.client.clearUnread(target).catch(() => {});
-  }
+  if (isNearBottom(app.$('message-list'))) clearUnreadForOpenConversation(app);
+}
+
+// 清当前会话未读：会话可见性判据（桌面 / 移动端布局差异）只在这一处，调用方只负责
+// 判断"用户此刻是否已经看到最新消息"。
+function clearUnreadForOpenConversation(app: AppInstance): void {
+  if (!canAutoClearUnreadCurrentConversation(app)) return;
+  const target = currentConversation(app)?.target;
+  if (target) app.client.clearUnread(target).catch(() => {});
 }

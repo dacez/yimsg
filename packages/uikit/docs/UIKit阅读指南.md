@@ -266,7 +266,7 @@ flowchart LR
 
 最外层 `#app` 是纵向 flex 容器：顶部是跨聊天/通讯录/设置所有视图共享的全局提示条 `#status-bar`，下方 `#app-frame` 才是原来的横向三段：左侧导航栏固定 56px 不缩，主内容区 `flex:1` 吃掉剩余宽度；主内容区内部又是一层 flex，会话列表固定 280px、聊天区 `flex:1`、详情面板固定 300px。**整个布局是三层嵌套的 flex：纵向的 #app，横向的 #app-frame，纵向的 #center-panel。**
 
-而 `#center-panel` 自己是 `flex-direction:column`（纵向 flex），于是它内部「聊天头 / 消息列表 / 输入区」从上到下排列，其中 `#message-list` 写 `flex:1` 吃掉中间所有高度并 `overflow-y:auto`（内容超出就内部滚动）——这就是「头和输入框固定、中间消息区滚动」的实现。
+而 `#center-panel` 自己是 `flex-direction:column`（纵向 flex），于是它内部「聊天头 / 消息列表 / 输入区」从上到下排列，其中 `#message-list` 写 `flex:1` 吃掉中间所有高度并 `overflow-y:auto`（内容超出就内部滚动）——这就是「头和输入框固定、中间消息区滚动」的实现。消息列表与输入区之间还夹着一个 `height:0` 的 `#message-pill-anchor`：它自己不占高度、不影响这套排版，只作为「有新消息」提示条的 `absolute` 定位基准，让提示条正好悬在消息列表底部而不是压进输入框。
 
 ### 4.7 定位 position：脱离常规排版
 

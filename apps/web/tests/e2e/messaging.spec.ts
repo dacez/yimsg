@@ -1,9 +1,54 @@
 import { test, expect } from '../support/test-fixtures';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, getMessageTexts } from './helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 「上翻阅读中收到新消息」这一组提示条用例的公共铺垫：两个账号互为好友，发送方灌满
+// 一屏以上消息，接收方打开会话后上翻到顶部并停稳。四个用例只在"之后做什么"上不同。
+async function openChatScrolledUp(
+  browser: Browser,
+  prefix: string,
+  password: string,
+): Promise<{ ctx1: BrowserContext; ctx2: BrowserContext; page1: Page; page2: Page }> {
+  const u1 = uniqueUser(`${prefix}1`);
+  const u2 = uniqueUser(`${prefix}2`);
+  const senderName = `${prefix}Sender`;
+  const readerName = `${prefix}Reader`;
+  const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+  const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+  const page1 = await ctx1.newPage();
+  const page2 = await ctx2.newPage();
+
+  await register(page1, u1, password, senderName);
+  await register(page2, u2, password, readerName);
+  await addFriend(page1, page2, u2);
+  await openDMFromContacts(page1, readerName);
+
+  // 填充足够多的消息使接收方消息列表可滚动。
+  for (let i = 1; i <= 15; i++) {
+    await sendMessage(page1, `${prefix} filler message ${i}`);
+    await expectMessage(page1, `${prefix} filler message ${i}`);
+  }
+
+  await openConversation(page2, senderName);
+  await expectMessage(page2, `${prefix} filler message 15`);
+  // 等 scrollToBottom 的多帧稳定链结束，否则后续上翻会被 settle 帧钉回底部。
+  await page2.waitForTimeout(600);
+
+  // 接收方上翻到顶部（远离底部），并确认位置稳定。
+  await page2.evaluate(() => {
+    const list = document.querySelector('#message-list') as HTMLElement;
+    list.scrollTop = 0;
+  });
+  await page2.waitForTimeout(300);
+  const settledTop = await page2.evaluate(() => (document.querySelector('#message-list') as HTMLElement).scrollTop);
+  expect(settledTop).toBeLessThan(100);
+
+  return { ctx1, ctx2, page1, page2 };
+}
 
 test.describe('Messaging', () => {
   const password = '123456';
@@ -856,42 +901,12 @@ test.describe('Messaging', () => {
 
   // 上翻阅读中收到新消息：不强制滚底，点亮新消息提示条；点击提示条跳到最新一页并滚到底部。
   test('new message pill shows when scrolled up and jumps to latest on click', async ({ browser }) => {
-    const u1 = uniqueUser('pill1');
-    const u2 = uniqueUser('pill2');
-    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page1 = await ctx1.newPage();
-    const page2 = await ctx2.newPage();
-
-    await register(page1, u1, password, 'PillSender');
-    await register(page2, u2, password, 'PillReader');
-    await addFriend(page1, page2, u2);
-    await openDMFromContacts(page1, 'PillReader');
-
-    // 填充足够多的消息使接收方消息列表可滚动。
-    for (let i = 1; i <= 15; i++) {
-      await sendMessage(page1, `pill filler message ${i}`);
-      await expectMessage(page1, `pill filler message ${i}`);
-    }
-
-    await openConversation(page2, 'PillSender');
-    await expectMessage(page2, 'pill filler message 15');
-    // 等 scrollToBottom 的多帧稳定链结束，否则后续上翻会被 settle 帧钉回底部。
-    await page2.waitForTimeout(600);
-
-    // 接收方上翻到顶部（远离底部），并确认位置稳定。
-    await page2.evaluate(() => {
-      const list = document.querySelector('#message-list') as HTMLElement;
-      list.scrollTop = 0;
-    });
-    await page2.waitForTimeout(300);
-    const settledTop = await page2.evaluate(() => (document.querySelector('#message-list') as HTMLElement).scrollTop);
-    expect(settledTop).toBeLessThan(100);
+    const { ctx1, ctx2, page1, page2 } = await openChatScrolledUp(browser, 'pill', password);
 
     await sendMessage(page1, 'pill trigger message');
 
     // 提示条出现，且阅读位置未被拽到底部。
-    const pill = page2.locator('#center-panel .new-message-pill');
+    const pill = page2.locator('#center-panel .list-updated-pill');
     await expect(pill).toBeVisible({ timeout: 10_000 });
     const distanceFromBottom = await page2.evaluate(() => {
       const list = document.querySelector('#message-list') as HTMLElement;
@@ -915,39 +930,11 @@ test.describe('Messaging', () => {
   // 回归用例：提示条亮起后用户不点击，而是自己滑到底部——提示条也必须消失，
   // 不能只靠点击这一条路径才消掉（曾经的 bug：手动滑到底提示条常驻不消失）。
   test('new message pill disappears when user scrolls to bottom without clicking', async ({ browser }) => {
-    const u1 = uniqueUser('pillscroll1');
-    const u2 = uniqueUser('pillscroll2');
-    const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page1 = await ctx1.newPage();
-    const page2 = await ctx2.newPage();
+    const { ctx1, ctx2, page1, page2 } = await openChatScrolledUp(browser, 'pillscroll', password);
 
-    await register(page1, u1, password, 'PillScrollSender');
-    await register(page2, u2, password, 'PillScrollReader');
-    await addFriend(page1, page2, u2);
-    await openDMFromContacts(page1, 'PillScrollReader');
+    await sendMessage(page1, 'pillscroll trigger message');
 
-    for (let i = 1; i <= 15; i++) {
-      await sendMessage(page1, `pill scroll filler message ${i}`);
-      await expectMessage(page1, `pill scroll filler message ${i}`);
-    }
-
-    await openConversation(page2, 'PillScrollSender');
-    await expectMessage(page2, 'pill scroll filler message 15');
-    // 等 scrollToBottom 的多帧稳定链结束，否则后续上翻会被 settle 帧钉回底部。
-    await page2.waitForTimeout(600);
-
-    await page2.evaluate(() => {
-      const list = document.querySelector('#message-list') as HTMLElement;
-      list.scrollTop = 0;
-    });
-    await page2.waitForTimeout(300);
-    const settledTop = await page2.evaluate(() => (document.querySelector('#message-list') as HTMLElement).scrollTop);
-    expect(settledTop).toBeLessThan(100);
-
-    await sendMessage(page1, 'pill scroll trigger message');
-
-    const pill = page2.locator('#center-panel .new-message-pill');
+    const pill = page2.locator('#center-panel .list-updated-pill');
     await expect(pill).toBeVisible({ timeout: 10_000 });
 
     // 不点击提示条，直接把消息列表滑到底部——模拟"上滑拉最新消息"。
@@ -957,8 +944,58 @@ test.describe('Messaging', () => {
       list.dispatchEvent(new Event('scroll'));
     });
 
-    await expectMessage(page2, 'pill scroll trigger message');
+    await expectMessage(page2, 'pillscroll trigger message');
     await expect(pill).toBeHidden({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例：上翻阅读时收到新消息，会话列表会亮起未读红点（此时确实还没看到）；
+  // 点提示条追平后用户已经看到了最新消息，红点必须当场消失——曾经的 bug 是红点一直
+  // 挂着，要等下一条消息在贴底状态下到达才顺带清掉。
+  test('clicking new message pill clears the conversation unread badge', async ({ browser }) => {
+    const { ctx1, ctx2, page1, page2 } = await openChatScrolledUp(browser, 'pillunread', password);
+
+    await sendMessage(page1, 'pillunread trigger message');
+
+    const pill = page2.locator('#center-panel .list-updated-pill');
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+
+    // 上翻阅读中没有自动清未读：会话红点与导航红点都亮着。
+    const conv = page2.locator('#conversation-list .conversation-item', { hasText: 'pillunreadSender' });
+    await expect(conv.locator('.unread-badge')).toBeVisible({ timeout: 10_000 });
+    await expect(page2.locator('.nav-item[data-view="chat"] .nav-badge')).toBeVisible({ timeout: 10_000 });
+
+    await pill.click();
+    await expectMessage(page2, 'pillunread trigger message');
+
+    await expect(conv.locator('.unread-badge')).toBeHidden({ timeout: 10_000 });
+    await expect(page2.locator('.nav-item[data-view="chat"] .nav-badge')).toBeHidden({ timeout: 10_000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例：提示条必须悬浮在消息列表底部，不能压进输入框里——曾经的 bug 是提示条
+  // 同时挂了两个各带 bottom 的样式类，实际生效的那个把它定位到了输入框上。
+  test('new message pill floats at the bottom of the message list, not inside the composer', async ({ browser }) => {
+    const { ctx1, ctx2, page1, page2 } = await openChatScrolledUp(browser, 'pillpos', password);
+
+    await sendMessage(page1, 'pillpos trigger message');
+
+    const pill = page2.locator('#center-panel .list-updated-pill');
+    await expect(pill).toBeVisible({ timeout: 10_000 });
+
+    const pillBox = (await pill.boundingBox())!;
+    const listBox = (await page2.locator('#message-list').boundingBox())!;
+    const composerBox = (await page2.locator('#message-input-area').boundingBox())!;
+
+    // 整个提示条落在消息列表的垂直范围内，且完全在输入框上边缘之上。
+    expect(pillBox.y).toBeGreaterThanOrEqual(listBox.y);
+    expect(pillBox.y + pillBox.height).toBeLessThanOrEqual(composerBox.y);
+    // 贴近消息列表底部而不是飘在中间。
+    expect(listBox.y + listBox.height - (pillBox.y + pillBox.height)).toBeLessThanOrEqual(40);
 
     await ctx1.close();
     await ctx2.close();

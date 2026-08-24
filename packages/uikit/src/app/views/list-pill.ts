@@ -41,7 +41,7 @@ export function createListPill(
 ): ListPillHandle {
   if (!host) return { sync: () => {}, dispose: () => {} };
   const pill = host.ownerDocument.createElement('div');
-  pill.className = 'list-updated-pill new-message-pill hidden';
+  pill.className = 'list-updated-pill hidden';
   const handleClick = () => onClick();
   pill.addEventListener('click', handleClick);
   host.appendChild(pill);

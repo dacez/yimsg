@@ -161,8 +161,9 @@ graph LR
         C1b["#message-search-panel<br/>关键字输入 + 结果列表，默认 hidden"]
         C2["#chat-empty<br/>空占位"]
         C3["#message-list<br/>上滚加载更多"]
+        C3b["#message-pill-anchor<br/>零高度锚点：「有新消息」提示条挂在这里，<br/>因此悬浮在消息列表底部而不是输入框里"]
         C4["#message-input-area<br/>桌面：输入框 + 表情 + 附件 + Markdown + 发送<br/>手机：更多 + 输入框 + 图标发送"]
-        C1 --- C1b --- C2 --- C3 --- C4
+        C1 --- C1b --- C2 --- C3 --- C3b --- C4
     end
 
     subgraph 右栏["#right-panel · 300px · 可折叠"]
@@ -380,7 +381,7 @@ sequenceDiagram
 | `openConversation(conv)` | 切换到指定会话，加载消息 |
 | `renderMessages()` | 重绘中栏消息列表 |
 | `scrollToBottom()` | 消息列表滚动到底部；动态高度消息会在多帧测量后继续收敛到底部 |
-| `refreshOpenConversation()` | 收到 `messages:received` 后对当前消息窗口调用 `invalidate()`；位于新鲜端时追平，否则只点亮提示条 |
+| `refreshOpenConversation()` | 收到 `messages:received` 后对当前消息窗口调用 `invalidate()`；位于新鲜端时追平并清当前会话未读，否则只点亮提示条 |
 | `refreshDetailPanel()` | 轻量刷新详情面板的昵称/头像，由 main-app.ts 在 `display:updated` 时调用 |
 | `rerenderCurrentDetailPanel()` | 当前详情面板整块重绘，用于屏蔽 / 免打扰状态变更后的刷新 |
 | `applyConversationGuards()` | 根据屏蔽列表状态禁用当前单聊的输入、表情与附件按钮 |
@@ -504,6 +505,7 @@ openConversation(conv):
 补充约束：
 
 - 上面这条 `clearUnread(target)` 只属于“用户真正打开会话”的路径。桌面布局下，当前 chat 视图可见时仍允许自动清当前会话未读；mobile 布局下只有 `#view-chat.mobile-showing-chat` 时才允许自动清未读，若只是停留在会话列表，不应因为保留了 `currentConvKey` 就自动消红点。
+- 打开会话之后，「用户已经看到最新消息」还有两条路径也必须清未读，判据统一是消息窗口追平到新鲜端：一是贴底时收到新消息（`refreshOpenConversation()` 的贴底分支），二是上翻阅读时先点亮提示条、随后追平（点提示条或自己滑回底部，都体现为消息列表 `state.stale` 由真变假）。少了后者，用户点完「有新消息」已经看到内容，会话列表红点却还挂着，要等下一条消息在贴底状态下到达才顺带清掉。切换会话导致的 `stale` 归零不是追平，按会话 key 记账排除。
 - 群头像和群名更新不向全部成员主动广播，普通会话列表允许继续显示 TTL 内的旧缓存。用户明确进入群聊时，必须调用 `getGroupInfos([groupId], { forceRefresh: true })`；Instant 模式更新内存 cache，Persistent 模式先更新本地数据库再更新 cache，随后通过 `display:updated` 刷新当前会话标题、会话列表和已打开的群详情。
 
 #### 发送消息流程
