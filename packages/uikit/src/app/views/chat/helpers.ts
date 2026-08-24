@@ -15,17 +15,17 @@ import {
   displayUserName,
 } from '@yimsg/sdk';
 import type { AppInstance } from '../../app-instance';
-import { isMobileInteractionLayout } from '../../utils';
+import { isMobileInteractionLayout, isViewVisible } from '../../utils';
 
 export function currentConversation(app: AppInstance): ConversationDescriptor | null {
   return app.chatState.currentConvKey ? app.client.describeConversation(app.chatState.currentConvKey) : null;
 }
 
 function isConversationPaneVisible(app: AppInstance): boolean {
-  const chatView = app.$('view-chat');
-  if (chatView.classList.contains('hidden')) return false;
+  if (!isViewVisible(app, 'chat')) return false;
   if (!isMobileInteractionLayout(app)) return true;
-  return chatView.classList.contains('mobile-showing-chat');
+  // 移动端聊天视图内部还分左栏会话列表与右栏聊天面板，只有后者展开时用户才真正在看会话。
+  return app.$('view-chat').classList.contains('mobile-showing-chat');
 }
 
 export function canAutoClearUnreadCurrentConversation(app: AppInstance): boolean {

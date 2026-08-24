@@ -54,6 +54,15 @@ export interface MessageQuery {
 
 interface ChatState {
   currentConvKey: string | null;
+  /**
+   * 打开当前会话那一刻的会话快照，此后**永不更新**（只在 openConversationShell 里写入一次）。
+   *
+   * 因此只能读它的不变字段：路由身份（`friendUid` / `groupId`）、以及"这是不是一个还没有
+   * 任何消息的占位会话"（`lastSeq === 0`，且窗口内同身份的真实条目会覆盖它）。
+   * `unreadCount`、`lastMessage` 这类随时间变化的字段一律不能从这里读——它们的真实值只在
+   * 会话列表窗口和服务端。曾经 switchView 用这里的 `unreadCount` 判断要不要清未读，结果
+   * 打开时没红点的会话切回来永远清不掉。
+   */
   currentConversation: LocalConversation | null;
   /** 会话列表 BoundedList 实例；首次使用时惰性创建（构造需要 DOM 元素就绪）。 */
   conversationList: BoundedList<LocalConversation> | null;

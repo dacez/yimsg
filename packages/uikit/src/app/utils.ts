@@ -12,6 +12,24 @@ export function isMobileInteractionLayout(app: AppInstance, resolvedLayout?: Res
     (view?.innerWidth ?? Number.POSITIVE_INFINITY) <= 640;
 }
 
+/** 主视图名：与 shell.ts 里 `#view-<name>` 的 id 一一对应。 */
+export type MainViewName = 'chat' | 'contacts' | 'settings';
+
+/**
+ * 某个主视图此刻是否可见。
+ *
+ * 「可见」的判据只有这一处：视图切换靠的是给 `#main-content > .view` 加 / 去 `hidden` class
+ * （见 views/chat/navigation.ts 的 switchView），所以判据就是这个 class 在不在。
+ * 六处调用点原本各写一遍 `!app.$('view-x').classList.contains('hidden')`，一旦切换机制
+ * 改变就得逐处找齐。
+ *
+ * 注意它只回答「这个视图可见吗」。移动端聊天视图内部还有「左栏会话列表 / 右栏聊天面板」
+ * 的二级可见性，那是另一个问题，见 views/chat/helpers.ts 的 canAutoClearUnreadCurrentConversation。
+ */
+export function isViewVisible(app: AppInstance, name: MainViewName): boolean {
+  return !app.$(`view-${name}`).classList.contains('hidden');
+}
+
 /** 搜索框防抖的默认毫秒数：输入停顿多久之后才真正发请求。 */
 export const SEARCH_DEBOUNCE_MS = 300;
 

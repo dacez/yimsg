@@ -1,5 +1,37 @@
 import { test, expect } from '../support/test-fixtures';
-import { uniqueUser, register, addFriend, sendMessage, openDMFromContacts } from './helpers';
+import type { Browser } from '@playwright/test';
+import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation } from './helpers';
+
+// 「切走视图期间收到消息」这一组用例的公共铺垫：两个账号互为好友，发送方灌满一屏以上
+// 消息；接收方打开会话读完，再点一次同一个会话——这一步是关键，它让
+// chatState.currentConversation 快照里的 unreadCount 变成 0，正是曾经让清未读判据失灵的
+// 那种状态（快照此后永不更新，用它判断"现在有没有未读"必然看运气）。
+async function openConversationThenLeave(browser: Browser, prefix: string, password: string) {
+  const u1 = uniqueUser(`${prefix}1`);
+  const u2 = uniqueUser(`${prefix}2`);
+  const ctx1 = await browser.newContext({ ignoreHTTPSErrors: true });
+  const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
+  const page1 = await ctx1.newPage();
+  const page2 = await ctx2.newPage();
+
+  await register(page1, u1, password, `${prefix}Sender`);
+  await register(page2, u2, password, `${prefix}Reader`);
+  await addFriend(page1, page2, u2);
+  await openDMFromContacts(page1, `${prefix}Reader`);
+  for (let i = 1; i <= 15; i++) {
+    await sendMessage(page1, `${prefix} filler ${i}`);
+    await expectMessage(page1, `${prefix} filler ${i}`);
+  }
+
+  await openConversation(page2, `${prefix}Sender`);
+  await expectMessage(page2, `${prefix} filler 15`);
+  await page2.waitForTimeout(600);
+  // 未读已清零后再点一次：快照 unreadCount 就此固定为 0。
+  await page2.click('#conversation-list .conversation-item');
+  await page2.waitForTimeout(600);
+
+  return { ctx1, ctx2, page1, page2 };
+}
 
 test.describe('Navigation', () => {
   const password = '123456';
@@ -215,6 +247,70 @@ test.describe('Navigation', () => {
 
     // Badge should disappear after accepting
     await expect(contactsNavBadge).toBeHidden({ timeout: 5000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例：切走视图期间收到消息，切回聊天视图后必须两件事一起归位——新消息出现在
+  // 消息列表里，会话红点消失。曾经两处判据各错一半：refreshOpenConversation 在聊天视图
+  // 隐藏时直接早退（连 invalidate 都不调，通知被整条吞掉，切回来消息不在列表里、滚动也
+  // 补不回来），switchView 又用打开会话那一刻的未读快照决定要不要清未读（快照为 0 就永远
+  // 清不掉）。
+  test('messages received while on another view land in the list and clear the badge on return', async ({ browser }) => {
+    const { ctx1, ctx2, page1, page2 } = await openConversationThenLeave(browser, 'switchback', password);
+
+    await page2.click('[data-view="contacts"]');
+    await expect(page2.locator('#view-contacts')).toBeVisible();
+
+    await sendMessage(page1, 'switchback trigger');
+
+    const conv = page2.locator('#conversation-list .conversation-item', { hasText: 'switchbackSender' });
+    const navBadge = page2.locator('.nav-item[data-view="chat"] .nav-badge');
+    // 人还在通讯录页，红点必须先亮起来——用户确实还没看到这条消息。
+    await expect(navBadge).toBeVisible({ timeout: 10_000 });
+
+    await page2.click('[data-view="chat"]');
+
+    // 切回来：消息补齐 + 红点归零。
+    await expectMessage(page2, 'switchback trigger', 10_000);
+    await expect(conv.locator('.unread-badge')).toBeHidden({ timeout: 10_000 });
+    await expect(navBadge).toBeHidden({ timeout: 10_000 });
+
+    await ctx1.close();
+    await ctx2.close();
+  });
+
+  // 回归用例的另一侧：切走时人正在上翻读历史，切回来只能点亮提示条，绝不能把视口拽到底部
+  // 也不能清未读——用户并没有看到最新消息。防止上一条被"回来就无条件清"这种过度修复满足。
+  test('returning to chat while reading history keeps the pill and the unread badge', async ({ browser }) => {
+    const { ctx1, ctx2, page1, page2 } = await openConversationThenLeave(browser, 'switchhist', password);
+
+    // 上翻到顶部并停稳。
+    await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      list.scrollTop = 0;
+    });
+    await page2.waitForTimeout(300);
+
+    await page2.click('[data-view="contacts"]');
+    await expect(page2.locator('#view-contacts')).toBeVisible();
+
+    await sendMessage(page1, 'switchhist trigger');
+    await page2.waitForTimeout(1000);
+
+    await page2.click('[data-view="chat"]');
+    await page2.waitForTimeout(1500);
+
+    // 提示条亮着、红点还在、阅读位置没被拽到底。
+    await expect(page2.locator('#center-panel .list-updated-pill')).toBeVisible({ timeout: 10_000 });
+    const conv = page2.locator('#conversation-list .conversation-item', { hasText: 'switchhistSender' });
+    await expect(conv.locator('.unread-badge')).toBeVisible({ timeout: 5_000 });
+    const distanceFromBottom = await page2.evaluate(() => {
+      const list = document.querySelector('#message-list') as HTMLElement;
+      return list.scrollHeight - list.scrollTop - list.clientHeight;
+    });
+    expect(distanceFromBottom).toBeGreaterThan(50);
 
     await ctx1.close();
     await ctx2.close();

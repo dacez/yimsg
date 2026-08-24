@@ -11,6 +11,7 @@ import {
   refreshVisibleViews,
   renderReadyState,
 } from './view-refresh';
+import { isViewVisible } from './utils';
 
 export async function initAfterAuth(app: AppInstance, options: {
   requestedMode?: 'instant' | 'persistent';
@@ -49,7 +50,7 @@ function handleContactsChanged(app: AppInstance) {
   // 组织被删除或本人被移出时通讯录组织行会消失，已经打开的组织详情必须跟着收起。
   void app.views.contacts?.closeOrgPanelIfEntryGone();
 
-  if (!app.$('view-contacts').classList.contains('hidden')) {
+  if (isViewVisible(app, 'contacts')) {
     // 背景刷新：用户不在列表顶部时不打断浏览（loadContacts 内部判定并推迟）。
     void app.views.contacts?.loadContacts({ background: true });
   }
@@ -59,7 +60,7 @@ function refreshPreferenceDrivenUi(app: AppInstance) {
   app.views.chat?.renderConversationList();
   app.views.chat?.applyConversationGuards();
   app.views.chat?.rerenderCurrentDetailPanel();
-  if (!app.$('view-contacts').classList.contains('hidden')) {
+  if (isViewVisible(app, 'contacts')) {
     app.views.contacts?.refreshContactsDisplay();
   }
 }
