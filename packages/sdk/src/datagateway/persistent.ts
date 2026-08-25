@@ -61,7 +61,7 @@ import { isServerErrorCode } from "../errors";
 import * as actions from "../generated/actions.gen";
 import * as actionMappers from "../internal/action-mappers";
 
-/** Minimal DB interface for testability (SqliteWorkerApi implements this). */
+/** 本地持久化后端的最小接口；当前由 Node 侧 LocalSqliteApi 实现。 */
 export interface DbApi {
   open(dbName: string): Promise<void>;
   exec(sql: string, params?: unknown[]): Promise<{ changes: number }>;
@@ -69,13 +69,6 @@ export interface DbApi {
   execBatch(statements: { sql: string; params?: unknown[] }[]): Promise<void>;
   close(): Promise<void>;
   deleteDb(dbName: string): Promise<void>;
-  /** 仅浏览器 OPFS 后端（SqliteWorkerApi）实现：终止其专属 Worker 线程，释放句柄之外的线程本身。 */
-  terminate?(): void;
-}
-
-/** duck-type 调用可选的 terminate()，避免 close() 之后 Worker 线程残留。 */
-export function terminateDbApi(db: DbApi): void {
-  if (typeof db.terminate === "function") db.terminate();
 }
 
 interface PersistentDataGatewayOptions {
@@ -309,10 +302,7 @@ export class PersistentDataGateway extends BaseDataGateway {
   clear(): void {
     this.backgroundSyncRun += 1;
     super.clear();
-    this.db
-      .close()
-      .catch((e) => this.reportError(e, "db close error"))
-      .finally(() => terminateDbApi(this.db));
+    this.db.close().catch((e) => this.reportError(e, "db close error"));
   }
 
   // ---- Data reads (local SQLite) ----

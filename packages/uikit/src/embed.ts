@@ -14,7 +14,7 @@ import {
 } from './responsive-layout';
 import { applyThemeVarsToElement, clearThemeVarsFromElement, resolveTheme, watchSystemTheme, type ThemeOption, type ThemeTokens } from './theme';
 
-export { type MountOptions, type MountHandle, type MountTarget, type WidgetOn, type WidgetEvents, type UIKitMode, type UIKitViewMode } from './options';
+export { type MountOptions, type MountHandle, type MountTarget, type WidgetOn, type WidgetEvents, type UIKitViewMode } from './options';
 export type { ThemeOption, ThemePreset, ThemeTokens } from './theme';
 export type { LocaleOption, LocaleCode, Messages } from './i18n';
 
@@ -129,10 +129,9 @@ function resolveInstanceId(host: HTMLElement, options: MountOptions): string {
   if ('instanceId' in options && typeof (options as MountOptions & { instanceId?: string }).instanceId === 'string' && (options as MountOptions & { instanceId?: string }).instanceId) {
     return (options as MountOptions & { instanceId?: string }).instanceId!;
   }
-  // 未显式指定、宿主也没有稳定 id 时固定回退为 'default'（与非嵌入式 app.ts 的槽位一致）：
-  // persistent 模式下 DB 文件按 uid+instanceId 命名，回退值若每次 mount 都不同，会导致
-  // 同一账号每次都对应一个新的空库，persistent 形同虚设。同页需要并发挂载多个独立持久化
-  // 实例时（如 home-dashboard），调用方必须显式传各自不同的 instanceId。
+  // 未显式指定、宿主也没有稳定 id 时固定回退为 'default'（与非嵌入式 app.ts 的槽位一致）。
+  // 同页需要并发挂载多个互不干扰的实例时（如 home-dashboard），调用方必须显式传各自
+  // 不同的 instanceId。
   return host.id || 'default';
 }
 
@@ -144,6 +143,7 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
 
   const ownsClient = !options.client;
   const client = options.client ?? new YimsgClient({
+    serverUrl: options.serverUrl,
     wsUrl: options.wsUrl,
     uploadUrl: options.uploadUrl,
     requestTimeout: options.requestTimeout,
@@ -159,10 +159,8 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
   if (options.onConversationOpen) eventBus.on('conversation:open', options.onConversationOpen as Parameters<WidgetOn>[1]);
   if (options.onError) eventBus.on('error', options.onError as Parameters<WidgetOn>[1]);
 
-  const requestedMode = options.mode ?? 'instant';
   const instanceId = resolveInstanceId(host, options);
   const storageAdapter = createEmbeddedStorage({
-    mode: requestedMode === 'instant' ? 'instant' : 'persistent',
     layout: options.layout ?? 'auto',
     ...(options.token ? { token: options.token } : {}),
   });
@@ -191,7 +189,6 @@ export function mount(container: MountTarget, options: MountOptions = {}): Mount
     dom: new AppDomScope(shadow, ownerDocument, appShell, appShell, appShell, host),
     runtime: {
       embedded: true,
-      requestedMode,
       viewMode: options.viewMode ?? 'full',
       initialToken: options.token,
       getInitialToken: options.getToken,

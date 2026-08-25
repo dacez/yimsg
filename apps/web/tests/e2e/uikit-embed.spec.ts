@@ -85,28 +85,29 @@ test.describe('uikit embed', () => {
     expect(hostBg).toMatch(/rgb\(\s*245\s*,\s*246\s*,\s*250\s*\)/);
   });
 
-  test('mount accepts mode option and widget bundle exposes UIKitMode-aware API', async ({ page }) => {
-    // 通过运行时加载 IIFE，然后动态构造一个隔离容器调用 mount({ mode: 'instant' })。
-    // 目标：验证 `mode` 参数不会让 mount() 报错、widget 能正常渲染认证页。
+  test('mount 接受 serverUrl 并据此派生服务地址', async ({ page }) => {
+    // 动态构造一个隔离容器，只传 serverUrl 调用 mount()。
+    // 目标：验证单个 serverUrl 足以让 widget 正常渲染认证页——这正是第三方站点
+    // 跨域嵌入时的最小接入形态，这里在同源下覆盖同一条代码路径。
     await page.goto('/demo/embed.html');
 
     const result = await page.evaluate(() => {
       const host = document.createElement('div');
-      host.id = 'mode-test-host';
+      host.id = 'server-url-test-host';
       host.style.height = '400px';
       document.body.appendChild(host);
-      const w = window as unknown as { YimsgUIKit: { mount: (el: HTMLElement, opts: Record<string, unknown>) => { unmount: () => void; shadowRoot: ShadowRoot } } };
-      const handle = w.YimsgUIKit.mount(host, {
-        wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
-        mode: 'instant',
-      });
+      const w = window as unknown as { YimsgUIKit: { mount: (el: HTMLElement, opts: Record<string, unknown>) => { unmount: () => void; shadowRoot: ShadowRoot; client: { resolveMediaUrl: (path: string) => string } } } };
+      const handle = w.YimsgUIKit.mount(host, { serverUrl: location.origin });
       const hasAuthCard = !!handle.shadowRoot.querySelector('.auth-card');
+      // 媒体地址应被解析成 serverUrl 指向的绝对地址，而不是留作相对路径。
+      const mediaUrl = handle.client.resolveMediaUrl('/media/image/x');
       handle.unmount();
       host.remove();
-      return { hasAuthCard };
+      return { hasAuthCard, mediaUrl, origin: location.origin };
     });
 
     expect(result.hasAuthCard).toBe(true);
+    expect(result.mediaUrl).toBe(`${result.origin}/media/image/x`);
   });
 
   test('viewMode: chat-only hides bottom navbar and host hash changes never affect the widget', async ({ page }) => {

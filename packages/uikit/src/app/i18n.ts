@@ -20,16 +20,12 @@ export const translations = {
     'auth.username': 'Username',
     'auth.password': 'Password',
     'auth.nickname': 'Nickname',
-    'auth.chooseMode': 'Choose Mode',
-    'auth.liteTitle': 'Instant',
-    'auth.liteDesc': 'All data from server. Fast startup, no local storage. Data lost on refresh.',
-    'auth.persistentTitle': 'Persistent',
-    'auth.persistentDesc': 'Persistent local storage. Messages persist across refreshes. Faster loads after first sync.',
     'auth.sessionExpired': 'Session expired, please login again',
     'auth.chooseLayout': 'Interface Size',
     'auth.layoutAuto': 'Auto',
     'auth.layoutDesktop': 'Desktop',
     'auth.layoutMobile': 'Mobile',
+    'auth.layoutConfirm': 'Continue',
     'auth.mobileBack': 'Back',
 
     // Status
@@ -291,13 +287,6 @@ export const translations = {
     'settings.uid': 'UID: ',
     'settings.failed': 'Failed: ',
     'settings.language': 'Language',
-    'settings.storage': 'Storage',
-    'settings.storageDesc': 'Persistent local storage keeps a synced copy on this device for faster loads.',
-    'settings.clearData': 'Clear Data',
-    'settings.clearDataConfirmTitle': 'Clear local data?',
-    'settings.clearDataConfirmDesc': 'This wipes the local copy on this device and re-syncs everything from the server. Data on the server is not affected.',
-    'settings.clearDataSuccess': 'Local data cleared',
-    'settings.clearDataFailed': 'Failed to clear local data: ',
 
     // Nav
     'nav.chat': 'Chat',
@@ -420,16 +409,12 @@ export const translations = {
     'auth.username': '用户名',
     'auth.password': '密码',
     'auth.nickname': '昵称',
-    'auth.chooseMode': '选择模式',
-    'auth.liteTitle': '即时',
-    'auth.liteDesc': '所有数据来自服务器。启动快速，无本地存储。刷新后数据丢失。',
-    'auth.persistentTitle': '持久存储',
-    'auth.persistentDesc': '本地持久存储。消息跨刷新持久化。首次同步后加载更快。',
     'auth.sessionExpired': '会话已过期，请重新登录',
     'auth.chooseLayout': '界面尺寸',
     'auth.layoutAuto': '自动',
     'auth.layoutDesktop': '桌面',
     'auth.layoutMobile': '手机',
+    'auth.layoutConfirm': '进入',
     'auth.mobileBack': '返回',
 
     // Status
@@ -691,13 +676,6 @@ export const translations = {
     'settings.uid': 'UID：',
     'settings.failed': '失败：',
     'settings.language': '语言',
-    'settings.storage': '存储',
-    'settings.storageDesc': '持久存储会在本设备保留一份同步副本，下次打开加载更快。',
-    'settings.clearData': '清除数据',
-    'settings.clearDataConfirmTitle': '确认清除本地数据？',
-    'settings.clearDataConfirmDesc': '将清空本设备上的本地副本并从服务端重新全量同步，不影响服务端数据。',
-    'settings.clearDataSuccess': '本地数据已清除',
-    'settings.clearDataFailed': '清除本地数据失败：',
 
     // Nav
     'nav.chat': '聊天',

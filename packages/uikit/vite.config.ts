@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 // 独立构建配置：将 packages/uikit/src 打包为可嵌入的 ESM 库文件。
+// 第三方站点通过 `<script type="module">` 跨域 import，服务端按 allowed_origins
+// 返回 CORS 头放行。
 export default defineConfig({
   root: '.',
   base: '/uikit/',

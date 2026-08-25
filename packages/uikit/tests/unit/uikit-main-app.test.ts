@@ -14,7 +14,7 @@ vi.mock('../../src/app/views/auth', () => ({
   createAuthView: vi.fn(() => ({
     setupAuth: vi.fn(),
     authenticate: vi.fn(async () => undefined),
-    ensureInitialModeSelection: vi.fn(async () => undefined),
+    ensureInitialLayoutSelection: vi.fn(async () => undefined),
     showAuthView: vi.fn(),
     showAppView: vi.fn(),
     handleSessionKicked: vi.fn(),
@@ -104,7 +104,6 @@ function createFakeApp(client: ReturnType<typeof createFakeClient>) {
     runtime: { embedded: false, instanceId: 'main-app-test', hooks: {} },
     storage: {
       getStoredToken: vi.fn(() => null as string | null),
-      getStoredMode: vi.fn(() => 'instant'),
     },
     views: {} as Record<string, unknown>,
     dom: { querySelectorAll: vi.fn(() => []) },

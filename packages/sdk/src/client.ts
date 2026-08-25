@@ -8,6 +8,11 @@ import { ClientMessageFacade } from "./internal/client-message-facade";
 import type { SendImageInput, SendFileInput } from "./internal/client-message-facade";
 import { ClientSessionRuntime } from "./internal/client-session-runtime";
 import {
+  resolveEndpoints,
+  resolveMediaUrl as resolveMediaUrlWithBase,
+} from "./internal/server-url";
+import { isNodeRuntime } from "./internal/runtime";
+import {
   assertNonEmpty,
   normalizeDisplayInfoKeys,
   requireAuthenticated,
@@ -138,6 +143,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   private readonly runtime: ClientSessionRuntime;
 
   private readonly uploadUrl: string;
+  private readonly mediaBaseUrl: string;
   private readonly connectTimeoutMs: number;
   private authToken = "";
   private _recallWindowSeconds: number;
@@ -150,9 +156,10 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   constructor(options: ClientOptions = {}) {
     super();
 
-    const wsUrl = options.wsUrl ?? this.defaultWsUrl();
+    // 三个对外地址统一由 serverUrl 派生，跨域嵌入时运行时不再依赖 location。
+    const endpoints = resolveEndpoints(options);
     this._transport = new WsTransport({
-      url: wsUrl,
+      url: endpoints.wsUrl,
       timeout: options.requestTimeout,
       reconnectInterval: options.reconnectInterval,
       reconnectNotifyThreshold: options.reconnectNotifyThreshold,
@@ -160,7 +167,8 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       wsFactory: options.wsFactory,
       maxPendingRequests: options.maxPendingRequests,
     });
-    this.uploadUrl = options.uploadUrl ?? "/api/upload";
+    this.uploadUrl = endpoints.uploadUrl;
+    this.mediaBaseUrl = endpoints.mediaBaseUrl;
     this.connectTimeoutMs = options.requestTimeout ?? 15000;
     const initialBatchMaxLimit = clampBatchLimit(
       options.batchMaxLimit ?? DEFAULT_MAX_BATCH_LIMIT,
@@ -250,10 +258,14 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     };
   }
 
-  private defaultWsUrl(): string {
-    if (typeof location === "undefined") return "ws://localhost:8080/ws";
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    return `${proto}//${location.host}/ws`;
+  /**
+   * 把服务端返回的媒体路径解析成可直接放进 `src` 的地址。
+   *
+   * 服务端返回的是 `/media/{category}/{id}` 相对路径，跨域嵌入时必须补上
+   * `serverUrl` 指向的服务端基址，否则会被解析到宿主站点。同源部署下原样返回。
+   */
+  resolveMediaUrl(path: string | null | undefined): string {
+    return resolveMediaUrlWithBase(path, this.mediaBaseUrl);
   }
 
   private emitClientEvent<K extends keyof ClientEvents>(
@@ -567,18 +579,11 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
 
     const resetLocalData = this.normalizeResetLocalData(options.resetLocalData);
     const requestedFileSystem = options.fileSystem ?? null;
-    if (
-      requestedFileSystem !== null &&
-      requestedFileSystem !== "opfs" &&
-      requestedFileSystem !== "local"
-    ) {
-      throw new ValidationError(
-        "startSession fileSystem 只支持 opfs 或 local",
-        {
-          context: "startSession",
-          details: { fileSystem: requestedFileSystem },
-        },
-      );
+    if (requestedFileSystem !== null && requestedFileSystem !== "local") {
+      throw new ValidationError("startSession fileSystem 只支持 local", {
+        context: "startSession",
+        details: { fileSystem: requestedFileSystem },
+      });
     }
 
     let persistentStorageAvailable = true;
@@ -685,13 +690,16 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
   private async resolvePersistentFileSystem(
     requested: SessionFileSystem | null,
   ): Promise<{ fileSystem: SessionFileSystem; available: boolean }> {
-    const { isPersistentFileSystemAvailable, isNodeRuntime } =
-      await import("./datagateway/sqlite-db-factory");
-    const candidates: SessionFileSystem[] = requested
-      ? [requested]
-      : isNodeRuntime()
-        ? ["local", "opfs"]
-        : ["opfs", "local"];
+    // 浏览器端不提供 SQLite 持久化，可用后端只有本地客户端的 local。
+    // 判定放在动态 import 之前，浏览器因此不会下载 Node 专用的本地持久化实现。
+    const candidates: SessionFileSystem[] = requested ? [requested] : ["local"];
+    if (!isNodeRuntime()) {
+      return { fileSystem: candidates[0] ?? "local", available: false };
+    }
+
+    const { isPersistentFileSystemAvailable } = await import(
+      "./datagateway/sqlite-db-factory"
+    );
 
     for (const candidate of candidates) {
       const available = await isPersistentFileSystemAvailable(candidate);
@@ -700,7 +708,7 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
       }
     }
 
-    return { fileSystem: candidates[0] ?? "opfs", available: false };
+    return { fileSystem: candidates[0] ?? "local", available: false };
   }
 
   private async clearPersistentSessionData(options: {
@@ -708,30 +716,23 @@ export class YimsgClient extends EventEmitter<ClientEvents> {
     instanceId?: string;
     fileSystem: SessionFileSystem | null;
   }): Promise<void> {
-    if (!options.fileSystem) return;
+    if (!options.fileSystem || !isNodeRuntime()) return;
     const { createPersistentDbApi } =
       await import("./datagateway/sqlite-db-factory");
-    const { buildPersistentDbName, terminateDbApi } = await import(
-      "./datagateway/persistent"
-    );
+    const { buildPersistentDbName } = await import("./datagateway/persistent");
     const db = await createPersistentDbApi(options.fileSystem);
-    try {
-      await db.deleteDb(
-        buildPersistentDbName(options.uid, options.instanceId ?? "default"),
-      );
-    } finally {
-      terminateDbApi(db);
-    }
+    await db.deleteDb(
+      buildPersistentDbName(options.uid, options.instanceId ?? "default"),
+    );
   }
 
   private async clearAllPersistentSessionData(
     fileSystem: SessionFileSystem | null,
   ): Promise<void> {
+    if (!isNodeRuntime()) return;
     const { clearAllPersistentDataByFileSystem } =
       await import("./datagateway/sqlite-db-factory");
-    const targets: SessionFileSystem[] = fileSystem
-      ? [fileSystem]
-      : ["opfs", "local"];
+    const targets: SessionFileSystem[] = fileSystem ? [fileSystem] : ["local"];
     for (const target of targets) {
       try {
         await clearAllPersistentDataByFileSystem(target);

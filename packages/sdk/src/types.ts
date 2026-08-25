@@ -38,7 +38,11 @@ export type SessionState =
   | "destroyed";
 export type SessionMode = "instant" | "persistent";
 export type SessionStorageMode = "instant" | "persistent";
-export type SessionFileSystem = "opfs" | "local";
+/**
+ * 持久化后端标识。浏览器端不提供 SQLite 持久化，因此当前只有本地客户端使用的
+ * `local`（Node 运行时 + better-sqlite3）；保留联合类型形态以便接入其它本地后端。
+ */
+export type SessionFileSystem = "local";
 export type SessionLocalDataResetScope = "none" | "current-user" | "all";
 export interface SessionStartOptions {
   readonly storage?: SessionStorageMode;
@@ -82,9 +86,16 @@ export type ContactsUpdateReason = "notification_sync" | "display_reordered";
 export type DisplayInfoScope = "user" | "group" | "org" | "tag" | "mixed";
 
 export interface ClientOptions {
-  /** WebSocket URL. Defaults to auto-detect from location. */
+  /**
+   * 服务端根地址，例如 `https://im.example.com`（可带路径前缀）。
+   *
+   * 跨域嵌入第三方站点时必须提供：WebSocket、上传接口和媒体地址都由它派生，
+   * 运行时不再依赖 `location`。同源部署可以不传，沿用相对路径与 location 推导。
+   */
+  readonly serverUrl?: string;
+  /** WebSocket URL；显式提供时覆盖由 `serverUrl` 派生的值。默认从 location 推导。 */
   readonly wsUrl?: string;
-  /** File upload URL. Defaults to '/api/upload'. */
+  /** 文件上传 URL；显式提供时覆盖由 `serverUrl` 派生的值。默认 '/api/upload'。 */
   readonly uploadUrl?: string;
   /** Auto-reconnect interval in ms. Default 2000. */
   readonly reconnectInterval?: number;

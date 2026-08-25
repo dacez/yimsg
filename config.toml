@@ -12,6 +12,11 @@
 # 本地开发 / 自动化测试保持为空即使用 HTTP；生产部署填 /etc/ssl/certs/yimsg.pem 和 /etc/ssl/certs/yimsg.key 后使用 HTTPS。
 # tls_cert = ""
 # tls_key = ""
+# 允许跨域嵌入本部署的第三方站点来源。留空（默认）表示只支持同源访问；
+# 配置后 /uikit/、/api/upload、/media/ 会对命中的来源返回 CORS 响应头，
+# WebSocket 升级也按同一份名单校验 Origin。同源页面与不带 Origin 的
+# 非浏览器客户端（CLI、Agent）始终放行；填 ["*"] 表示放行任意站点。
+# allowed_origins = ["https://www.example.com"]
 
 [database]
 # data_dir = "./data"

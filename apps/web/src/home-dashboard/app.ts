@@ -2,14 +2,10 @@ import {
   mount,
   type MountHandle,
 } from '@yimsg/uikit';
-import { deletePersistentDataForIdentities } from '@yimsg/uikit/web-app-adapter';
 import {
   DASHBOARD_TILE_CONFIGS,
   type DashboardTileConfig,
   type DashboardTileSize,
-  clearRememberedDashboardUids,
-  readRememberedDashboardUids,
-  rememberDashboardUid,
 } from './model';
 import './style.css';
 
@@ -24,7 +20,6 @@ interface DashboardTileState {
   readonly status: HTMLElement;
   readonly loadButton: HTMLButtonElement;
   readonly unloadButton: HTMLButtonElement;
-  readonly clearButton: HTMLButtonElement;
   readonly sizeSelect: HTMLSelectElement;
   handle: MountHandle | null;
   busy: boolean;
@@ -38,7 +33,6 @@ type DashboardWindow = Window & {
     shadowChildCount(hostId: string): number;
     load(hostId: string): Promise<void>;
     unload(hostId: string): void;
-    clear(hostId: string): Promise<void>;
   };
 };
 
@@ -64,7 +58,7 @@ function buildDashboardShell(): string {
       <div class="home-dashboard__cell-header">
         <div class="home-dashboard__cell-heading">
           <h2>${escapeHtml(config.title)}</h2>
-          <p>模式：${config.mode.toUpperCase()} · 实例 ${index + 1}</p>
+          <p>实例 ${index + 1}</p>
         </div>
         <div class="home-dashboard__cell-controls">
           <label class="home-dashboard__cell-size">
@@ -77,7 +71,6 @@ function buildDashboardShell(): string {
           </label>
           <button type="button" class="home-dashboard__button" id="dashboard-load-${config.key}">加载</button>
           <button type="button" class="home-dashboard__button" id="dashboard-unload-${config.key}">卸载</button>
-          <button type="button" class="home-dashboard__button home-dashboard__button-danger" id="dashboard-clear-${config.key}">删除数据</button>
         </div>
       </div>
       <div class="home-dashboard__cell-status" id="dashboard-status-${config.key}">待加载</div>
@@ -106,18 +99,6 @@ function resolveWsUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-function isPersistentTile(config: DashboardTileConfig): boolean {
-  return config.mode === 'persistent';
-}
-
-async function clearTilePersistentData(config: DashboardTileConfig): Promise<void> {
-  if (!isPersistentTile(config)) return;
-  const uids = readRememberedDashboardUids(config.instanceId);
-  if (uids.length === 0) return;
-
-  await deletePersistentDataForIdentities(uids, config.instanceId);
-}
-
 function setTileStatus(state: DashboardTileState, text: string): void {
   state.status.textContent = text;
 }
@@ -126,7 +107,6 @@ function syncTileUi(state: DashboardTileState): void {
   state.section.dataset.mounted = state.handle ? 'true' : 'false';
   state.loadButton.disabled = state.busy || Boolean(state.handle);
   state.unloadButton.disabled = state.busy || !state.handle;
-  state.clearButton.disabled = state.busy;
   state.sizeSelect.disabled = state.busy;
 }
 
@@ -149,10 +129,8 @@ async function loadTile(state: DashboardTileState): Promise<void> {
       theme: 'light',
       locale: 'zh-CN',
       layout: 'auto',
-      mode: state.config.mode,
       instanceId: state.config.instanceId,
       onAuthenticated(info) {
-        rememberDashboardUid(state.config.instanceId, info.uid);
         setTileStatus(state, `已登录 · UID ${info.uid}`);
       },
       onLogout() {
@@ -199,40 +177,12 @@ function unloadTile(state: DashboardTileState): void {
   }
 }
 
-async function clearTile(state: DashboardTileState): Promise<void> {
-  if (state.busy) return;
-  state.busy = true;
-  setTileStatus(state, '删除中…');
-  syncTileUi(state);
-
-  try {
-    if (state.handle) {
-      state.handle.unmount();
-      state.handle = null;
-      const dashboardWindow = getDashboardWindow();
-      if (dashboardWindow?.__dashboardHandles) {
-        delete dashboardWindow.__dashboardHandles[state.host.id];
-      }
-    }
-    await clearTilePersistentData(state.config);
-    clearRememberedDashboardUids(state.config.instanceId);
-    setTileStatus(state, '数据已清空');
-  } catch (error) {
-    setTileStatus(state, '删除失败');
-    console.error('[home-dashboard] failed to clear tile data', state.config.instanceId, error);
-  } finally {
-    state.busy = false;
-    syncTileUi(state);
-  }
-}
-
 function createTileState(config: DashboardTileConfig): DashboardTileState {
   const section = document.getElementById(`dashboard-cell-${config.key}`);
   const host = document.getElementById(`dashboard-host-${config.key}`);
   const status = document.getElementById(`dashboard-status-${config.key}`);
   const loadButton = document.getElementById(`dashboard-load-${config.key}`);
   const unloadButton = document.getElementById(`dashboard-unload-${config.key}`);
-  const clearButton = document.getElementById(`dashboard-clear-${config.key}`);
   const sizeSelect = document.getElementById(`dashboard-size-${config.key}`);
 
   if (
@@ -241,7 +191,6 @@ function createTileState(config: DashboardTileConfig): DashboardTileState {
     || !(status instanceof HTMLElement)
     || !(loadButton instanceof HTMLButtonElement)
     || !(unloadButton instanceof HTMLButtonElement)
-    || !(clearButton instanceof HTMLButtonElement)
     || !(sizeSelect instanceof HTMLSelectElement)
   ) {
     throw new Error(`[home-dashboard] missing tile DOM for ${config.instanceId}`);
@@ -254,7 +203,6 @@ function createTileState(config: DashboardTileConfig): DashboardTileState {
     status,
     loadButton,
     unloadButton,
-    clearButton,
     sizeSelect,
     handle: null,
     busy: false,
@@ -267,7 +215,6 @@ function createTileState(config: DashboardTileConfig): DashboardTileState {
   });
   loadButton.addEventListener('click', () => { void loadTile(state); });
   unloadButton.addEventListener('click', () => { unloadTile(state); });
-  clearButton.addEventListener('click', () => { void clearTile(state); });
   syncTileUi(state);
   return state;
 }
@@ -292,10 +239,6 @@ function exposeDashboardApi(states: ReadonlyMap<string, DashboardTileState>): vo
     unload(hostId: string) {
       const state = states.get(hostId);
       if (state) unloadTile(state);
-    },
-    clear(hostId: string) {
-      const state = states.get(hostId);
-      return state ? clearTile(state) : Promise.resolve();
     },
   };
 }

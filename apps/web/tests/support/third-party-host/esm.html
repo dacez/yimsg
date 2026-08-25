@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>第三方宿主站点（ESM）</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #chat-host { width: 900px; height: 640px; }
+  </style>
+</head>
+<body>
+  <h1>第三方站点</h1>
+  <div id="chat-host"></div>
+  <!-- module script 跨域 import：请求走 CORS 模式，服务端必须回 Access-Control-Allow-Origin。 -->
+  <script type="module">
+    window.__yimsgErrors = [];
+    window.__yimsgEsmLoaded = false;
+    try {
+      const mod = await import('__SERVER_ORIGIN__/uikit/yimsg-uikit.js');
+      window.__yimsgEsmLoaded = typeof mod.mount === 'function';
+      window.__yimsgHandle = mod.mount('#chat-host', {
+        serverUrl: '__SERVER_ORIGIN__',
+        theme: 'light',
+        locale: 'zh-CN',
+        layout: 'desktop',
+        onError(error, context) {
+          window.__yimsgErrors.push(context + ': ' + error.message);
+        },
+      });
+    } catch (error) {
+      window.__yimsgEsmError = String(error);
+    }
+  </script>
+</body>
+</html>

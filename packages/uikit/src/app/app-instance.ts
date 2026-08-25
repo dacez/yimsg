@@ -9,7 +9,7 @@ import {
   type MsgType,
 } from '@yimsg/sdk';
 import type { LocaleOption, Messages } from '../i18n';
-import type { UIKitMode, UIKitViewMode, WidgetEvents } from '../options';
+import type { UIKitViewMode, WidgetEvents } from '../options';
 import type { LayoutChoice } from './session-storage';
 import { detectLocale } from '../i18n';
 import { translations, type Lang } from './i18n';
@@ -38,7 +38,6 @@ interface AppRuntimeHooks {
 
 interface AppRuntimeContext {
   readonly embedded: boolean;
-  readonly requestedMode?: UIKitMode;
   readonly viewMode?: UIKitViewMode;
   readonly initialToken?: string;
   readonly getInitialToken?: () => string | null | undefined | Promise<string | null | undefined>;
@@ -114,7 +113,7 @@ interface AppViews {
   auth: {
     setupAuth(): void;
     authenticate(token: string): Promise<void>;
-    ensureInitialModeSelection(): Promise<void>;
+    ensureInitialLayoutSelection(): Promise<void>;
     showAuthView(): void;
     showAppView(): void;
     handleSessionKicked(): void;
@@ -390,7 +389,8 @@ export class AppInstance {
   }
 
   avatarInnerHtml(display: { avatar?: string; nickname: string }): string {
-    const avatar = normalizeTrustedResourceUrl(display.avatar);
+    // 头像地址存的是服务端相对路径，跨域嵌入时先补上服务端基址再做白名单校验。
+    const avatar = normalizeTrustedResourceUrl(this.client.resolveMediaUrl(display.avatar));
     if (avatar) {
       return `<img src="${this.escapeHtml(avatar)}" alt="" style="width:100%;height:100%;object-fit:cover">`;
     }
@@ -534,12 +534,6 @@ export class AppInstance {
     if (settingsPasswordTitle) settingsPasswordTitle.textContent = this.t('settings.password');
     const settingsLanguageTitle = this.dom.getElementById('settings-language-title');
     if (settingsLanguageTitle) settingsLanguageTitle.textContent = this.t('settings.language');
-    const settingsStorageTitle = this.dom.getElementById('settings-storage-title');
-    if (settingsStorageTitle) settingsStorageTitle.textContent = this.t('settings.storage');
-    const settingsStorageDesc = this.dom.getElementById('settings-storage-desc');
-    if (settingsStorageDesc) settingsStorageDesc.textContent = this.t('settings.storageDesc');
-    const clearDataBtn = this.dom.getElementById('clear-data-btn');
-    if (clearDataBtn) clearDataBtn.textContent = this.t('settings.clearData');
     const editNickname = this.dom.getElementById<HTMLInputElement>('edit-nickname');
     if (editNickname) editNickname.placeholder = this.t('settings.nickname');
     const saveProfileBtn = this.dom.getElementById('save-profile-btn');

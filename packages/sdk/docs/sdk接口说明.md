@@ -1,7 +1,7 @@
 # SDK 接口说明
 
 > 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/generated/actions.gen.ts`、`packages/sdk/src/internal/action-mappers.ts`。
-> 最后复核：2026-07-29。
+> 最后复核：2026-08-25。
 > 触发更新：SDK 公开方法、事件、类型、ClientOptions 或调用前置条件变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；通用同步机制见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)，本文从客户端调用者视角说明 SDK 公开 API、前置条件、返回类型和事件。
 
@@ -87,7 +87,7 @@ interface SessionSnapshot {
 |------|------|------|
 | `sessionState` | `'idle' \| 'authenticated' \| 'initializing' \| 'ready' \| 'destroyed'` | 会话阶段 |
 | `connectionState` | `'disconnected' \| 'connecting' \| 'connected' \| 'reconnecting'` | 连接阶段 |
-| `mode` | `'instant' \| 'persistent'` | 当前会话模式 |
+| `mode` | `'instant' \| 'persistent'` | 当前会话模式；浏览器端只会是 `instant` |
 | `currentUid` | `string` | 当前认证用户 UID，未认证时为空字符串 |
 | `isAuthenticated` | `boolean` | 派生字段，等价于 `sessionState` 处于 `authenticated` / `initializing` / `ready` |
 | `isSessionInitialized` | `boolean` | 派生字段，等价于 `sessionState === 'ready'` |
@@ -154,13 +154,15 @@ interface ClientConfig {
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `startSession` | `(options?: { storage?, fileSystem?, resetLocalData?, instanceId? }) => Promise<SessionStartResult>` | 按业务意图启动会话；`storage` 默认 `instant`；请求持久化时可指定 `fileSystem: 'opfs' \| 'local'`；由 SDK 内部完成持久化能力判断、必要的数据重置、DataGateway 初始化、待处理联系人能力和会话分页游标初始化；persistent 模式打开本地库后即进入 ready，数据后台同步 |
+| `startSession` | `(options?: { storage?, fileSystem?, resetLocalData?, instanceId? }) => Promise<SessionStartResult>` | 按业务意图启动会话；`storage` 默认 `instant`；请求持久化时可指定 `fileSystem: 'local'`（当前唯一后端，仅本地客户端可用）；由 SDK 内部完成持久化能力判断、必要的数据重置、DataGateway 初始化、待处理联系人能力和会话分页游标初始化；persistent 模式打开本地库后即进入 ready，数据后台同步 |
 
 `startSession` 推荐给 UI / UIKit 使用：
 
 ```ts
-await client.startSession({ storage: 'persistent', instanceId: 'main' });
+// Web 端（含嵌入第三方站点的 UIKit）：只有内存模式。
+await client.startSession({ storage: 'instant', instanceId: 'main' });
 
+// 本地客户端（Node 运行时）：可使用 SQLite 本地副本。
 await client.startSession({
   storage: 'persistent',
   fileSystem: 'local',
@@ -170,11 +172,11 @@ await client.startSession({
 await client.startSession({
   storage: 'persistent',
   resetLocalData: 'current-user',
-  instanceId: 'main',
+  instanceId: 'cli-bot',
 });
 ```
 
-`SessionStartResult` 会返回实际使用的 `mode`、`requestedFileSystem` / `actualFileSystem`、是否从持久化降级到即时模式，以及本地数据重置是否失败。未显式指定 `fileSystem` 时，SDK 会自动探测并优先选择当前环境可用后端（浏览器优先 `opfs`，Node.js 优先 `local`）；若请求持久化但无可用后端，会自动降级为即时会话。若本地持久化能力打开失败，`startSession()` 会回退到 `authenticated` 并抛 `StorageModeError`，由调用方决定是否重试 instant；本地库打开后的数据同步失败通过 `session:sync` 和 `error` 事件上报。
+`SessionStartResult` 会返回实际使用的 `mode`、`requestedFileSystem` / `actualFileSystem`、是否从持久化降级到即时模式，以及本地数据重置是否失败。**浏览器端不提供 SQLite 持久化**：可用后端只有本地客户端（Node 运行时）的 `local`，因此在浏览器里请求 `persistent` 一定会安静降级为 `instant`（`degraded: true`、`persistentStorageAvailable: false`），不会抛错。若本地持久化能力打开失败，`startSession()` 会回退到 `authenticated` 并抛 `StorageModeError`，由调用方决定是否重试 instant；本地库打开后的数据同步失败通过 `session:sync` 和 `error` 事件上报。
 
 > `login` / `authenticate` 成功响应中的 `client_config` 字段定义、默认值和服务端硬约束见 [`../../protocol/接口总览.md#15-client_config`](../../../protocol/docs/接口总览.md#15-client_config)。本文只说明 SDK 如何在客户端侧应用这些配置。
 
@@ -353,6 +355,9 @@ interface Contact {
 | `updateUserInfo` | `(params) => Promise<void>` |
 | `updatePassword` | `(oldPassword, newPassword) => Promise<void>` |
 | `uploadFile` | `(file, category) => Promise<UploadResult>` |
+| `resolveMediaUrl` | `(path) => string` |
+
+服务端返回的媒体地址（`UploadResult.url`、用户资料 `avatarUrl`、消息里的 `media_id` 拼出的 `/media/...`）都是**相对路径**，这样部署地址变化时存量数据不会失效。跨域嵌入第三方站点时，相对路径会被浏览器解析到宿主站点而不是服务端，因此渲染前必须用 `resolveMediaUrl()` 补上 `serverUrl` 指向的服务端基址；同源部署下它原样返回，已是绝对地址（外部 CDN、`blob:`、`data:`）时不做二次拼接。
 
 ## 4.6 组织管理
 
@@ -648,8 +653,9 @@ await client.updateRemark({ groupId }, '研发沟通');
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `wsUrl` | `string` | 根据当前 `location` 推导；无 `location` 时为 `ws://localhost:8080/ws` | WebSocket 地址 |
-| `uploadUrl` | `string` | `/api/upload` | HTTP 上传地址 |
+| `serverUrl` | `string` | 无 | 服务端根地址（如 `https://im.example.com`，可带路径前缀）。**跨域嵌入第三方站点时必须提供**：WebSocket、上传地址和媒体基址都由它派生，运行时不再依赖 `location` |
+| `wsUrl` | `string` | 由 `serverUrl` 派生；未提供 `serverUrl` 时根据当前 `location` 推导，无 `location` 时为 `ws://localhost:8080/ws` | WebSocket 地址；显式提供时覆盖派生值 |
+| `uploadUrl` | `string` | 由 `serverUrl` 派生；未提供 `serverUrl` 时为 `/api/upload` | HTTP 上传地址；显式提供时覆盖派生值 |
 | `requestTimeout` | `number` | 15000 ms | 请求超时时间 |
 | `reconnectInterval` | `number` | 2000 ms | 断连后重连间隔 |
 | `reconnectNotifyThreshold` | `number` | 3 | 连续重连尝试达到该次数才触发 `connection:reconnecting`；`connection:disconnected` 不受影响，仍每次断开立即触发 |

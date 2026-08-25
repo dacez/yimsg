@@ -13,20 +13,11 @@ import {
 } from './view-refresh';
 import { isViewVisible } from './utils';
 
-export async function initAfterAuth(app: AppInstance, options: {
-  requestedMode?: 'instant' | 'persistent';
-  startSession?: () => Promise<void>;
-} = {}) {
-  const mode = app.storage.getStoredMode();
-  const effectiveMode = options.requestedMode ?? mode;
-  if (!effectiveMode && !options.startSession) {
-    throw new Error('mode is required before initAfterAuth');
-  }
-
+/** 鉴权成功后启动会话并渲染就绪态。浏览器端只有内存模式，不需要再选存储后端。 */
+export async function initAfterAuth(app: AppInstance) {
   try {
-    if (options.startSession) await options.startSession();
-    else await app.client.startSession({
-      storage: effectiveMode === 'persistent' ? 'persistent' : 'instant',
+    await app.client.startSession({
+      storage: 'instant',
       instanceId: app.runtime.instanceId,
     });
   } catch (error) {
@@ -270,7 +261,7 @@ export function startApp(app: AppInstance): () => void {
       return;
     }
 
-    void app.views.auth?.ensureInitialModeSelection();
+    void app.views.auth?.ensureInitialLayoutSelection();
   })();
 
   return () => {

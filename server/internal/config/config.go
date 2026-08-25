@@ -26,6 +26,12 @@ type ServerConfig struct {
 	MachineID int64  `toml:"machine_id"`
 	TLSCert   string `toml:"tls_cert"`
 	TLSKey    string `toml:"tls_key"`
+	// AllowedOrigins 是允许跨域嵌入本部署的第三方站点来源列表，形如
+	// "https://www.example.com"。留空表示只支持同源访问（默认）；含 "*"
+	// 表示放行任意站点。配置后 /uikit/、/api/upload、/media/ 会对命中的来源
+	// 返回 CORS 响应头，WebSocket 升级也按同一份名单校验 Origin。
+	// 同源页面和不带 Origin 的非浏览器客户端（CLI、Agent）始终放行。
+	AllowedOrigins []string `toml:"allowed_origins"`
 }
 
 type DatabaseConfig struct {

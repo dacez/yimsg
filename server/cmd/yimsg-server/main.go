@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"syscall"
 	"yimsg/server/internal/dal"
+	"yimsg/server/internal/httpx"
 	"yimsg/server/internal/plugin"
 	"yimsg/server/internal/service"
 	"yimsg/server/internal/shard"
@@ -90,14 +91,18 @@ func main() {
 	// Routes
 	mux := http.NewServeMux()
 
+	// 跨域策略：允许 [server] allowed_origins 中的第三方站点直接嵌入 UIKit
+	// 并访问上传 / 媒体接口。未配置时整体关闭，同源部署行为不变。
+	origins := httpx.NewOriginPolicy(cfg.Server.AllowedOrigins)
+
 	// WebSocket
 	mux.HandleFunc("/ws", ws.HandleWS(state))
 
 	// Upload API
-	mux.HandleFunc("/api/upload", service.Upload(state))
+	mux.Handle("/api/upload", origins.Wrap(http.HandlerFunc(service.Upload(state))))
 
 	// Serve uploaded files; resolves media by id (/media/{category}/{media_id}).
-	mux.Handle("/media/", service.MediaHandler(cfg.Media.UploadDir))
+	mux.Handle("/media/", origins.Wrap(service.MediaHandler(cfg.Media.UploadDir)))
 
 	// Static website (官网): 默认挂载根路径作为首页。
 	if cfg.Website.StaticDir != "" && cfg.Website.MountPath != "" {
@@ -108,7 +113,10 @@ func main() {
 		})))
 	}
 
-	// Static frontend (聊天相关静态资源): StaticDir 下 app/、demo/、uikit/ 三个
+	// Static frontend (聊天相关静态资源): 三个挂载点都经过跨域中间件，第三方站点
+	// 可直接引用 /uikit/ 下的 bundle。这里不再设置 COOP/COEP——浏览器端已不使用
+	// SQLite/OPFS，不需要跨域隔离，而跨域隔离反而会挡住第三方宿主页的嵌入。
+	// StaticDir 下 app/、demo/、uikit/ 三个
 	// 平级目录（真正需要注册登录的 App / 固定账号演示页 / 可嵌入第三方站点的
 	// widget bundle）分别挂载在同名根路径下（/app/、/demo/、/uikit/），彼此
 	// 平级、没有共同的 /chat/ 前缀，根路径留给官网首页。demo/、uikit/ 自身没
@@ -128,16 +136,14 @@ func main() {
 			mountPath := "/" + m.sub + "/"
 			fs := http.FileServer(http.Dir(filepath.Join(cfg.Frontend.StaticDir, m.sub)))
 			guardRoot := m.guardRoot
-			mux.Handle(mountPath, http.StripPrefix(mountPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mux.Handle(mountPath, origins.Wrap(http.StripPrefix(mountPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if guardRoot && (r.URL.Path == "" || r.URL.Path == "/") {
 					http.NotFound(w, r)
 					return
 				}
 				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-				w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-				w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
 				fs.ServeHTTP(w, r)
-			})))
+			}))))
 		}
 	}
 

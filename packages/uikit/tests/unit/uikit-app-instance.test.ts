@@ -31,14 +31,14 @@ describe('AppInstance', () => {
     const b = new AppStorageScope(createEmbeddedStorage());
 
     a.setStoredToken('token-a');
-    a.setStoredMode('instant');
+    a.setStoredLayout('desktop');
     b.setStoredToken('token-b');
-    b.setStoredMode('persistent');
+    b.setStoredLayout('mobile');
 
     expect(a.getStoredToken()).toBe('token-a');
     expect(b.getStoredToken()).toBe('token-b');
-    expect(a.getStoredMode()).toBe('instant');
-    expect(b.getStoredMode()).toBe('persistent');
+    expect(a.getStoredLayout()).toBe('desktop');
+    expect(b.getStoredLayout()).toBe('mobile');
   });
 
   it('each app instance keeps its own language and runtime identity', () => {

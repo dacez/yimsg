@@ -23,14 +23,6 @@ import type { ThemeOption } from './theme';
 export type MountTarget = HTMLElement | string;
 
 /**
- * UIKit 存储模式。
- * - `instant`：纯内存 DataGateway，不落盘，刷新即丢失；所有环境都可用。
- * - `persistent`：请求持久化会话，具体本地存储实现由 SDK 内部决定；
- *   本地数据可在设置页通过「清除数据」按钮随时清空并重新追平，无需切换模式。
- */
-export type UIKitMode = 'instant' | 'persistent';
-
-/**
  * UIKit 显示范围。
  * - `full`：完整应用，底部导航含聊天 / 联系人 / 设置三个入口，默认值。
  * - `chat-only`：只保留会话列表 + 聊天视图，隐藏底部导航栏；用户始终停留在聊天视图，
@@ -41,8 +33,8 @@ export type UIKitMode = 'instant' | 'persistent';
 export type UIKitViewMode = 'full' | 'chat-only' | 'contacts-only';
 
 /** 宿主传入的装载参数。 */
-export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'reconnectNotifyThreshold' | 'heartbeatInterval' | 'recallWindowSeconds'> {
-  /** 当前挂载实例的唯一标识；用于 instant/persistent 状态与 持久存储 dbName 隔离。 */
+export interface MountOptions extends Pick<ClientOptions, 'serverUrl' | 'wsUrl' | 'uploadUrl' | 'requestTimeout' | 'reconnectInterval' | 'reconnectNotifyThreshold' | 'heartbeatInterval' | 'recallWindowSeconds'> {
+  /** 当前挂载实例的唯一标识；同页多实例时用于隔离各自的会话状态。 */
   readonly instanceId?: string;
   /** 宿主已持有的 token（SSO 场景），widget 会自动 authenticate。 */
   readonly token?: string;
@@ -52,15 +44,6 @@ export interface MountOptions extends Pick<ClientOptions, 'wsUrl' | 'uploadUrl' 
   readonly client?: YimsgClient;
   /** 强制布局；默认根据容器宽度自动选择。 */
   readonly layout?: 'desktop' | 'mobile' | 'auto';
-  /**
-  * 存储模式，默认 `instant`。
-   *
-  * - `instant`：内存 DataGateway，始终可用；
-  * - `persistent`：请求持久化会话；不可用时自动降级为 `instant` 并通过 `onError` 通知宿主。
-   *
-   * 当宿主通过 `client` 传入已经 ready 的实例时，UIKit 不会再次初始化，此参数不生效。
-   */
-  readonly mode?: UIKitMode;
   /** 显示范围，默认 `full`；`chat-only` 隐藏底部导航栏，只保留会话列表 + 聊天视图。 */
   readonly viewMode?: UIKitViewMode;
   /** 主题。默认 `auto`（跟随系统 prefers-color-scheme）。 */

@@ -750,22 +750,9 @@ describe("YimsgClient", () => {
     expect(client.getSessionSnapshot().currentUid).toBe("");
   });
 
-  it("startSession resetLocalData=all removes every persistent session entry", async () => {
-    const removed: string[] = [];
-    const root = {
-      entries: async function* () {
-        yield ["yimsg-100.db", {}];
-        yield ["yimsg-100.db-journal", {}];
-      },
-      removeEntry: vi.fn(async (name: string) => {
-        removed.push(name);
-      }),
-    };
-    vi.stubGlobal("navigator", {
-      storage: {
-        getDirectory: vi.fn(async () => root),
-      },
-    });
+  it("浏览器环境 resetLocalData=all 不触碰本地存储，也不报错", async () => {
+    // 浏览器端没有 SQLite 后端，清理请求应当整体成为 no-op，而不是抛错或半途失败。
+    vi.stubGlobal("process", { versions: {} });
 
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
@@ -774,8 +761,6 @@ describe("YimsgClient", () => {
       resetLocalData: "all",
     });
 
-    expect(root.removeEntry).toHaveBeenCalledTimes(2);
-    expect(removed).toEqual(["yimsg-100.db", "yimsg-100.db-journal"]);
     expect(result.resetLocalData).toBe("all");
     expect(result.resetLocalDataError).toBeNull();
   });
@@ -811,26 +796,38 @@ describe("YimsgClient", () => {
     expect(result.resetLocalDataError).toBeNull();
   });
 
-  it("startSession 在指定 opfs 且不可用时降级到 instant", async () => {
+  it("浏览器环境请求 persistent 时降级为 instant", async () => {
+    // Web 端（含嵌入第三方站点的 UIKit）只有内存模式，请求持久化必须安静降级，
+    // 而不是让整个会话启动失败。
+    vi.stubGlobal("process", { versions: {} });
+
     const { client } = setupClientWithMocks();
     await client.authenticate("tok123");
-    vi.stubGlobal("navigator", { storage: {} });
 
-    const result = await client.startSession({
-      storage: "persistent",
-      fileSystem: "opfs",
-    });
+    const result = await client.startSession({ storage: "persistent" });
 
     expect(result).toMatchObject({
       requestedStorage: "persistent",
       actualStorage: "instant",
-      requestedFileSystem: "opfs",
+      requestedFileSystem: null,
       actualFileSystem: null,
       mode: "instant",
       degraded: true,
       persistentStorageAvailable: false,
     });
     expect(client.getSessionSnapshot().mode).toBe("instant");
+  });
+
+  it("startSession 拒绝已退役的 opfs 文件系统", async () => {
+    const { client } = setupClientWithMocks();
+    await client.authenticate("tok123");
+
+    await expect(
+      client.startSession({
+        storage: "persistent",
+        fileSystem: "opfs" as unknown as "local",
+      }),
+    ).rejects.toMatchObject({ kind: "validation", code: "INVALID_ARGUMENT" });
   });
 
   it("startSession 在 Node 环境可使用 local 持久化文件系统", async () => {

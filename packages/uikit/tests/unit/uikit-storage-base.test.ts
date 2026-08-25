@@ -13,27 +13,19 @@ describe('uikit storage-base', () => {
   it('reads and writes seeded values through a shared storage scope', () => {
     const scope = new StorageScope(createSeededStorage({
       token: 'tok123',
-      mode: 'persistent',
-      persistent_uid: '1001',
       layout: 'desktop',
       lang: 'en',
     }));
 
     expect(scope.getStoredToken()).toBe('tok123');
-    expect(scope.getStoredMode()).toBe('persistent');
-    expect(scope.getStoredPersistentUid()).toBe('1001');
     expect(scope.getStoredLayout()).toBe('desktop');
     expect(scope.getStoredLang()).toBe('en');
 
     scope.clearStoredToken();
-    scope.setStoredMode('instant');
-    scope.clearStoredPersistentUid();
     scope.setStoredLayout('mobile');
     scope.setStoredLang('zh');
 
     expect(scope.getStoredToken()).toBeNull();
-    expect(scope.getStoredMode()).toBe('instant');
-    expect(scope.getStoredPersistentUid()).toBeNull();
     expect(scope.getStoredLayout()).toBe('mobile');
     expect(scope.getStoredLang()).toBe('zh');
   });

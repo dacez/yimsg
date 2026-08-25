@@ -87,6 +87,8 @@ function createUploadApp(client: {
     client: {
       describeConversation: () => ({ target: { toUid: '2' }, kind: 'dm', id: '2' }),
       getSessionSnapshot: () => ({ currentUid: '1' }),
+      // 同源部署下媒体地址保持相对路径；跨域嵌入由 SDK 补服务端基址。
+      resolveMediaUrl: (path: string) => path,
       ...client,
     },
     views: { chat: { renderMessages, scrollToBottom } },

@@ -1,7 +1,7 @@
 # UI 设计方案
 
 > 主要对照：`packages/uikit/src/app/views/`、`packages/uikit/src/app/style.css`、`packages/uikit/src/app/bounded-list/`、`packages/uikit/src/app/view-refresh.ts`。
-> 最后复核：2026-08-23。
+> 最后复核：2026-08-25。
 > 触发更新：视图结构、布局、有界消息流窗口、样式 token、移动端交互或本地 UI 状态变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；本文面向 UI 维护者，说明视图结构、交互、有界消息流窗口、状态和样式约束。
 
@@ -212,9 +212,7 @@ sequenceDiagram
 
 ```
 initAfterAuth():
-  mode = getStoredMode()
-  if mode == null → 抛错（调用方必须先完成模式选择）
-  await client.startSession({ storage })      // SDK 内部：判断持久化能力、创建 DataGateway；persistent 打开本地库后后台同步
+  await client.startSession({ storage: 'instant' })   // Web 端只有内存会话；SDK 内部创建 DataGateway
   pendingCount = client.getContactCount(CONTACT_STATUS_PENDING_INCOMING)   // 只统计待我处理的请求，不含自己发出的
   updateContactBadges(pendingCount)
   showAppView()
