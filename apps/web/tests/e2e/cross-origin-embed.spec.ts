@@ -40,6 +40,31 @@ async function registerInWidget(page: Page, username: string, nickname: string):
 }
 
 test.describe('跨域嵌入', () => {
+  test('IIFE bundle 跨域加载后暴露全局 YimsgUIKit 并建出 shadow root', async ({ page }) => {
+    const problems = collectPageProblems(page);
+    await page.goto(`${thirdPartyOrigin()}/iife.html`);
+
+    // 全局对象来自跨域的普通 script 标签：宿主页无需改造成 module script，
+    // 这是「给个网址就能嵌」的最短接入形态。
+    await expect
+      .poll(() => page.evaluate(() => (window as never as { __yimsgGlobalReady?: boolean }).__yimsgGlobalReady))
+      .toBe(true);
+
+    const hasShadow = await page.evaluate(() => Boolean(document.getElementById('chat-host')?.shadowRoot));
+    expect(hasShadow).toBe(true);
+    await expect(page.locator('#login-form')).toBeVisible({ timeout: 15_000 });
+
+    expect(problems.filter((p) => /CORS|Mixed Content|blocked/i.test(p))).toEqual([]);
+  });
+
+  test('IIFE 宿主页同样能完成跨域注册登录', async ({ page }) => {
+    await page.goto(`${thirdPartyOrigin()}/iife.html`);
+    await registerInWidget(page, uniqueUser('xiife'), 'CrossOriginIife');
+
+    const widgetErrors = await page.evaluate(() => (window as never as { __yimsgErrors?: string[] }).__yimsgErrors ?? []);
+    expect(widgetErrors).toEqual([]);
+  });
+
   test('ESM bundle 跨域 import 成功并建出 shadow root', async ({ page }) => {
     const problems = collectPageProblems(page);
     await page.goto(`${thirdPartyOrigin()}/esm.html`);

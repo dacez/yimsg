@@ -57,11 +57,6 @@ checkDependencyBoundary('packages/sdk/src', ['@yimsg/uikit', '@yimsg/web']);
 checkDependencyBoundary('packages/uikit/src', ['@yimsg/protocol', '@yimsg/web']);
 checkDependencyBoundary('apps/web/src', ['@yimsg/sdk', '@yimsg/protocol']);
 
-const packageJson = read('package.json');
-if (packageJson.includes('yimsg-uikit.iife')) {
-  fail('package.json 不应引用 IIFE UIKit 产物');
-}
-
 for (const configPath of [
   'packages/sdk/tsconfig.json',
   'packages/uikit/tsconfig.json',
@@ -85,8 +80,23 @@ const sourceAndTestRoots = [
 ];
 for (const file of sourceAndTestRoots.flatMap(walk)) {
   const content = read(file);
-  if (content.includes('yimsg-uikit.iife') || content.includes('data-yimsg-auto')) {
-    fail(`${file} 不应恢复 IIFE 或 data-yimsg-auto 接入`);
+  if (content.includes('data-yimsg-auto')) {
+    fail(`${file} 不应恢复 data-yimsg-auto 一行脚本自动挂载`);
+  }
+}
+
+// 进浏览器 bundle 的源码不得依赖 import.meta.url：IIFE 产物里它为空，任何据此
+// 定位 Worker / wasm / 资源的代码都会静默失效。这是当初禁止 IIFE 的根因，现在
+// 直接守住根因本身。测试与构建配置跑在 Node 下，不受此限。
+const bundledSourceRoots = [
+  'protocol/generated/typescript',
+  'packages/sdk/src',
+  'packages/uikit/src',
+  'apps/web/src',
+];
+for (const file of bundledSourceRoots.flatMap(walk)) {
+  if (read(file).includes('import.meta.url')) {
+    fail(`${file} 不得依赖 import.meta.url（IIFE 产物下为空，请改为从 serverUrl 派生地址）`);
   }
 }
 

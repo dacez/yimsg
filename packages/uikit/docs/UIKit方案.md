@@ -85,6 +85,7 @@ packages/uikit/src/
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | ESM 嵌入 | 支持 | `import { mount } from '/uikit/yimsg-uikit.js'` |
+| IIFE 嵌入 | 支持 | `<script src="/uikit/yimsg-uikit.iife.js">` 后取全局 `YimsgUIKit` |
 | 选择器挂载 | 支持 | `mount('#chat', options)` 接受 CSS 选择器或 HTMLElement |
 | 登录 / 注册 | 支持 | 内置认证表单；也支持 `token` / `getToken()` 自动鉴权 |
 | 外部已认证 client | 支持 | `client` 已 ready 时跳过登录页 |
@@ -109,9 +110,11 @@ npm run build -w @yimsg/uikit       # 仅构建 UIKit ESM 包
 | 目标 | 配置 | 产物 |
 |---|---|---|
 | 主应用 | `apps/web/vite.config.ts` | `web/` |
-| UIKit 嵌入包 | `packages/uikit/vite.config.ts` | `web/uikit/yimsg-uikit.js` |
+| UIKit 嵌入包 | `packages/uikit/vite.config.ts` | `web/uikit/yimsg-uikit.js`（ESM）、`web/uikit/yimsg-uikit.iife.js`（IIFE） |
 
-UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 warning 会被视为失败，避免重新引入不可运行产物。
+UIKit 同时发布 ESM 与 IIFE 两种产物：ESM 供 `<script type="module">` 与打包工具使用，IIFE 供第三方站点用一行普通 `<script src>` 引入后取全局 `YimsgUIKit`。
+
+构建时 `EMPTY_IMPORT_META` 会被视为失败，且仓库护栏 `tools/scripts/check-frontend-guards.mjs` 禁止进 bundle 的源码出现 `import.meta.url`——IIFE 产物里它为空，任何据此定位资源的代码都会静默失效。所有对外地址一律从 `serverUrl` 派生。`data-yimsg-auto` 一行脚本自动挂载仍然禁止。
 
 示例页面位于 `packages/uikit/examples/embed.html` 与 `packages/uikit/examples/embed-multi.html`；官网营销向体验 demo（含人工客服工作台）位于 `packages/uikit/examples/` 下的其余页面。
 
@@ -143,6 +146,8 @@ demo 页面自身的标题 / 说明文案通过共享脚本 `packages/uikit/exam
 第三方站点跨域嵌入（宿主站点与 yimsg 部署不同源）：只多传一个 `serverUrl`，
 bundle 也从该地址加载。
 
+ESM 形态：
+
 ```html
 <div id="chat" style="height:640px"></div>
 <script type="module">
@@ -152,8 +157,18 @@ bundle 也从该地址加载。
 </script>
 ```
 
-服务端需要把宿主站点写进 `config.toml` 的 `[server] allowed_origins`，否则
-模块脚本的跨域 import、上传预检和 WebSocket 升级都会被拒绝。
+IIFE 形态（宿主页不需要改造成 module script，接入成本最低）：
+
+```html
+<div id="chat" style="height:640px"></div>
+<script src="https://im.example.com/uikit/yimsg-uikit.iife.js"></script>
+<script>
+  YimsgUIKit.mount('#chat', { serverUrl: 'https://im.example.com' });
+</script>
+```
+
+两种形态都需要服务端把宿主站点写进 `config.toml` 的 `[server] allowed_origins`，
+否则跨域加载 bundle、上传预检和 WebSocket 升级都会被拒绝。
 
 ### 6.2 复用外部已认证 client
 
@@ -248,7 +263,7 @@ UIKit 的目标形态是「客户把 yimsg 部署到自己的一台服务器，�
 
 | 环节 | 要求 |
 |---|---|
-| bundle 加载 | 宿主页用 `<script type="module">` 从服务端 import `/uikit/yimsg-uikit.js`；模块脚本走 CORS 模式请求，服务端必须放行宿主来源 |
+| bundle 加载 | 宿主页用 `<script type="module">` import `/uikit/yimsg-uikit.js`，或用普通 `<script src>` 加载 `/uikit/yimsg-uikit.iife.js` 取全局 `YimsgUIKit`；两者都走 CORS 检查，服务端必须放行宿主来源 |
 | 服务地址 | `mount()` 传 `serverUrl`，WebSocket、上传地址和媒体基址全部由它派生，运行时不依赖 `location` |
 | 媒体展示 | 服务端返回的是 `/media/...` 相对路径，UIKit 渲染前统一经 `client.resolveMediaUrl()` 补上服务端基址，否则会被解析到宿主站点 |
 | 服务端配置 | `config.toml` 的 `[server] allowed_origins` 列出宿主来源；`/uikit/`、`/api/upload`、`/media/` 返回 CORS 头，WebSocket 升级按同一份名单校验 Origin |
