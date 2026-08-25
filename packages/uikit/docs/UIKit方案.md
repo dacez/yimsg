@@ -1,7 +1,7 @@
 # UIKit 方案
 
-> 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/mode.ts`、`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/` 与 `apps/web/tests/performance/`。
-> 最后复核：2026-08-16。
+> 主要对照：`packages/uikit/src/index.ts`、`packages/uikit/src/embed.ts`、`packages/uikit/src/options.ts`、`packages/uikit/src/app/bounded-list/`、`apps/web/tests/component/` 与 `apps/web/tests/performance/`。
+> 最后复核：2026-08-25。
 > 触发更新：`mount()`、`MountOptions`、`MountHandle`、嵌入模式、构建产物、宿主回调或 UIKit 核心组件测试入口变化时同步更新。
 > 入口关系：上级索引见 [`../README.md`](../README.md)；本文是 UIKit 设计、公开接口、构建产物和宿主接入的单一事实源。
 
@@ -19,8 +19,10 @@
   - [7.1 `mount(target, options?)`](#71-mounttarget-options)
   - [7.2 `MountOptions`](#72-mountoptions)
   - [7.3 `MountHandle`](#73-mounthandle)
-- [8. `mode` 语义](#8-mode-语义)
-  - [8.1 `viewMode` 语义](#81-viewmode-语义)
+- [8. 跨域嵌入](#8-跨域嵌入)
+  - [8.0 接入形态一览](#80-接入形态一览)
+  - [8.1 一行脚本自动挂载](#81-一行脚本自动挂载)
+  - [8.2 `viewMode` 语义](#82-viewmode-语义)
 - [9. 核心设计约束](#9-核心设计约束)
 - [10. 测试覆盖](#10-测试覆盖)
 - [11. 已知边界](#11-已知边界)
@@ -46,7 +48,7 @@ UIKit 是 Yimsg 前端的统一 UI 装配层。它对上提供完整聊天界面
 packages/uikit/src/
 ├── index.ts               — 嵌入包公开入口，导出 mount、YimsgClient 与类型
 ├── embed.ts               — Shadow DOM 挂载入口，复用完整 UIKit
-├── options.ts             — MountOptions / MountHandle / UIKitMode 等公开类型
+├── options.ts             — MountOptions / MountHandle / UIKitViewMode 等公开类型
 ├── theme.ts               — 主题 token、预设、系统主题监听
 ├── i18n.ts                — 嵌入侧 locale / messages 类型与基础词典
 ├── responsive-layout.ts   — 容器宽度与布局模式判定
@@ -58,11 +60,11 @@ packages/uikit/src/
     ├── bounded-list/       — 统一的有界列表窗口组件 BoundedList（全量渲染、双向翻页、无窗口切片）
     ├── safe-dom.ts        — URL allowlist、SafeHtml、统一转义
     ├── storage-base.ts    — 浏览器存储回退、seeded memory 与 StorageScope
-    ├── session-storage.ts — ClientMode / LayoutChoice 等共享类型定义
+    ├── session-storage.ts — LayoutChoice 等共享类型定义
     ├── i18n.ts            — 运行时语言切换、静态文案应用、覆盖合并
     ├── layout.ts          — 桌面 / 移动布局切换
     ├── view-refresh.ts    — 可见视图刷新编排
-    ├── startup-mode.ts    — mode 与布局决策
+    ├── startup-mode.ts    — 首次访问的布局偏好判定
     ├── utils.ts           — DOM、modal、toast、status 辅助
     ├── style.css          — 主应用完整样式
     └── views/             — auth / chat / contacts / settings / session-preferences
@@ -76,7 +78,7 @@ packages/uikit/src/
 | DOM 模型 | Shadow DOM，样式隔离 | Light DOM，启动时注入 `shell.ts` 骨架 |
 | UI 覆盖 | 认证、会话、联系人、群、设置完整能力 | 同左 |
 | 事件语义 | 桥接 `authenticated` / `logout` / `messages` / `conversation:open` / `error` | SDK 事件 + 页面级事件 |
-| 模式支持 | `instant` / `persistent` 由挂载参数指定，持久存储可在设置页随时「清除数据」 | 登录前模式选择 + localStorage 记忆 |
+| 会话存储 | 内存会话（Web 端唯一形态） | 同左；首次访问只确认布局偏好 |
 | 存储 | 默认隔离存储适配器，可按 `instanceId` 隔离 | 浏览器 `localStorage` |
 | 打包配置 | `packages/uikit/vite.config.ts` | `apps/web/vite.config.ts` |
 
@@ -85,17 +87,19 @@ packages/uikit/src/
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | ESM 嵌入 | 支持 | `import { mount } from '/uikit/yimsg-uikit.js'` |
+| IIFE 嵌入 | 支持 | `<script src="/uikit/yimsg-uikit.iife.js">` 后取全局 `YimsgUIKit` |
+| 一行脚本自动挂载 | 支持 | `<script src=... data-yimsg-auto>` + 一个 `[data-yimsg-widget]` 容器，宿主零 JavaScript |
 | 选择器挂载 | 支持 | `mount('#chat', options)` 接受 CSS 选择器或 HTMLElement |
 | 登录 / 注册 | 支持 | 内置认证表单；也支持 `token` / `getToken()` 自动鉴权 |
 | 外部已认证 client | 支持 | `client` 已 ready 时跳过登录页 |
 | 会话与消息 | 支持 | 会话分页、分页、未读、详情、免打扰、Markdown（输入框 Markdown 模式切换撰写 + 安全渲染）、引用、转发、撤回、多选 |
 | 联系人 / 群 | 支持 | 好友请求、搜索、备注、删除、屏蔽列表、建群、群详情与成员管理 |
-| 设置 | 支持 | 资料、头像、密码、语言、清除数据（仅 `persistent` 模式）、登出 |
+| 设置 | 支持 | 资料、头像、密码、语言、登出 |
 | 主题 | 支持 | `light` / `dark` / `auto`，支持 token 覆盖和运行期切换 |
 | 国际化 | 支持 | 内置 `zh-CN` / `en`，支持 `messages` 覆盖 |
 | 连接状态 | 支持 | 断开、重连、同步中通过全局状态条提示（灰色，每次断线立即提示，聊天/通讯录/设置所有视图可见）；重连成功后自动触发会话/消息/联系人等有界列表追平 |
 | 运行期控制 | 支持 | `setTheme` / `setLocale` / `openConversation` / `logout` / `on` |
-| 存储模式 | 支持 | `instant` / `persistent`，具体持久化能力由 SDK 判断；`persistent` 下设置页可随时「清除数据」重新追平 |
+| 跨域嵌入 | 支持 | 宿主站点与服务端不同源时传 `serverUrl`，WebSocket / 上传 / 媒体地址全部由它派生；服务端需配置 `allowed_origins` 放行宿主来源 |
 
 ## 5. 构建与产物
 
@@ -109,9 +113,11 @@ npm run build -w @yimsg/uikit       # 仅构建 UIKit ESM 包
 | 目标 | 配置 | 产物 |
 |---|---|---|
 | 主应用 | `apps/web/vite.config.ts` | `web/` |
-| UIKit 嵌入包 | `packages/uikit/vite.config.ts` | `web/uikit/yimsg-uikit.js` |
+| UIKit 嵌入包 | `packages/uikit/vite.config.ts` | `web/uikit/yimsg-uikit.js`（ESM）、`web/uikit/yimsg-uikit.iife.js`（IIFE） |
 
-UIKit 当前只发布 ESM 产物。构建时 `EMPTY_IMPORT_META` 等高风险 warning 会被视为失败，避免重新引入不可运行产物。
+UIKit 同时发布 ESM 与 IIFE 两种产物：ESM 供 `<script type="module">` 与打包工具使用，IIFE 供第三方站点用一行普通 `<script src>` 引入后取全局 `YimsgUIKit`。
+
+构建时 `EMPTY_IMPORT_META` 会被视为失败，且仓库护栏 `tools/scripts/check-frontend-guards.mjs` 禁止进 bundle 的源码出现 `import.meta.url`——IIFE 产物里它为空，任何据此定位资源的代码都会静默失效。所有对外地址一律从 `serverUrl` 派生。`data-yimsg-auto` 一行脚本自动挂载仍然禁止。
 
 示例页面位于 `packages/uikit/examples/embed.html` 与 `packages/uikit/examples/embed-multi.html`；官网营销向体验 demo（含人工客服工作台）位于 `packages/uikit/examples/` 下的其余页面。
 
@@ -123,6 +129,8 @@ demo 页面自身的标题 / 说明文案通过共享脚本 `packages/uikit/exam
 
 ### 6.1 ESM 嵌入
 
+同源部署（页面和服务端在同一个域名下）：
+
 ```html
 <div id="chat" style="height:640px"></div>
 <script type="module">
@@ -132,19 +140,55 @@ demo 页面自身的标题 / 说明文案通过共享脚本 `packages/uikit/exam
     token: localStorage.getItem('yimsg_token') ?? undefined,
     theme: { preset: 'light', primary: '#6d4aff', radius: '12px' },
     locale: 'en',
-    mode: 'persistent',
     onAuthenticated: ({ token }) => localStorage.setItem('yimsg_token', token),
     onLogout: () => localStorage.removeItem('yimsg_token'),
   });
 </script>
 ```
 
+第三方站点跨域嵌入（宿主站点与 yimsg 部署不同源）：只多传一个 `serverUrl`，
+bundle 也从该地址加载。
+
+ESM 形态：
+
+```html
+<div id="chat" style="height:640px"></div>
+<script type="module">
+  import { mount } from 'https://im.example.com/uikit/yimsg-uikit.js';
+
+  mount('#chat', { serverUrl: 'https://im.example.com' });
+</script>
+```
+
+IIFE 形态（宿主页不需要改造成 module script）：
+
+```html
+<div id="chat" style="height:640px"></div>
+<script src="https://im.example.com/uikit/yimsg-uikit.iife.js"></script>
+<script>
+  YimsgUIKit.mount('#chat', { serverUrl: 'https://im.example.com' });
+</script>
+```
+
+一行脚本形态（接入成本最低，宿主不写任何 JavaScript）：
+
+```html
+<div data-yimsg-widget style="height:640px"></div>
+<script src="https://im.example.com/uikit/yimsg-uikit.iife.js" data-yimsg-auto></script>
+```
+
+服务端地址由 UIKit 从脚本自身的 `src` 推导——脚本从哪个源加载，就连哪个服务端，
+因此连 `serverUrl` 都不用填。可选的 `data-yimsg-*` 属性见 [8.1](#81-一行脚本自动挂载)。
+
+两种形态都需要服务端把宿主站点写进 `config.toml` 的 `[server] allowed_origins`，
+否则跨域加载 bundle、上传预检和 WebSocket 升级都会被拒绝。
+
 ### 6.2 复用外部已认证 client
 
 ```ts
-const client = new YimsgClient({ wsUrl });
+const client = new YimsgClient({ serverUrl: 'https://im.example.com' });
 await client.authenticate(savedToken);
-await client.startSession({ storage: 'persistent' });
+await client.startSession({ storage: 'instant' });
 
 mount('#chat', { client });
 ```
@@ -156,7 +200,7 @@ mount('#chat', { client });
 - 建议最小舒适尺寸为 `360 x 420 px`。
 - 卡片或网格等窄容器推荐使用 `layout: 'auto'`。
 - `onReady` 只表示 UIKit 已挂载并完成事件绑定，不代表已登录。
-- 传入已完成 `startSession()` 的 `client` 时，`mode` 参数不再生效。
+- 传入已完成 `startSession()` 的 `client` 时，UIKit 不再重复初始化会话。
 
 ## 7. 公开 API
 
@@ -174,24 +218,24 @@ function mount(target: HTMLElement | string, options?: MountOptions): MountHandl
 4. 创建独立 `AppInstance`，绑定 DOM、存储、主题、语言、回调桥接。
 5. 复用 `app/main-app.ts#startApp()` 启动完整 UIKit。
 6. 若已有 ready client，直接进入主界面；否则显示认证页，并按 `token` / `getToken()` 自动鉴权。
-7. 认证成功后按 `options.mode` 调用 SDK 的业务会话启动接口。
+7. 认证成功后调用 SDK 的业务会话启动接口（Web 端固定为内存会话）。
 8. 返回 `MountHandle`。
 
-每次 `mount()` 都创建独立 UIKit 运行时。同页多实例必须视为互相隔离：instant / 持久存储两种模式下的语言、布局、当前会话、联系人分页状态和本地存储都不跨实例共享。
+每次 `mount()` 都创建独立 UIKit 运行时。同页多实例必须视为互相隔离：语言、布局、当前会话、联系人分页状态和本地存储都不跨实例共享。
 
 ### 7.2 `MountOptions`
 
 | 字段 | 类型 / 语义 |
 |---|---|
-| `wsUrl`、`uploadUrl` | 透传给 `YimsgClient` 的服务地址 |
+| `serverUrl` | 服务端根地址；跨域嵌入第三方站点时必须提供，WebSocket / 上传 / 媒体地址都由它派生 |
+| `wsUrl`、`uploadUrl` | 透传给 `YimsgClient` 的服务地址；显式提供时覆盖由 `serverUrl` 派生的值 |
 | `requestTimeout`、`reconnectInterval`、`reconnectNotifyThreshold`、`heartbeatInterval` | UIKit 自建 `YimsgClient` 时透传给 SDK 的连接参数 |
 | `recallWindowSeconds` | `MountOptions` 类型保留该字段；当前 `mount()` 自建 client 不透传它，宿主如需认证前自定义撤回时限，应自行创建已配置的 `YimsgClient` 并通过 `client` 传入。登录 / 鉴权成功后仍以后端 `client_config.recall_window_seconds` 为准 |
-| `instanceId` | 当前挂载实例唯一标识，用于运行时和持久存储本地库隔离；未显式传时取挂载容器的 `id`，否则固定为 `'default'`（见 `packages/sdk/docs/sdk设计方案.md` persistent DB 命名） |
+| `instanceId` | 当前挂载实例唯一标识，用于同页多实例的运行时隔离；未显式传时取挂载容器的 `id`，否则固定为 `'default'` |
 | `token` | 宿主已有 token，UIKit 挂载后自动 authenticate |
 | `getToken()` | 异步 token 提供者，挂载时调用一次 |
 | `client` | 复用宿主已有 `YimsgClient`；若已 ready 则跳过登录页 |
 | `layout` | `desktop` / `mobile` / `auto`，默认根据容器宽度判断 |
-| `mode` | `instant` / `persistent`，默认 `instant` |
 | `viewMode` | `full` / `chat-only` / `contacts-only`，默认 `full`；`chat-only` 隐藏底部导航栏只保留会话列表 + 聊天视图，`contacts-only` 隐藏底部导航栏只保留通讯录视图（好友 + 组织架构） |
 | `theme` | `light` / `dark` / `auto` 或 token 覆盖对象 |
 | `locale` | `zh-CN` / `en` / `auto` |
@@ -226,18 +270,49 @@ Widget 事件：
 | `conversation:open` | `ConversationDescriptor` |
 | `error` | `(error, context)` |
 
-## 8. `mode` 语义
+## 8. 跨域嵌入
 
-`UIKitMode = 'instant' | 'persistent'`。
+### 8.0 接入形态一览
 
-| mode | 映射到 SDK | 行为 |
+| 形态 | 宿主要写的东西 | 适用 |
 |---|---|---|
-| `instant` | `startSession({ storage: 'instant' })` | 即时会话，所有环境可用，刷新即丢失 |
-| `persistent` | `startSession({ storage: 'persistent' })` | 请求持久化会话；浏览器持久化能力预检查不可用时 SDK 降级为即时会话，并通过 `onError(err, 'mode:persistent-fallback')` 通知宿主；本地持久化能力初始化失败会作为错误抛出 |
+| 一行脚本 | 一个容器元素 + 一个 `<script data-yimsg-auto>` | 只想把 IM 放进页面，不需要程序化控制 |
+| IIFE | 上面基础上自己调 `YimsgUIKit.mount()` | 需要拿 `MountHandle` 做运行期控制 |
+| ESM | `<script type="module">` 里 `import { mount }` | 宿主本身就是现代前端工程 |
 
-UIKit 只表达业务意图，不直接判断本地持久化能力、持久存储 Worker 或浏览器存储能力。持久存储模式下清空本地数据不再是一个独立的挂载模式，而是设置页里的「清除数据」按钮：点击后以 `startSession({ storage: 'persistent', resetLocalData: 'current-user', instanceId })` 重新初始化当前实例的持久化会话，删除本地 SQLite 副本后重新从服务端全量追平；所有本地游标（`meta` 表 `*_seq` 键）随删库一并清零，重新追平从 0 开始。
+三种形态共用同一套跨域要求：服务端 `allowed_origins` 放行宿主来源。
 
-## 8.1 `viewMode` 语义
+
+UIKit 的目标形态是「客户把 yimsg 部署到自己的一台服务器，给出网址，任意第三方站点即可嵌入」。宿主站点与服务端天然不同源，因此：
+
+| 环节 | 要求 |
+|---|---|
+| bundle 加载 | 宿主页用 `<script type="module">` import `/uikit/yimsg-uikit.js`，或用普通 `<script src>` 加载 `/uikit/yimsg-uikit.iife.js` 取全局 `YimsgUIKit`；两者都走 CORS 检查，服务端必须放行宿主来源 |
+| 服务地址 | `mount()` 传 `serverUrl`，WebSocket、上传地址和媒体基址全部由它派生，运行时不依赖 `location` |
+| 媒体展示 | 服务端返回的是 `/media/...` 相对路径，UIKit 渲染前统一经 `client.resolveMediaUrl()` 补上服务端基址，否则会被解析到宿主站点 |
+| 服务端配置 | `config.toml` 的 `[server] allowed_origins` 列出宿主来源；`/uikit/`、`/api/upload`、`/media/` 返回 CORS 头，WebSocket 升级按同一份名单校验 Origin |
+
+Web 端只有内存会话：浏览器不再使用 SQLite/OPFS，也因此不需要跨域隔离（COOP/COEP），服务端静态资源不再下发这两个头——它们会直接挡住第三方宿主页的嵌入。本地客户端（Node 运行时）仍可通过 SDK 的 `startSession({ storage: 'persistent', fileSystem: 'local' })` 使用 SQLite 副本。
+
+## 8.1 一行脚本自动挂载
+
+模块加载时检查 `document.currentScript`：只有 classic script（IIFE 产物）且带 `data-yimsg-auto` 才会自动挂载；ESM 路径下 `document.currentScript` 为 null，自动流程静默跳过，由使用者自己调用 `mount()`。
+
+| 属性 | 作用 |
+|---|---|
+| `data-yimsg-auto` | 声明自动挂载。**不带这个属性时什么都不做**，不会抢在宿主自己的 `mount()` 之前动手 |
+| `data-yimsg-target` | 容器选择器；省略时查找全部 `[data-yimsg-widget]`。命中多个元素时逐个挂载，各自按元素 `id` 得到不同 `instanceId` |
+| `data-yimsg-server-url` | 覆盖从脚本 `src` 推导出的服务端地址 |
+| `data-yimsg-token` | 宿主已持有的 token，挂载后自动鉴权 |
+| `data-yimsg-theme` / `-locale` / `-layout` / `-view-mode` | 对应 `MountOptions` 的同名字段；非法值忽略，不透传脏值 |
+
+服务端地址推导规则是去掉 bundle 地址末尾的 `/uikit/<文件名>`：`https://im.example.com/uikit/yimsg-uikit.iife.js` → `https://im.example.com`，带路径前缀的部署 `https://host/yimsg/uikit/...` → `https://host/yimsg`。
+
+找不到容器时不挂载、不抛错，也不会擅自往宿主页插入元素——嵌入方的 DOM 不归 UIKit 支配，只在控制台给一次告警。脚本放在 `<head>` 里也能工作：DOM 未就绪时会推迟到 `DOMContentLoaded`。
+
+示例页：`packages/uikit/examples/uikit-auto-demo.html`。
+
+## 8.2 `viewMode` 语义
 
 `UIKitViewMode = 'full' | 'chat-only' | 'contacts-only'`，默认 `full`。
 
@@ -266,24 +341,23 @@ UIKit 只表达业务意图，不直接判断本地持久化能力、持久存�
 |---|---|---|
 | 单元测试 | `packages/uikit/tests/unit/uikit-mount.test.ts` | `mount()` 公开面、参数校验、Shadow DOM 句柄 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-theme-i18n.test.ts` | 主题变量、locale 覆盖、运行期切换 |
-| 单元测试 | `packages/uikit/tests/unit/uikit-mode.test.ts`、`startup-mode.test.ts` | mode 分支、布局决策 |
+| 单元测试 | `packages/uikit/tests/unit/startup-mode.test.ts` | 首次访问的布局偏好判定 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-navigation.test.ts` | `switchView` 在 `chat-only` / `contacts-only` 显示范围下强制落回对应视图 |
 | 单元测试 | `packages/uikit/tests/unit/bounded-list/*.test.ts` | BoundedList 核心：组件外壳、PageWindow、LocalOverlay、ListRenderer、PageSource、SelectionStore、提示条与辅助模块 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-message-page.test.ts`、`uikit-message-search-jump.test.ts` | 生产视图接入 BoundedList 后的状态清理、锚点跳转与投影同步 |
 | 单元测试 | `packages/uikit/tests/unit/uikit-security.test.ts` | URL allowlist、SafeHtml、转义约束 |
-| 单元测试 | `packages/uikit/tests/unit/uikit-settings-clear-data.test.ts` | 设置页「清除数据」按钮：仅 persistent 模式展示、确认弹窗、resetLocalData=current-user 重新初始化、失败与降级分支 |
 | E2E 测试 | `apps/web/tests/e2e/uikit-embed.spec.ts` | ESM 挂载、Shadow DOM、认证、句柄、主题、卸载、`viewMode: 'chat-only'` 隐藏底部导航栏 |
 | E2E 测试 | `apps/web/tests/e2e/security.spec.ts` | 恶意输入不执行、不生成危险 DOM |
-| E2E 测试 | `apps/web/tests/e2e/settings.spec.ts` | 「清除数据」按钮可见性与端到端清空重同步 |
 | 浏览器组件测试 | `apps/web/tests/component/bounded-list.spec.ts` | 真实 Chromium 中覆盖全部 BoundedList 参数、命令、回调、DOM 事件、并发、错误、选择与生命周期 |
 | 浏览器性能测试 | `apps/web/tests/performance/bounded-list.performance.spec.ts` | 100,000 条本地数据、逻辑 1,000,000 条、长程分页、事件风暴、创建 / 销毁与实时插入的容量和性能门禁 |
-| E2E 测试 | `apps/web/tests/e2e/*.spec.ts` | 主应用持久存储全量能力 |
+| E2E 测试 | `apps/web/tests/e2e/*.spec.ts` | 主应用全量能力 |
+| E2E 测试 | `apps/web/tests/e2e/cross-origin-embed.spec.ts` | 跨域宿主页加载 bundle、登录、收发消息、上传与媒体展示 |
 
 BoundedList 专项截至 2026-08-16 共 39 个 Playwright 用例（33 个功能用例、6 个性能用例）；此前登记的浏览器缺陷均有固定回归。完整矩阵、阈值、独立执行与全量项目依赖见 [`测试方案.md` §6](../../../docs/development/测试方案.md#6-boundedlist-playwright-与性能专项)，历史证据见 [`../../../docs/archive/BoundedList缺陷列表.md`](../../../docs/archive/BoundedList缺陷列表.md)，当前缺陷状态见 [`boundedlist/缺陷列表.md`](boundedlist/缺陷列表.md)。当次是否通过以实际测试输出为准，不在设计文档中长期固化。
 
 ## 11. 已知边界
 
-- 嵌入态请求 `persistent` 但浏览器持久化能力预检查不可用时，会自动降级为 `instant`；若本地持久化能力初始化阶段失败，则通过错误流程交给宿主处理。
+- Web 端不提供本地持久化：刷新页面后会重新从服务端追平数据。
 - UIKit 目前提供完整聊天 UI、`viewMode: 'chat-only'`、`viewMode: 'contacts-only'` 三种形态，不提供只读迷你浮窗或只渲染单会话（不含消息面板）的轻量组件。
 - 宿主若长期保留 `MountHandle` 并自行注册事件，需要在卸载时调用返回的 disposer 或 `unmount()`。
 

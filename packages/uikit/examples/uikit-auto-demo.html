@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>yimsg uikit 一行脚本接入示例</title>
+  <link rel="stylesheet" href="./common.css">
+  <style>
+    .auto-host { width: min(860px, 100%); height: min(640px, 80vh); }
+  </style>
+</head>
+<body>
+  <h1>yimsg · 一行脚本接入</h1>
+  <p class="tip">
+    宿主页只需要一个容器元素和一个 <code>&lt;script&gt;</code> 标签，不写任何 JavaScript。
+    服务端地址由 UIKit 从脚本自身的 <code>src</code> 推导：脚本从哪个源加载，就连哪个服务端。
+  </p>
+  <div class="auto-host" data-yimsg-widget></div>
+  <script src="/uikit/yimsg-uikit.iife.js" data-yimsg-auto></script>
+</body>
+</html>

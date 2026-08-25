@@ -1,7 +1,7 @@
 # SDK 设计方案
 
-> 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/`、`packages/sdk/src/datagateway/`、`packages/sdk/src/state/`、`packages/sdk/src/transport/`、`protocol/generated/typescript/yimsg.ts`、`packages/sdk/src/worker/sqlite.worker.ts`、`protocol/yimsg.proto`。
-> 最后复核：2026-07-29。
+> 主要对照：`packages/sdk/src/index.ts`、`packages/sdk/src/types.ts`、`packages/sdk/src/client.ts`、`packages/sdk/src/internal/`、`packages/sdk/src/datagateway/`、`packages/sdk/src/state/`、`packages/sdk/src/transport/`、`protocol/generated/typescript/yimsg.ts`、`packages/sdk/src/internal/server-url.ts`、`protocol/yimsg.proto`。
+> 最后复核：2026-08-25。
 > 触发更新：SDK 公开方法、公开类型、事件、`ClientOptions`、会话生命周期、DataGateway 接口、同步域、本地 SQLite schema、DisplayInfoCache、WebSocket type/action、HTTP 上传 / 媒体接口或通知类型变化时同步更新。
 > 入口关系：上级索引见 [`README.md`](../README.md)；调用者 API 见 [`sdk接口说明.md`](sdk接口说明.md)；DataGateway 接口摘要见 [`DataGateway接口.md`](DataGateway接口.md)；DisplayInfoCache 接口摘要见 [`DisplayInfoCache接口.md`](DisplayInfoCache接口.md)；同步契约见 [`../../同步机制方案.md`](../../../docs/architecture/同步机制方案.md)；UIKit / SDK / 后端接口总览见 [`../../protocol/接口总览.md`](../../../protocol/docs/接口总览.md)。
 
@@ -32,7 +32,7 @@ flowchart TD
 
   InstantGateway --> Transport
   PersistentGateway --> Transport
-  PersistentGateway --> SQLite[(SQLite: OPFS worker 或 local better-sqlite3)]
+  PersistentGateway --> SQLite[(SQLite: local better-sqlite3，仅本地客户端)]
   DisplayCache --> DataGateway
 
   Transport --> Frame[WebSocket protobuf 二进制帧]
@@ -150,7 +150,7 @@ sequenceDiagram
 | 参数 | 当前行为 |
 |---|---|
 | `storage` | 默认 `instant`；传 `persistent` 时先探测后端能力 |
-| `fileSystem` | 可选 `opfs` / `local`；未传时 Node.js 优先 `local`，其他环境优先 `opfs` |
+| `fileSystem` | 当前只有 `local`（Node 运行时 + better-sqlite3）。**浏览器端不提供 SQLite 持久化**，请求 `persistent` 会安静降级为 `instant` |
 | `instanceId` | 参与 persistent DB 名，默认 `default` |
 | `resetLocalData` | `false` / `undefined` 等价于 `none`；可传 `current-user` 或 `all` 在初始化前清理本地库 |
 
@@ -324,7 +324,7 @@ persistent 模式维护当前用户、当前 `instanceId` 的 SQLite 副本。
 | 逻辑 | 当前实现 |
 |---|---|
 | DB 名称 | `yimsg-{uid}__{instanceId}.db` |
-| DB 后端 | `opfs` 使用 `SqliteWorkerApi` + `sqlite.worker.ts` + `@sqlite.org/sqlite-wasm`；`local` 使用 `LocalSqliteApi` + `better-sqlite3` |
+| DB 后端 | `local` 使用 `LocalSqliteApi` + `better-sqlite3`（仅 Node 运行时）。`DbApi` 抽象与 `sqlite-db-factory` 保留，便于后续接入其它本地后端 |
 | 初始化 | 打开 DB，读取 `meta` 中 `msg_seq`、`contact_seq`、`conversation_seq`、`blocklist_seq`、`mutelist_seq`，随后启动后台同步 |
 | `ready` 时机 | DB 打开和 meta 读取成功后进入 `ready`；业务数据继续后台追平 |
 | 本地读取 | 会话、未读、消息、联系人、待处理数、屏蔽、免打扰都查 SQLite；`search_contacts` / `search_messages` 复用同一份本地表按 `search_text LIKE` 过滤，排序/分页与对应 `get_*` 完全一致 |
@@ -443,7 +443,7 @@ storage(open DB + read meta)
 
 ## 10. 本地 SQLite
 
-两套 persistent 后端共用同一 schema 形状（schema 版本各自维护：浏览器 worker `'12'`、Node `better-sqlite3` `'13'`）。打开 DB 时先执行 `CREATE TABLE IF NOT EXISTS`，再读取 `meta.schema_version`；版本不一致时 drop 当前本地表并重建。
+当前只有 Node `better-sqlite3` 一套 persistent 后端（schema 版本 `'13'`）。打开 DB 时先执行 `CREATE TABLE IF NOT EXISTS`，再读取 `meta.schema_version`；版本不一致时 drop 当前本地表并重建。
 
 | 表 | 主键 | 关键列 | 索引 |
 |---|---|---|---|
@@ -518,7 +518,6 @@ storage(open DB + read meta)
 | 转发包下载 | 1 MB | 读取 `arrayBuffer()` 前检查 `Content-Length` |
 | 同类型通知任务 | 1 个 pending 标记 | 防止通知 Promise 链无界增长 |
 | BaseDataGateway 通知累积器 | `batchMaxLimit`（默认 500） | 5 个 `pending*` 累积器（见 [`有界集合方案.md`](有界集合方案.md) 第 6 节），FIFO 淘汰 |
-| SqliteWorkerApi 并发调用 | 256 | `DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS`，超限立即 reject |
 | 事件 listener | 无硬上限 | 超过 10 个开发期告警 |
 
 所有长期驻留集合都建立在「容量在构造时确定、size 永不超过 capacity」的有界结构（`FifoMap` / `FifoSet` / `BoundedQueue`）之上。`FifoMap` / `FifoSet` 基于原生 Map / Set 实现，不再提供字节上界静态估算；详见 [`有界集合方案.md`](有界集合方案.md)。

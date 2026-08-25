@@ -286,8 +286,14 @@ export function renderMessages(app: AppInstance): void {
   app.chatState.messageList?.render();
 }
 
-export function mediaUrl(kind: 'image' | 'file', mediaId: string): string {
-  return `/media/${kind}/${mediaId}`;
+/**
+ * 媒体地址解析。
+ *
+ * 服务端返回的是 `/media/{kind}/{id}` 相对路径，跨域嵌入第三方站点时必须由 SDK
+ * 补上服务端基址，否则会被解析到宿主站点。同源部署下保持相对路径不变。
+ */
+export function mediaUrl(app: AppInstance, kind: 'image' | 'file', mediaId: string): string {
+  return app.client.resolveMediaUrl(`/media/${kind}/${mediaId}`);
 }
 
 export function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Message) {
@@ -303,7 +309,7 @@ export function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Me
     const isPendingLocalPreview = app.chatState.pendingMessageIds.has(msg.messageId) && mediaId.startsWith('blob:');
     if (isPendingLocalPreview) {
       img.src = mediaId;
-    } else if (!mediaId || !setTrustedImageSrc(img, mediaUrl('image', mediaId))) {
+    } else if (!mediaId || !setTrustedImageSrc(img, mediaUrl(app, 'image', mediaId))) {
       bubble.textContent = details.image?.caption || app.t('chat.previewImage');
       return;
     }
@@ -319,7 +325,7 @@ export function fillMessageBubble(app: AppInstance, bubble: HTMLElement, msg: Me
     const anchor = app.dom.ownerDocument.createElement('a');
     anchor.className = 'message-file';
     anchor.target = '_blank';
-    if (!file?.media_id || !setTrustedAnchorHref(anchor, mediaUrl('file', file.media_id))) {
+    if (!file?.media_id || !setTrustedAnchorHref(anchor, mediaUrl(app, 'file', file.media_id))) {
       bubble.textContent = file?.name || app.t('chat.file');
       return;
     }

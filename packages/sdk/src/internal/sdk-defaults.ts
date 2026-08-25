@@ -65,11 +65,3 @@ export const DEFAULT_RECALL_WINDOW_SECONDS = 120;
 
 /** 单次合并转发最多包含的原消息数量。 */
 export const DEFAULT_FORWARD_MAX_ITEMS = 20;
-
-/**
- * SqliteWorkerApi（persistent 模式 OPFS worker）单实例最大并发未完成调用数。
- * 超出此数量时，新调用立即以 Error 拒绝，防止调用方 bug（连续发起但不 await）
- * 导致待响应 Promise 无限积压。默认 256（本地 IPC 往返远快于网络请求，
- * 上限高于 DEFAULT_WS_MAX_PENDING_REQUESTS）。
- */
-export const DEFAULT_SQLITE_WORKER_MAX_PENDING_CALLS = 256;

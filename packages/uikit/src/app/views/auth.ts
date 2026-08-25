@@ -2,14 +2,8 @@ import type { AppInstance } from '../app-instance';
 import { describeError } from '../error-i18n';
 import type { LayoutChoice } from '../session-storage';
 import { persistAndApplyLayoutForApp } from '../layout';
-import { needsInitialModeSelection, resolveModeAfterAuth, shouldResetPersistentStorage } from '../startup-mode';
-import { startSessionByMode } from '../../mode';
+import { needsInitialLayoutSelection } from '../startup-mode';
 import { initAfterAuth } from '../main-app';
-
-type ModeChoice = {
-  mode: 'instant' | 'persistent';
-  layout: LayoutChoice;
-};
 
 type AuthSuccess = {
   token: string;
@@ -42,92 +36,21 @@ export function createAuthView(app: AppInstance) {
 
   async function finalizeAuthSuccess(result: AuthSuccess, persistedToken = result.token) {
     app.storage.setStoredToken(persistedToken);
-    await initSelectedModeAfterAuth();
+    await initAfterAuth(app);
     emitAuthenticated(result);
   }
 
-  async function initSelectedModeAfterAuth() {
-    if (app.runtime.embedded) {
-      const requestedMode = app.runtime.requestedMode ?? 'instant';
-      await initAfterAuth(app, {
-        requestedMode,
-        startSession: () => startSessionByMode(app.client, {
-          mode: requestedMode,
-          instanceId: app.runtime.instanceId,
-        }, (error, context) => {
-          app.emitAppError(error, context);
-        }),
-      });
-      return;
-    }
-
-    const savedMode = app.storage.getStoredMode();
-    await initMode(resolveModeAfterAuth(savedMode));
-  }
-
-  async function initMode(mode: 'instant' | 'persistent') {
-    const snapshot = app.client.getSessionSnapshot();
-    const shouldResetStoredPersistentData = shouldResetPersistentStorage(mode, app.storage.getStoredPersistentUid(), snapshot.currentUid);
-    const resetLocalData = mode === 'persistent' && shouldResetStoredPersistentData
-      ? 'all'
-      : 'none';
-    const sessionStart = {
-      result: null as Awaited<ReturnType<typeof app.client.startSession>> | null,
-    };
-
-    app.storage.setStoredMode(mode);
-    await initAfterAuth(app, {
-      requestedMode: mode,
-      startSession: async () => {
-        sessionStart.result = await app.client.startSession({
-          storage: mode === 'persistent' ? 'persistent' : 'instant',
-          resetLocalData,
-          instanceId: app.runtime.instanceId,
-        });
-      },
-    });
-
-    const startResult = sessionStart.result;
-    if (startResult?.degraded) {
-      app.storage.setStoredMode('instant');
-      app.storage.clearStoredPersistentUid();
-      app.emitAppError(new Error('持久化会话不可用，已降级为 instant 模式'), 'mode:persistent-fallback');
-    } else {
-      app.storage.setStoredMode(mode);
-    }
-
-    if (startResult?.resetLocalDataError) {
-      app.storage.clearStoredPersistentUid();
-      app.emitAppError(startResult.resetLocalDataError, 'mode:reset-local-data');
-    }
-
-    const nextSnapshot = app.client.getSessionSnapshot();
-    if (startResult?.mode === 'persistent' && nextSnapshot.currentUid) {
-      app.storage.setStoredPersistentUid(nextSnapshot.currentUid);
-    }
-  }
-
-  function showModeSelectionModal(): Promise<ModeChoice> {
+  function showLayoutSelectionModal(): Promise<LayoutChoice> {
     return new Promise((resolve) => {
       const overlay = app.$('modal-overlay');
       const content = app.dom.querySelector<HTMLElement>('.modal-content') || overlay;
-      content.classList.add('mode-select-modal');
+      content.classList.add('layout-select-modal');
 
       const currentLayout = app.storage.getStoredLayout();
 
       content.innerHTML = `
-        <div class="mode-select">
-          <h2 class="modal-title">${app.t('auth.chooseMode')}</h2>
-          <div class="mode-options">
-            <div class="mode-option" id="mode-opt-instant">
-              <div class="mode-option-title">${app.t('auth.liteTitle')}</div>
-              <div class="mode-option-desc">${app.t('auth.liteDesc')}</div>
-            </div>
-            <div class="mode-option mode-option-recommended" id="mode-opt-persistent">
-              <div class="mode-option-title">${app.t('auth.persistentTitle')}</div>
-              <div class="mode-option-desc">${app.t('auth.persistentDesc')}</div>
-            </div>
-          </div>
+        <div class="layout-select">
+          <h2 class="modal-title">${app.t('auth.chooseLayout')}</h2>
           <div class="layout-select-section">
             <div class="layout-select-label">${app.t('auth.chooseLayout')}</div>
             <div class="layout-options" role="radiogroup" aria-label="${app.t('auth.chooseLayout')}">
@@ -136,6 +59,7 @@ export function createAuthView(app: AppInstance) {
               <button type="button" class="layout-option${currentLayout === 'mobile' ? ' active' : ''}" data-layout="mobile" role="radio" aria-checked="${currentLayout === 'mobile'}">${app.t('auth.layoutMobile')}</button>
             </div>
           </div>
+          <button type="button" class="btn btn-primary btn-block" id="layout-confirm-btn">${app.t('auth.layoutConfirm')}</button>
         </div>
       `;
       overlay.dataset.preventClose = '1';
@@ -153,28 +77,17 @@ export function createAuthView(app: AppInstance) {
         });
       });
 
-      const finish = (choice: Omit<ModeChoice, 'layout'>) => {
-        content.classList.remove('mode-select-modal');
+      app.$('layout-confirm-btn').addEventListener('click', () => {
+        content.classList.remove('layout-select-modal');
         delete overlay.dataset.preventClose;
         app.closeModal();
-        resolve({ ...choice, layout: selectedLayout });
-      };
-
-      app.$('mode-opt-instant').addEventListener('click', () => finish({ mode: 'instant' }));
-      app.$('mode-opt-persistent').addEventListener('click', () => finish({ mode: 'persistent' }));
+        resolve(selectedLayout);
+      });
     });
   }
 
-  async function promptModeSelection(options: {
-    initAfterSelection: boolean;
-  }) {
-    const choice = await showModeSelectionModal();
-    app.storage.setStoredMode(choice.mode);
-    persistAndApplyLayoutForApp(app, choice.layout);
-
-    if (options.initAfterSelection) {
-      await initMode(choice.mode);
-    }
+  async function promptLayoutSelection() {
+    persistAndApplyLayoutForApp(app, await showLayoutSelectionModal());
   }
 
   function showAuthView() {
@@ -202,15 +115,15 @@ export function createAuthView(app: AppInstance) {
       showAuthView();
       app.emitAppError(new Error(app.t('auth.sessionExpired')), 'authenticate');
       if (!app.runtime.embedded) {
-        await ensureInitialModeSelection();
+        await ensureInitialLayoutSelection();
       }
     }
   }
 
-  async function ensureInitialModeSelection() {
-    if (!needsInitialModeSelection(app.storage.getStoredToken())) return;
+  async function ensureInitialLayoutSelection() {
+    if (!needsInitialLayoutSelection(app.storage.getStoredToken())) return;
     showAuthView();
-    await promptModeSelection({ initAfterSelection: false });
+    await promptLayoutSelection();
   }
 
   function handleSessionKicked() {
@@ -268,7 +181,7 @@ export function createAuthView(app: AppInstance) {
   return {
     setupAuth,
     authenticate,
-    ensureInitialModeSelection,
+    ensureInitialLayoutSelection,
     showAuthView,
     showAppView,
     handleSessionKicked,

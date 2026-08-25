@@ -194,6 +194,9 @@ port = ${port}
 machine_id = 1
 tls_cert = ""
 tls_key = ""
+# 跨域嵌入用例固定使用这一个白名单来源；服务端 E2E 同时验证白名单外来源不获得
+# 任何跨域许可。额外来源（如 Playwright 的第三方宿主服务器）由各自 setup 追加。
+allowed_origins = ["https://embed-host.example"]
 
 [database]
 data_dir = "${data_dir}"

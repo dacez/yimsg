@@ -3,8 +3,8 @@ import { createAuthView } from '../../src/app/views/auth';
 import { initAfterAuth } from '../../src/app/main-app';
 
 vi.mock('../../src/app/main-app', () => ({
-  initAfterAuth: vi.fn(async (_app, options: { startSession?: () => Promise<void> }) => {
-    await options.startSession?.();
+  initAfterAuth: vi.fn(async (app: { client: { startSession: () => Promise<unknown> } }) => {
+    await app.client.startSession();
   }),
 }));
 
@@ -13,13 +13,7 @@ vi.mock('../../src/app/layout', () => ({
 }));
 
 vi.mock('../../src/app/startup-mode', () => ({
-  needsInitialModeSelection: vi.fn(() => false),
-  resolveModeAfterAuth: vi.fn(() => 'instant'),
-  shouldResetPersistentStorage: vi.fn(() => false),
-}));
-
-vi.mock('../../src/mode', () => ({
-  startSessionByMode: vi.fn(async () => undefined),
+  needsInitialLayoutSelection: vi.fn(() => false),
 }));
 
 type EventHandler = (event: { preventDefault(): void }) => void | Promise<void>;
@@ -87,11 +81,6 @@ function createApp() {
     storage: {
       setStoredToken: vi.fn(),
       clearStoredToken: vi.fn(),
-      getStoredMode: vi.fn(() => 'instant'),
-      getStoredPersistentUid: vi.fn(() => null),
-      clearStoredPersistentUid: vi.fn(),
-      setStoredPersistentUid: vi.fn(),
-      setStoredMode: vi.fn(),
       getStoredLayout: vi.fn(() => 'auto'),
     },
     runtime: {

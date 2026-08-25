@@ -363,7 +363,7 @@ export class ClientSessionRuntime {
         await import("../datagateway/sqlite-db-factory");
       const { PersistentDataGateway } =
         await import("../datagateway/persistent");
-      const db = await createPersistentDbApi(options.fileSystem ?? "opfs");
+      const db = await createPersistentDbApi(options.fileSystem ?? "local");
       return new PersistentDataGateway(this.deps.transport, {
         db,
         batchMaxLimit: this.deps.getBatchMaxLimit(),

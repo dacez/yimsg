@@ -5,8 +5,6 @@ export interface StorageAdapter {
 }
 
 const TOKEN_KEY = 'token';
-const MODE_KEY = 'mode';
-const PERSISTENT_UID_KEY = 'persistent_uid';
 const LAYOUT_KEY = 'layout';
 const LANG_KEY = 'lang';
 /** 官网语言切换器（website/index.html #lang-toggle）写入的同源 key，App 首次访问时优先复用。 */
@@ -104,27 +102,6 @@ export class StorageScope {
 
   clearStoredToken(): void {
     this.storage.removeItem(TOKEN_KEY);
-  }
-
-  getStoredMode(): 'instant' | 'persistent' | null {
-    const mode = this.storage.getItem(MODE_KEY);
-    return mode === 'instant' || mode === 'persistent' ? mode : null;
-  }
-
-  setStoredMode(mode: 'instant' | 'persistent'): void {
-    this.storage.setItem(MODE_KEY, mode);
-  }
-
-  getStoredPersistentUid(): string | null {
-    return this.storage.getItem(PERSISTENT_UID_KEY);
-  }
-
-  setStoredPersistentUid(uid: string): void {
-    this.storage.setItem(PERSISTENT_UID_KEY, uid);
-  }
-
-  clearStoredPersistentUid(): void {
-    this.storage.removeItem(PERSISTENT_UID_KEY);
   }
 
   getStoredLayout(): 'desktop' | 'mobile' | 'auto' {

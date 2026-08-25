@@ -8,6 +8,7 @@ import (
 	"time"
 	"yimsg/protocol/generated/go/pb"
 	"yimsg/server/internal/appmsg"
+	"yimsg/server/internal/httpx"
 	"yimsg/server/internal/online"
 	"yimsg/server/internal/service"
 
@@ -15,10 +16,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
 
 var unauthenticatedTimeout = 15 * time.Second
 
@@ -58,7 +55,14 @@ func clearAuthState(state *service.AppState, conn *connState) {
 }
 
 // HandleWS handles WebSocket upgrade and message loop.
+//
+// 升级前按 [server] allowed_origins 校验 Origin：WebSocket 不受浏览器同源策略
+// 约束，任何站点的页面都能发起连接，因此开启跨域嵌入后必须由服务端自己把关。
+// 未配置 allowed_origins 时保持放行所有来源的既有行为。
 func HandleWS(state *service.AppState) http.HandlerFunc {
+	upgrader := websocket.Upgrader{
+		CheckOrigin: httpx.NewOriginPolicy(state.Config().Server.AllowedOrigins).AllowRequest,
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {

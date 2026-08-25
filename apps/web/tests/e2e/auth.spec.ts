@@ -1,14 +1,16 @@
 import { test, expect } from '../support/test-fixtures';
-import { ensureModeSelected, uniqueUser, register } from './helpers';
+import { ensureStartupPrefs, uniqueUser, register } from './helpers';
 
 test.describe('Auth', () => {
-  test('first launch prompts for lite and persistent options', async ({ page }) => {
+  test('首次访问只需确认布局偏好，不再选择存储模式', async ({ page }) => {
     await page.goto('/app/');
-    await expect(page.locator('#mode-opt-instant')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('#mode-opt-persistent')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('#mode-opt-persistent-reset')).toHaveCount(0);
+    await expect(page.locator('#layout-confirm-btn')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.layout-option[data-layout="auto"]')).toBeVisible();
+    // 浏览器端只有内存模式，存储模式选项已随浏览器端 SQLite 一并退役。
+    await expect(page.locator('#mode-opt-instant')).toHaveCount(0);
+    await expect(page.locator('#mode-opt-persistent')).toHaveCount(0);
 
-    await ensureModeSelected(page, 'instant');
+    await ensureStartupPrefs(page);
     await expect(page.locator('#login-form')).toBeVisible();
   });
 
@@ -30,7 +32,7 @@ test.describe('Auth', () => {
     const ctx2 = await browser.newContext({ ignoreHTTPSErrors: true });
     const page2 = await ctx2.newPage();
     await page2.goto('/app/');
-    await ensureModeSelected(page2, 'instant');
+    await ensureStartupPrefs(page2);
     await page2.click('[data-tab="register"]');
     await page2.fill('#reg-username', user);
     await page2.fill('#reg-password', '123456');
@@ -44,7 +46,7 @@ test.describe('Auth', () => {
 
   test('login with wrong password shows error', async ({ page }) => {
     await page.goto('/app/');
-    await ensureModeSelected(page, 'instant');
+    await ensureStartupPrefs(page);
     await page.fill('#login-username', 'nonexistent_user_xyz');
     await page.fill('#login-password', 'wrongpass');
     await page.click('#login-form button[type="submit"]');

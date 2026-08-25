@@ -16,7 +16,6 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.51.2-build9",
     "@yimsg/protocol": "*"
   },
   "optionalDependencies": {

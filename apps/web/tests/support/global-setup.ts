@@ -17,6 +17,11 @@ const SERVER_EXE = path.join(TEST_ENV_DIR, process.platform === 'win32' ? 'serve
 const PREFIX_FILE = path.join(DATA_DIR, 'test-seed-prefix.txt');
 let PORT = 0;
 let BASE_URL = '';
+// 第三方宿主站点：跨域嵌入用例需要一个与服务端不同源的页面来源。
+// 服务端跑在 127.0.0.1，宿主页跑在 localhost——浏览器按主机名字符串判定同源，
+// 两者虽指向同一台机器，但仍是两个 origin。
+let THIRD_PARTY_PORT = 0;
+let THIRD_PARTY_ORIGIN = '';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -64,6 +69,7 @@ port = ${PORT}
 machine_id = 1
 tls_cert = ""
 tls_key = ""
+allowed_origins = ["${THIRD_PARTY_ORIGIN}"]
 
 [database]
 data_dir = "${DATA_DIR.replace(/\\/g, '/')}"
@@ -100,14 +106,39 @@ recall_window_seconds = 3
 `.trimStart(), 'utf-8');
 }
 
+// startThirdPartyHost 拉起一个只提供宿主页模板的静态服务器，充当「客户自己的网站」。
+// 模板里的 __SERVER_ORIGIN__ 占位替换成 yimsg 服务端地址，UIKit 由该地址跨域加载。
+function startThirdPartyHost(): void {
+  const templateDir = path.join(__dirname, 'third-party-host');
+  const server = http.createServer((req, res) => {
+    const name = (req.url || '/').split('?')[0].replace(/^\//, '') || 'esm.html';
+    const file = path.join(templateDir, path.basename(name));
+    if (!file.endsWith('.html') || !fs.existsSync(file)) {
+      res.writeHead(404);
+      res.end('not found');
+      return;
+    }
+    const html = fs.readFileSync(file, 'utf-8').replace(/__SERVER_ORIGIN__/g, BASE_URL);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+  server.listen(THIRD_PARTY_PORT, '127.0.0.1');
+  // 不阻塞 Playwright 主进程退出：进程结束时服务器随之消失。
+  server.unref();
+}
+
 export default async function globalSetup(_config: FullConfig) {
   PORT = await findFreePort();
   BASE_URL = `http://127.0.0.1:${PORT}`;
+  THIRD_PARTY_PORT = await findFreePort();
+  THIRD_PARTY_ORIGIN = `http://localhost:${THIRD_PARTY_PORT}`;
   process.env.PLAYWRIGHT_BASE_URL = BASE_URL;
   process.env.TEST_ENV_DIR = TEST_ENV_DIR;
   process.env.TEST_SERVER_PORT = String(PORT);
+  process.env.THIRD_PARTY_HOST_ORIGIN = THIRD_PARTY_ORIGIN;
 
   writeConfig();
+  startThirdPartyHost();
 
   console.log('[globalSetup] Running test-seed...');
   execSync(`go run ./server/tools/cmd/test-seed -config "${CONFIG}"`, {

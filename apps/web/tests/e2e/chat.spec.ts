@@ -1,5 +1,5 @@
 import { test, expect } from '../support/test-fixtures';
-import { uniqueUser, register, sendMessage, addFriend, openDMFromContacts, expectMessage, getMessageTexts, loginSeedUser, seedPrefix, ensureModeSelected } from './helpers';
+import { uniqueUser, register, sendMessage, addFriend, openDMFromContacts, expectMessage, getMessageTexts, loginSeedUser, seedPrefix, ensureStartupPrefs } from './helpers';
 
 test.describe('Chat', () => {
   let user1: string, user2: string;
@@ -222,7 +222,7 @@ test.describe('Chat', () => {
     // 应用不做 URL 深链恢复：即使地址栏带着一个陈旧/无效的会话 hash，登录后也必须
     // 固定落在空的会话列表视图，而不是尝试按 hash 打开一个可能已不存在的会话。
     await page.goto('/app/#/chat/g/1');
-    await ensureModeSelected(page, 'instant');
+    await ensureStartupPrefs(page);
     await page.fill('#login-username', `${seedPrefix()}_Test1`);
     await page.fill('#login-password', 'test123');
     await page.click('#login-form button[type="submit"]');

@@ -1,7 +1,7 @@
 import { test, expect } from '../support/test-fixtures';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, setContactRemark, ensureModeSelected } from './helpers';
+import { uniqueUser, register, addFriend, sendMessage, expectMessage, openDMFromContacts, openConversation, setContactRemark, ensureStartupPrefs } from './helpers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,7 +110,7 @@ test.describe('Profile Change Visibility', () => {
 
     await register(page1, u1, password, 'AvatarUser');
     await page2.goto('/app/');
-    await ensureModeSelected(page2, 'persistent');
+    await ensureStartupPrefs(page2);
     await page2.click('[data-tab="register"]');
     await page2.fill('#reg-username', u2);
     await page2.fill('#reg-password', password);

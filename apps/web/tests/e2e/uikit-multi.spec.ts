@@ -100,7 +100,7 @@ test.describe('uikit multi instance', () => {
   test('网格内 widget 会按宿主尺寸自适应，认证卡完整显示', async ({ page }) => {
     await page.goto('/demo/embed-multi.html');
 
-    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-instant', 'host-u5-persistent', 'host-u5-instant'];
+    const hostIds = ['host-u1-a', 'host-u1-b', 'host-u1-c', 'host-u2', 'host-u3', 'host-u4', 'host-u5-a', 'host-u5-b'];
     for (const hostId of hostIds) {
       await page.waitForFunction((id) => Boolean(document.getElementById(id)?.shadowRoot?.querySelector('.auth-card')), hostId);
     }
@@ -147,11 +147,11 @@ test.describe('uikit multi instance', () => {
     await page.goto('/demo/embed-multi.html');
 
     const seededUser = `${seedPrefix()}_Test1`;
-    await page.waitForFunction(() => Boolean(document.getElementById('host-u1-persistent')?.shadowRoot?.querySelector('#login-form')));
-    await loginHost(page, 'host-u1-persistent', seededUser, 'test123');
+    await page.waitForFunction(() => Boolean(document.getElementById('host-u1-a')?.shadowRoot?.querySelector('#login-form')));
+    await loginHost(page, 'host-u1-a', seededUser, 'test123');
     const postLoginLayoutState = await page.evaluate(() => {
       const tolerance = 1;
-      const host = document.getElementById('host-u1-persistent');
+      const host = document.getElementById('host-u1-a');
       const root = host?.shadowRoot;
       const app = root?.querySelector<HTMLElement>('#app');
       const navbar = root?.querySelector<HTMLElement>('#navbar');
@@ -178,16 +178,16 @@ test.describe('uikit multi instance', () => {
     expect(postLoginLayoutState.navbarFitsHost).toBe(true);
 
     const hostHeightBeforeContacts = await page.evaluate(() => {
-      return document.getElementById('host-u1-persistent')?.getBoundingClientRect().height ?? 0;
+      return document.getElementById('host-u1-a')?.getBoundingClientRect().height ?? 0;
     });
-    await switchContactsTab(page, 'host-u1-persistent', 'friends');
+    await switchContactsTab(page, 'host-u1-a', 'friends');
     await page.waitForFunction(() => {
-      const root = document.getElementById('host-u1-persistent')?.shadowRoot;
+      const root = document.getElementById('host-u1-a')?.shadowRoot;
       return (root?.querySelectorAll('#friends-tab .contact-item').length ?? 0) > 5;
     });
 
     const state = await page.evaluate(() => {
-      const host = document.getElementById('host-u1-persistent');
+      const host = document.getElementById('host-u1-a');
       const root = host?.shadowRoot;
       const shell = root?.querySelector<HTMLElement>('.mc-app-shell');
       const hostRect = host?.getBoundingClientRect();
@@ -210,7 +210,7 @@ test.describe('uikit multi instance', () => {
     expect(state.friendCount).toBeGreaterThan(5);
   });
 
-  test('8 个格子可独立登录，同账号多模式互不串扰且能同时收消息', async ({ page }) => {
+  test('8 个格子可独立登录，同账号多实例互不串扰且能同时收消息', async ({ page }) => {
     const password = '123456';
     const user1 = uniqueUser('grid_u1');
     const user2 = uniqueUser('grid_u2');
@@ -220,27 +220,27 @@ test.describe('uikit multi instance', () => {
 
     await page.goto('/demo/embed-multi.html');
 
-    const hostIds = ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant', 'host-u2-persistent', 'host-u3-persistent', 'host-u4-instant', 'host-u5-persistent', 'host-u5-instant'];
+    const hostIds = ['host-u1-a', 'host-u1-b', 'host-u1-c', 'host-u2', 'host-u3', 'host-u4', 'host-u5-a', 'host-u5-b'];
     for (const hostId of hostIds) {
       await page.waitForFunction((id) => Boolean(document.getElementById(id)?.shadowRoot), hostId);
     }
 
-    await registerHost(page, 'host-u1-persistent', user1, password, 'User One');
-    await loginHost(page, 'host-u1-persistent-2', user1, password);
-    await loginHost(page, 'host-u1-instant', user1, password);
-    await registerHost(page, 'host-u2-persistent', user2, password, 'User Two');
-    await registerHost(page, 'host-u3-persistent', user3, password, 'User Three');
-    await registerHost(page, 'host-u4-instant', user4, password, 'User Four');
-    await registerHost(page, 'host-u5-persistent', user5, password, 'User Five');
-    await loginHost(page, 'host-u5-instant', user5, password);
+    await registerHost(page, 'host-u1-a', user1, password, 'User One');
+    await loginHost(page, 'host-u1-b', user1, password);
+    await loginHost(page, 'host-u1-c', user1, password);
+    await registerHost(page, 'host-u2', user2, password, 'User Two');
+    await registerHost(page, 'host-u3', user3, password, 'User Three');
+    await registerHost(page, 'host-u4', user4, password, 'User Four');
+    await registerHost(page, 'host-u5-a', user5, password, 'User Five');
+    await loginHost(page, 'host-u5-b', user5, password);
 
-    await searchAndAddFriend(page, 'host-u2-persistent', user1);
-    await acceptFirstRequest(page, 'host-u1-persistent');
+    await searchAndAddFriend(page, 'host-u2', user1);
+    await acceptFirstRequest(page, 'host-u1-a');
 
-    await openFriendChat(page, 'host-u2-persistent', 'User One');
-    await sendShadowMessage(page, 'host-u2-persistent', 'hello multi grid');
+    await openFriendChat(page, 'host-u2', 'User One');
+    await sendShadowMessage(page, 'host-u2', 'hello multi grid');
 
-    for (const hostId of ['host-u1-persistent', 'host-u1-persistent-2', 'host-u1-instant']) {
+    for (const hostId of ['host-u1-a', 'host-u1-b', 'host-u1-c']) {
       await openFriendChat(page, hostId, 'User Two');
       await page.waitForFunction(({ hostId, text }) => {
         const root = document.getElementById(hostId)?.shadowRoot;
@@ -248,20 +248,20 @@ test.describe('uikit multi instance', () => {
       }, { hostId, text: 'hello multi grid' }, { timeout: 15_000 });
     }
 
-    await clickShadow(page, 'host-u1-persistent', '[data-view="settings"]');
-    await page.evaluate(() => window.__gridHandles['host-u1-persistent'].setLocale('en'));
+    await clickShadow(page, 'host-u1-a', '[data-view="settings"]');
+    await page.evaluate(() => window.__gridHandles['host-u1-a'].setLocale('en'));
     await page.waitForFunction(() => {
-      const root = document.getElementById('host-u1-persistent')?.shadowRoot;
+      const root = document.getElementById('host-u1-a')?.shadowRoot;
       return root?.querySelector('#logout-btn')?.textContent?.includes('Logout');
     });
 
-    expect(await textInShadow(page, 'host-u1-persistent', '#logout-btn')).toBe('Logout');
-    await clickShadow(page, 'host-u1-persistent-2', '[data-view="settings"]');
-    expect(await textInShadow(page, 'host-u1-persistent-2', '#logout-btn')).toBe('退出登录');
+    expect(await textInShadow(page, 'host-u1-a', '#logout-btn')).toBe('Logout');
+    await clickShadow(page, 'host-u1-b', '[data-view="settings"]');
+    expect(await textInShadow(page, 'host-u1-b', '#logout-btn')).toBe('退出登录');
 
-    await page.evaluate(() => window.__gridHandles['host-u1-persistent-2'].unmount());
-    await page.waitForFunction(() => window.__gridDemo.shadowChildCount('host-u1-persistent-2') === 0);
-    expect(await page.evaluate(() => window.__gridDemo.shadowChildCount('host-u1-persistent-2'))).toBe(0);
-    expect(await page.evaluate(() => window.__gridDemo.shadowChildCount('host-u1-persistent') > 0)).toBe(true);
+    await page.evaluate(() => window.__gridHandles['host-u1-b'].unmount());
+    await page.waitForFunction(() => window.__gridDemo.shadowChildCount('host-u1-b') === 0);
+    expect(await page.evaluate(() => window.__gridDemo.shadowChildCount('host-u1-b'))).toBe(0);
+    expect(await page.evaluate(() => window.__gridDemo.shadowChildCount('host-u1-a') > 0)).toBe(true);
   });
 });

@@ -1,7 +1,6 @@
 import type { AppInstance } from '../app-instance';
 import { describeError } from '../error-i18n';
 import { refreshVisibleViews } from '../view-refresh';
-import { isViewVisible } from '../utils';
 
 export function createSettingsView(app: AppInstance) {
   async function saveProfile() {
@@ -37,45 +36,6 @@ export function createSettingsView(app: AppInstance) {
     app.views.auth?.showAuthView();
   }
 
-  /** 清除本地持久化数据：重新以 resetLocalData='current-user' 启动当前实例的持久化会话，删库后从服务端全量重新追平。 */
-  async function clearData() {
-    const confirmed = await app.showConfirmModal({
-      title: app.t('settings.clearDataConfirmTitle'),
-      desc: app.t('settings.clearDataConfirmDesc'),
-      confirmText: app.t('settings.clearData'),
-      cancelText: app.t('group.cancel'),
-      danger: true,
-    });
-    if (!confirmed) return;
-
-    try {
-      const result = await app.client.startSession({
-        storage: 'persistent',
-        resetLocalData: 'current-user',
-        instanceId: app.runtime.instanceId,
-      });
-      if (result.resetLocalDataError) throw result.resetLocalDataError;
-
-      if (result.degraded) {
-        app.storage.setStoredMode('instant');
-        app.storage.clearStoredPersistentUid();
-        app.emitAppError(new Error('持久化会话不可用，已降级为 instant 模式'), 'mode:persistent-fallback');
-      } else {
-        const uid = app.client.getSessionSnapshot().currentUid;
-        if (uid) app.storage.setStoredPersistentUid(uid);
-      }
-
-      app.views.chat?.renderConversationList({ force: true });
-      if (isViewVisible(app, 'contacts')) {
-        void app.views.contacts?.loadContacts();
-      }
-      renderSettings();
-      app.showToast(app.t('settings.clearDataSuccess'), 'success');
-    } catch (e) {
-      app.showToast(app.t('settings.clearDataFailed') + describeError(app, e), 'error');
-    }
-  }
-
   async function uploadAvatar(file: File) {
     try {
       const data = await app.client.uploadFile(file, 'avatar');
@@ -100,7 +60,6 @@ export function createSettingsView(app: AppInstance) {
   function setupSettings() {
     app.$('save-profile-btn').addEventListener('click', saveProfile);
     app.$('change-pwd-btn').addEventListener('click', changePassword);
-    app.$('clear-data-btn').addEventListener('click', () => void clearData());
     app.$('logout-btn').addEventListener('click', logout);
 
     app.$('settings-avatar').addEventListener('click', () => {
@@ -121,12 +80,6 @@ export function createSettingsView(app: AppInstance) {
     const ud = app.client.getUserInfos([myUid]).get(myUid) || { nickname: '', avatarUrl: '', remarkName: '', username: '' };
     app.$('settings-nickname').textContent = ud.nickname || app.t('chat.unknown');
     app.$('settings-uid').textContent = app.t('settings.uid') + myUid;
-
-    const modeEl = app.$('settings-mode');
-    const isInstant = snapshot.mode === 'instant';
-    modeEl.textContent = isInstant ? app.t('auth.liteTitle') : app.t('auth.persistentTitle');
-    modeEl.className = 'mode-badge ' + (isInstant ? 'mode-badge-instant' : 'mode-badge-persistent');
-    app.$('settings-storage-card').classList.toggle('hidden', isInstant);
 
     (app.$('edit-nickname') as HTMLInputElement).value = ud.nickname || '';
 

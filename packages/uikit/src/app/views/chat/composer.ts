@@ -267,7 +267,7 @@ export async function uploadAndSend(app: AppInstance, file: File, type: 'image' 
         async () => {
           const data = await app.client.uploadFile(file, 'image');
           const result = await app.client.sendImage(target, { mediaId: data.mediaId, size: data.size, mime: file.type });
-          await preloadImage(mediaUrl('image', data.mediaId));
+          await preloadImage(mediaUrl(app, 'image', data.mediaId));
           return result;
         },
       );
