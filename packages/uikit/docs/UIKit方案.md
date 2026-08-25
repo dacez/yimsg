@@ -20,7 +20,9 @@
   - [7.2 `MountOptions`](#72-mountoptions)
   - [7.3 `MountHandle`](#73-mounthandle)
 - [8. 跨域嵌入](#8-跨域嵌入)
-  - [8.1 `viewMode` 语义](#81-viewmode-语义)
+  - [8.0 接入形态一览](#80-接入形态一览)
+  - [8.1 一行脚本自动挂载](#81-一行脚本自动挂载)
+  - [8.2 `viewMode` 语义](#82-viewmode-语义)
 - [9. 核心设计约束](#9-核心设计约束)
 - [10. 测试覆盖](#10-测试覆盖)
 - [11. 已知边界](#11-已知边界)
@@ -86,6 +88,7 @@ packages/uikit/src/
 |---|---|---|
 | ESM 嵌入 | 支持 | `import { mount } from '/uikit/yimsg-uikit.js'` |
 | IIFE 嵌入 | 支持 | `<script src="/uikit/yimsg-uikit.iife.js">` 后取全局 `YimsgUIKit` |
+| 一行脚本自动挂载 | 支持 | `<script src=... data-yimsg-auto>` + 一个 `[data-yimsg-widget]` 容器，宿主零 JavaScript |
 | 选择器挂载 | 支持 | `mount('#chat', options)` 接受 CSS 选择器或 HTMLElement |
 | 登录 / 注册 | 支持 | 内置认证表单；也支持 `token` / `getToken()` 自动鉴权 |
 | 外部已认证 client | 支持 | `client` 已 ready 时跳过登录页 |
@@ -157,7 +160,7 @@ ESM 形态：
 </script>
 ```
 
-IIFE 形态（宿主页不需要改造成 module script，接入成本最低）：
+IIFE 形态（宿主页不需要改造成 module script）：
 
 ```html
 <div id="chat" style="height:640px"></div>
@@ -166,6 +169,16 @@ IIFE 形态（宿主页不需要改造成 module script，接入成本最低）�
   YimsgUIKit.mount('#chat', { serverUrl: 'https://im.example.com' });
 </script>
 ```
+
+一行脚本形态（接入成本最低，宿主不写任何 JavaScript）：
+
+```html
+<div data-yimsg-widget style="height:640px"></div>
+<script src="https://im.example.com/uikit/yimsg-uikit.iife.js" data-yimsg-auto></script>
+```
+
+服务端地址由 UIKit 从脚本自身的 `src` 推导——脚本从哪个源加载，就连哪个服务端，
+因此连 `serverUrl` 都不用填。可选的 `data-yimsg-*` 属性见 [8.1](#81-一行脚本自动挂载)。
 
 两种形态都需要服务端把宿主站点写进 `config.toml` 的 `[server] allowed_origins`，
 否则跨域加载 bundle、上传预检和 WebSocket 升级都会被拒绝。
@@ -259,6 +272,17 @@ Widget 事件：
 
 ## 8. 跨域嵌入
 
+### 8.0 接入形态一览
+
+| 形态 | 宿主要写的东西 | 适用 |
+|---|---|---|
+| 一行脚本 | 一个容器元素 + 一个 `<script data-yimsg-auto>` | 只想把 IM 放进页面，不需要程序化控制 |
+| IIFE | 上面基础上自己调 `YimsgUIKit.mount()` | 需要拿 `MountHandle` 做运行期控制 |
+| ESM | `<script type="module">` 里 `import { mount }` | 宿主本身就是现代前端工程 |
+
+三种形态共用同一套跨域要求：服务端 `allowed_origins` 放行宿主来源。
+
+
 UIKit 的目标形态是「客户把 yimsg 部署到自己的一台服务器，给出网址，任意第三方站点即可嵌入」。宿主站点与服务端天然不同源，因此：
 
 | 环节 | 要求 |
@@ -270,7 +294,25 @@ UIKit 的目标形态是「客户把 yimsg 部署到自己的一台服务器，�
 
 Web 端只有内存会话：浏览器不再使用 SQLite/OPFS，也因此不需要跨域隔离（COOP/COEP），服务端静态资源不再下发这两个头——它们会直接挡住第三方宿主页的嵌入。本地客户端（Node 运行时）仍可通过 SDK 的 `startSession({ storage: 'persistent', fileSystem: 'local' })` 使用 SQLite 副本。
 
-## 8.1 `viewMode` 语义
+## 8.1 一行脚本自动挂载
+
+模块加载时检查 `document.currentScript`：只有 classic script（IIFE 产物）且带 `data-yimsg-auto` 才会自动挂载；ESM 路径下 `document.currentScript` 为 null，自动流程静默跳过，由使用者自己调用 `mount()`。
+
+| 属性 | 作用 |
+|---|---|
+| `data-yimsg-auto` | 声明自动挂载。**不带这个属性时什么都不做**，不会抢在宿主自己的 `mount()` 之前动手 |
+| `data-yimsg-target` | 容器选择器；省略时查找全部 `[data-yimsg-widget]`。命中多个元素时逐个挂载，各自按元素 `id` 得到不同 `instanceId` |
+| `data-yimsg-server-url` | 覆盖从脚本 `src` 推导出的服务端地址 |
+| `data-yimsg-token` | 宿主已持有的 token，挂载后自动鉴权 |
+| `data-yimsg-theme` / `-locale` / `-layout` / `-view-mode` | 对应 `MountOptions` 的同名字段；非法值忽略，不透传脏值 |
+
+服务端地址推导规则是去掉 bundle 地址末尾的 `/uikit/<文件名>`：`https://im.example.com/uikit/yimsg-uikit.iife.js` → `https://im.example.com`，带路径前缀的部署 `https://host/yimsg/uikit/...` → `https://host/yimsg`。
+
+找不到容器时不挂载、不抛错，也不会擅自往宿主页插入元素——嵌入方的 DOM 不归 UIKit 支配，只在控制台给一次告警。脚本放在 `<head>` 里也能工作：DOM 未就绪时会推迟到 `DOMContentLoaded`。
+
+示例页：`packages/uikit/examples/uikit-auto-demo.html`。
+
+## 8.2 `viewMode` 语义
 
 `UIKitViewMode = 'full' | 'chat-only' | 'contacts-only'`，默认 `full`。
 

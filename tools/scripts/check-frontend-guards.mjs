@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 
 const checks = [];
 const root = new URL('../../', import.meta.url);
@@ -9,15 +9,6 @@ function fail(message) {
 
 function read(path) {
   return readFileSync(new URL(path, root), 'utf8');
-}
-
-for (const removedPath of [
-  'packages/uikit/src/auto-mount.ts',
-  'packages/uikit/examples/uikit-auto-demo.html',
-]) {
-  if (existsSync(new URL(removedPath, root))) {
-    fail(`不应恢复已下线的一行脚本接入文件: ${removedPath}`);
-  }
 }
 
 function walk(path) {
@@ -78,13 +69,6 @@ const sourceAndTestRoots = [
   'apps/web/src',
   'apps/web/tests',
 ];
-for (const file of sourceAndTestRoots.flatMap(walk)) {
-  const content = read(file);
-  if (content.includes('data-yimsg-auto')) {
-    fail(`${file} 不应恢复 data-yimsg-auto 一行脚本自动挂载`);
-  }
-}
-
 // 进浏览器 bundle 的源码不得依赖 import.meta.url：IIFE 产物里它为空，任何据此
 // 定位 Worker / wasm / 资源的代码都会静默失效。这是当初禁止 IIFE 的根因，现在
 // 直接守住根因本身。测试与构建配置跑在 Node 下，不受此限。

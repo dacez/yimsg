@@ -40,6 +40,23 @@ async function registerInWidget(page: Page, username: string, nickname: string):
 }
 
 test.describe('跨域嵌入', () => {
+  test('一行脚本自动挂载：宿主页零 JavaScript 也能跨域嵌入', async ({ page }) => {
+    const problems = collectPageProblems(page);
+    // auto.html 里只有一个容器和一个 <script data-yimsg-auto>，没有任何 JS 代码，
+    // 也没有填 serverUrl——服务端地址由 UIKit 从脚本自身的 src 推导。
+    await page.goto(`${thirdPartyOrigin()}/auto.html`);
+
+    await expect
+      .poll(() => page.evaluate(() => Boolean(document.getElementById('chat-host')?.shadowRoot)))
+      .toBe(true);
+    await expect(page.locator('#login-form')).toBeVisible({ timeout: 15_000 });
+
+    // 推导出的服务端地址真的可用：完成一次跨域注册登录。
+    await registerInWidget(page, uniqueUser('xauto'), 'CrossOriginAuto');
+
+    expect(problems.filter((p) => /CORS|Mixed Content|blocked/i.test(p))).toEqual([]);
+  });
+
   test('IIFE bundle 跨域加载后暴露全局 YimsgUIKit 并建出 shadow root', async ({ page }) => {
     const problems = collectPageProblems(page);
     await page.goto(`${thirdPartyOrigin()}/iife.html`);

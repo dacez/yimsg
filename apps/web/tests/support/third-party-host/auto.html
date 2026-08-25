@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>第三方宿主站点（一行脚本）</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    [data-yimsg-widget] { width: 900px; height: 640px; }
+  </style>
+</head>
+<body>
+  <h1>第三方站点</h1>
+  <!-- 整个页面没有一行 JavaScript：容器 + 一个 script 标签即完成嵌入。
+       服务端地址由 UIKit 从本 script 的 src 推导，宿主连 serverUrl 都不用填。 -->
+  <div id="chat-host" data-yimsg-widget></div>
+  <script src="__SERVER_ORIGIN__/uikit/yimsg-uikit.iife.js" data-yimsg-auto data-yimsg-layout="desktop"></script>
+</body>
+</html>
